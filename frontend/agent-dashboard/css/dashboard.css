@@ -989,6 +989,15 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     background-color: var(--warning-light);
 }
 
+body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning {
+    background-color: #fff4d6;
+    color: #5f3b00;
+}
+
+body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning::before {
+    background-color: #8a5700;
+}
+
 .status-badge.error {
     background-color: rgba(218, 54, 51, 0.2);
     color: var(--danger-light);

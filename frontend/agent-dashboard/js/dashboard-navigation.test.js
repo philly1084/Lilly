@@ -652,6 +652,33 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.showToast).toHaveBeenCalledWith('No new notifications', 'info');
     });
 
+    test('keeps password reveal labels synchronized after toggles', () => {
+        const dom = new JSDOM(`
+            <input type="password" id="apiKey">
+            <button id="showApiKey" type="button" aria-label="Show API key" aria-controls="apiKey" aria-pressed="false"></button>
+        `);
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.setupEventListeners();
+        document.getElementById('showApiKey').click();
+
+        expect(document.getElementById('apiKey').type).toBe('text');
+        expect(document.getElementById('showApiKey').getAttribute('aria-label')).toBe('Hide API key');
+        expect(document.getElementById('showApiKey').getAttribute('aria-pressed')).toBe('true');
+        expect(document.getElementById('showApiKey').getAttribute('title')).toBe('Hide API key');
+
+        document.getElementById('showApiKey').click();
+
+        expect(document.getElementById('apiKey').type).toBe('password');
+        expect(document.getElementById('showApiKey').getAttribute('aria-label')).toBe('Show API key');
+        expect(document.getElementById('showApiKey').getAttribute('aria-pressed')).toBe('false');
+        expect(document.getElementById('showApiKey').getAttribute('title')).toBe('Show API key');
+    });
+
     test('keeps workload run JSON previews scroll-contained', () => {
         const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
 
@@ -811,6 +838,28 @@ describe('agent dashboard navigation accessibility', () => {
             expect(panel.getAttribute('role')).toBe('tabpanel');
             expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
             expect(panel.hidden).toBe(index !== 0);
+        });
+    });
+
+    test('labels settings password reveal controls with field state', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const controls = [
+            ['showApiKey', 'apiKey', 'Show API key'],
+            ['showOpenaiKey', 'openaiKey', 'Show OpenAI API key'],
+            ['showSshPassword', 'sshPassword', 'Show SSH password'],
+        ];
+
+        controls.forEach(([buttonId, inputId, label]) => {
+            const button = dom.window.document.getElementById(buttonId);
+            const icon = button.querySelector('svg');
+
+            expect(button.getAttribute('type')).toBe('button');
+            expect(button.getAttribute('aria-label')).toBe(label);
+            expect(button.getAttribute('aria-controls')).toBe(inputId);
+            expect(button.getAttribute('aria-pressed')).toBe('false');
+            expect(button.getAttribute('title')).toBe(label);
+            expect(icon.getAttribute('aria-hidden')).toBe('true');
         });
     });
 

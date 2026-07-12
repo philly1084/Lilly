@@ -745,15 +745,15 @@ class Dashboard {
 
         // API key visibility toggles
         document.getElementById('showApiKey')?.addEventListener('click', () => {
-            this.togglePasswordVisibility('apiKey');
+            this.togglePasswordVisibility('apiKey', 'showApiKey');
         });
         
         document.getElementById('showOpenaiKey')?.addEventListener('click', () => {
-            this.togglePasswordVisibility('openaiKey');
+            this.togglePasswordVisibility('openaiKey', 'showOpenaiKey');
         });
 
         document.getElementById('showSshPassword')?.addEventListener('click', () => {
-            this.togglePasswordVisibility('sshPassword');
+            this.togglePasswordVisibility('sshPassword', 'showSshPassword');
         });
         
         // Danger zone buttons
@@ -6132,10 +6132,28 @@ class Dashboard {
         }
     }
     
-    togglePasswordVisibility(id) {
+    getPasswordVisibilityLabel(id, isVisible) {
+        const labels = {
+            apiKey: 'API key',
+            openaiKey: 'OpenAI API key',
+            sshPassword: 'SSH password',
+        };
+        const fieldLabel = labels[id] || 'password';
+        return `${isVisible ? 'Hide' : 'Show'} ${fieldLabel}`;
+    }
+
+    togglePasswordVisibility(id, buttonId = '') {
         const input = document.getElementById(id);
         if (input) {
-            input.type = input.type === 'password' ? 'text' : 'password';
+            const isVisible = input.type === 'password';
+            input.type = isVisible ? 'text' : 'password';
+            const button = buttonId ? document.getElementById(buttonId) : null;
+            if (button) {
+                const label = this.getPasswordVisibilityLabel(id, isVisible);
+                button.setAttribute('aria-label', label);
+                button.setAttribute('aria-pressed', String(isVisible));
+                button.setAttribute('title', label);
+            }
         }
     }
     
