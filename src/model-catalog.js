@@ -246,6 +246,26 @@ function inferContextWindow(model = {}) {
     return 16000;
 }
 
+function getExplicitContextWindow(model = {}) {
+    const candidates = [
+        model?.contextWindow,
+        model?.context_window,
+        model?.metadata?.contextWindow,
+        model?.metadata?.context_window,
+        model?.contract?.contextWindow,
+        model?.contract?.context_window,
+    ];
+
+    for (const candidate of candidates) {
+        const value = Number(candidate);
+        if (Number.isFinite(value) && value > 0) {
+            return Math.trunc(value);
+        }
+    }
+
+    return null;
+}
+
 function buildModelContract(model = {}, options = {}) {
     const id = normalizeModelId(typeof model === 'string' ? model : model.id);
     const capabilities = inferModelCapabilities(typeof model === 'string' ? { id } : model);
@@ -268,7 +288,7 @@ function buildModelContract(model = {}, options = {}) {
             image_generation: capabilitySet.has('image_generation'),
             streaming: capabilitySet.has('streaming'),
         },
-        contextWindow: Number(model?.context_window || model?.contextWindow || 0) || inferContextWindow(model),
+        contextWindow: getExplicitContextWindow(model) || inferContextWindow(model),
         costTier: model?.costTier
             || model?.cost_tier
             || model?.metadata?.costTier

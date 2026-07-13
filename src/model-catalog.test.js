@@ -177,6 +177,39 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('uses nested provider context windows when selecting an auto model', () => {
+        const selected = selectAutoModel([
+            {
+                id: 'custom-standard-context-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+                context_window: 32000,
+            },
+            {
+                id: 'custom-large-context-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+                metadata: { context_window: '128000' },
+            },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'custom-large-context-router',
+            contextWindow: 128000,
+        }));
+        expect(buildModelContract({
+            id: 'custom-contract-context-router',
+            contract: { contextWindow: 64000 },
+        }).contextWindow).toBe(64000);
+        expect(buildModelContract({
+            id: 'custom-invalid-context-router',
+            metadata: { context_window: -1 },
+        }).contextWindow).toBe(16000);
+    });
+
     test('normalizes string and object capability metadata before chat selection', () => {
         const selected = selectAutoModel([
             { id: 'gpt-image-2', owned_by: 'openai', capabilities: 'image_generation' },
