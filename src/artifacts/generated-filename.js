@@ -4,6 +4,7 @@ function normalizeGeneratedExtension(extension = 'bin') {
 
 function sanitizeGeneratedFilename(filename = '', extension = 'bin') {
   const normalizedExtension = normalizeGeneratedExtension(extension);
+  const extensionSuffix = `.${normalizedExtension}`;
   const fallback = `generated-artifact.${normalizedExtension}`;
   const cleaned = String(filename || fallback)
     .trim()
@@ -11,12 +12,16 @@ function sanitizeGeneratedFilename(filename = '', extension = 'bin') {
     .replace(/[\\/:*?<>|]+/g, '-')
     .replace(/\s+/g, ' ')
     .replace(/^\.+/, '')
-    .slice(0, 160)
+    .replace(/[. ]+$/, '')
     .trim();
   const candidate = cleaned || fallback;
-  return /\.[a-z0-9]+$/i.test(candidate)
-    ? candidate
-    : `${candidate}.${normalizedExtension}`;
+  const filenameBase = candidate.toLowerCase().endsWith(extensionSuffix)
+    ? candidate.slice(0, -extensionSuffix.length)
+    : candidate.replace(/\.[a-z0-9]+$/i, '');
+  const maxBaseLength = Math.max(1, 160 - extensionSuffix.length);
+  const boundedBase = filenameBase.slice(0, maxBaseLength).replace(/[. ]+$/, '').trim()
+    || 'generated-artifact';
+  return `${boundedBase}${extensionSuffix}`;
 }
 
 module.exports = {
