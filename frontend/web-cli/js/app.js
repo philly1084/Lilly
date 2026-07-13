@@ -6798,6 +6798,10 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             return;
         }
 
+        line.querySelectorAll('.ai-response-toggle').forEach((button) => {
+            this.syncAIResponseToggle(button, line.classList.contains('is-collapsed'));
+        });
+
         if (typeof hljs !== 'undefined') {
             line.querySelectorAll('pre code').forEach((block) => {
                 if (block.classList.contains('language-mermaid') || block.classList.contains('nohighlight')) {
@@ -6906,6 +6910,24 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         `;
     }
 
+    syncAIResponseToggle(button, collapsed = false) {
+        if (!button) {
+            return;
+        }
+
+        const line = button.closest?.('.line-output.ai');
+        const title = line?.querySelector?.('.cli-response-title, .voxel-response-title')
+            ?.textContent
+            ?.replace(/\s+/g, ' ')
+            ?.trim();
+        const action = collapsed ? 'Expand' : 'Collapse';
+        const label = title ? `${action} ${title}` : `${action} response`;
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        button.textContent = collapsed ? '-' : 'v';
+    }
+
     toggleAIResponse(button) {
         const line = button?.closest?.('.line-output.ai');
         if (!line) {
@@ -6914,10 +6936,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 
         const collapsed = !line.classList.contains('is-collapsed');
         line.classList.toggle('is-collapsed', collapsed);
-        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        button.setAttribute('aria-label', collapsed ? 'Expand response' : 'Collapse response');
-        button.title = collapsed ? 'Expand response' : 'Collapse response';
-        button.textContent = collapsed ? '-' : 'v';
+        this.syncAIResponseToggle(button, collapsed);
     }
 
     renderAIContent(text, options = {}) {

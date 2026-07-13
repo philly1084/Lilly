@@ -122,6 +122,37 @@ describe('web-cli stream progress display', () => {
     });
 });
 
+describe('web-cli response collapse controls', () => {
+    test('names each toggle from its visible response title across state changes', () => {
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = `
+            <div class="line line-output ai">
+                <div class="cli-response-head">
+                    <button type="button" class="ai-response-toggle" aria-label="Collapse response">v</button>
+                    <span class="cli-response-title">Quality Gates</span>
+                </div>
+            </div>
+        `;
+        const line = document.querySelector('.line-output.ai');
+        const button = document.querySelector('.ai-response-toggle');
+        app.renderMermaidDiagrams = jest.fn();
+        app.updateTtsControls = jest.fn();
+
+        app.finishAIContentLine(line);
+
+        expect(button.getAttribute('aria-label')).toBe('Collapse Quality Gates');
+        expect(button.title).toBe('Collapse Quality Gates');
+        expect(button.getAttribute('aria-expanded')).toBe('true');
+
+        app.toggleAIResponse(button);
+
+        expect(line.classList.contains('is-collapsed')).toBe(true);
+        expect(button.getAttribute('aria-label')).toBe('Expand Quality Gates');
+        expect(button.title).toBe('Expand Quality Gates');
+        expect(button.getAttribute('aria-expanded')).toBe('false');
+    });
+});
+
 describe('web-cli file manager modal', () => {
     test('opens as a labeled dialog and restores focus after Escape', async () => {
         const { app, document } = createCopyHarness();
