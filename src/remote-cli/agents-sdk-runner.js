@@ -2326,7 +2326,6 @@ class RemoteCliAgentsSdkRunner {
                 markerStatus = readProviderAgentResultStatus(outputParts.join(''));
                 if (markerStatus) {
                   markerComplete = true;
-                  controller?.abort();
                 }
               }
             } else if (eventType === 'reasoning') {
