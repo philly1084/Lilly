@@ -88,6 +88,54 @@ describe('web-chat project viewport helpers', () => {
         }));
     });
 
+    test('does not surface serialized failed tool results as successful cards', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        app.upsertSessionMessage = jest.fn((_sessionId, message) => message);
+        app.persistSessionMessageIfNeeded = jest.fn();
+        app.isVisibleSession = () => false;
+
+        expect(['false', '0', 'no', 'off'].map((success) => (
+            app.isToolResultFailure({ success })
+        ))).toEqual([true, true, true, true]);
+        expect(app.isToolResultFailure({ success: 'true' })).toBe(false);
+        expect(app.isToolResultFailure({})).toBe(false);
+
+        const failedCheckpointEvent = {
+            toolCall: { function: { name: 'user-checkpoint' } },
+            result: {
+                success: 'false',
+                data: {
+                    question: 'This failed checkpoint must stay hidden.',
+                    options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+                },
+            },
+        };
+
+        expect(app.extractCheckpointFromToolEventResult(failedCheckpointEvent)).toBeNull();
+        expect(app.hasSurveyToolEvent([failedCheckpointEvent])).toBe(false);
+
+        app.appendToolSelectionMessages('assistant-1', [{
+            toolCall: {
+                function: {
+                    name: 'web-fetch',
+                    arguments: JSON.stringify({ url: 'https://example.com/failed' }),
+                },
+            },
+            result: {
+                success: '0',
+                data: {
+                    url: 'https://example.com/failed',
+                    title: 'Failed fetch',
+                    body: '<article>This stale body must not become a verified source.</article>',
+                },
+            },
+        }], { sessionId: 'session-1' });
+
+        expect(app.upsertSessionMessage).not.toHaveBeenCalled();
+        expect(app.persistSessionMessageIfNeeded).not.toHaveBeenCalled();
+    });
+
     test('persists research helper cards as transcript-excluded session UI state', () => {
         const context = loadChatAppContext();
         const app = Object.create(context.ChatApp.prototype);

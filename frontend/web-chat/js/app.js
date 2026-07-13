@@ -6277,7 +6277,7 @@ class ChatApp {
             || project.status
             || data.iteration?.stage
             || data.app?.status
-            || (result.success === false ? 'deploy_failed' : ''),
+            || (this.isToolResultFailure(result) ? 'deploy_failed' : ''),
         );
         const summary = extractChatDisplayText(
             data.message
@@ -10068,6 +10068,19 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
     }
 
+    isToolResultFailure(result = null) {
+        const success = result?.success;
+        if (success === false || success === 0) {
+            return true;
+        }
+
+        if (typeof success !== 'string') {
+            return false;
+        }
+
+        return ['false', '0', 'no', 'off'].includes(success.trim().toLowerCase());
+    }
+
     getToolCallName(item = {}, fallbackName = '') {
         return String(
             item?.function?.name
@@ -10163,7 +10176,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
     }
 
     extractCheckpointFromToolEventResult(event = {}) {
-        if (event?.result?.success === false) {
+        if (this.isToolResultFailure(event?.result)) {
             return null;
         }
 
@@ -10236,7 +10249,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             .reverse()
             .find((event) => (
                 this.isUserCheckpointToolName(this.getToolEventName(event))
-                && event?.result?.success !== false
+                && !this.isToolResultFailure(event?.result)
             ));
 
         if (!checkpointEvent) {
@@ -10577,7 +10590,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             .reverse()
             .find((event) => (
                 this.isUserCheckpointToolName(this.getToolEventName(event))
-                && event?.result?.success !== false
+                && !this.isToolResultFailure(event?.result)
             ));
 
         if (!checkpointEvent) {
@@ -10732,7 +10745,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
     hasSurveyToolEvent(toolEvents = []) {
         return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => (
             this.isUserCheckpointToolName(this.getToolEventName(event))
-            && event?.result?.success !== false
+            && !this.isToolResultFailure(event?.result)
         ));
     }
 
@@ -11207,7 +11220,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
         (Array.isArray(toolEvents) ? toolEvents : []).forEach((event) => {
             const toolId = event?.toolCall?.function?.name || event?.result?.toolId || '';
-            if (toolId !== 'web-search' || event?.result?.success === false) {
+            if (toolId !== 'web-search' || this.isToolResultFailure(event?.result)) {
                 return;
             }
 
@@ -11228,7 +11241,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
     normalizeResearchSourceEvent(event, searchLookup = new Map()) {
         const toolId = event?.toolCall?.function?.name || event?.result?.toolId || '';
-        if ((toolId !== 'web-fetch' && toolId !== 'web-scrape') || event?.result?.success === false) {
+        if ((toolId !== 'web-fetch' && toolId !== 'web-scrape') || this.isToolResultFailure(event?.result)) {
             return null;
         }
 
@@ -11290,6 +11303,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
             const toolId = event?.toolCall?.function?.name || event?.result?.toolId || '';
             const args = this.parseToolArguments(event?.toolCall?.function?.arguments);
             const data = event?.result?.data || {};
+
+            if (this.isToolResultFailure(event?.result)) {
+                return;
+            }
 
             if (toolId === 'image-search-unsplash') {
                 const results = (Array.isArray(data.images) ? data.images : [])
@@ -11421,7 +11438,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (researchSources.length > 0) {
             const searchEvent = [...toolEvents].reverse().find((event) => (
                 (event?.toolCall?.function?.name || event?.result?.toolId || '') === 'web-search'
-                && event?.result?.success !== false
+                && !this.isToolResultFailure(event?.result)
             ));
             const searchArgs = this.parseToolArguments(searchEvent?.toolCall?.function?.arguments);
             const query = searchEvent?.result?.data?.query || searchArgs.query || '';
