@@ -80,6 +80,7 @@ class Dashboard {
         this.dirtyInputIds = new Set();
         this.promptEditorDirty = false;
         this.companyRoleFilterAliases = new Map();
+        this.modalReturnFocus = new Map();
         this.companyFileSearchTimer = null;
         this.piiDetectorDefinitions = [
             { id: 'email', label: 'Email' },
@@ -479,12 +480,12 @@ class Dashboard {
             this.savePrompt();
         });
         
-        document.getElementById('testPromptBtn')?.addEventListener('click', () => {
-            this.openTestPromptModal();
+        document.getElementById('testPromptBtn')?.addEventListener('click', (event) => {
+            this.openTestPromptModal(event.currentTarget);
         });
         
-        document.getElementById('promptHistoryBtn')?.addEventListener('click', () => {
-            this.openHistoryModal();
+        document.getElementById('promptHistoryBtn')?.addEventListener('click', (event) => {
+            this.openHistoryModal(event.currentTarget);
         });
         
         document.getElementById('promptSearch')?.addEventListener('input', (e) => {
@@ -4747,7 +4748,7 @@ class Dashboard {
         }
 
         this.updateAdminWorkloadTriggerFields();
-        modal.classList.add('active');
+        this.openModal('editWorkloadModal', event?.currentTarget);
     }
 
     resetAdminWorkloadModal() {
@@ -4967,14 +4968,11 @@ class Dashboard {
         this.updatePromptEditor(editor.value);
     }
     
-    openTestPromptModal() {
-        const modal = document.getElementById('testPromptModal');
-        if (modal) {
-            modal.classList.add('active');
-        }
+    openTestPromptModal(invoker = null) {
+        this.openModal('testPromptModal', invoker);
     }
     
-    async openHistoryModal() {
+    async openHistoryModal(invoker = null) {
         const modal = document.getElementById('historyModal');
         const container = document.getElementById('historyList');
         if (!modal || !container) {
@@ -4984,12 +4982,12 @@ class Dashboard {
         const prompt = this.state.selectedPrompt;
         if (!prompt?.id) {
             container.innerHTML = '<div class="history-item"><span class="history-version">No prompt selected</span></div>';
-            modal.classList.add('active');
+            this.openModal('historyModal', invoker);
             return;
         }
 
         container.innerHTML = '<div class="history-item"><span class="history-version">Loading history...</span></div>';
-        modal.classList.add('active');
+        this.openModal('historyModal', invoker);
 
         try {
             const response = await apiClient.getPromptHistory(prompt.id);
@@ -5010,6 +5008,27 @@ class Dashboard {
             container.innerHTML = `<div class="history-item"><span class="history-version">Failed to load history</span><span class="history-author">${this.escapeHtml(error.message || 'Unknown error')}</span></div>`;
         }
     }
+
+    openModal(modalId, invoker = null) {
+        const modal = document.getElementById(modalId);
+        if (!modal) {
+            return;
+        }
+
+        const returnTarget = invoker || document.activeElement;
+        if (returnTarget && typeof returnTarget.focus === 'function' && !modal.contains(returnTarget)) {
+            if (!(this.modalReturnFocus instanceof Map)) {
+                this.modalReturnFocus = new Map();
+            }
+            this.modalReturnFocus.set(modalId, returnTarget);
+        }
+
+        modal.classList.add('active');
+        const initialFocus = modal.querySelector(
+            '[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        initialFocus?.focus();
+    }
     
     closeModal(modalId) {
         const modal = document.getElementById(modalId);
@@ -5018,6 +5037,13 @@ class Dashboard {
         }
         if (modalId === 'editWorkloadModal') {
             this.resetAdminWorkloadModal();
+        }
+        const returnTarget = this.modalReturnFocus instanceof Map
+            ? this.modalReturnFocus.get(modalId)
+            : null;
+        this.modalReturnFocus?.delete?.(modalId);
+        if (returnTarget?.isConnected) {
+            returnTarget.focus();
         }
     }
     
@@ -5556,7 +5582,7 @@ class Dashboard {
             `;
         }
         
-        modal?.classList.add('active');
+        this.openModal('logDetailsModal');
     }
     
     filterSkills(category) {

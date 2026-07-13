@@ -967,6 +967,38 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('moves focus into admin dialogs and returns it to the invoking control', () => {
+        const dom = new JSDOM(`
+            <button id="openDialog" type="button">Open dialog</button>
+            <div class="modal" id="exampleModal" role="dialog" aria-modal="true">
+                <div class="modal-container">
+                    <button class="modal-close" type="button">Close</button>
+                    <input id="dialogInput" type="text">
+                </div>
+            </div>
+        `, { url: 'http://localhost:3000/admin/' });
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+        const trigger = dom.window.document.getElementById('openDialog');
+        const modal = dom.window.document.getElementById('exampleModal');
+        const closeButton = modal.querySelector('.modal-close');
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+        dashboard.modalReturnFocus = new Map();
+        trigger.focus();
+
+        dashboard.openModal('exampleModal', trigger);
+
+        expect(modal.classList.contains('active')).toBe(true);
+        expect(dom.window.document.activeElement).toBe(closeButton);
+
+        dashboard.closeModal('exampleModal');
+
+        expect(modal.classList.contains('active')).toBe(false);
+        expect(dom.window.document.activeElement).toBe(trigger);
+    });
+
     test('exposes settings sections as selectable tabs', () => {
         const { dashboard } = createSettingsHarness();
         const generalTab = document.querySelector('[data-settings="general"]');
@@ -1065,7 +1097,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-trustworthy-mission-v1');
+        expect(html).toContain('dashboard.js?v=admin-modal-focus-lifecycle-v1');
         expect(html).toContain('css/dashboard.css?v=admin-trustworthy-mission-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
