@@ -818,7 +818,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
       task: 'Run the selected remote task.',
       model: 'kimi-k2.7-code',
     })).rejects.toThrow('stream URL must use the configured gateway origin');
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://gateway.example.com/admin/remote-agent-tasks/task-kimi/cancel',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   test('uses the /api/codex-agent/run plus /events SSE transport when configured', async () => {

@@ -2342,16 +2342,6 @@ class RemoteCliAgentsSdkRunner {
         }
       }
 
-      if (markerComplete) {
-        await this.fetch(buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/cancel`), {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: 'application/json',
-          },
-        }).catch(() => null);
-      }
-
       const output = normalizeProviderAgentOutput(outputParts.join('').trim());
       const failed = markerStatus === 'failed'
         || (!markerComplete && Number(terminalEvent?.exitCode) !== 0);
@@ -2413,6 +2403,15 @@ class RemoteCliAgentsSdkRunner {
       }
       throw error;
     } finally {
+      if (taskId) {
+        await this.fetch(buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/cancel`), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+          },
+        }).catch(() => null);
+      }
       if (timer) {
         clearTimeout(timer);
       }
