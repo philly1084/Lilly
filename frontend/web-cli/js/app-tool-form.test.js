@@ -874,6 +874,22 @@ describe('web-cli agent quick tool state', () => {
     });
 });
 
+describe('web-cli theme control state', () => {
+    test('keeps the visible theme label aligned with its accessible state', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<button id="themeButton"><span>Theme</span></button>');
+        app.theme = 'light';
+        app.themeButton = dom.window.document.getElementById('themeButton');
+        app.getThemeLabel = jest.fn(() => 'Light');
+
+        app.updateThemeButton();
+
+        expect(app.themeButton.querySelector('span').textContent).toBe('Light');
+        expect(app.themeButton.getAttribute('title')).toBe('Theme: Light');
+        expect(app.themeButton.getAttribute('aria-label')).toBe('Cycle theme. Current theme: Light');
+    });
+});
+
 describe('web-cli startup command cards', () => {
     test('labels visible startup command cards by their activation result', () => {
         const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');

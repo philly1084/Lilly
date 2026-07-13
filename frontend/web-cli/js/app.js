@@ -11002,6 +11002,10 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         const label = this.getThemeLabel(this.theme);
         this.themeButton.title = `Theme: ${label}`;
         this.themeButton.setAttribute('aria-label', `Cycle theme. Current theme: ${label}`);
+        const textNode = this.themeButton.querySelector('span');
+        if (textNode) {
+            textNode.textContent = label;
+        }
     }
 
     updateDensityButton() {
