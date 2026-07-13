@@ -59,6 +59,7 @@ describe('Canvas type selector accessibility', () => {
         const copyButton = dom.window.document.getElementById('copy-btn');
         const downloadButton = dom.window.document.getElementById('download-btn');
         const reconnectButton = dom.window.document.getElementById('ws-reconnect-btn');
+        const aiResponseSection = dom.window.document.getElementById('ai-response-section');
         const helpModal = dom.window.document.getElementById('help-modal');
         const helpCloseButton = dom.window.document.getElementById('help-modal-close');
 
@@ -78,6 +79,9 @@ describe('Canvas type selector accessibility', () => {
         expect(copyButton.getAttribute('aria-label')).toBe('Copy canvas content to clipboard');
         expect(downloadButton.getAttribute('aria-label')).toBe('Download canvas content');
         expect(reconnectButton.getAttribute('aria-label')).toBe('Reconnect Canvas realtime updates');
+        expect(aiResponseSection.getAttribute('role')).toBe('region');
+        expect(aiResponseSection.getAttribute('aria-labelledby')).toBe('ai-response-heading');
+        expect(dom.window.document.getElementById('ai-response-heading').textContent).toBe('AI Response');
         expect(helpModal.getAttribute('role')).toBe('dialog');
         expect(helpModal.getAttribute('aria-modal')).toBe('true');
         expect(helpModal.getAttribute('aria-labelledby')).toBe('help-modal-title');
