@@ -8467,21 +8467,26 @@ class UIHelpers {
 
         return `
             <button
+                type="button"
                 class="message-action-btn alignment-feedback-btn${upActive ? ' is-active is-positive' : ''}"
                 data-alignment-rating="up"
                 onclick="uiHelpers.submitAlignmentFeedback('${this.escapeHtmlAttr(messageId)}', 'up')"
                 title="${this.escapeHtmlAttr(upTitle)}"
                 aria-label="${this.escapeHtmlAttr(upTitle)}"
+                aria-pressed="${upActive ? 'true' : 'false'}"
                 ${hasVote ? 'disabled' : ''}
             >
                 <i data-lucide="thumbs-up" class="w-4 h-4" aria-hidden="true"></i>
             </button>
             <button
+                type="button"
                 class="message-action-btn alignment-feedback-btn${downActive ? ' is-active is-negative' : ''}${reviewing ? ' is-loading' : ''}"
                 data-alignment-rating="down"
                 onclick="uiHelpers.submitAlignmentFeedback('${this.escapeHtmlAttr(messageId)}', 'down')"
                 title="${this.escapeHtmlAttr(downTitle)}"
                 aria-label="${this.escapeHtmlAttr(downTitle)}"
+                aria-pressed="${downActive ? 'true' : 'false'}"
+                aria-busy="${reviewing ? 'true' : 'false'}"
                 ${hasVote ? 'disabled' : ''}
             >
                 <i data-lucide="${reviewing ? 'loader-2' : 'thumbs-down'}" class="w-4 h-4${reviewing ? ' animate-spin' : ''}" aria-hidden="true"></i>

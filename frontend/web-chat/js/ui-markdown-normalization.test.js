@@ -284,6 +284,8 @@ describe('web-chat markdown normalization', () => {
         expect(html).toContain('data-alignment-rating="down"');
         expect(html).toContain('data-lucide="thumbs-up"');
         expect(html).toContain('data-lucide="thumbs-down"');
+        expect(html).toContain('aria-pressed="false"');
+        expect(html).toContain('aria-busy="false"');
     });
 
     test('does not render alignment feedback buttons for user messages', () => {
@@ -445,6 +447,27 @@ describe('web-chat markdown normalization', () => {
         expect(html).toContain('is-negative');
         expect(html).toContain('disabled');
         expect(html).toContain('Alignment review saved');
+        expect(html).toMatch(/data-alignment-rating="down"[\s\S]*aria-pressed="true"/);
+        expect(html).toMatch(/data-alignment-rating="up"[\s\S]*aria-pressed="false"/);
+    });
+
+    test('announces an alignment review in progress as busy', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Done.',
+            metadata: {
+                alignmentFeedback: {
+                    rating: 'down',
+                    status: 'evaluating',
+                },
+            },
+        });
+
+        expect(html).toContain('Reviewing alignment');
+        expect(html).toContain('aria-busy="true"');
+        expect(html).toContain('data-lucide="loader-2"');
     });
 
     test('restores flattened recipe headings and tables before rendering', () => {
