@@ -1,7 +1,10 @@
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
-const { sanitizeGeneratedFilename } = require('./artifacts/generated-filename');
+const {
+    normalizeGeneratedExtension,
+    sanitizeGeneratedFilename,
+} = require('./artifacts/generated-filename');
 const { config } = require('./config');
 
 const LOCAL_FILE_ARTIFACT_PREFIX = 'artifact-local-';
@@ -23,13 +26,13 @@ function sha256(buffer) {
 }
 
 function normalizeExtension(extension = '', filename = '') {
-    const explicit = String(extension || '').trim().toLowerCase().replace(/^\./, '');
+    const explicit = String(extension || '').trim();
     if (explicit) {
-        return explicit;
+        return normalizeGeneratedExtension(explicit);
     }
 
     const filenameMatch = String(filename || '').trim().toLowerCase().match(/\.([a-z0-9]+)$/i);
-    return filenameMatch?.[1] || 'bin';
+    return normalizeGeneratedExtension(filenameMatch?.[1] || 'bin');
 }
 
 function buildArtifactDownloadPath(artifactId = '') {

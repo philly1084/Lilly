@@ -1,4 +1,7 @@
-const { sanitizeGeneratedFilename } = require('./generated-filename');
+const {
+  normalizeGeneratedExtension,
+  sanitizeGeneratedFilename,
+} = require('./generated-filename');
 
 describe('sanitizeGeneratedFilename', () => {
   test('keeps the generated format authoritative over a conflicting filename extension', () => {
@@ -16,5 +19,16 @@ describe('sanitizeGeneratedFilename', () => {
 
     expect(filename).toHaveLength(160);
     expect(filename).toMatch(/\.html$/);
+  });
+
+  test('maps MIME-like format values to usable generated extensions', () => {
+    expect(normalizeGeneratedExtension('application/pdf; charset=binary')).toBe('pdf');
+    expect(sanitizeGeneratedFilename('Quarterly brief', 'application/pdf'))
+      .toBe('Quarterly brief.pdf');
+  });
+
+  test('falls back safely when an extension contains path separators', () => {
+    expect(normalizeGeneratedExtension('../private/report')).toBe('bin');
+    expect(sanitizeGeneratedFilename('Export', '../private/report')).toBe('Export.bin');
   });
 });

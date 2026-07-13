@@ -46,4 +46,23 @@ describe('generated-file-artifacts', () => {
             }),
         }));
     });
+
+    test('persists MIME-like extension values as a usable local artifact file', async () => {
+        const artifact = await persistGeneratedArtifactLocally({
+            sessionId: 'session-2',
+            filename: 'Quarterly brief',
+            extension: 'application/pdf',
+            mimeType: 'application/pdf',
+            buffer: Buffer.from('%PDF-test'),
+        });
+
+        expect(artifact).toEqual(expect.objectContaining({
+            filename: 'Quarterly brief.pdf',
+            extension: 'pdf',
+            format: 'pdf',
+        }));
+
+        const storedFiles = await fs.readdir(path.join(tempDir, 'generated-artifacts'));
+        expect(storedFiles).toContain(`${artifact.id}.pdf`);
+    });
 });

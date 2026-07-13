@@ -1,5 +1,38 @@
+const GENERATED_MIME_TYPE_EXTENSIONS = Object.freeze({
+  'application/octet-stream': 'bin',
+  'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+  'image/webp': 'webp',
+  'text/html': 'html',
+  'text/markdown': 'md',
+  'video/mp4': 'mp4',
+});
+
 function normalizeGeneratedExtension(extension = 'bin') {
-  return String(extension || 'bin').trim().toLowerCase().replace(/^\./, '') || 'bin';
+  const normalized = String(extension || 'bin')
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+/, '')
+    .split(';', 1)[0]
+    .trim();
+  if (Object.hasOwn(GENERATED_MIME_TYPE_EXTENSIONS, normalized)) {
+    return GENERATED_MIME_TYPE_EXTENSIONS[normalized];
+  }
+  if (normalized.length <= 32 && /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(normalized)) {
+    return normalized;
+  }
+  return 'bin';
 }
 
 function sanitizeGeneratedFilename(filename = '', extension = 'bin') {
@@ -25,5 +58,6 @@ function sanitizeGeneratedFilename(filename = '', extension = 'bin') {
 }
 
 module.exports = {
+  normalizeGeneratedExtension,
   sanitizeGeneratedFilename,
 };
