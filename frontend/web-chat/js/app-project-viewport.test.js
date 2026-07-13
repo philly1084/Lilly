@@ -454,6 +454,30 @@ describe('web-chat project viewport helpers', () => {
         expect(label.textContent).toBe('Demo app');
     });
 
+    test('exposes honest workload refresh progress and prevents duplicate refreshes', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const refreshButton = createFakeElement('refresh-workloads-btn');
+        context.sessionManager = { currentSessionId: 'session-1' };
+        app.refreshWorkloadsBtn = refreshButton;
+        app.workloadsAvailable = true;
+        app.isLoadingWorkloads = true;
+
+        app.syncWorkloadsRefreshState();
+
+        expect(refreshButton.disabled).toBe(true);
+        expect(refreshButton.getAttribute('aria-busy')).toBe('true');
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refreshing workloads');
+        expect(refreshButton.getAttribute('title')).toBe('Refreshing workloads');
+
+        app.isLoadingWorkloads = false;
+        app.syncWorkloadsRefreshState();
+
+        expect(refreshButton.disabled).toBe(false);
+        expect(refreshButton.getAttribute('aria-busy')).toBe('false');
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refresh workloads');
+    });
+
     test('keeps managed app viewport empty while GitLab and k3s deployment are pending', () => {
         const context = loadChatAppContext();
         const app = Object.create(context.ChatApp.prototype);

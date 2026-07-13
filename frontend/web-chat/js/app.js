@@ -3604,6 +3604,7 @@ class ChatApp {
 
         this.isLoadingWorkloads = true;
         this.loadingWorkloadsSessionId = normalizedSessionId;
+        this.syncWorkloadsRefreshState();
         try {
             const result = await apiClient.getSessionWorkloads(normalizedSessionId);
             const nextWorkloadsAvailable = result.available !== false;
@@ -3664,6 +3665,7 @@ class ChatApp {
             if (this.loadingWorkloadsSessionId === normalizedSessionId) {
                 this.isLoadingWorkloads = false;
                 this.loadingWorkloadsSessionId = null;
+                this.syncWorkloadsRefreshState();
             }
         }
     }
@@ -3800,6 +3802,20 @@ class ChatApp {
         this.workloadsBtn?.setAttribute('title', label);
     }
 
+    syncWorkloadsRefreshState() {
+        if (!this.refreshWorkloadsBtn) {
+            return;
+        }
+
+        const isRefreshing = this.isLoadingWorkloads === true;
+        const label = isRefreshing ? 'Refreshing workloads' : 'Refresh workloads';
+        const sessionId = sessionManager.currentSessionId;
+        this.refreshWorkloadsBtn.disabled = isRefreshing || !sessionId || !this.workloadsAvailable;
+        this.refreshWorkloadsBtn.setAttribute('aria-busy', isRefreshing ? 'true' : 'false');
+        this.refreshWorkloadsBtn.setAttribute('aria-label', label);
+        this.refreshWorkloadsBtn.setAttribute('title', label);
+    }
+
     renderWorkloadsPanel() {
         if (!this.workloadsPanel || !this.workloadsEmpty || !this.workloadsList) {
             this.renderBackgroundWorkloadStatus();
@@ -3807,9 +3823,7 @@ class ChatApp {
         }
 
         const sessionId = sessionManager.currentSessionId;
-        if (this.refreshWorkloadsBtn) {
-            this.refreshWorkloadsBtn.disabled = !sessionId || !this.workloadsAvailable;
-        }
+        this.syncWorkloadsRefreshState();
         if (this.newWorkloadBtn) {
             this.newWorkloadBtn.disabled = !sessionId || !this.workloadsAvailable;
         }
