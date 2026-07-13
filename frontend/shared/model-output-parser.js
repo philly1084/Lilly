@@ -71,6 +71,9 @@
                 if (typeof part.output_text === 'string') {
                     return part.output_text;
                 }
+                if (typeof part.outputText === 'string') {
+                    return part.outputText;
+                }
                 if (typeof part.refusal === 'string') {
                     return part.refusal;
                 }
@@ -115,6 +118,7 @@
             'message',
             'text',
             'output_text',
+            'outputText',
             'refusal',
             'output',
         ];

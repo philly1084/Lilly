@@ -24,6 +24,18 @@ describe('model-output-parser', () => {
         expect(normalized).toContain('| Potatoes | 2 lbs |');
     });
 
+    test('extracts camel-case provider output text envelopes', () => {
+        expect(parser.normalizeModelOutputMarkdown({
+            outputText: 'Short answer: Direct camel-case output renders.',
+        })).toContain('Direct camel-case output renders.');
+
+        expect(parser.normalizeModelOutputMarkdown({
+            output: [
+                { type: 'message', content: [{ outputText: 'Nested camel-case output renders.' }] },
+            ],
+        })).toBe('Nested camel-case output renders.');
+    });
+
     test('drops reasoning content parts before normalizing visible html output', () => {
         const normalized = parser.normalizeModelOutputMarkdown({
             content: [
