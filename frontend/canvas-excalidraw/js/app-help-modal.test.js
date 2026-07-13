@@ -1033,6 +1033,30 @@ describe('canvas side panel tabs accessibility', () => {
     });
 });
 
+describe('canvas advanced AI settings accessibility', () => {
+    test('associates each visible generation label with its select', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const expectedLabels = {
+            diagramModelSelect: 'AI Model',
+            imageModelSelect: 'Image Model',
+            imageSizeSelect: 'Size',
+            imageQualitySelect: 'Quality',
+            imageStyleSelect: 'Style',
+        };
+
+        Object.entries(expectedLabels).forEach(([selectId, labelText]) => {
+            const select = dom.window.document.getElementById(selectId);
+            const label = dom.window.document.querySelector(`label[for="${selectId}"]`);
+
+            expect(select).not.toBeNull();
+            expect(label).not.toBeNull();
+            expect(label.textContent.trim()).toBe(labelText);
+            expect(select.labels).toContain(label);
+        });
+    });
+});
+
 describe('canvas context menu accessibility', () => {
     afterEach(() => {
         delete global.document;
