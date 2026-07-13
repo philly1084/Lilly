@@ -461,7 +461,7 @@
       }
     }
 
-    const directKeys = ['output_text', 'text', 'refusal', 'content', 'message', 'response', 'output'];
+    const directKeys = ['output_text', 'outputText', 'text', 'refusal', 'content', 'message', 'response', 'output'];
     for (const key of directKeys) {
       const extracted = extractAssistantText(value[key]);
       if (extracted) {
@@ -898,8 +898,9 @@
 
     if (payload.object === 'response'
       || Object.prototype.hasOwnProperty.call(payload, 'output_text')
+      || Object.prototype.hasOwnProperty.call(payload, 'outputText')
       || Array.isArray(payload.output)) {
-      return extractAssistantText(payload.output_text || payload.output || payload);
+      return extractAssistantText(payload.output_text || payload.outputText || payload.output || payload);
     }
 
     return '';
@@ -1190,10 +1191,11 @@
 
     const looksLikeResponseObject = payload.object === 'response'
       || Object.prototype.hasOwnProperty.call(payload, 'output_text')
+      || Object.prototype.hasOwnProperty.call(payload, 'outputText')
       || Array.isArray(payload.output);
     if (looksLikeResponseObject) {
       if (allowFinalText) {
-        const content = extractAssistantText(payload.output_text || payload.output || payload);
+        const content = extractAssistantText(payload.output_text || payload.outputText || payload.output || payload);
         if (content) {
           events.push({
             type: 'text_delta',

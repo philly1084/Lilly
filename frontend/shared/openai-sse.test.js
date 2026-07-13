@@ -1,6 +1,7 @@
 const {
   DEFAULT_CODEX_MODEL_ID,
   buildGatewayRealtimeUrl,
+  extractAssistantText,
   extractSSEData,
   filterChatModels,
   filterCodexBackedModels,
@@ -577,6 +578,27 @@ describe('openai-sse helpers', () => {
       finalChunk: true,
       sessionId: 'session-final',
       responseId: 'resp-final',
+    });
+  });
+
+  test('streams camel-case provider output text from a final response envelope', async () => {
+    const payload = {
+      outputText: 'Recovered camel-case answer',
+    };
+    const response = new Response(`data: ${JSON.stringify(payload)}\n\ndata: [DONE]\n\n`, {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+
+    const events = [];
+    for await (const event of streamGatewayResponse(response)) {
+      events.push(event);
+    }
+
+    expect(extractAssistantText(payload)).toBe('Recovered camel-case answer');
+    expect(events.map((event) => event.type)).toEqual(['text_delta', 'final', 'done']);
+    expect(events[0]).toMatchObject({
+      content: 'Recovered camel-case answer',
+      finalChunk: true,
     });
   });
 
