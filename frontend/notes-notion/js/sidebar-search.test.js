@@ -177,3 +177,20 @@ describe('Notes import modal accessibility', () => {
         expect(source).toContain("modal.querySelector('.import-modal-close')?.focus({ preventScroll: true })");
     });
 });
+
+describe('Notes cover picker selection state', () => {
+    test('shows and announces the active preset when the picker reopens', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
+
+        expect(source).toContain("const activeCover = String(page.cover || '').trim()");
+        expect(source).toContain("const isCurrent = String(cover.value || '').trim() === activeCover");
+        expect(source).toContain("aria-pressed=\"${isCurrent}\"");
+        expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
+        expect(styles).toContain('.cover-preset.is-current');
+        expect(styles).toContain('.cover-preset-state');
+        expect(html).toContain('js/sidebar.js?v=20260713-cover-selection-v2');
+        expect(html).toContain('css/notion-refinements.css?v=20260713-cover-selection-v2');
+    });
+});

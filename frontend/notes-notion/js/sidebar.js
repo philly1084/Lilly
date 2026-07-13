@@ -1287,6 +1287,8 @@ const Sidebar = (function() {
         const page = window.Editor?.getCurrentPage?.();
         if (!page) return;
 
+        const activeCover = String(page.cover || '').trim();
+
         document.getElementById('cover-picker-modal')?.remove();
 
         const modal = document.createElement('div');
@@ -1303,12 +1305,15 @@ const Sidebar = (function() {
                     <button class="cover-picker-close" type="button" data-cover-action="close" aria-label="Close cover picker">&times;</button>
                 </header>
                 <div class="cover-preset-grid">
-                    ${coverPresets.map((cover, index) => `
-                        <button class="cover-preset" type="button" data-cover-index="${index}">
-                            <span class="cover-preset-preview" style="background-image: ${escapeHtmlAttribute(formatCoverBackground(cover.value))};"></span>
+                    ${coverPresets.map((cover, index) => {
+                        const isCurrent = String(cover.value || '').trim() === activeCover;
+                        return `
+                        <button class="cover-preset${isCurrent ? ' is-current' : ''}" type="button" data-cover-index="${index}" aria-pressed="${isCurrent}">
+                            <span class="cover-preset-preview" style="background-image: ${escapeHtmlAttribute(formatCoverBackground(cover.value))};">${isCurrent ? '<span class="cover-preset-state">Current</span>' : ''}</span>
                             <span class="cover-preset-name">${escapeHtml(cover.name)}</span>
                         </button>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </div>
                 <form class="cover-url-form">
                     <label for="cover-url-input">Image URL</label>
