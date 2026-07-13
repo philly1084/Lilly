@@ -228,4 +228,22 @@ describe('/api/skills routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.draft.contextPolicy.maxChars).toBe(1800);
   });
+
+  test('draft respects string false for skill body exposure', async () => {
+    createResponse.mockResolvedValue({ id: 'response-3' });
+    extractResponseText.mockReturnValue(JSON.stringify({
+      readyForApproval: true,
+      draft: {
+        name: 'Compact Report Helper',
+        contextPolicy: { exposeBody: 'false' },
+      },
+    }));
+
+    const response = await request(buildApp())
+      .post('/api/skills/draft')
+      .send({ ask: 'Create a compact report helper skill.' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.draft.contextPolicy.exposeBody).toBe(false);
+  });
 });

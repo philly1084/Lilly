@@ -48,12 +48,12 @@ function normalizeDraftSkill(value = {}) {
         || draft.context_policy?.max_chars
         || 1800,
       ),
-      exposeBody: (
+      exposeBody: parseBoolean((
         draft.contextPolicy?.exposeBody
         ?? draft.contextPolicy?.expose_body
         ?? draft.context_policy?.exposeBody
         ?? draft.context_policy?.expose_body
-      ) !== false,
+      ), true),
     },
   };
 }
