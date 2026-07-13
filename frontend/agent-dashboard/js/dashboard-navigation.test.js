@@ -940,6 +940,28 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('associates Privacy and PII feature toggles with their visible names', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const controls = [
+            ['piiEnabled', 'Enable PII cleansing gateway'],
+            ['piiWebChatEnabled', 'Apply to web chat'],
+            ['piiFailClosed', 'Fail closed'],
+            ['piiHighlightRestored', 'Highlight restored values'],
+            ['piiAllowUserOverride', 'Allow user override'],
+            ['piiRelationshipCalculationsEnabled', 'Privacy-aware spreadsheet calculations'],
+            ['piiRelationshipCalculationsAutoDetect', 'Auto-detect spreadsheet math'],
+            ['piiRelationshipCalculationsAllowExplicit', 'Allow explicit calculation request'],
+        ];
+
+        controls.forEach(([controlId, label]) => {
+            const control = dom.window.document.getElementById(controlId);
+            const labelElement = dom.window.document.getElementById(control.getAttribute('aria-labelledby'));
+
+            expect(labelElement?.textContent.trim()).toBe(label);
+        });
+    });
+
     test('ships admin modals as labelled dialogs with safe button types', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);

@@ -2085,81 +2085,81 @@
                                             <div class="feature-list privacy-feature-list">
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Enable PII cleansing gateway</span>
+                                                        <span class="feature-name" id="piiEnabledLabel">Enable PII cleansing gateway</span>
                                                         <span class="feature-desc">Clean configured values before model calls and keep restorable values in the encrypted vault.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiEnabled">
+                                                        <input type="checkbox" id="piiEnabled" aria-labelledby="piiEnabledLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Apply to web chat</span>
+                                                        <span class="feature-name" id="piiWebChatEnabledLabel">Apply to web chat</span>
                                                         <span class="feature-desc">Use this policy for browser chat requests.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiWebChatEnabled">
+                                                        <input type="checkbox" id="piiWebChatEnabled" aria-labelledby="piiWebChatEnabledLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Fail closed</span>
+                                                        <span class="feature-name" id="piiFailClosedLabel">Fail closed</span>
                                                         <span class="feature-desc">Block model calls when the PII vault is required but unavailable.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiFailClosed">
+                                                        <input type="checkbox" id="piiFailClosed" aria-labelledby="piiFailClosedLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Highlight restored values</span>
+                                                        <span class="feature-name" id="piiHighlightRestoredLabel">Highlight restored values</span>
                                                         <span class="feature-desc">Mark locally restored values so reviewers can see what the model did not receive.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiHighlightRestored">
+                                                        <input type="checkbox" id="piiHighlightRestored" aria-labelledby="piiHighlightRestoredLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Allow user override</span>
+                                                        <span class="feature-name" id="piiAllowUserOverrideLabel">Allow user override</span>
                                                         <span class="feature-desc">Honor request metadata that explicitly enables or disables the gateway.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiAllowUserOverride">
+                                                        <input type="checkbox" id="piiAllowUserOverride" aria-labelledby="piiAllowUserOverrideLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Privacy-aware spreadsheet calculations</span>
+                                                        <span class="feature-name" id="piiRelationshipCalculationsEnabledLabel">Privacy-aware spreadsheet calculations</span>
                                                         <span class="feature-desc">Route grouped table math through the encrypted vault instead of asking agents to correlate PII placeholders.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiRelationshipCalculationsEnabled">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsEnabled" aria-labelledby="piiRelationshipCalculationsEnabledLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Auto-detect spreadsheet math</span>
+                                                        <span class="feature-name" id="piiRelationshipCalculationsAutoDetectLabel">Auto-detect spreadsheet math</span>
                                                         <span class="feature-desc">Enable the relationship calculator when PII-protected table totals, rankings, joins, or comparisons are requested.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiRelationshipCalculationsAutoDetect">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsAutoDetect" aria-labelledby="piiRelationshipCalculationsAutoDetectLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
                                                 <div class="feature-item">
                                                     <div class="feature-info">
-                                                        <span class="feature-name">Allow explicit calculation request</span>
+                                                        <span class="feature-name" id="piiRelationshipCalculationsAllowExplicitLabel">Allow explicit calculation request</span>
                                                         <span class="feature-desc">Honor metadata that forces relationship-calculation mode for a request.</span>
                                                     </div>
                                                     <label class="toggle">
-                                                        <input type="checkbox" id="piiRelationshipCalculationsAllowExplicit">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsAllowExplicit" aria-labelledby="piiRelationshipCalculationsAllowExplicitLabel">
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
