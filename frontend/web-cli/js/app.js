@@ -9552,8 +9552,8 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
             const dimensions = `${image.width}x${image.height}`;
             
             output += `${num}. **${this.escapeHtml(image.altDescription || image.description || 'Untitled')}**\n`;
-            output += `   ?? ${dimensions} | ?? ${image.likes} | ?? ${this.escapeHtml(author)}\n`;
-            output += `   ?? [View on Unsplash](${image.links.html})\n\n`;
+            output += `   Size: ${dimensions} | Likes: ${image.likes} | By: ${this.escapeHtml(author)}\n`;
+            output += `   [View on Unsplash](${image.links.html})\n\n`;
             
             // Add small thumbnail preview
             output += `   <img src="${image.urls.small}" alt="${this.escapeHtml(image.altDescription || '')}" style="max-width: 300px; border-radius: 4px; margin: 5px 0;" />\n\n`;
@@ -10634,13 +10634,13 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     getFileIcon(filename) {
         const ext = filename.split('.').pop()?.toLowerCase();
         const icons = {
-            mmd: '??', png: '??', jpg: '??', jpeg: '??', gif: '??', svg: '??',
-            pdf: '??', docx: '??', doc: '??', txt: '??', md: '??',
-            js: '??', ts: '??', py: '??', html: '??', css: '??',
-            json: '??', xml: '??', csv: '??', xlsx: '??',
-            zip: '??', gz: '??'
+            mmd: 'MMD', png: 'IMG', jpg: 'IMG', jpeg: 'IMG', gif: 'IMG', svg: 'IMG',
+            pdf: 'PDF', docx: 'DOC', doc: 'DOC', txt: 'TXT', md: 'MD',
+            js: 'CODE', ts: 'CODE', py: 'CODE', html: 'CODE', css: 'CODE',
+            json: 'DATA', xml: 'DATA', csv: 'DATA', xlsx: 'DATA',
+            zip: 'ZIP', gz: 'ZIP',
         };
-        return icons[ext] || '??';
+        return icons[ext] || 'FILE';
     }
     
     /**
@@ -11071,7 +11071,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 </div>
                 <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
                     <span>Command history</span>
-                    <code class="inline-code">? / ?</code>
+                    <code class="inline-code">Up / Down</code>
                 </div>
                 <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
                     <span>Autocomplete</span>

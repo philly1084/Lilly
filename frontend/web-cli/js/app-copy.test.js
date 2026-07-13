@@ -170,6 +170,7 @@ describe('web-cli file manager modal', () => {
         expect(row.getAttribute('role')).toBe('button');
         expect(row.getAttribute('tabindex')).toBe('0');
         expect(row.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
+        expect(row.querySelector('.file-icon').textContent).toBe('MD');
         expect(row.querySelector('.file-name').innerHTML).toBe('launch brief &lt;draft&gt;.md');
         expect(button.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
 
@@ -211,6 +212,8 @@ describe('web-cli shortcuts modal', () => {
         expect(modal.getAttribute('aria-hidden')).toBe('false');
         expect(document.activeElement).toBe(closeButton);
         expect(document.getElementById('shortcutsContent').textContent).toContain('Send message');
+        expect(document.getElementById('shortcutsContent').textContent).toContain('Up / Down');
+        expect(document.getElementById('shortcutsContent').textContent).not.toContain('? / ?');
 
         const preventDefault = jest.fn();
         app.handleShortcutsKeydown({ key: 'Escape', preventDefault });
@@ -219,5 +222,27 @@ describe('web-cli shortcuts modal', () => {
         expect(modal.getAttribute('aria-hidden')).toBe('true');
         expect(document.activeElement).toBe(helpButton);
         expect(preventDefault).toHaveBeenCalled();
+    });
+});
+
+describe('web-cli Unsplash result display', () => {
+    test('uses readable metadata labels instead of placeholder glyphs', () => {
+        const { app } = createCopyHarness();
+        app.printAI = jest.fn();
+
+        app.displayUnsplashResults([{
+            width: 800,
+            height: 600,
+            likes: 42,
+            altDescription: 'A calm harbor',
+            author: { name: 'Ada' },
+            links: { html: 'https://unsplash.com/photos/example' },
+            urls: { small: 'https://images.unsplash.com/example' },
+        }], 'harbor', 1);
+
+        const output = app.printAI.mock.calls[0][0];
+        expect(output).toContain('Size: 800x600 | Likes: 42 | By: Ada');
+        expect(output).toContain('[View on Unsplash](https://unsplash.com/photos/example)');
+        expect(output).not.toContain('??');
     });
 });
