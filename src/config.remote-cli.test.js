@@ -62,10 +62,10 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.agentModel).toBe('gpt-5.4-mini');
   });
 
-  test('uses the gateway remote_code_run model and status polling defaults', () => {
+  test('uses automatic transport selection and the gateway polling defaults', () => {
     const { config } = require('./config');
 
-    expect(config.remoteCliMcp.transport).toBe('mcp');
+    expect(config.remoteCliMcp.transport).toBe('auto');
     expect(config.remoteCliMcp.remoteCodeModel).toBe('');
     expect(config.remoteCliMcp.directRun).toBe(true);
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(180000);

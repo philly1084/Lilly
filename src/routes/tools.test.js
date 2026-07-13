@@ -413,7 +413,9 @@ describe('/api/tools routes', () => {
         expect(managedApp.runtime.observability).toBe('gitlab-repo-pipeline-build-events');
         expect(remoteAgent).toBeDefined();
         expect(k3sDeploy).toBeDefined();
-        expect(remoteAgent.description).toContain('/api/codex-agent/run');
+        expect(remoteAgent.description).toContain('Kimi CLI for Kimi models');
+        expect(remoteAgent.description).toContain('Grok Build for Grok models');
+        expect(remoteAgent.description).toContain('Codex for OpenAI models');
         expect(remoteAgent.support.notes.join('\n')).toContain('GIT_BRANCH');
         expect(remoteAgent.support.notes.join('\n')).toContain('/events SSE');
         expect(remoteAgent.runtime.runnerAvailable).toBe(true);

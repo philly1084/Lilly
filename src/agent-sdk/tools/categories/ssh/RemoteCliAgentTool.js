@@ -390,6 +390,16 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
   }
 }
 
+function omitNullishRemoteCliResultFields(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return result;
+  }
+
+  return Object.fromEntries(
+    Object.entries(result).filter(([, value]) => value !== null && value !== undefined),
+  );
+}
+
 class RemoteCliAgentTool extends ToolBase {
   constructor(options = {}) {
     super({
@@ -559,7 +569,8 @@ class RemoteCliAgentTool extends ToolBase {
       ? { ...params, onProgress: _context.onProgress }
       : params;
 
-    return this.runner.run(runParams);
+    const result = await this.runner.run(runParams);
+    return omitNullishRemoteCliResultFields(result);
   }
 }
 

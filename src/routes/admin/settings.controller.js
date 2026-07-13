@@ -758,6 +758,13 @@ class SettingsController {
 
   upgradeStoredSettingsDefaults(stored = {}) {
     const next = JSON.parse(JSON.stringify(stored || {}));
+    const orchestration = next.orchestration;
+    if (orchestration && typeof orchestration === 'object' && !Array.isArray(orchestration)) {
+      const auditModel = String(orchestration.afterProcessAuditModel || '').trim().toLowerCase();
+      if (auditModel === 'codex-latest') {
+        orchestration.afterProcessAuditModel = 'gpt-5.6-luna';
+      }
+    }
     const privacyPii = next.privacyPii;
     if (!privacyPii || typeof privacyPii !== 'object' || Array.isArray(privacyPii)) {
       return next;

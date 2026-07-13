@@ -37,7 +37,7 @@ data:
   REMOTE_CLI_AGENT_MODEL: "gpt-5.4"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
-  REMOTE_CLI_AGENT_RUN_TIMEOUT_MS: "180000"
+  REMOTE_CLI_AGENT_RUN_TIMEOUT_MS: "900000"
   # Pin remote_code_run away from older gateway defaults such as codex-latest,
   # which can be rejected by ChatGPT-account Codex CLI runtimes.
   REMOTE_CLI_REMOTE_CODE_MODEL: "gpt-5.4"

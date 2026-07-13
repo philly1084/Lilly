@@ -596,6 +596,20 @@ describe('settings.controller personality support', () => {
     expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
+  test('upgrades the retired persisted after-process audit model', () => {
+    const upgraded = controller.upgradeStoredSettingsDefaults({
+      orchestration: {
+        defaultModel: 'gpt-5.5',
+        afterProcessAuditModel: ' codex-latest ',
+      },
+    });
+
+    expect(upgraded.orchestration).toEqual(expect.objectContaining({
+      defaultModel: 'gpt-5.5',
+      afterProcessAuditModel: 'gpt-5.6-luna',
+    }));
+  });
+
   test('upgrades old persisted PII defaults without enabling the feature flag', () => {
     const upgraded = controller.upgradeStoredSettingsDefaults({
       privacyPii: {

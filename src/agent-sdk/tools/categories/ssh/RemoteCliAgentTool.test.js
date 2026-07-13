@@ -71,6 +71,57 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
+  test('omits absent provider proof fields before validating the tool output schema', async () => {
+    const runner = {
+      run: jest.fn(async () => ({
+        finalOutput: 'REMOTE_AGENT_RESULT=success provider completed',
+        transport: 'provider-agent',
+        providerId: 'kimi-code-cli',
+        targetId: 'k3s-prod',
+        cwd: '/opt/kimibuilt',
+        sessionId: 'session-kimi',
+        remoteCodeSessionId: 'session-kimi',
+        remoteCodeJobId: 'task-kimi',
+        gitRepo: null,
+        gitBranch: null,
+        gitBaseCommit: null,
+        gitCommit: null,
+        changedFiles: [],
+        deployment: null,
+        publicHost: null,
+        publicUrl: null,
+        uiCheckReport: null,
+        uiScreenshots: [],
+        whatChanged: 'Read-only provider verification.',
+        verifyCommands: ['pwd'],
+        verifyResults: ['/opt/kimibuilt'],
+        blocker: null,
+        completionStatus: 'complete',
+        agentQuality: {},
+        model: 'kimi-for-coding',
+        apiMode: 'provider-agent',
+      })),
+    };
+    const tool = new RemoteCliAgentTool({ runner });
+
+    const result = await tool.execute({
+      task: 'Run a read-only provider verification.',
+      model: 'kimi-for-coding',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      transport: 'provider-agent',
+      providerId: 'kimi-code-cli',
+      completionStatus: 'complete',
+      whatChanged: 'Read-only provider verification.',
+    });
+    expect(result.data).not.toHaveProperty('gitRepo');
+    expect(result.data).not.toHaveProperty('gitBranch');
+    expect(result.data).not.toHaveProperty('deployment');
+    expect(result.data).not.toHaveProperty('blocker');
+  });
+
   test('does not send an unsupported header model into the Codex agent lane', async () => {
     const { tool, runner } = buildTool();
 
