@@ -389,7 +389,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('data-studio-step="brief"');
         expect(html).toContain('id="podcast-brand-kit-select"');
         expect(html).toContain('id="podcast-review-panel"');
-        expect(html).toContain('js/api.js?v=20260714c');
+        expect(html).toContain('js/api.js?v=20260714d');
         expect(html).toContain('js/ui.js?v=20260714c');
         expect(html).toContain('js/app.js?v=20260714c');
         expect(uiSource).toContain('renderPodcastLaunchKitReview(campaign)');

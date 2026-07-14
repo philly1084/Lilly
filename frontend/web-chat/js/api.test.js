@@ -22,6 +22,7 @@ function loadApiClient(fetchMock = jest.fn(), locationOverrides = {}) {
         fetch: fetchMock,
         console,
         EventTarget,
+        AbortController,
         URL,
         URLSearchParams,
         Intl,
@@ -39,6 +40,33 @@ function loadApiClient(fetchMock = jest.fn(), locationOverrides = {}) {
         fetchMock,
     };
 }
+
+describe('web-chat stream cancellation', () => {
+    test('does not start a request when the caller signal is already aborted', async () => {
+        const fetchMock = jest.fn();
+        const { apiClient } = loadApiClient(fetchMock);
+        const controller = new AbortController();
+        controller.abort();
+
+        const events = [];
+        for await (const event of apiClient.streamChat(
+            [{ role: 'user', content: 'Stop before sending' }],
+            'auto',
+            controller.signal,
+        )) {
+            events.push(event);
+        }
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(events).toEqual([
+            expect.objectContaining({
+                type: 'error',
+                cancelled: true,
+                error: 'Request cancelled',
+            }),
+        ]);
+    });
+});
 
 describe('web-chat image API client', () => {
     test('omits response_format by default for GPT image requests', async () => {

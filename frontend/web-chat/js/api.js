@@ -1514,6 +1514,11 @@ class OpenAIAPIClient extends EventTarget {
      * @returns {AsyncGenerator} - Yields delta content
      */
     async *streamChat(messages, model = DEFAULT_CHAT_MODEL, signal = null, reasoningEffort = '', requestOptions = {}) {
+        if (signal?.aborted) {
+            yield { type: 'error', error: 'Request cancelled', cancelled: true };
+            return;
+        }
+
         const selectedModel = resolvePreferredChatModelForWebChat(
             filterChatModelsForWebChat(this.modelsCache?.data || []),
             model,
@@ -1566,15 +1571,19 @@ class OpenAIAPIClient extends EventTarget {
         const controller = new AbortController();
         const requestId = Date.now().toString();
         this.abortControllers.set(requestId, controller);
+        const abortFromSignal = signal ? () => controller.abort() : null;
         
         // Link external signal if provided
-        if (signal) {
-            signal.addEventListener('abort', () => controller.abort());
+        if (abortFromSignal) {
+            signal.addEventListener('abort', abortFromSignal, { once: true });
         }
 
         try {
             yield* this.streamChatWithFetch(params, controller.signal, requestId, requestOptions);
         } finally {
+            if (abortFromSignal) {
+                signal.removeEventListener('abort', abortFromSignal);
+            }
             this.abortControllers.delete(requestId);
         }
     }
