@@ -666,7 +666,9 @@ The strongest watchlist for tonight and Monday:
     });
 
     test('renders persisted checkpoint display content as a card beside completed progress', () => {
-        const helper = Object.create(loadUIHelpersPrototype());
+        const { prototype, context } = loadUIHelpersPrototype({ withContext: true });
+        context.window.KimiBuiltModelOutputParser = require('../../shared/model-output-parser');
+        const helper = Object.create(prototype);
         helper.expandedReasoningMessageIds = new Set();
         const displayContent = `\`\`\`survey
 ${JSON.stringify({

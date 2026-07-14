@@ -5065,12 +5065,14 @@ class UIHelpers {
             };
         }
 
+        // Extract Web Chat's structured checkpoint fences before the shared model
+        // normalizer unwraps a whole fenced response into ordinary markdown.
+        const surveyRenderPlan = this.buildSurveyRenderPlan(content, message);
         const modelNormalizedContent = window.KimiBuiltModelOutputParser?.normalizeModelOutputMarkdown
-            ? window.KimiBuiltModelOutputParser.normalizeModelOutputMarkdown(content, { model: message?.model || '' })
-            : content;
-        const surveyRenderPlan = this.buildSurveyRenderPlan(modelNormalizedContent, message);
+            ? window.KimiBuiltModelOutputParser.normalizeModelOutputMarkdown(surveyRenderPlan.markdown, { model: message?.model || '' })
+            : surveyRenderPlan.markdown;
         const baseNormalizedMarkdown = this.normalizeInlineHtmlAssistantMarkdown(
-            this.normalizeStructuredAssistantMarkdown(surveyRenderPlan.markdown),
+            this.normalizeStructuredAssistantMarkdown(modelNormalizedContent),
         );
         const normalizedMarkdown = window.KimiBuiltModelOutputParser?.normalizePresentationMarkupMarkdown
             ? window.KimiBuiltModelOutputParser.normalizePresentationMarkupMarkdown(baseNormalizedMarkdown)
