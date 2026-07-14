@@ -36,7 +36,7 @@
         </div>
     </div>
     <!-- kb-fast-shell-end -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260714-mobile-overflow-v1" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260714-page-icon-picker" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="css/notion-refinements.css?v=20260714-mobile-overflow-v1" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-theme" onload="this.onload=null;this.rel='stylesheet'">
@@ -44,7 +44,7 @@
     <noscript>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-        <link rel="stylesheet" href="css/styles.css?v=20260714-mobile-overflow-v1">
+        <link rel="stylesheet" href="css/styles.css?v=20260714-page-icon-picker">
         <link rel="stylesheet" href="css/notion-refinements.css?v=20260714-mobile-overflow-v1">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
@@ -214,7 +214,7 @@
             <!-- Page Header -->
             <div class="page-header">
                 <div class="page-icon-wrapper">
-                    <button id="page-icon-btn" class="page-icon-btn" title="Add icon" aria-label="Add page icon">
+                    <button id="page-icon-btn" class="page-icon-btn" type="button" title="Add icon" aria-label="Add page icon" aria-haspopup="dialog" aria-expanded="false" aria-controls="emoji-picker">
                         <span id="page-icon" class="page-icon">📝</span>
                         <span class="add-icon-hint">Add icon</span>
                     </button>
@@ -462,22 +462,22 @@
     </div>
 
     <!-- Emoji Picker -->
-    <div id="emoji-picker" class="emoji-picker" style="display: none;">
+    <div id="emoji-picker" class="emoji-picker" role="dialog" aria-modal="false" aria-label="Choose a page icon" aria-hidden="true" style="display: none;">
         <div class="emoji-picker-header">
-            <input type="text" id="emoji-search" placeholder="Search emoji...">
+            <input type="search" id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons">
         </div>
-        <div class="emoji-categories">
-            <div class="emoji-category active" data-category="recent">🕐</div>
-            <div class="emoji-category" data-category="smileys">😀</div>
-            <div class="emoji-category" data-category="people">👋</div>
-            <div class="emoji-category" data-category="animals">🐱</div>
-            <div class="emoji-category" data-category="food">🍎</div>
-            <div class="emoji-category" data-category="activities">⚽</div>
-            <div class="emoji-category" data-category="travel">🚗</div>
-            <div class="emoji-category" data-category="objects">💡</div>
-            <div class="emoji-category" data-category="symbols">❤️</div>
+        <div class="emoji-categories" role="toolbar" aria-label="Page icon categories">
+            <div class="emoji-category active" data-category="recent" role="button" tabindex="0" aria-label="Recent icons" aria-pressed="true">🕐</div>
+            <div class="emoji-category" data-category="smileys" role="button" tabindex="0" aria-label="Smileys" aria-pressed="false">😀</div>
+            <div class="emoji-category" data-category="people" role="button" tabindex="0" aria-label="People" aria-pressed="false">👋</div>
+            <div class="emoji-category" data-category="animals" role="button" tabindex="0" aria-label="Animals" aria-pressed="false">🐱</div>
+            <div class="emoji-category" data-category="food" role="button" tabindex="0" aria-label="Food" aria-pressed="false">🍎</div>
+            <div class="emoji-category" data-category="activities" role="button" tabindex="0" aria-label="Activities" aria-pressed="false">⚽</div>
+            <div class="emoji-category" data-category="travel" role="button" tabindex="0" aria-label="Travel" aria-pressed="false">🚗</div>
+            <div class="emoji-category" data-category="objects" role="button" tabindex="0" aria-label="Objects" aria-pressed="false">💡</div>
+            <div class="emoji-category" data-category="symbols" role="button" tabindex="0" aria-label="Symbols" aria-pressed="false">❤️</div>
         </div>
-        <div id="emoji-grid" class="emoji-grid">
+        <div id="emoji-grid" class="emoji-grid" role="group" aria-label="Page icon choices">
             <!-- Emojis will be rendered here -->
         </div>
     </div>
@@ -724,7 +724,7 @@
     <script defer src="js/import-export.js"></script>
     <script defer src="js/editor.js"></script>
     <script defer src="js/notes-query.js"></script>
-    <script defer src="js/sidebar.js?v=20260713-cover-selection-v2"></script>
+    <script defer src="js/sidebar.js?v=20260714-page-icon-picker"></script>
     <script defer src="js/design-layouts.js"></script>
     <script defer src="js/agent.js"></script>
     <script defer src="js/agent-ui.js"></script>

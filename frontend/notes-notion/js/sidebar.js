@@ -11,6 +11,7 @@ const Sidebar = (function() {
     let sidebarHandleEl = null;
     let mobileToggleEl = null;
     let themeToggleEl = null;
+    let pageIconPickerTrigger = null;
     let expandedPages = new Set();
     let pageIconDelegationBound = false;
     let coverDelegationBound = false;
@@ -1125,9 +1126,13 @@ const Sidebar = (function() {
         picker.style.top = `${Math.max(8, top)}px`;
         picker.style.display = 'block';
         picker.classList.add('is-open');
+        picker.setAttribute('aria-hidden', 'false');
+        pageIconPickerTrigger = target;
+        target.setAttribute('aria-expanded', 'true');
         
         // Render emojis
         renderEmojiGrid('recent');
+        document.getElementById('emoji-search')?.focus();
         
         // Close on outside click
         const closePicker = (e) => {
@@ -1142,12 +1147,16 @@ const Sidebar = (function() {
         }, 0);
     }
 
-    function hideEmojiPicker() {
+    function hideEmojiPicker(restoreFocus = false) {
         const picker = document.getElementById('emoji-picker');
         if (!picker) return;
 
         picker.classList.remove('is-open');
         picker.style.display = 'none';
+        picker.setAttribute('aria-hidden', 'true');
+        pageIconPickerTrigger?.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) pageIconPickerTrigger?.focus();
+        pageIconPickerTrigger = null;
     }
 
     function setupEmojiPickerEvents() {
@@ -1157,10 +1166,20 @@ const Sidebar = (function() {
         picker.dataset.sidebarEventsBound = 'true';
 
         picker.querySelectorAll('.emoji-category').forEach(category => {
-            category.addEventListener('click', () => {
-                picker.querySelectorAll('.emoji-category').forEach(item => item.classList.remove('active'));
+            const selectCategory = () => {
+                picker.querySelectorAll('.emoji-category').forEach(item => {
+                    item.classList.remove('active');
+                    item.setAttribute('aria-pressed', 'false');
+                });
                 category.classList.add('active');
+                category.setAttribute('aria-pressed', 'true');
                 renderEmojiGrid(category.dataset.category || 'recent');
+            };
+            category.addEventListener('click', selectCategory);
+            category.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                selectCategory();
             });
         });
 
@@ -1170,6 +1189,31 @@ const Sidebar = (function() {
                 renderEmojiSearch(searchInput.value);
             });
         }
+
+        picker.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            hideEmojiPicker(true);
+        });
+    }
+
+    function appendEmojiChoice(grid, emoji) {
+        const span = document.createElement('span');
+        span.textContent = emoji;
+        span.setAttribute('role', 'button');
+        span.setAttribute('tabindex', '0');
+        span.setAttribute('aria-label', `Use ${emoji} as page icon`);
+        span.addEventListener('click', () => {
+            selectEmoji(emoji);
+            hideEmojiPicker(true);
+        });
+        span.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            span.click();
+        });
+        grid.appendChild(span);
     }
     
     /**
@@ -1183,13 +1227,7 @@ const Sidebar = (function() {
         grid.innerHTML = '';
         
         emojis.forEach(emoji => {
-            const span = document.createElement('span');
-            span.textContent = emoji;
-            span.addEventListener('click', () => {
-                selectEmoji(emoji);
-                hideEmojiPicker();
-            });
-            grid.appendChild(span);
+            appendEmojiChoice(grid, emoji);
         });
     }
 
@@ -1242,13 +1280,7 @@ const Sidebar = (function() {
 
         grid.innerHTML = '';
         results.forEach(emoji => {
-            const span = document.createElement('span');
-            span.textContent = emoji;
-            span.addEventListener('click', () => {
-                selectEmoji(emoji);
-                hideEmojiPicker();
-            });
-            grid.appendChild(span);
+            appendEmojiChoice(grid, emoji);
         });
     }
     

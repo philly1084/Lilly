@@ -2396,6 +2396,12 @@ body {
     background: var(--bg-hover);
 }
 
+.emoji-category:focus-visible,
+.emoji-grid span:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-color) 65%, transparent);
+    outline-offset: 2px;
+}
+
 .emoji-grid {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
@@ -2417,7 +2423,8 @@ body {
     transition: background 0.15s;
 }
 
-.emoji-grid span:hover {
+.emoji-grid span:hover,
+.emoji-grid span:focus-visible {
     background: var(--bg-hover);
 }
 
