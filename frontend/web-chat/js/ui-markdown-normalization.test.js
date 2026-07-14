@@ -665,6 +665,49 @@ The strongest watchlist for tonight and Monday:
         expect(renderPlan.surveys[0].html).toContain('Cluster deployment');
     });
 
+    test('renders persisted checkpoint display content as a card beside completed progress', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const displayContent = `\`\`\`survey
+${JSON.stringify({
+            id: 'checkpoint-next-echo',
+            title: 'Next Echo surprise',
+            preamble: 'The first version is live. Pick the next direction and I will continue.',
+            steps: [{
+                id: 'step-1',
+                title: 'Next Echo surprise',
+                question: 'Pick what I build next. If you are fine with my pick, choose the racer.',
+                inputType: 'choice',
+                required: true,
+                options: [
+                    { id: 'racer', label: 'Echo Typing Racer', description: 'A neon typing game with streaks and WPM.' },
+                    { id: 'canvas', label: 'Echo Particle Canvas', description: 'Turn text into draggable particles.' },
+                ],
+                allowFreeText: true,
+            }],
+        }, null, 2)}
+\`\`\``;
+
+        const html = helper.buildAssistantRenderPlan({
+            id: 'checkpoint-message-1',
+            role: 'assistant',
+            content: 'I have one quick choice before I continue.',
+            displayContent,
+            isStreaming: false,
+            progressState: {
+                phase: 'completed',
+                terminal: true,
+                detail: 'Preparing the result for you.',
+                goal: { objective: 'Choose the next Echo feature' },
+            },
+        }, false).html;
+
+        expect(html).toContain('class="agent-survey-card');
+        expect(html).toContain('data-survey-id="checkpoint-next-echo"');
+        expect(html).toContain('Echo Typing Racer');
+        expect(html).not.toContain('&quot;steps&quot;');
+    });
+
     test('renders annotated fenced survey payloads without dropping nearby markdown', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.expandedReasoningMessageIds = new Set();
