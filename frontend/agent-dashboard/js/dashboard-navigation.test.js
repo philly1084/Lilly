@@ -1562,40 +1562,59 @@ describe('agent dashboard navigation accessibility', () => {
 
     test('loads more saved CEO action history from the action-history endpoint', async () => {
         const { dom, dashboard } = createAgentCompanyHarness();
+        const expandedActions = [
+            {
+                id: 'review-completed-output',
+                actionKey: 'review-completed-output:historical-run',
+                label: 'Review saved output',
+                detail: 'Saved run context from the workspace slice.',
+                target: 'runs',
+                runId: 'historical-run',
+                outputPreview: 'Saved output preview.',
+                snapshotAt: '2026-06-28T05:12:00.000Z',
+                historical: true,
+            },
+            {
+                id: 'review-completed-output',
+                actionKey: 'review-completed-output:older-run',
+                label: 'Review older saved output <script>alert("x")</script>',
+                detail: 'Older saved run context from the action-history endpoint.',
+                target: 'runs',
+                runId: 'older-run',
+                outputPreview: 'Older saved output preview.',
+                snapshotAt: '2026-06-28T04:12:00.000Z',
+                historical: true,
+            },
+            ...Array.from({ length: 5 }, (_, index) => ({
+                id: 'review-completed-output',
+                actionKey: `review-completed-output:extra-run-${index + 1}`,
+                label: `Review extra saved output ${index + 1}`,
+                detail: 'Additional saved run context from the bounded history endpoint.',
+                target: 'runs',
+                runId: `extra-run-${index + 1}`,
+                snapshotAt: new Date(Date.parse('2026-06-28T03:12:00.000Z') - index * 60 * 60 * 1000).toISOString(),
+                historical: true,
+            })),
+            {
+                id: 'review-deliverables',
+                actionKey: 'review-deliverables:oldest-reference',
+                label: 'Oldest reference beyond the initial cap',
+                detail: 'Reference-only context should remain filterable after expansion.',
+                target: 'deliverables',
+                snapshotAt: '2026-06-27T22:12:00.000Z',
+            },
+        ];
         dom.window.apiClient = {
             get: jest.fn().mockResolvedValue({
                 success: true,
                 data: {
-                    actions: [
-                        {
-                            id: 'review-completed-output',
-                            actionKey: 'review-completed-output:historical-run',
-                            label: 'Review saved output',
-                            detail: 'Saved run context from the workspace slice.',
-                            target: 'runs',
-                            runId: 'historical-run',
-                            outputPreview: 'Saved output preview.',
-                            snapshotAt: '2026-06-28T05:12:00.000Z',
-                            historical: true,
-                        },
-                        {
-                            id: 'review-completed-output',
-                            actionKey: 'review-completed-output:older-run',
-                            label: 'Review older saved output <script>alert("x")</script>',
-                            detail: 'Older saved run context from the action-history endpoint.',
-                            target: 'runs',
-                            runId: 'older-run',
-                            outputPreview: 'Older saved output preview.',
-                            snapshotAt: '2026-06-28T04:12:00.000Z',
-                            historical: true,
-                        },
-                    ],
+                    actions: expandedActions,
                     summary: {
-                        total: 2,
-                        reviewable: 2,
-                        referenceOnly: 0,
+                        total: 8,
+                        reviewable: 7,
+                        referenceOnly: 1,
                         newestSnapshotAt: '2026-06-28T05:12:00.000Z',
-                        oldestSnapshotAt: '2026-06-28T04:12:00.000Z',
+                        oldestSnapshotAt: '2026-06-27T22:12:00.000Z',
                     },
                     limit: 24,
                     maxLimit: 24,
@@ -1605,24 +1624,29 @@ describe('agent dashboard navigation accessibility', () => {
 
         dashboard.renderCompanyActionHistory(dashboard.state.agentCompanyWorkspace.actionHistory);
         expect(document.getElementById('companyActionHistory').textContent).toContain('All 1');
+        expect(document.querySelector('.company-action-history__more')).not.toBeNull();
 
         await dashboard.loadCompanyActionHistory();
 
         const history = document.getElementById('companyActionHistory');
         expect(dom.window.apiClient.get).toHaveBeenCalledWith('/api/admin/agent-company/action-history', { limit: 24 });
-        expect(history.textContent).toContain('All 2');
-        expect(history.textContent).toContain('2 reviewable');
-        expect(history.textContent).toContain('Saved history 2');
+        expect(history.textContent).toContain('All 8');
+        expect(history.textContent).toContain('7 reviewable | 1 reference');
+        expect(history.textContent).toContain('Deliverables 1 | Saved history 7');
         expect(history.textContent).toContain('newest');
         expect(history.textContent).toContain('oldest');
         expect(history.textContent).toContain('Review older saved output <script>alert("x")</script>');
+        expect(history.textContent).toContain('Oldest reference beyond the initial cap');
         expect(history.querySelector('script')).toBeNull();
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(8);
+        expect(history.querySelector('.company-action-history__more')).toBeNull();
+        expect(dashboard.state.companyActionHistoryExpanded).toBe(true);
         expect(dashboard.state.companyActionHistorySummary).toEqual(expect.objectContaining({
-            total: 2,
-            reviewable: 2,
-            referenceOnly: 0,
+            total: 8,
+            reviewable: 7,
+            referenceOnly: 1,
             newestSnapshotAt: '2026-06-28T05:12:00.000Z',
-            oldestSnapshotAt: '2026-06-28T04:12:00.000Z',
+            oldestSnapshotAt: '2026-06-27T22:12:00.000Z',
         }));
         expect(history.querySelector('[data-action-id="review-completed-output:older-run"] button').getAttribute('onclick'))
             .toBe('dashboard.handleCompanyAction("runs", "older-run", "review-completed-output:older-run")');
@@ -1632,6 +1656,14 @@ describe('agent dashboard navigation accessibility', () => {
             outputPreview: 'Older saved output preview.',
             contextSource: 'saved-history',
         }));
+
+        dashboard.setCompanyActionHistoryFilter('reference');
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(1);
+        expect(history.textContent).toContain('Oldest reference beyond the initial cap');
+
+        dashboard.setCompanyActionHistoryFilter('all');
+        dashboard.renderCompanyActionHistory([expandedActions[0]]);
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(8);
     });
 
     test('marks the company run opened from a CEO action', () => {

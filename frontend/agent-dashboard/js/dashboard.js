@@ -34,6 +34,7 @@ class Dashboard {
             companyActionHistorySummary: null,
             companyActionHistoryFilter: 'all',
             companyActionHistorySort: 'newest',
+            companyActionHistoryExpanded: false,
             companyActionHistoryLoading: false,
             companyActionHistoryError: '',
             companyFileSearch: '',
@@ -3577,11 +3578,23 @@ class Dashboard {
         if (!container) return;
         this.state.companyActionContexts = this.state.companyActionContexts || {};
         this.state.companyActionContextsById = this.state.companyActionContextsById || {};
-        this.state.companyActionHistory = Array.isArray(actions) ? actions : [];
+        const incomingHistory = Array.isArray(actions) ? actions : [];
+        if (this.state.companyActionHistoryExpanded) {
+            const historyByKey = new Map();
+            [
+                ...(Array.isArray(this.state.companyActionHistory) ? this.state.companyActionHistory : []),
+                ...incomingHistory,
+            ].forEach((action) => {
+                const actionKey = String(action?.actionKey || action?.id || '').trim();
+                if (actionKey) historyByKey.set(actionKey, action);
+            });
+            this.state.companyActionHistory = Array.from(historyByKey.values());
+        } else {
+            this.state.companyActionHistory = incomingHistory;
+        }
 
-        const history = actions
-            .filter((action) => action && (action.actionKey || action.id))
-            .slice(0, 6);
+        const history = this.state.companyActionHistory
+            .filter((action) => action && (action.actionKey || action.id));
 
         if (!history.length) {
             container.innerHTML = '<p class="empty-state">No saved CEO actions yet.</p>';
@@ -3620,12 +3633,14 @@ class Dashboard {
                 ? safeLeft - safeRight
                 : safeRight - safeLeft;
         });
-        const visibleHistory = sortedHistory.filter((action) => {
+        const filteredHistory = sortedHistory.filter((action) => {
             const hasRunEvidence = Boolean(action.runId || action.refreshStatus?.runId);
             if (activeFilter === 'reviewable') return hasRunEvidence;
             if (activeFilter === 'reference') return !hasRunEvidence;
             return true;
         });
+        const isExpanded = Boolean(this.state.companyActionHistoryExpanded);
+        const visibleHistory = isExpanded ? filteredHistory : filteredHistory.slice(0, 6);
         const historySummary = [
             `${reviewableCount} reviewable`,
             referenceCount ? `${referenceCount} reference` : '',
@@ -3645,14 +3660,16 @@ class Dashboard {
                     ${sourceSummary ? `<small>${this.escapeHtml(sourceSummary)}</small>` : ''}
                     ${historyWindow ? `<small>${this.escapeHtml(historyWindow)}</small>` : ''}
                 </div>
-                <button
-                    class="btn btn-sm btn-ghost company-action-history__more"
-                    type="button"
-                    onclick="dashboard.loadCompanyActionHistory()"
-                    ${isLoading ? 'disabled' : ''}
-                >
-                    ${isLoading ? 'Loading...' : 'Show more'}
-                </button>
+                ${isExpanded ? '' : `
+                    <button
+                        class="btn btn-sm btn-ghost company-action-history__more"
+                        type="button"
+                        onclick="dashboard.loadCompanyActionHistory()"
+                        ${isLoading ? 'disabled' : ''}
+                    >
+                        ${isLoading ? 'Loading...' : 'Show more'}
+                    </button>
+                `}
             </div>
             ${errorMessage ? `<p class="company-action-history__error">${this.escapeHtml(errorMessage)}</p>` : ''}
             <div class="company-action-history__filters" role="group" aria-label="Saved CEO action filter">
@@ -5242,7 +5259,9 @@ class Dashboard {
             const response = await client.get('/api/admin/agent-company/action-history', { limit });
             const payload = this.unwrapApiPayload(response, {});
             const actions = Array.isArray(payload.actions) ? payload.actions : [];
+            this.state.companyActionHistory = actions;
             this.state.companyActionHistorySummary = payload.summary || null;
+            this.state.companyActionHistoryExpanded = true;
             this.state.companyActionHistoryLoading = false;
             this.state.companyActionHistoryError = '';
             this.renderCompanyActionHistory(actions);
