@@ -520,6 +520,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(statusDot.getAttribute('aria-hidden')).toBe('true');
         expect(modelSelect.getAttribute('aria-label')).toBe('Current AI model');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
+        expect(indexMarkup).toMatch(/\.header-model-select option\s*{[^}]*color:\s*var\(--text-primary\);[^}]*background-color:\s*var\(--bg-secondary\);/s);
         expect(commandInput.getAttribute('aria-label')).toBe('Web CLI command input');
         expect(commandInput.getAttribute('aria-describedby')).toBe('commandAssist');
         expect(commandInput.getAttribute('role')).toBe('combobox');
