@@ -445,6 +445,11 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
   const dailyAlignment = state.dailyAlignment || {};
   const actions = [];
   const completedRunsWithoutDeliverables = runs.filter(hasCompletedTextOutputWithoutDeliverables);
+  const failedRuns = runs.filter((run) => run.status === 'failed');
+  const latestFailedRun = failedRuns
+    .filter((run) => String(run?.id || '').trim())
+    .sort((a, b) => getEntryTimestamp(b) - getEntryTimestamp(a))[0] || null;
+  const latestFailedRunId = String(latestFailedRun?.id || '').trim();
 
   if (!config.enabled || !String(config.companyGoal || state.companyGoal || '').trim()) {
     actions.push({
@@ -464,13 +469,15 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
       priority: 'high',
     });
   }
-  if (runs.some((run) => run.status === 'failed') || Number(heartbeat.failedWorkloads || 0) > 0) {
+  if (failedRuns.length > 0 || Number(heartbeat.failedWorkloads || 0) > 0) {
     actions.push({
       id: 'review-failures',
+      actionKey: latestFailedRunId ? `review-failures:${latestFailedRunId}` : 'review-failures',
       label: 'Review failed work',
       detail: 'Inspect failed runs before asking the company to continue.',
       target: 'runs',
       priority: 'medium',
+      ...(latestFailedRunId ? { runId: latestFailedRunId } : {}),
     });
   }
   const qualityRepairAction = buildAgentQualityRepairAction(runs);

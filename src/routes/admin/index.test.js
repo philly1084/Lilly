@@ -378,6 +378,99 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('focuses CEO failure review on the newest failed company run', async () => {
+        const status = {
+            available: true,
+            config: {
+                enabled: true,
+                sessionId: 'agent-company',
+                companyGoal: 'Run a useful research studio.',
+            },
+            state: {
+                companyGoalHash: 'goal-hash',
+                heartbeat: { status: 'steady', failedWorkloads: 0 },
+                dailyAlignment: { status: 'steady' },
+            },
+        };
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [{
+                id: 'company-workload',
+                sessionId: 'agent-company',
+                title: 'Operations Lead: Verify company work',
+                metadata: {
+                    agentCompany: {
+                        enabled: true,
+                        companyGoalHash: 'goal-hash',
+                    },
+                },
+            }]),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'failed-run-older',
+                    workloadId: 'company-workload',
+                    status: 'failed',
+                    finishedAt: '2026-06-26T12:00:00.000Z',
+                },
+                {
+                    id: 'failed-run-newest',
+                    workloadId: 'company-workload',
+                    status: 'failed',
+                    updatedAt: '2026-06-26T14:00:00.000Z',
+                },
+            ]),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => status),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+            const failureAction = response.body.data.actionQueue.find((action) => action.id === 'review-failures');
+
+            expect(response.status).toBe(200);
+            expect(failureAction).toEqual(expect.objectContaining({
+                actionKey: 'review-failures:failed-run-newest',
+                target: 'runs',
+                runId: 'failed-run-newest',
+            }));
+
+            const actionResponse = await request(app)
+                .get('/api/admin/agent-company/action?actionKey=review-failures%3Afailed-run-newest');
+            expect(actionResponse.status).toBe(200);
+            expect(actionResponse.body.data).toEqual(expect.objectContaining({
+                historical: false,
+                action: expect.objectContaining({
+                    actionKey: 'review-failures:failed-run-newest',
+                    runId: 'failed-run-newest',
+                }),
+            }));
+
+            service.listAdminRuns.mockResolvedValue([]);
+            app.locals.agentCompanyService.getStatus.mockResolvedValue({
+                ...status,
+                state: {
+                    ...status.state,
+                    heartbeat: { status: 'creation_failed', failedWorkloads: 1 },
+                },
+            });
+            const heartbeatOnlyResponse = await request(app).get('/api/admin/agent-company/workspace');
+            const heartbeatOnlyAction = heartbeatOnlyResponse.body.data.actionQueue
+                .find((action) => action.id === 'review-failures');
+
+            expect(heartbeatOnlyResponse.status).toBe(200);
+            expect(heartbeatOnlyAction).toEqual(expect.objectContaining({
+                actionKey: 'review-failures',
+                target: 'runs',
+            }));
+            expect(heartbeatOnlyAction).not.toHaveProperty('runId');
+        } finally {
+            isEnabledSpy.mockRestore();
+        }
+    });
+
     test('queues a CEO action when agent quality gates need repair', async () => {
         const service = {
             isAvailable: jest.fn(() => true),
