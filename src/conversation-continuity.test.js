@@ -85,6 +85,23 @@ describe('conversation continuity', () => {
         });
     });
 
+    test('resolves a survey answer back to the original executable request', () => {
+        const input = 'Survey response (dating-app-build-target): What should I make first?: Full-stack app';
+        const recentMessages = [
+            { role: 'user', content: 'can you make a dating app' },
+            { role: 'assistant', content: 'I need one decision before I continue.' },
+            { role: 'user', content: 'then make it already' },
+            { role: 'assistant', content: 'Choose the first deliverable.' },
+        ];
+
+        expect(isLikelyTranscriptDependentTurn(input)).toBe(true);
+        expect(resolveTranscriptObjectiveFromSession(input, recentMessages)).toEqual({
+            objective: `can you make a dating app. ${input}`,
+            usedTranscriptContext: true,
+            priorUserObjective: 'can you make a dating app',
+        });
+    });
+
     test('recent transcript anchor requires a continuity review before proceeding', () => {
         const anchor = buildRecentTranscriptAnchor({
             currentInput: 'continue',

@@ -1,5 +1,6 @@
 const {
     buildUserCheckpointAskedPatch,
+    buildUserCheckpointContinuationInput,
     buildUserCheckpointInstructions,
     buildUserCheckpointMessage,
     buildUserCheckpointPolicy,
@@ -11,6 +12,39 @@ const {
 } = require('./user-checkpoints');
 
 describe('user checkpoint helpers', () => {
+    test('turns a selected build target into an execution continuation prompt', () => {
+        const input = buildUserCheckpointContinuationInput({
+            userText: 'Survey response (dating-app-build-target): What should I make first?: Full-stack app',
+            response: {
+                checkpointId: 'dating-app-build-target',
+                summary: 'What should I make first?: Full-stack app',
+            },
+            priorObjective: 'can you make a dating app',
+            checkpoint: {
+                id: 'dating-app-build-target',
+                title: 'Build target',
+                question: 'What should I make first?',
+                options: [
+                    {
+                        id: 'prototype',
+                        label: 'Runnable web MVP',
+                        description: 'A polished mobile-first prototype.',
+                    },
+                    {
+                        id: 'full-stack',
+                        label: 'Full-stack app',
+                        description: 'A production-oriented app with accounts, database-backed matching, and deployment setup.',
+                    },
+                ],
+            },
+        });
+
+        expect(input).toContain('Original request: can you make a dating app');
+        expect(input).toContain('Full-stack app: A production-oriented app');
+        expect(input).toContain('executing the selected work');
+        expect(input).toContain('Do not stop after acknowledging');
+    });
+
     test('builds a normalized web-chat checkpoint policy from session control state', () => {
         const policy = buildUserCheckpointPolicy({
             clientSurface: 'web-chat',

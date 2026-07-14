@@ -461,6 +461,17 @@ describe('runtime-execution', () => {
         expect(inferExecutionProfile({ input: 'Answer directly.' })).toBe('default');
     });
 
+    test('infers remote-build for a production full-stack checkpoint continuation', () => {
+        expect(inferExecutionProfile({
+            input: [
+                '[Resolved checkpoint continuation]',
+                'Original request: can you make a dating app',
+                'Selected direction: Full-stack app: A production-oriented app with accounts, database-backed matching, real-time-ready chat, and deployment setup.',
+                'Continue the original request now by executing the selected work.',
+            ].join('\n'),
+        })).toBe('remote-build');
+    });
+
     test('keeps notes-surface requests on the notes execution profile even when the prompt mentions remote operations', () => {
         expect(inferExecutionProfile({
             taskType: 'notes',

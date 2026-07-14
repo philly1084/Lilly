@@ -54,6 +54,13 @@ function isLikelyTranscriptDependentTurn(text = '') {
         return false;
     }
 
+    // A checkpoint answer only resolves a choice inside an earlier request. It is
+    // never a complete standalone objective, even when the option label itself
+    // contains words such as "Full-stack app" or "PDF".
+    if (/^survey response \([^)]+\):/i.test(normalized)) {
+        return true;
+    }
+
     const retryPrefixRemainder = normalized
         .replace(/^(?:please\s+)?(?:try again|retry|rerun|re-run|run it again|do it again|again)[\s,.:;!?-]*/i, '')
         .trim();

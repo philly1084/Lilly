@@ -499,6 +499,53 @@ function buildUserCheckpointResponseMessage({ checkpointId = '', selectedOptions
     return `${USER_CHECKPOINT_RESPONSE_PREFIX} (${normalizedCheckpointId}): ${summaryParts.join('. ')}`;
 }
 
+function buildUserCheckpointContinuationInput({
+    userText = '',
+    response = null,
+    checkpoint = null,
+    priorObjective = '',
+} = {}) {
+    const parsedResponse = response || parseUserCheckpointResponseMessage(userText);
+    if (!parsedResponse) {
+        return trimText(userText);
+    }
+
+    const normalizedCheckpoint = normalizePendingCheckpoint(checkpoint);
+    const responseSummary = trimText(parsedResponse.summary || '');
+    const normalizedSummary = responseSummary.toLowerCase();
+    const selectedOptions = normalizedCheckpoint?.steps
+        ?.flatMap((step) => step.options || [])
+        .filter((option, index, options) => {
+            const label = trimText(option?.label || '').toLowerCase();
+            const id = trimText(option?.id || '').toLowerCase();
+            const selected = (label && normalizedSummary.includes(label))
+                || (id.length > 1 && normalizedSummary.includes(`[${id}]`));
+            if (!selected) {
+                return false;
+            }
+            return options.findIndex((candidate) => candidate.id === option.id) === index;
+        }) || [];
+    const selectedContext = selectedOptions
+        .map((option) => {
+            const label = trimText(option.label || option.id || 'Selected option');
+            const description = trimText(option.description || '');
+            return description ? `${label}: ${description}` : label;
+        })
+        .filter(Boolean)
+        .join('; ');
+    const decisionSummary = selectedOptions.length > 0
+        ? selectedOptions.map((option) => trimText(option.label || option.id || '')).filter(Boolean).join(', ')
+        : responseSummary;
+
+    return [
+        '[Resolved checkpoint continuation]',
+        trimText(priorObjective) ? `Original request: ${trimText(priorObjective)}` : '',
+        decisionSummary ? `Checkpoint answer: ${decisionSummary}` : '',
+        selectedContext ? `Selected direction: ${selectedContext}` : '',
+        'Continue the original request now by executing the selected work. Do not stop after acknowledging the choice or describing what you are about to do.',
+    ].filter(Boolean).join('\n');
+}
+
 function buildUserCheckpointInstructions(policy = {}) {
     if (policy?.enabled !== true) {
         return '';
@@ -558,6 +605,7 @@ module.exports = {
     buildUserCheckpointMessage,
     buildUserCheckpointPolicy,
     buildUserCheckpointResponseMessage,
+    buildUserCheckpointContinuationInput,
     extractPendingUserCheckpoint,
     getUserCheckpointState,
     isUserCheckpointSurface,

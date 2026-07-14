@@ -63,6 +63,7 @@ const {
     applyAnsweredUserCheckpointState,
     applyAskedUserCheckpointState,
     buildUserCheckpointPolicyMetadata,
+    resolveAnsweredUserCheckpointInput,
 } = require('../web-chat-user-checkpoints');
 const {
     buildScopedMemoryMetadata,
@@ -573,9 +574,23 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     const userCheckpointPolicy = buildUserCheckpointPolicy({
         session,
         clientSurface,
+        latestResponse: answeredCheckpointResult.response,
     });
-    const sshContext = resolveSshRequestContext(message, session);
-    let effectiveMessage = sshContext.effectivePrompt || message;
+    const checkpointRecentMessages = answeredCheckpointResult.response && sessionStore?.getRecentMessages
+        ? await sessionStore.getRecentMessages(session.id, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+        : [];
+    const checkpointContinuationInput = answeredCheckpointResult.response
+        && typeof resolveAnsweredUserCheckpointInput === 'function'
+        ? resolveAnsweredUserCheckpointInput({
+            userText: message,
+            response: answeredCheckpointResult.response,
+            checkpoint: answeredCheckpointResult.checkpoint,
+            recentMessages: checkpointRecentMessages,
+        })
+        : message;
+    const sshContext = resolveSshRequestContext(checkpointContinuationInput, session);
+    let effectiveMessage = sshContext.effectivePrompt || checkpointContinuationInput;
+    const shouldSanitizeEffectiveMessageSeparately = effectiveMessage !== message;
     effectiveRequestMetadata = {
         ...effectiveRequestMetadata,
         clientSurface,
@@ -591,7 +606,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         metadata: effectiveRequestMetadata,
     });
     message = routePii.text;
-    if (effectiveMessage !== rawMessage) {
+    if (shouldSanitizeEffectiveMessageSeparately) {
         const effectivePii = await sanitizeText(effectiveMessage, {
             sessionId: session.id,
             ownerId,
@@ -611,6 +626,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     } else {
         effectiveMessage = message;
     }
+    const runtimeMemoryInput = answeredCheckpointResult.response ? effectiveMessage : message;
     effectiveRequestMetadata = {
         ...effectiveRequestMetadata,
         piiCleansing: buildPiiCleansingMetadata(routePii),
@@ -700,7 +716,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         taskType,
         clientSurface,
         input: effectiveMessage,
-        memoryInput: message,
+        memoryInput: runtimeMemoryInput,
         session,
         metadata: effectiveRequestMetadata,
     });
@@ -1038,7 +1054,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             input: effectiveMessage,
             session,
             sessionId: session.id,
-            memoryInput: message,
+            memoryInput: runtimeMemoryInput,
             previousResponseId: session.previousResponseId,
             instructions,
             stream: true,

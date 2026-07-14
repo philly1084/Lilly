@@ -88,6 +88,7 @@ const {
 const {
     buildUserCheckpointAnsweredPatch,
     buildUserCheckpointAskedPatch,
+    buildUserCheckpointContinuationInput,
     buildUserCheckpointInstructions,
     buildUserCheckpointPolicy,
     extractPendingUserCheckpoint,
@@ -99,6 +100,7 @@ const {
     normalizeUsageMetadata,
 } = require('../utils/token-usage');
 const { buildAlignmentGuidanceContext } = require('../alignment/evaluator-service');
+const { resolveTranscriptObjectiveFromSession } = require('../conversation-continuity');
 const {
     buildDirectPodcastAssistantMessage,
     buildDirectPodcastParams,
@@ -1108,6 +1110,7 @@ async function applyAnsweredUserCheckpointState(sessionId, session, userText = '
     return {
         session: attachUpdatedControlState(session, controlState),
         response,
+        checkpoint: checkpointState.pending,
     };
 }
 
@@ -1579,9 +1582,25 @@ router.post('/chat/completions', async (req, res, next) => {
         const userCheckpointPolicy = buildUserCheckpointPolicy({
             session,
             clientSurface,
+            latestResponse: answeredCheckpointResult.response,
         });
-        const sshContext = resolveSshRequestContext(lastUserText, session);
-        let effectiveInput = sshContext.effectivePrompt || lastUserText;
+        const checkpointRecentMessages = answeredCheckpointResult.response && sessionStore?.getRecentMessages
+            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+            : [];
+        const checkpointTranscriptObjective = answeredCheckpointResult.response
+            ? resolveTranscriptObjectiveFromSession(lastUserText, checkpointRecentMessages)
+            : null;
+        const checkpointContinuationInput = answeredCheckpointResult.response
+            && typeof buildUserCheckpointContinuationInput === 'function'
+            ? buildUserCheckpointContinuationInput({
+                userText: lastUserText,
+                response: answeredCheckpointResult.response,
+                checkpoint: answeredCheckpointResult.checkpoint,
+                priorObjective: checkpointTranscriptObjective?.priorUserObjective || '',
+            })
+            : lastUserText;
+        const sshContext = resolveSshRequestContext(checkpointContinuationInput, session);
+        let effectiveInput = sshContext.effectivePrompt || checkpointContinuationInput;
         const artifactIntentText = stripInjectedNotesPageEditDirective(lastUserText);
         const artifactControlState = getSessionControlState(session);
         const stickyRemoteArtifactContext = Boolean(
@@ -1618,6 +1637,7 @@ router.post('/chat/completions', async (req, res, next) => {
         } else {
             effectiveInput = lastUserText;
         }
+        const runtimeMemoryInput = answeredCheckpointResult.response ? effectiveInput : lastUserText;
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             piiCleansing: buildPiiCleansingMetadata(routePii),
@@ -1782,7 +1802,7 @@ router.post('/chat/completions', async (req, res, next) => {
             ...req.body,
             taskType,
             input: effectiveMessages,
-            memoryInput: lastUserText,
+            memoryInput: runtimeMemoryInput,
             session,
         });
         const chatControlState = getSessionControlState(session);
@@ -2301,7 +2321,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 input: effectiveMessages,
                 session,
                 sessionId,
-                memoryInput: lastUserText,
+                memoryInput: runtimeMemoryInput,
                 loadContextMessages: Boolean(lastUserText),
                 loadRecentMessages: shouldInjectRecentMessages(messages),
                 previousResponseId: session.previousResponseId,
@@ -2589,7 +2609,7 @@ router.post('/chat/completions', async (req, res, next) => {
             input: effectiveMessages,
             session,
             sessionId,
-            memoryInput: lastUserText,
+            memoryInput: runtimeMemoryInput,
             loadContextMessages: Boolean(lastUserText),
             loadRecentMessages: shouldInjectRecentMessages(messages),
             previousResponseId: session.previousResponseId,
@@ -2656,7 +2676,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 input: effectiveMessages,
                 session,
                 sessionId,
-                memoryInput: lastUserText,
+                memoryInput: runtimeMemoryInput,
                 loadContextMessages: Boolean(lastUserText),
                 loadRecentMessages: shouldInjectRecentMessages(messages),
                 previousResponseId: session.previousResponseId,

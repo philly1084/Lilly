@@ -1,10 +1,12 @@
 const {
+    buildUserCheckpointContinuationInput,
     buildUserCheckpointAnsweredPatch,
     buildUserCheckpointAskedPatch,
     extractPendingUserCheckpoint,
     getUserCheckpointState,
     parseUserCheckpointResponseMessage,
 } = require('./user-checkpoints');
+const { resolveTranscriptObjectiveFromSession } = require('./conversation-continuity');
 
 function attachUpdatedControlState(session = null, controlState = null) {
     if (!session || !controlState) {
@@ -65,7 +67,27 @@ async function applyAnsweredUserCheckpointState(sessionStore, sessionId, session
     return {
         session: attachUpdatedControlState(session, controlState),
         response,
+        checkpoint: checkpointState.pending,
     };
+}
+
+function resolveAnsweredUserCheckpointInput({
+    userText = '',
+    response = null,
+    checkpoint = null,
+    recentMessages = [],
+} = {}) {
+    if (!response) {
+        return String(userText || '').trim();
+    }
+
+    const transcriptObjective = resolveTranscriptObjectiveFromSession(userText, recentMessages);
+    return buildUserCheckpointContinuationInput({
+        userText,
+        response,
+        checkpoint,
+        priorObjective: transcriptObjective.priorUserObjective || '',
+    });
 }
 
 async function applyAskedUserCheckpointState(sessionStore, sessionId, session, toolEvents = []) {
@@ -86,4 +108,5 @@ module.exports = {
     applyAnsweredUserCheckpointState,
     applyAskedUserCheckpointState,
     buildUserCheckpointPolicyMetadata,
+    resolveAnsweredUserCheckpointInput,
 };

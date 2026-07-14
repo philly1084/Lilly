@@ -12216,6 +12216,58 @@ describe('ConversationOrchestrator', () => {
         ]);
     });
 
+    test('starts remote-cli-agent after a full-stack build checkpoint is answered', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'remote-cli-agent'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = [
+            '[Resolved checkpoint continuation]',
+            'Original request: can you make a dating app',
+            'Checkpoint answer: Full-stack app',
+            'Selected direction: Full-stack app: A production-oriented app with accounts, database-backed matching, real-time-ready chat, and deployment setup.',
+            'Continue the original request now by executing the selected work. Do not stop after acknowledging the choice or describing what you are about to do.',
+        ].join('\n');
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext: {
+                clientSurface: 'web-chat',
+                userCheckpointPolicy: {
+                    enabled: true,
+                    answeredThisTurn: true,
+                    remaining: 0,
+                },
+            },
+        });
+
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            executionProfile: 'remote-build',
+            toolPolicy,
+            toolContext: { clientSurface: 'web-chat' },
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                task: objective,
+                adminMode: true,
+            }),
+        }));
+    });
+
     test('falls back to remote-command when it is the only remote tool available', async () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

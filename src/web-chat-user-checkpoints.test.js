@@ -2,6 +2,7 @@ const {
     applyAnsweredUserCheckpointState,
     applyAskedUserCheckpointState,
     buildUserCheckpointPolicyMetadata,
+    resolveAnsweredUserCheckpointInput,
 } = require('./web-chat-user-checkpoints');
 
 describe('web chat user checkpoint helpers', () => {
@@ -81,6 +82,45 @@ describe('web chat user checkpoint helpers', () => {
                 pending: null,
             }),
         }));
+        expect(result.checkpoint).toEqual(expect.objectContaining({
+            id: 'checkpoint-1',
+        }));
+    });
+
+    test('hydrates a checkpoint answer with the prior build request and selected option context', () => {
+        const userText = 'Survey response (dating-app-build-target): What should I make first?: Full-stack app';
+        const input = resolveAnsweredUserCheckpointInput({
+            userText,
+            response: {
+                checkpointId: 'dating-app-build-target',
+                summary: 'What should I make first?: Full-stack app',
+            },
+            checkpoint: {
+                id: 'dating-app-build-target',
+                question: 'What should I make first?',
+                options: [
+                    {
+                        id: 'prototype',
+                        label: 'Runnable web MVP',
+                        description: 'A polished mobile-first prototype.',
+                    },
+                    {
+                        id: 'full-stack',
+                        label: 'Full-stack app',
+                        description: 'A production-oriented app with accounts, database, real-time chat, and deployment setup.',
+                    },
+                ],
+            },
+            recentMessages: [
+                { role: 'user', content: 'can you make a dating app' },
+                { role: 'assistant', content: 'Choose a direction.' },
+                { role: 'user', content: 'then make it already' },
+            ],
+        });
+
+        expect(input).toContain('Original request: can you make a dating app');
+        expect(input).toContain('deployment setup');
+        expect(input).toContain('Do not stop after acknowledging');
     });
 
     test('ignores mismatched survey responses when another checkpoint is pending', async () => {

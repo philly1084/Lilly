@@ -89,6 +89,7 @@ function hasRemoteSoftwareCreationIntent(text = '') {
         /\b(create|develop|build|make|ship|launch|publish|scaffold|prototype)\b[\s\S]{0,60}\b(app|application|website|site|frontend|service|game|software|web app)\b[\s\S]{0,80}\b(server|remote|ssh|gitlab|gitea|cluster|k3s|kubernetes|environment|sandbox)\b/,
         /\b(server|remote|ssh|gitlab|gitea|cluster|k3s|kubernetes|environment|sandbox)\b[\s\S]{0,80}\b(create|develop|build|make|ship|launch|publish|scaffold|prototype)\b[\s\S]{0,60}\b(app|application|website|site|frontend|service|game|software|web app)\b/,
         /\b(this (?:server|cluster|environment|sandbox))\b[\s\S]{0,60}\b(create|develop|build|make|ship|launch|publish)\b[\s\S]{0,60}\b(app|application|website|site|frontend|service|game|software|web app)\b/,
+        /\b(create|develop|build|make|ship|launch|publish|scaffold|prototype)\b[\s\S]{0,80}\b(app|application|web app|service|software)\b[\s\S]{0,180}\b(full[- ]stack|production[- ]oriented|deployment setup|database-backed|real-time(?:-ready)? chat)\b/,
     ].some((pattern) => pattern.test(normalized));
 }
 

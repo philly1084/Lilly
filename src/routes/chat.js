@@ -80,6 +80,7 @@ const {
     applyAnsweredUserCheckpointState,
     applyAskedUserCheckpointState,
     buildUserCheckpointPolicyMetadata,
+    resolveAnsweredUserCheckpointInput,
 } = require('../web-chat-user-checkpoints');
 const {
     buildScopedMemoryMetadata,
@@ -1445,8 +1446,21 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             clientSurface,
             latestResponse: answeredCheckpointResult.response,
         });
-        const sshContext = resolveSshRequestContext(message, effectiveSession);
-        let effectiveMessage = sshContext.effectivePrompt || message;
+        const checkpointRecentMessages = answeredCheckpointResult.response && sessionStore?.getRecentMessages
+            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+            : [];
+        const checkpointContinuationInput = answeredCheckpointResult.response
+            && typeof resolveAnsweredUserCheckpointInput === 'function'
+            ? resolveAnsweredUserCheckpointInput({
+                userText: message,
+                response: answeredCheckpointResult.response,
+                checkpoint: answeredCheckpointResult.checkpoint,
+                recentMessages: checkpointRecentMessages,
+            })
+            : message;
+        const sshContext = resolveSshRequestContext(checkpointContinuationInput, effectiveSession);
+        let effectiveMessage = sshContext.effectivePrompt || checkpointContinuationInput;
+        const shouldSanitizeEffectiveMessageSeparately = effectiveMessage !== message;
         const artifactIntentText = stripInjectedNotesPageEditDirective(message);
         const artifactControlState = getSessionControlState(effectiveSession);
         const stickyRemoteArtifactContext = Boolean(
@@ -1470,7 +1484,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             metadata: effectiveRequestMetadata,
         });
         message = routePii.text;
-        if (effectiveMessage === sshContext.effectivePrompt && effectiveMessage !== artifactIntentText) {
+        if (shouldSanitizeEffectiveMessageSeparately) {
             const effectivePii = await sanitizeText(effectiveMessage, {
                 sessionId,
                 ownerId,
@@ -1490,6 +1504,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         } else {
             effectiveMessage = message;
         }
+        const runtimeMemoryInput = answeredCheckpointResult.response ? effectiveMessage : message;
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             piiCleansing: buildPiiCleansingMetadata(routePii),
@@ -1620,7 +1635,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             taskType,
             clientSurface,
             input: effectiveMessage,
-            memoryInput: message,
+            memoryInput: runtimeMemoryInput,
             session: effectiveSession,
             metadata: effectiveRequestMetadata,
         });
@@ -2391,7 +2406,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 input: effectiveAgentInput,
                 session: effectiveSession,
                 sessionId,
-                memoryInput: message,
+                memoryInput: runtimeMemoryInput,
                 previousResponseId: effectiveSession.previousResponseId,
                 instructions,
                 recentMessages: recentMessagesForContinuity,
@@ -2661,7 +2676,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             input: effectiveAgentInput,
             session: effectiveSession,
             sessionId,
-            memoryInput: message,
+            memoryInput: runtimeMemoryInput,
             previousResponseId: effectiveSession.previousResponseId,
             instructions,
             recentMessages: recentMessagesForContinuity,

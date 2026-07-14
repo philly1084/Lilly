@@ -120,32 +120,40 @@ jest.mock('../session-scope', () => ({
     resolveSessionScope: jest.fn(() => 'web-chat'),
 }));
 
-jest.mock('../user-checkpoints', () => ({
-    buildUserCheckpointAnsweredPatch: jest.fn(() => ({})),
-    buildUserCheckpointAskedPatch: jest.fn(() => ({})),
-    buildUserCheckpointInstructions: jest.fn(() => ''),
-    buildUserCheckpointPolicy: jest.fn(() => ({
-        enabled: false,
-        maxQuestions: 0,
-        askedCount: 0,
-        remaining: 0,
-        pending: null,
-    })),
-    extractPendingUserCheckpoint: jest.fn(() => null),
-    getUserCheckpointState: jest.fn(() => ({ pending: null })),
-    parseUserCheckpointResponseMessage: jest.fn(() => null),
-}));
+jest.mock('../user-checkpoints', () => {
+    const actual = jest.requireActual('../user-checkpoints');
+    return {
+        buildUserCheckpointAnsweredPatch: jest.fn(() => ({})),
+        buildUserCheckpointAskedPatch: jest.fn(() => ({})),
+        buildUserCheckpointContinuationInput: jest.fn(actual.buildUserCheckpointContinuationInput),
+        buildUserCheckpointInstructions: jest.fn(() => ''),
+        buildUserCheckpointPolicy: jest.fn(({ latestResponse = null } = {}) => ({
+            enabled: false,
+            maxQuestions: 0,
+            askedCount: 0,
+            remaining: 0,
+            pending: null,
+            answeredThisTurn: Boolean(latestResponse?.checkpointId),
+        })),
+        extractPendingUserCheckpoint: jest.fn(() => null),
+        getUserCheckpointState: jest.fn(() => ({ pending: null })),
+        parseUserCheckpointResponseMessage: jest.fn(() => null),
+    };
+});
 
 const { sessionStore } = require('../session-store');
 const { executeConversationRuntime } = require('../runtime-execution');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const aiRouteUtils = require('../ai-route-utils');
+const userCheckpoints = require('../user-checkpoints');
 const { generateOutputArtifactFromPrompt } = aiRouteUtils;
 const openAiCompatRouter = require('./openai-compat');
 
 describe('/v1/chat/completions stream forwarding', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        userCheckpoints.parseUserCheckpointResponseMessage.mockReturnValue(null);
+        userCheckpoints.getUserCheckpointState.mockReturnValue({ pending: null });
 
         const session = {
             id: 'web-chat-stream-1',
@@ -565,6 +573,86 @@ describe('/v1/chat/completions stream forwarding', () => {
                 reasoning_tokens: 4,
             },
         });
+    });
+
+    test('executes a selected full-stack checkpoint instead of stopping at acknowledgement prose', async () => {
+        const responseText = 'Survey response (dating-app-build-target): What should I make first?: Full-stack app';
+        userCheckpoints.parseUserCheckpointResponseMessage.mockReturnValue({
+            checkpointId: 'dating-app-build-target',
+            summary: 'What should I make first?: Full-stack app',
+        });
+        userCheckpoints.getUserCheckpointState.mockReturnValue({
+            maxQuestions: 8,
+            askedCount: 2,
+            pending: {
+                id: 'dating-app-build-target',
+                title: 'Build target',
+                question: 'What should I make first?',
+                options: [
+                    {
+                        id: 'prototype',
+                        label: 'Runnable web MVP',
+                        description: 'A polished mobile-first prototype.',
+                    },
+                    {
+                        id: 'full-stack',
+                        label: 'Full-stack app',
+                        description: 'A production-oriented app with accounts, database-backed matching, real-time-ready chat, and deployment setup.',
+                    },
+                ],
+            },
+        });
+        sessionStore.getRecentMessages.mockResolvedValue([
+            { role: 'user', content: 'can you make a dating app' },
+            { role: 'assistant', content: 'Choose the first deliverable.' },
+            { role: 'user', content: 'then make it already' },
+        ]);
+        sessionStore.updateControlState.mockResolvedValue({
+            userCheckpoint: { pending: null },
+        });
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: {
+                id: 'resp-checkpoint-build-1',
+                model: 'gpt-4o',
+                output_text: 'Build started.',
+                output: [{
+                    type: 'message',
+                    role: 'assistant',
+                    content: [{ type: 'output_text', text: 'Build started.' }],
+                }],
+                metadata: { toolEvents: [] },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [{ role: 'user', content: responseText }],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: false,
+                session_id: 'web-chat-stream-1',
+            });
+
+        expect(response.status).toBe(200);
+        expect(executeConversationRuntime).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            memoryInput: expect.stringContaining('Original request: can you make a dating app'),
+            input: [expect.objectContaining({
+                role: 'user',
+                content: expect.stringContaining('deployment setup'),
+            })],
+            toolContext: expect.objectContaining({
+                userCheckpointPolicy: expect.objectContaining({
+                    answeredThisTurn: true,
+                    remaining: 0,
+                }),
+            }),
+        }));
     });
 
     test('reports serialized false tool results as failures in fallback summaries', async () => {
