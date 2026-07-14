@@ -8339,6 +8339,84 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes put-into-PDF requests directly to document-workflow', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'document-workflow'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = 'Could you put this into a document for me. PDF with charts and images';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+            toolContext: { clientSurface: 'web-chat' },
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('document-workflow');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'document-workflow',
+            params: expect.objectContaining({
+                action: 'generate-suite',
+                formats: expect.arrayContaining(['pdf', 'html']),
+                prompt: objective,
+            }),
+        }));
+    });
+
+    test('uses validated document fallback when the planner returns empty steps', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'document-workflow'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = 'Put the engineering framework into a PDF document with charts and images.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+
+        const plan = await orchestrator.planToolUse({
+            objective,
+            executionProfile: 'default',
+            toolPolicy,
+            toolContext: { clientSurface: 'web-chat' },
+        });
+
+        expect(plan).toEqual([
+            expect.objectContaining({
+                tool: 'document-workflow',
+                params: expect.objectContaining({
+                    action: 'generate-suite',
+                    formats: expect.arrayContaining(['pdf', 'html']),
+                }),
+            }),
+        ]);
+    });
+
     test('continues guarded research deliverables through fetch and document generation before synthesis', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Created the AI news HTML page.', 'resp_ai_news_page')),
@@ -12094,6 +12172,45 @@ describe('ConversationOrchestrator', () => {
                 tool: 'remote-command',
                 params: expect.objectContaining({
                     command: 'hostname && uptime && (df -h / || true) && (free -m || true)',
+                }),
+            }),
+        ]);
+    });
+
+    test('uses remote-cli-agent fallback when the planner returns empty for an explicit build request', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'remote-cli-agent'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = 'Use remote cli agent to build the echo site with rotating artwork.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+
+        const plan = await orchestrator.planToolUse({
+            objective,
+            executionProfile: 'remote-build',
+            toolPolicy,
+        });
+
+        expect(plan).toEqual([
+            expect.objectContaining({
+                tool: 'remote-cli-agent',
+                params: expect.objectContaining({
+                    task: objective,
+                    adminMode: true,
                 }),
             }),
         ]);

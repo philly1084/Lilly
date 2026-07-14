@@ -1113,7 +1113,7 @@ function hasDocumentWorkflowIntentText(text = '') {
 
     return (
         /\b(document|doc|report|brief|proposal|guide|summary|one-pager|whitepaper|slides|presentation|deck|pptx|docx|pdf|html page|html document|web page|webpage|website|web site|site|landing page|microsite|product page|dashboard|frontend|front end|web app)\b/.test(normalized)
-        && /\b(create|make|generate|build|prepare|draft|write|assemble|compile|organize|inject|turn|convert|export)\b/.test(normalized)
+        && /\b(create|make|generate|build|prepare|draft|write|assemble|compile|organize|inject|put|place|package|turn|convert|export)\b/.test(normalized)
     ) || (
         /\b(slides|presentation|deck|pptx|docx|pdf|html document|research brief)\b/.test(normalized)
         && /\b(research|look up|search|browse|scrape|extract|pricing|comparison|current|latest)\b/.test(normalized)
@@ -13638,12 +13638,25 @@ class ConversationOrchestrator extends EventEmitter {
         };
 
         if (plannerReturnedSteps && Array.isArray(parsed?.steps) && parsed.steps.length === 0) {
-            if (shouldRunDeterministicRemoteFallbackAfterEmptyPlanner({
+            const shouldRunExplicitActionFallback = (!Array.isArray(toolEvents) || toolEvents.length === 0)
+                && (
+                    (
+                        toolPolicy.candidateToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)
+                        && hasDocumentWorkflowIntentText(objective)
+                        && toolPolicy.classification?.groundingRequirement !== 'required'
+                    )
+                    || (
+                        toolPolicy.candidateToolIds.includes('remote-cli-agent')
+                        && hasExplicitRemoteCliAgentIntentText(objective)
+                    )
+                );
+            const shouldRunRemoteInspectionFallback = shouldRunDeterministicRemoteFallbackAfterEmptyPlanner({
                 objective,
                 executionProfile,
                 toolPolicy,
                 toolEvents,
-            })) {
+            });
+            if (shouldRunExplicitActionFallback || shouldRunRemoteInspectionFallback) {
                 return buildValidatedFallbackPlan();
             }
             return [];

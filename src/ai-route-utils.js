@@ -461,6 +461,7 @@ function hasExplicitArtifactGenerationIntent(text = '') {
     }
 
     return /\b(export|download|save|convert|turn\b[\s\S]{0,20}\binto|turn\b[\s\S]{0,20}\bas|format\b[\s\S]{0,20}\bas)\b/i.test(normalized)
+        || /\b(put|place|package|compile)\b[\s\S]{0,60}\b(into|in|as)\b[\s\S]{0,24}\b(file|artifact|document|report|brief|pdf|html|docx|spreadsheet|excel|workbook)\b/i.test(normalized)
         || /\b(create|make|generate|build|produce|render|prepare|draft)\b[\s\S]{0,60}\b(file|artifact|document|page|report|brief|pdf|html|docx|xml|spreadsheet|excel|workbook|mermaid|diagram|flowchart|sequence diagram|erd|class diagram|state diagram)\b/i.test(normalized)
         || /\b(as|into|in)\s+(?:an?\s+)?(?:pdf|html|docx|xml|spreadsheet|excel workbook|workbook|mermaid|mmd)\b/i.test(normalized)
         || /\b(pdf|html|docx|xml|spreadsheet|excel|workbook)\s+(?:file|document|artifact|export)\b/i.test(normalized);

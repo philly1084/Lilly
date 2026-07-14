@@ -550,6 +550,13 @@ describe('ai-route-utils', () => {
         expect(inferRequestedOutputFormat('Make a PDF from this HTML page')).toBe('pdf');
     });
 
+    test('inferRequestedOutputFormat treats put-into-document requests as artifact generation', () => {
+        expect(inferRequestedOutputFormat('Could you put this into a document for me. PDF with charts and images'))
+            .toBe('pdf');
+        expect(inferRequestedOutputFormat('Place these results into an Excel workbook I can download'))
+            .toBe('xlsx');
+    });
+
     test('inferRequestedOutputFormat defaults slide deck requests to pptx unless html or interactive is explicit', () => {
         expect(inferRequestedOutputFormat('Can you make me slides on FGZEUM?')).toBe('pptx');
         expect(inferRequestedOutputFormat('Create a website slide deck for the launch story.')).toBe('pptx');
