@@ -560,11 +560,18 @@ describe('AgentCompanyService', () => {
         expect(service.workloadService.createWorkload).toHaveBeenCalledTimes(1);
     });
 
-    test('records failed scheduled items and continues with the next open slot', async () => {
+    test('fills available capacity after a scheduled item fails', async () => {
         const createWorkload = jest.fn()
             .mockRejectedValueOnce(new Error('scheduler rejected invalid trigger'))
             .mockImplementationOnce(async (payload, ownerId) => ({
-                id: 'workload-after-failure',
+                id: 'workload-after-failure-1',
+                ownerId,
+                title: payload.title,
+                trigger: payload.trigger,
+                metadata: payload.metadata,
+            }))
+            .mockImplementationOnce(async (payload, ownerId) => ({
+                id: 'workload-after-failure-2',
                 ownerId,
                 title: payload.title,
                 trigger: payload.trigger,
@@ -590,8 +597,12 @@ describe('AgentCompanyService', () => {
 
         const result = await service.tick({ force: true, reason: 'partial-failure-test' });
 
-        expect(createWorkload).toHaveBeenCalledTimes(2);
-        expect(result.createdWorkloads).toHaveLength(1);
+        expect(createWorkload).toHaveBeenCalledTimes(3);
+        expect(result.createdWorkloads).toHaveLength(2);
+        expect(result.createdWorkloads.map((workload) => workload.id)).toEqual([
+            'workload-after-failure-1',
+            'workload-after-failure-2',
+        ]);
         expect(result.state.heartbeat.status).toBe('scheduled_with_errors');
         expect(result.state.heartbeat.failedWorkloads).toBe(1);
         expect(result.state.heartbeat.createFailures).toEqual([expect.objectContaining({

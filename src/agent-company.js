@@ -598,9 +598,11 @@ class AgentCompanyService {
         if (availableSlots > 0) {
             const pendingItems = schedule
                 .slice(0, config.weeklyWorkloadLimit)
-                .filter((item) => !existingPlanIds.has(item.id))
-                .slice(0, availableSlots);
+                .filter((item) => !existingPlanIds.has(item.id));
             for (const item of pendingItems) {
+                if (created.length >= availableSlots) {
+                    break;
+                }
                 try {
                     const workload = await this.createScheduledWorkload(config, item, weekKey, goalHash);
                     if (!workload?.id) {
