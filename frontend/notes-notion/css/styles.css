@@ -534,11 +534,15 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--bg-primary);
     position: relative;
     scroll-behavior: smooth;
+    overscroll-behavior-x: none;
 }
 
 .main-content::-webkit-scrollbar {
@@ -773,6 +777,7 @@ body {
 .editor {
     max-width: var(--content-max-width);
     width: 100%;
+    min-width: 0;
     margin: 0 auto;
     padding: 8px var(--content-padding) 200px;
     flex: 1;
@@ -780,7 +785,9 @@ body {
 }
 
 .page-workspace {
+    width: 100%;
     max-width: 1120px;
+    min-width: 0;
     margin: 0 auto;
     padding: 0 32px 80px;
     display: block;
@@ -788,6 +795,8 @@ body {
 }
 
 .editor-column {
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
 }
 
@@ -911,6 +920,9 @@ body {
     position: relative;
     display: flex;
     align-items: flex-start;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 30px;
     margin: 2px 0;
     padding: 3px 0;
@@ -1019,6 +1031,7 @@ body {
 .block-content-wrapper {
     flex: 1;
     min-width: 0;
+    max-width: 100%;
     padding-right: 140px;
 }
 
@@ -1087,6 +1100,7 @@ body {
 .block-content {
     flex: 1;
     min-width: 0;
+    max-width: 100%;
     padding: 3px 2px;
 }
 
@@ -1388,11 +1402,15 @@ body {
     position: relative;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     border-radius: var(--radius-md);
     overflow: hidden;
 }
 
 .notes-image-frame {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     aspect-ratio: var(--notes-image-aspect, 16 / 9);
     min-height: 220px;
     max-height: 430px;
@@ -3093,11 +3111,13 @@ body {
 }
 
 .database-block-shell {
+    width: 100%;
     min-width: 0;
     max-width: 100%;
 }
 
 .database-scroll-region {
+    width: 100%;
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
@@ -3105,6 +3125,7 @@ body {
     padding-bottom: 8px;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
     scrollbar-gutter: stable both-edges;
     scrollbar-width: thin;
     scrollbar-color: var(--text-muted) transparent;
@@ -5137,6 +5158,9 @@ pre {
 }
 
 .chart-block {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-primary);
@@ -5144,18 +5168,27 @@ pre {
 }
 
 .chart-block-shell {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
 .chart-scroll-region {
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
+  background:
+    linear-gradient(90deg, var(--bg-primary) 28%, rgba(255, 255, 255, 0)) left center / 22px 100% no-repeat local,
+    linear-gradient(270deg, var(--bg-primary) 28%, rgba(255, 255, 255, 0)) right center / 22px 100% no-repeat local,
+    linear-gradient(90deg, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0)) left center / 14px 100% no-repeat scroll,
+    linear-gradient(270deg, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0)) right center / 14px 100% no-repeat scroll;
 }
 
 .chart-scroll-region:focus {

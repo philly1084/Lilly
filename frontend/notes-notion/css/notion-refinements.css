@@ -4311,12 +4311,35 @@ body.agent-chat-open .main-content {
 
   .block {
     width: 100%;
+    max-width: 100%;
     min-width: 0;
   }
 
   .block-content-wrapper {
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     padding-right: 0;
+  }
+
+  .block-content,
+  .database-block-shell,
+  .chart-block-shell,
+  .chart-block {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .database-scroll-region,
+  .chart-scroll-region {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
   }
 
   .block[data-type="image"] .block-content,
@@ -4336,6 +4359,7 @@ body.agent-chat-open .main-content {
 
   .image-wrapper img,
   .ai-image {
+    width: 100%;
     max-width: 100%;
     height: auto;
   }

@@ -191,6 +191,21 @@ describe('Notes cover picker selection state', () => {
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
         expect(html).toContain('js/sidebar.js?v=20260713-cover-selection-v2');
-        expect(html).toContain('css/notion-refinements.css?v=20260713-cover-selection-v2');
+        expect(html).toContain('css/notion-refinements.css?v=20260714-mobile-overflow-v1');
+    });
+});
+
+describe('Notes mobile content containment', () => {
+    test('keeps wide blocks inside the editor while preserving local horizontal scrolling', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+        const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
+
+        expect(html).toContain('css/styles.css?v=20260714-mobile-overflow-v1');
+        expect(html).toContain('css/notion-refinements.css?v=20260714-mobile-overflow-v1');
+        expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
+        expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);
+        expect(responsiveStyles).toMatch(/\.database-scroll-region,\s*\.chart-scroll-region\s*{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);
+        expect(responsiveStyles).toMatch(/\.image-wrapper img,\s*\.ai-image\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*height:\s*auto;/s);
     });
 });
