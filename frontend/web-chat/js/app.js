@@ -12909,24 +12909,68 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (!sessionManager.currentSessionId) {
             await this.createNewSession();
         }
+        const sessionId = sessionManager.currentSessionId;
+        const messageId = `content-studio-${uiHelpers.generateMessageId()}`;
+        const userMessage = sessionManager.addMessage(sessionId, {
+            role: 'user',
+            content: `Podcast launch kit: ${options.prompt}`,
+            clientOnly: true,
+            excludeFromTranscript: true,
+            timestamp: new Date().toISOString(),
+        });
+        if (this.isVisibleSession(sessionId)) {
+            this.messagesContainer.appendChild(uiHelpers.renderMessage(userMessage));
+        }
+        void sessionManager.syncMessageToBackend(sessionId, userMessage);
+        await this.addPodcastLaunchKitMessage({
+            sessionId,
+            status: 'planning',
+            plan: {
+                title: options.prompt,
+                summary: 'Researching sources, shaping the episode, and drafting a production plan.',
+                brief: options.brief,
+            },
+            render: {
+                stages: {
+                    research: { status: 'running' },
+                    script: { status: 'pending' },
+                    storyboard: { status: 'pending' },
+                },
+            },
+        }, { sessionId, messageId });
+        uiHelpers.closeImageModal();
         uiHelpers.setImageGenerateButtonState(true);
         uiHelpers.showToast('Researching and drafting the production plan…', 'info', 'Content Studio');
         try {
             const result = await apiClient.planPodcastLaunchKit({
                 ...options,
-                sessionId: sessionManager.currentSessionId,
+                sessionId,
                 model: uiHelpers.currentModel,
                 reasoningEffort: uiHelpers.currentReasoningEffort,
                 metadata: { clientSurface: 'web-chat-content-studio' },
             });
-            if (result.sessionId) {
+            if (result.sessionId && sessionManager.currentSessionId === sessionId) {
                 sessionManager.currentSessionId = result.sessionId;
                 apiClient.setSessionId(result.sessionId);
             }
-            uiHelpers.renderPodcastLaunchKitReview(result.campaign);
+            await this.addPodcastLaunchKitMessage(result.campaign, {
+                sessionId: result.sessionId || sessionId,
+                messageId,
+            });
             uiHelpers.showToast('Production plan ready for review', 'success', 'Content Studio');
         } catch (error) {
             console.error('[ContentStudio] Planning failed:', error);
+            await this.addPodcastLaunchKitMessage({
+                sessionId,
+                status: 'failed',
+                plan: {
+                    title: options.prompt,
+                    summary: 'The launch-kit plan could not be completed.',
+                    brief: options.brief,
+                },
+                error: { message: error.message || 'Could not create the launch-kit plan' },
+                render: { stages: { planning: { status: 'failed' } } },
+            }, { sessionId, messageId });
             uiHelpers.showToast(error.message || 'Could not create the launch-kit plan', 'error', 'Content Studio');
         } finally {
             uiHelpers.setImageGenerateButtonState(false);
@@ -12945,6 +12989,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             });
             const result = await apiClient.revisePodcastLaunchKit(campaign.id, plan);
             uiHelpers.renderPodcastLaunchKitReview(result.campaign);
+            await this.addPodcastLaunchKitMessage(result.campaign);
             uiHelpers.showToast('Production plan updated', 'success', 'Content Studio');
             return true;
         } catch (error) {
@@ -12954,26 +12999,94 @@ curl -fsSIL --max-time 20 "https://$host"`;
         }
     }
 
-    async approvePodcastLaunchKit() {
-        let campaign = uiHelpers.contentStudioState.currentCampaign;
+    getPodcastLaunchKitMessage(campaignId, sessionId = sessionManager.currentSessionId) {
+        const normalizedCampaignId = String(campaignId || '').trim();
+        if (!normalizedCampaignId || !sessionId) return null;
+        return sessionManager.getMessages(sessionId).find((message) => (
+            message?.type === 'content-studio-campaign'
+            && String(message?.campaign?.id || message?.metadata?.campaignId || '') === normalizedCampaignId
+        )) || null;
+    }
+
+    getPodcastLaunchKitCampaign(campaignId, sessionId = sessionManager.currentSessionId) {
+        return this.getPodcastLaunchKitMessage(campaignId, sessionId)?.campaign || null;
+    }
+
+    openPodcastLaunchKitReview(campaignId) {
+        const campaign = this.getPodcastLaunchKitCampaign(campaignId);
+        if (!campaign?.id) {
+            uiHelpers.showToast('Could not find that launch-kit plan in this chat', 'error', 'Content Studio');
+            return;
+        }
+        uiHelpers.openPodcastModal();
+        uiHelpers.renderPodcastLaunchKitReview(campaign);
+    }
+
+    startPodcastLaunchKitProgressPolling(campaignId, sessionId, messageId) {
+        let stopped = false;
+        let requestPending = false;
+        const refresh = async () => {
+            if (stopped || requestPending) return;
+            requestPending = true;
+            try {
+                const result = await apiClient.getPodcastLaunchKit(campaignId);
+                if (!stopped && result?.campaign && result.campaign.status !== 'planned') {
+                    await this.addPodcastLaunchKitMessage(result.campaign, {
+                        sessionId,
+                        messageId,
+                        persist: false,
+                    });
+                }
+            } catch (_error) {
+                // The render request owns terminal errors; a missed progress poll is non-fatal.
+            } finally {
+                requestPending = false;
+            }
+        };
+        const timer = window.setInterval(refresh, 1600);
+        void refresh();
+        return () => {
+            stopped = true;
+            window.clearInterval(timer);
+        };
+    }
+
+    async approvePodcastLaunchKit(campaignId = '') {
+        let campaign = campaignId
+            ? this.getPodcastLaunchKitCampaign(campaignId)
+            : uiHelpers.contentStudioState.currentCampaign;
         if (!campaign?.id) return;
+        const sessionId = campaign.sessionId || sessionManager.currentSessionId;
+        const existingMessage = this.getPodcastLaunchKitMessage(campaign.id, sessionId);
+        const messageId = existingMessage?.id || `content-studio-${campaign.id}`;
         const textarea = document.getElementById('content-studio-plan-json');
-        if (textarea) {
+        const modal = document.getElementById('image-modal');
+        const isEditingThisCampaign = uiHelpers.contentStudioState.currentCampaign?.id === campaign.id
+            && textarea
+            && !modal?.classList.contains('hidden');
+        if (isEditingThisCampaign) {
             const saved = await this.savePodcastLaunchKitPlan();
             if (!saved) return;
             campaign = uiHelpers.contentStudioState.currentCampaign;
         }
         uiHelpers.setContentStudioStep('produce');
+        uiHelpers.closeImageModal();
         uiHelpers.setImageGenerateButtonState(true);
+        await this.addPodcastLaunchKitMessage({ ...campaign, status: 'rendering' }, {
+            sessionId,
+            messageId,
+        });
+        let stopPolling = () => {};
         uiHelpers.showToast('Producing audio, cover art, video, clips, and package…', 'info', 'Content Studio');
         try {
-            const result = await apiClient.renderPodcastLaunchKit(campaign.id, campaign.plan.revision, {
+            const renderPromise = apiClient.renderPodcastLaunchKit(campaign.id, campaign.plan.revision, {
                 model: uiHelpers.currentModel,
                 reasoningEffort: uiHelpers.currentReasoningEffort,
             });
+            stopPolling = this.startPodcastLaunchKitProgressPolling(campaign.id, sessionId, messageId);
+            const result = await renderPromise;
             uiHelpers.contentStudioState.currentCampaign = result.campaign;
-            uiHelpers.closeImageModal();
-            await this.addPodcastLaunchKitMessage(result.campaign);
+            await this.addPodcastLaunchKitMessage(result.campaign, { sessionId, messageId });
             uiHelpers.showToast('Podcast launch kit is ready', 'success', 'Content Studio');
         } catch (error) {
             console.error('[ContentStudio] Production failed:', error);
@@ -12981,19 +13094,20 @@ curl -fsSIL --max-time 20 "https://$host"`;
             try {
                 const refreshed = await apiClient.requestContentStudio(`/campaigns/${encodeURIComponent(campaign.id)}`);
                 if (refreshed.campaign) {
-                    uiHelpers.closeImageModal();
-                    await this.addPodcastLaunchKitMessage(refreshed.campaign);
+                    await this.addPodcastLaunchKitMessage(refreshed.campaign, { sessionId, messageId });
                 }
             } catch (_refreshError) {
                 uiHelpers.setContentStudioStep('review');
             }
         } finally {
+            stopPolling();
             uiHelpers.setImageGenerateButtonState(false);
         }
     }
 
-    async addPodcastLaunchKitMessage(campaign) {
-        const sessionId = sessionManager.currentSessionId || campaign.sessionId;
+    async addPodcastLaunchKitMessage(campaign, options = {}) {
+        const sessionId = options.sessionId || campaign.sessionId || sessionManager.currentSessionId;
+        if (!sessionId) return null;
         const render = campaign.render || {};
         const campaignArtifacts = [
             ...(render.podcast?.artifacts || []),
@@ -13003,8 +13117,11 @@ curl -fsSIL --max-time 20 "https://$host"`;
             render.package,
         ].filter((artifact) => artifact?.id);
         campaignArtifacts.forEach((artifact) => window.fileManager?.addFile?.(artifact, { sessionId }));
+        const existingMessage = campaign.id
+            ? this.getPodcastLaunchKitMessage(campaign.id, sessionId)
+            : null;
         const message = {
-            id: `content-studio-${campaign.id}`,
+            id: options.messageId || existingMessage?.id || `content-studio-${campaign.id || uiHelpers.generateMessageId()}`,
             role: 'assistant',
             type: 'content-studio-campaign',
             content: `Podcast launch kit: ${campaign.plan?.title || 'Campaign'}`,
@@ -13012,11 +13129,16 @@ curl -fsSIL --max-time 20 "https://$host"`;
             metadata: { contentStudio: true, campaignId: campaign.id, campaign },
             timestamp: new Date().toISOString(),
         };
-        const saved = sessionManager.addMessage(sessionId, message);
-        this.renderOrReplaceMessage(saved);
-        void sessionManager.syncMessageToBackend(sessionId, saved);
-        uiHelpers.hideWelcomeMessage();
-        uiHelpers.scrollToBottom();
+        const saved = this.upsertSessionMessage(sessionId, message);
+        if (this.isVisibleSession(sessionId)) {
+            this.renderOrReplaceMessage(saved);
+            uiHelpers.hideWelcomeMessage();
+            uiHelpers.scrollToBottom();
+        }
+        if (options.persist !== false) {
+            void sessionManager.syncMessageToBackend(sessionId, saved);
+        }
+        return saved;
     }
 
     async retryPodcastLaunchKitStage(campaignId, stage) {

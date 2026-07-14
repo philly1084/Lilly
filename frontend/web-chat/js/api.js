@@ -2569,6 +2569,10 @@ class OpenAIAPIClient extends EventTarget {
         return this.requestContentStudio('/launch-kits/plan', { method: 'POST', body: input });
     }
 
+    async getPodcastLaunchKit(id) {
+        return this.requestContentStudio(`/campaigns/${encodeURIComponent(id)}`);
+    }
+
     async revisePodcastLaunchKit(id, plan) {
         return this.requestContentStudio(`/launch-kits/${encodeURIComponent(id)}/plan`, {
             method: 'PATCH',

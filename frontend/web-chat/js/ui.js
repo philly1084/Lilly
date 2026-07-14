@@ -6591,6 +6591,9 @@ class UIHelpers {
         const plan = campaign.plan || {};
         const render = campaign.render || {};
         const stages = render.stages || {};
+        const status = String(campaign.status || 'ready');
+        const isWorking = status === 'planning' || status === 'rendering';
+        const isPlanned = status === 'planned';
         const artifactLink = (artifact, label, assetType = '', index = '') => artifact?.downloadUrl
             ? `<div class="content-studio-asset"><a href="${this.escapeHtmlAttr(artifact.downloadUrl)}" target="_blank" rel="noopener"><strong>${this.escapeHtml(label)}</strong><span>${this.escapeHtml(artifact.filename || 'Open asset')}</span></a><div><button type="button" onclick="app.reusePodcastLaunchKitAsset('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(artifact.id || artifact.artifactId || '')}','${this.escapeHtmlAttr(label)}')">Use</button>${assetType ? `<button type="button" onclick="app.regeneratePodcastLaunchKitAsset('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(assetType)}','${this.escapeHtmlAttr(index)}')">Regenerate</button>` : ''}</div></div>`
             : '';
@@ -6598,21 +6601,56 @@ class UIHelpers {
             <div class="content-studio-stage ${this.escapeHtmlAttr(stage.status || 'pending')}">
                 <span>${this.escapeHtml(id.replace(/([A-Z])/g, ' $1'))}</span>
                 <strong>${this.escapeHtml(stage.status || 'pending')}</strong>
-                ${stage.status === 'failed' ? `<button type="button" onclick="app.retryPodcastLaunchKitStage('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(id)}')">Retry</button>` : ''}
+                ${stage.status === 'failed' && campaign.id ? `<button type="button" onclick="app.retryPodcastLaunchKitStage('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(id)}')">Retry</button>` : ''}
             </div>`).join('');
+        const clips = Array.isArray(plan.promoClips) ? plan.promoClips : [];
+        const sources = Array.isArray(plan.sources) ? plan.sources : [];
+        const planSummary = plan.brief?.durationMinutes || plan.episodeFormat || clips.length || sources.length
+            ? `<div class="content-studio-plan-grid">
+                <div><strong>${plan.episodeFormat === 'two-host' ? 'Two hosts' : 'Single host'}</strong><span>Episode format</span></div>
+                <div><strong>${Number(plan.brief?.durationMinutes) || 5} minutes</strong><span>Target runtime</span></div>
+                <div><strong>${clips.filter((clip) => clip.approved !== false).length} promo clips</strong><span>Approved for production</span></div>
+                <div><strong>${sources.length} sources</strong><span>Saved with provenance</span></div>
+            </div>`
+            : '';
+        const progressMarkup = isWorking
+            ? `<div class="content-studio-live-progress" role="status" aria-live="polite">
+                <span class="content-studio-progress-spinner" aria-hidden="true"></span>
+                <span><strong>${status === 'planning' ? 'Building the production plan' : 'Producing your launch kit'}</strong><small>${status === 'planning' ? 'Research and reasoning continue in this chat.' : 'This card updates as each saved stage finishes.'}</small></span>
+            </div>`
+            : '';
+        const errorMarkup = campaign.error?.message
+            ? `<p class="content-studio-error" role="alert">${this.escapeHtml(campaign.error.message)}</p>`
+            : '';
         const audioUrl = render.podcast?.audio?.inlinePath || render.podcast?.audio?.downloadUrl || render.podcast?.artifact?.downloadUrl || '';
         const coverUrl = render.coverArt?.inlinePath || render.coverArt?.url || render.coverArt?.downloadUrl || '';
         const fullVideoUrl = render.fullVideo?.video?.inlinePath || render.fullVideo?.artifact?.downloadUrl || '';
         const promoVideos = (render.promoClips || []).map((clip) => clip.video?.inlinePath || clip.artifact?.downloadUrl || '').filter(Boolean);
+        const plannedActions = isPlanned && campaign.id
+            ? `<div class="content-studio-inline-actions content-studio-chat-actions">
+                <button type="button" class="btn-secondary" onclick="app.openPodcastLaunchKitReview('${this.escapeHtmlAttr(campaign.id)}')">Review or edit plan</button>
+                <button type="button" class="btn-primary" onclick="app.approvePodcastLaunchKit('${this.escapeHtmlAttr(campaign.id)}')">Approve and produce kit</button>
+            </div>`
+            : '';
+        const finishedActions = ['complete', 'partial'].includes(status) && campaign.id
+            ? `<button type="button" class="btn-secondary" onclick="app.reusePodcastLaunchKit('${this.escapeHtmlAttr(campaign.id)}')">Use this kit in a follow-up</button>`
+            : '';
+        const failedActions = status === 'failed' && !campaign.id
+            ? '<button type="button" class="btn-secondary" onclick="uiHelpers.openPodcastModal()">Try launch kit again</button>'
+            : '';
         const messageEl = document.createElement('div');
         messageEl.className = 'message assistant content-studio-campaign-message';
         messageEl.id = message.id || this.generateMessageId();
         messageEl.dataset.messageId = messageEl.id;
         messageEl.setAttribute('role', 'article');
         messageEl.setAttribute('aria-label', 'Podcast launch kit campaign workspace');
+        messageEl.setAttribute('aria-busy', isWorking ? 'true' : 'false');
         messageEl.innerHTML = `<div class="message-content"><div class="content-studio-campaign">
-            <div class="content-studio-review-header"><div><span class="content-studio-eyebrow">Podcast launch kit</span><h3>${this.escapeHtml(plan.title || 'Campaign')}</h3></div><span class="content-studio-status ${this.escapeHtmlAttr(campaign.status || '')}">${this.escapeHtml(campaign.status || 'ready')}</span></div>
+            <div class="content-studio-review-header"><div><span class="content-studio-eyebrow">Podcast launch kit</span><h3>${this.escapeHtml(plan.title || 'Campaign')}</h3></div><span class="content-studio-status ${this.escapeHtmlAttr(status)}">${this.escapeHtml(status)}</span></div>
             <p>${this.escapeHtml(plan.summary || '')}</p>
+            ${progressMarkup}
+            ${errorMarkup}
+            ${planSummary}
             <div class="content-studio-stage-list">${stageMarkup}</div>
             <div class="content-studio-media-preview">
                 ${coverUrl ? `<img src="${this.escapeHtmlAttr(coverUrl)}" alt="${this.escapeHtmlAttr(plan.coverConcept?.alt || `Cover art for ${plan.title || 'podcast'}`)}">` : ''}
@@ -6627,8 +6665,10 @@ class UIHelpers {
                 ${(render.promoClips || []).map((clip, index) => artifactLink(clip.artifact, `Promo clip ${index + 1}`, 'promo', index)).join('')}
                 ${artifactLink(render.package, 'Launch kit bundle')}
             </div>
-            <details><summary>Credits and provenance (${(render.credits || []).length})</summary><ul>${(render.credits || []).map((credit) => `<li>${this.escapeHtml(credit.label || credit.type)}${credit.url ? ` — <a href="${this.escapeHtmlAttr(credit.url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}</ul></details>
-            <button type="button" class="btn-secondary" onclick="app.reusePodcastLaunchKit('${this.escapeHtmlAttr(campaign.id)}')">Use this kit in a follow-up</button>
+            ${(render.credits || []).length ? `<details><summary>Credits and provenance (${render.credits.length})</summary><ul>${render.credits.map((credit) => `<li>${this.escapeHtml(credit.label || credit.type)}${credit.url ? ` — <a href="${this.escapeHtmlAttr(credit.url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}</ul></details>` : ''}
+            ${plannedActions}
+            ${finishedActions}
+            ${failedActions}
         </div></div>`;
         return messageEl;
     }
