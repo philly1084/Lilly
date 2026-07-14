@@ -567,6 +567,52 @@ describe('/v1/chat/completions stream forwarding', () => {
         });
     });
 
+    test('reports serialized false tool results as failures in fallback summaries', async () => {
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: {
+                id: 'resp-compat-failed-tool-1',
+                model: 'gpt-4o',
+                output_text: 'I completed the request, but the final answer could not be synthesized from the model response.',
+                output: [],
+                metadata: {
+                    toolEvents: [{
+                        toolCall: {
+                            function: {
+                                name: 'web-fetch',
+                            },
+                        },
+                        result: {
+                            success: 'false',
+                            error: 'Source request was denied.',
+                        },
+                    }],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'Fetch the source.' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: false,
+                session_id: 'web-chat-stream-1',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body.choices[0].message.content).toContain('- web-fetch: failed.');
+        expect(response.body.choices[0].message.content).toContain('Error: Source request was denied.');
+        expect(response.body.choices[0].message.content).not.toContain('- web-fetch: succeeded.');
+    });
+
     test('ignores non-chat model ids before routing web-chat completions', async () => {
         executeConversationRuntime.mockResolvedValue({
             handledPersistence: true,

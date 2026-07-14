@@ -757,9 +757,20 @@ function isFinalSynthesisPlaceholder(text = '') {
     return !normalized || normalized === FINAL_SYNTHESIS_PLACEHOLDER;
 }
 
+function isCompatToolResultSuccessful(result = {}) {
+    const value = result?.success;
+    if (typeof value === 'string') {
+        return !['false', '0', 'no', 'off'].includes(value.trim().toLowerCase());
+    }
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+    return value !== false;
+}
+
 function summarizeCompatToolEvent(event = {}) {
     const toolName = String(event?.toolCall?.function?.name || event?.result?.toolId || 'tool').trim();
-    const success = event?.result?.success !== false;
+    const success = isCompatToolResultSuccessful(event?.result);
     const data = event?.result?.data || {};
     const stdout = stripNullCharacters(String(data?.stdout || '')).trim();
     const stderr = stripNullCharacters(String(data?.stderr || '')).trim();
