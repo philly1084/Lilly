@@ -92,3 +92,18 @@ describe('canvas color swatch accessibility', () => {
         expect(blue.getAttribute('aria-pressed')).toBe('true');
     });
 });
+
+describe('canvas custom color input accessibility', () => {
+    test('associates each visible custom color label with its input', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const document = dom.window.document;
+
+        expect(document.querySelector('label[for="customStrokeColor"]')?.textContent.trim())
+            .toBe('Custom stroke color');
+        expect(document.querySelector('label[for="customBackgroundColor"]')?.textContent.trim())
+            .toBe('Custom fill color');
+        expect(document.getElementById('customStrokeColor')?.labels).toHaveLength(1);
+        expect(document.getElementById('customBackgroundColor')?.labels).toHaveLength(1);
+    });
+});
