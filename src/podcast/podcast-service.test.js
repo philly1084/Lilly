@@ -73,13 +73,16 @@ jest.mock('../artifacts/artifact-service', () => ({
   artifactService: {
     buildPromptContext: jest.fn(),
   },
+  extractResponseText: jest.fn((response = {}) => String(
+    response.output_text ?? response.outputText ?? '',
+  )),
 }));
 
 const { createResponse } = require('../openai-client');
 const { ttsService } = require('../tts/tts-service');
 const { persistGeneratedAudio, updateGeneratedAudioSessionState } = require('../generated-audio-artifacts');
 const { audioProcessingService } = require('../audio/audio-processing-service');
-const { artifactService } = require('../artifacts/artifact-service');
+const { artifactService, extractResponseText } = require('../artifacts/artifact-service');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseWavBuffer, writeWavBuffer } = require('../audio/wav-utils');
 const { PodcastService, getPodcastScriptDesignOptions } = require('./podcast-service');
@@ -173,6 +176,45 @@ describe('PodcastService', () => {
     expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
       model: 'gpt-5.5',
       enableAutomaticToolCalls: false,
+    }));
+  });
+
+  test('accepts compatible camel-case output text for podcast scripts', async () => {
+    const compatibleScript = {
+      title: 'A Compatible Podcast',
+      summary: 'A script returned through a compatible response envelope.',
+      turns: [
+        { speaker: 'Maya', text: 'First, we establish the problem and why it matters.' },
+        { speaker: 'June', text: 'Then we connect that problem to a practical response.' },
+        { speaker: 'Maya', text: 'The evidence gives us a concrete next step.' },
+        { speaker: 'June', text: 'And the conclusion keeps the recommendation usable.' },
+      ],
+    };
+    createResponse.mockResolvedValueOnce({
+      outputText: JSON.stringify(compatibleScript),
+    });
+    artifactService.buildPromptContext.mockResolvedValueOnce(
+      'A concise source document for the compatible-response podcast.',
+    );
+
+    const result = await new PodcastService().createPodcast({
+      topic: 'Compatible response handling',
+      artifactIds: ['artifact-compatible-response'],
+      sourceMode: 'uploaded-files-only',
+      useOnlineResearch: false,
+    }, {
+      sessionId: 'session-compatible-response',
+    });
+
+    expect(extractResponseText).toHaveBeenCalledWith(expect.objectContaining({
+      outputText: JSON.stringify(compatibleScript),
+    }));
+    expect(result.script).toEqual(expect.objectContaining({
+      title: 'A Compatible Podcast',
+      turns: expect.arrayContaining([
+        expect.objectContaining({ text: 'First, we establish the problem and why it matters.' }),
+        expect.objectContaining({ text: 'And the conclusion keeps the recommendation usable.' }),
+      ]),
     }));
   });
 

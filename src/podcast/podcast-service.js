@@ -1,6 +1,6 @@
 const { config } = require('../config');
 const { createResponse } = require('../openai-client');
-const { artifactService } = require('../artifacts/artifact-service');
+const { artifactService, extractResponseText } = require('../artifacts/artifact-service');
 const { ttsService } = require('../tts/tts-service');
 const { normalizeTextForSpeech } = require('../tts/speech-text');
 const { persistGeneratedAudio, updateGeneratedAudioSessionState } = require('../generated-audio-artifacts');
@@ -898,22 +898,7 @@ function canRetryPodcastTtsWithAnotherVoice(error = {}) {
 }
 
 function getResponseText(response = {}) {
-  if (typeof response?.output_text === 'string' && response.output_text.trim()) {
-    return response.output_text.trim();
-  }
-
-  const output = Array.isArray(response?.output) ? response.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    for (const chunk of content) {
-      const text = chunk?.text || chunk?.output_text || '';
-      if (typeof text === 'string' && text.trim()) {
-        return text.trim();
-      }
-    }
-  }
-
-  return '';
+  return extractResponseText(response).trim();
 }
 
 function extractFetchedText(fetchData = {}, maxChars = MAX_PODCAST_SOURCE_EXCERPT_CHARS) {
