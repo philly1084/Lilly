@@ -76,6 +76,35 @@ describe('AgentCompanyService', () => {
         expect(JSON.parse(await fs.readFile(statePath, 'utf8')).heartbeat.status).toBe('standby');
     });
 
+    test('keeps runtime state separate for named project sessions', async () => {
+        let config = buildConfig({ sessionId: 'agent-company-alpha' });
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => config,
+            },
+            workloadService: {
+                isAvailable: () => false,
+            },
+            sessionStore: {},
+        });
+
+        await service.tick({ force: true, reason: 'alpha' });
+        const alphaPath = service.getStatePath(config);
+        config = buildConfig({ sessionId: 'agent-company-beta', companyGoal: 'Build the beta project.' });
+        const betaStatusBeforeTick = await service.getStatus();
+        await service.tick({ force: true, reason: 'beta' });
+        const betaPath = service.getStatePath(config);
+
+        expect(betaStatusBeforeTick.state.heartbeat.status).toBe('idle');
+        expect(alphaPath).not.toBe(betaPath);
+        expect(JSON.parse(await fs.readFile(alphaPath, 'utf8')).companyGoal)
+            .toContain('podcast company');
+        expect(JSON.parse(await fs.readFile(betaPath, 'utf8')).companyGoal)
+            .toBe('Build the beta project.');
+    });
+
     test('returns a completed canonical AgentRun envelope for a heartbeat', async () => {
         const agentRunService = new AgentRunService({
             store: new AsyncLabStore({ persistToPostgres: false }),

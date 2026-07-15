@@ -161,6 +161,44 @@ describe('/api/admin workload routes', () => {
         expect(heartbeatResponse.body.data.createdWorkloads).toHaveLength(1);
     });
 
+    test('lists named Agent Company projects with isolated run counts', async () => {
+        const configSpy = jest.spyOn(settingsController, 'getEffectiveAgentCompanyConfig').mockReturnValue({
+            activeProjectId: 'alpha',
+            sessionId: 'agent-company-alpha',
+            projects: [
+                { id: 'alpha', name: 'Alpha', sessionId: 'agent-company-alpha', companyGoal: 'Ship alpha.' },
+                { id: 'beta', name: 'Beta', sessionId: 'agent-company-beta', companyGoal: 'Ship beta.' },
+            ],
+        });
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                { id: 'work-alpha', sessionId: 'agent-company-alpha' },
+                { id: 'work-beta', sessionId: 'agent-company-beta' },
+            ]),
+            listAdminRuns: jest.fn(async () => [
+                { id: 'run-alpha', sessionId: 'agent-company-alpha', status: 'running' },
+                { id: 'run-beta', sessionId: 'agent-company-beta', status: 'completed' },
+            ]),
+        };
+
+        try {
+            const response = await request(buildApp(service)).get('/api/admin/agent-company/projects');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.activeProjectId).toBe('alpha');
+            expect(response.body.data.projects[0]).toMatchObject({
+                id: 'alpha',
+                workloadCount: 1,
+                runCount: 1,
+                activeRunCount: 1,
+            });
+            expect(response.body.data.projects[1].activeRunCount).toBe(0);
+        } finally {
+            configSpy.mockRestore();
+        }
+    });
+
     test('exposes an agent company workspace with CEO actions and deliverables', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

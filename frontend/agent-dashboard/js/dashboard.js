@@ -26,6 +26,8 @@ class Dashboard {
             agentCompanyStatus: null,
             agentCompanyWorkspace: null,
             agentCompanyFiles: null,
+            agentCompanyProjects: [],
+            activeAgentCompanyProjectId: '',
             companyActionRunId: null,
             companyActionContext: null,
             companyActionContexts: {},
@@ -369,6 +371,18 @@ class Dashboard {
         });
         document.getElementById('saveCompanyDirectionBtn')?.addEventListener('click', () => {
             this.saveAgentCompanyDirection();
+        });
+        document.getElementById('companyProjectSelect')?.addEventListener('change', (event) => {
+            this.activateAgentCompanyProject(event.target.value);
+        });
+        document.getElementById('companyNewProjectBtn')?.addEventListener('click', () => {
+            this.createAgentCompanyProject();
+        });
+        document.getElementById('companyArchiveProjectBtn')?.addEventListener('click', () => {
+            this.archiveAgentCompanyProject();
+        });
+        document.getElementById('companyClearHistoryBtn')?.addEventListener('click', () => {
+            this.clearAgentCompanyHistory();
         });
         document.getElementById('companyCeoDirection')?.addEventListener('input', () => {
             this.markInputDirty('companyCeoDirection');
@@ -3279,11 +3293,15 @@ class Dashboard {
     isAgentCompanyEntry(entry = {}, status = this.state.agentCompanyStatus) {
         const metadata = this.getAgentCompanyMetadata(entry);
         const companyHash = status?.state?.companyGoalHash || status?.config?.companyGoalHash || '';
+        const sessionId = status?.config?.sessionId || 'agent-company';
+        if (entry.sessionId) {
+            return entry.sessionId === sessionId;
+        }
         return metadata.enabled === true
             || metadata.heartbeatManaged === true
             || Boolean(metadata.planItemId)
             || (companyHash && metadata.companyGoalHash === companyHash)
-            || entry.sessionId === (status?.config?.sessionId || 'agent-company');
+            || entry.sessionId === sessionId;
     }
 
     getAgentCompanyWorkloads(workloads = [], status = this.state.agentCompanyStatus) {
@@ -5217,12 +5235,111 @@ class Dashboard {
     async loadAgentCompanyDashboard({ force = false } = {}) {
         await Promise.all([
             this.loadAgentCompanyWorkspace(),
+            this.loadAgentCompanyProjects(),
             this.searchAgentCompanyFiles(),
             this.loadWorkloads(),
         ]);
 
         if (force) {
             this.showToast('Agent company console refreshed', 'success');
+        }
+    }
+
+    async loadAgentCompanyProjects() {
+        try {
+            const response = await apiClient.get('/api/admin/agent-company/projects');
+            const payload = this.unwrapApiPayload(response, {});
+            this.state.agentCompanyProjects = Array.isArray(payload.projects) ? payload.projects : [];
+            this.state.activeAgentCompanyProjectId = payload.activeProjectId || '';
+            this.renderAgentCompanyProjects();
+            return payload;
+        } catch (error) {
+            console.warn('Error loading agent company projects:', error.message || error);
+            this.renderAgentCompanyProjects();
+            return { projects: [] };
+        }
+    }
+
+    renderAgentCompanyProjects() {
+        const select = document.getElementById('companyProjectSelect');
+        if (!select) return;
+        const projects = Array.isArray(this.state.agentCompanyProjects) ? this.state.agentCompanyProjects : [];
+        select.innerHTML = projects.length
+            ? projects.map((project) => `<option value="${this.escapeHtml(project.id)}">${this.escapeHtml(project.name)}${project.activeRunCount ? ` (${project.activeRunCount} active)` : ''}</option>`).join('')
+            : '<option value="">Main project</option>';
+        select.value = this.state.activeAgentCompanyProjectId || projects[0]?.id || '';
+        const active = projects.find((project) => project.id === select.value);
+        this.setTextContent('companyProjectSummary', active
+            ? `${active.workloadCount || 0} workloads, ${active.runCount || 0} runs${active.activeRunCount ? `, ${active.activeRunCount} active` : ''}. Other projects keep their files and history.`
+            : 'Project work stays separated by session.');
+        const archiveButton = document.getElementById('companyArchiveProjectBtn');
+        if (archiveButton) archiveButton.disabled = projects.length <= 1;
+    }
+
+    async createAgentCompanyProject() {
+        const name = String(window.prompt?.('Name the new Agent Company project:') || '').trim();
+        if (!name) return;
+        try {
+            await apiClient.post('/api/admin/agent-company/projects', { name });
+            this.state.companyActionHistory = [];
+            this.state.companyActionHistorySummary = null;
+            this.state.companyActionHistoryExpanded = false;
+            this.dirtyInputIds?.delete('companyCeoDirection');
+            await this.loadSettings();
+            await this.loadAgentCompanyDashboard({ force: true });
+            this.showToast(`Started ${name} as a clean project`, 'success');
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to create project', 'error');
+        }
+    }
+
+    async activateAgentCompanyProject(projectId = '') {
+        const id = String(projectId || '').trim();
+        if (!id || id === this.state.activeAgentCompanyProjectId) return;
+        try {
+            await apiClient.post(`/api/admin/agent-company/projects/${encodeURIComponent(id)}/activate`, {});
+            this.state.companyActionHistory = [];
+            this.state.companyActionHistorySummary = null;
+            this.state.companyActionHistoryExpanded = false;
+            this.dirtyInputIds?.delete('companyCeoDirection');
+            await this.loadSettings();
+            await this.loadAgentCompanyDashboard();
+            this.showToast('Agent Company project switched', 'success');
+        } catch (error) {
+            this.renderAgentCompanyProjects();
+            this.showToast(error.userMessage || error.message || 'Failed to switch project', 'error');
+        }
+    }
+
+    async archiveAgentCompanyProject() {
+        const id = this.state.activeAgentCompanyProjectId;
+        const active = this.state.agentCompanyProjects.find((project) => project.id === id);
+        if (!active || this.state.agentCompanyProjects.length <= 1) return;
+        const next = this.state.agentCompanyProjects.find((project) => project.id !== id);
+        if (!next || !window.confirm?.(`Archive “${active.name}”? Its stored work will remain available on disk.`)) return;
+        try {
+            await this.activateAgentCompanyProject(next.id);
+            await apiClient.delete(`/api/admin/agent-company/projects/${encodeURIComponent(id)}`);
+            await this.loadAgentCompanyProjects();
+            this.showToast(`${active.name} archived`, 'success');
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to archive project', 'error');
+        }
+    }
+
+    async clearAgentCompanyHistory() {
+        const active = this.state.agentCompanyProjects.find((project) => project.id === this.state.activeAgentCompanyProjectId);
+        if (!window.confirm?.(`Clear saved CEO action history for “${active?.name || 'this project'}”? Workloads, runs, and files will stay intact.`)) return;
+        try {
+            await apiClient.delete('/api/admin/agent-company/action-history');
+            this.state.companyActionHistory = [];
+            this.state.companyActionHistorySummary = null;
+            this.state.companyActionHistoryExpanded = false;
+            if (this.state.agentCompanyWorkspace) this.state.agentCompanyWorkspace.actionHistory = [];
+            this.renderCompanyActionHistory([]);
+            this.showToast('Project history cleared', 'success');
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to clear project history', 'error');
         }
     }
 

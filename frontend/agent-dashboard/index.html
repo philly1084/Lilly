@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lilly Mission Control</title>
-    <link rel="stylesheet" href="css/dashboard.css?v=admin-trustworthy-mission-v1">
+    <link rel="stylesheet" href="css/dashboard.css?v=agent-company-projects-v1">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
 </head>
 <body data-ui-surface="admin">
@@ -1094,6 +1094,17 @@
                                 Heartbeat Now
                             </button>
                         </div>
+                    </div>
+
+                    <div class="company-project-bar" aria-label="Agent Company projects">
+                        <label for="companyProjectSelect">Project</label>
+                        <select class="form-control" id="companyProjectSelect" aria-describedby="companyProjectSummary">
+                            <option value="">Loading projects...</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" id="companyNewProjectBtn" type="button">New Project</button>
+                        <button class="btn btn-secondary btn-sm" id="companyArchiveProjectBtn" type="button">Archive Project</button>
+                        <button class="btn btn-secondary btn-sm" id="companyClearHistoryBtn" type="button">Clear Saved History</button>
+                        <span id="companyProjectSummary" class="company-project-summary">Project work stays separated by session.</span>
                     </div>
 
                     <div class="stats-grid company-summary-grid">
@@ -2644,6 +2655,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-workload-refresh-progress-v1"></script>
+    <script src="js/dashboard.js?v=agent-company-projects-v1"></script>
 </body>
 </html>

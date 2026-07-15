@@ -173,6 +173,9 @@ function createAgentCompanyHarness(options = {}) {
         <span id="companyModelPolicy"></span>
         <span id="companyWorkspaceStatus"></span>
         <span id="companyDeliverableStatus"></span>
+        <select id="companyProjectSelect"></select>
+        <button id="companyArchiveProjectBtn"></button>
+        <span id="companyProjectSummary"></span>
         <span id="companyFileManagerStatus"></span>
         <span id="companyImprovementLoopStatus"></span>
         <textarea id="companyCeoDirection"></textarea>
@@ -1191,8 +1194,8 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-workload-refresh-progress-v1');
-        expect(html).toContain('css/dashboard.css?v=admin-trustworthy-mission-v1');
+        expect(html).toContain('dashboard.js?v=agent-company-projects-v1');
+        expect(html).toContain('css/dashboard.css?v=agent-company-projects-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
@@ -2240,6 +2243,23 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-trustworthy-mission-v1');
+        expect(html).toContain('dashboard.css?v=agent-company-projects-v1');
+    });
+
+    test('renders named Agent Company projects with active-run context', () => {
+        const { dashboard, dom } = createAgentCompanyHarness();
+        const { document } = dom.window;
+        dashboard.state.agentCompanyProjects = [
+            { id: 'alpha', name: 'Alpha launch', workloadCount: 3, runCount: 5, activeRunCount: 2 },
+            { id: 'archive', name: 'Prior research', workloadCount: 1, runCount: 4, activeRunCount: 0 },
+        ];
+        dashboard.state.activeAgentCompanyProjectId = 'alpha';
+
+        dashboard.renderAgentCompanyProjects();
+
+        expect(document.getElementById('companyProjectSelect').value).toBe('alpha');
+        expect(document.getElementById('companyProjectSelect').textContent).toContain('Alpha launch (2 active)');
+        expect(document.getElementById('companyProjectSummary').textContent).toContain('3 workloads, 5 runs, 2 active');
+        expect(document.getElementById('companyArchiveProjectBtn').disabled).toBe(false);
     });
 });

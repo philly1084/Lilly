@@ -91,6 +91,14 @@ function sanitizeText(value = '') {
     return String(value || '').trim();
 }
 
+function sanitizeProjectStateKey(value = '') {
+    return sanitizeText(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 100) || DEFAULT_SESSION_ID;
+}
+
 function sanitizeErrorMessage(error) {
     return sanitizeText(error?.message || error || 'Unknown error').slice(0, 240);
 }
@@ -231,6 +239,8 @@ function normalizeConfig(config = {}) {
         escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         roles: roles.slice(0, 8),
         dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),
+        activeProjectId: sanitizeText(config.activeProjectId || ''),
+        projects: Array.isArray(config.projects) ? config.projects.map((project) => ({ ...project })) : [],
         source: sanitizeText(config.source || ''),
     };
 }
@@ -335,9 +345,23 @@ class AgentCompanyService {
         );
     }
 
-    async readState() {
+    getStatePath(config = this.getConfig()) {
+        const sessionId = sanitizeText(config?.sessionId || DEFAULT_SESSION_ID) || DEFAULT_SESSION_ID;
+        if (sessionId === DEFAULT_SESSION_ID) {
+            return this.statePath;
+        }
+        return path.join(
+            path.dirname(this.statePath),
+            'agent-company',
+            'projects',
+            `${sanitizeProjectStateKey(sessionId)}-state.json`,
+        );
+    }
+
+    async readState(config = this.getConfig()) {
+        const statePath = this.getStatePath(config);
         try {
-            const raw = await fs.readFile(this.statePath, 'utf8');
+            const raw = await fs.readFile(statePath, 'utf8');
             const parsed = JSON.parse(raw);
             return {
                 ...defaultState(),
@@ -351,23 +375,24 @@ class AgentCompanyService {
         }
     }
 
-    async writeState(state = {}) {
+    async writeState(state = {}, config = this.getConfig()) {
+        const statePath = this.getStatePath(config);
         const nextState = {
             ...defaultState(),
             ...state,
             updatedAt: this.now().toISOString(),
-            statePath: this.statePath,
+            statePath,
         };
-        await fs.mkdir(path.dirname(this.statePath), { recursive: true });
-        const tempPath = `${this.statePath}.tmp`;
+        await fs.mkdir(path.dirname(statePath), { recursive: true });
+        const tempPath = `${statePath}.tmp`;
         await fs.writeFile(tempPath, JSON.stringify(nextState, null, 2), 'utf8');
-        await fs.rename(tempPath, this.statePath);
+        await fs.rename(tempPath, statePath);
         return nextState;
     }
 
     async getStatus() {
         const config = this.getConfig();
-        const state = await this.readState();
+        const state = await this.readState(config);
         return {
             available: Boolean(this.workloadService?.isAvailable?.()),
             config,
@@ -412,7 +437,7 @@ class AgentCompanyService {
         this.isTicking = true;
         try {
             const config = this.getConfig();
-            const state = await this.readState();
+            const state = await this.readState(config);
             if (!force && !this.shouldHeartbeat(state, config)) {
                 return {
                     available: Boolean(this.workloadService?.isAvailable?.()),
@@ -465,7 +490,7 @@ class AgentCompanyService {
     }
 
     async heartbeat({ config = this.getConfig(), state = null, reason = 'manual', force = false } = {}) {
-        const currentState = state || await this.readState();
+        const currentState = state || await this.readState(config);
         const now = this.now();
         const goalHash = hashGoal(config.companyGoal);
         const nextAt = new Date(now.getTime() + config.heartbeatMinutes * 60 * 1000).toISOString();
@@ -498,7 +523,7 @@ class AgentCompanyService {
                     companyWorkloads: 0,
                 },
                 createdWorkloads: [],
-            });
+            }, config);
             return { available: false, config, state: saved };
         }
 
@@ -530,7 +555,7 @@ class AgentCompanyService {
                 },
                 heartbeat,
                 dailyAlignment,
-            });
+            }, config);
             return { available: false, config, state: saved };
         }
 
@@ -548,7 +573,7 @@ class AgentCompanyService {
             : this.buildWeeklySchedule(config, now, goalHash);
         let companyWorkloads = [];
         try {
-            companyWorkloads = await this.listCompanyWorkloads(goalHash, weekKey);
+            companyWorkloads = await this.listCompanyWorkloads(goalHash, weekKey, config.sessionId);
         } catch (error) {
             const heartbeat = {
                 status: 'workload_list_failed',
@@ -583,7 +608,7 @@ class AgentCompanyService {
                 },
                 heartbeat,
                 dailyAlignment,
-            });
+            }, config);
             return { available: false, config, state: saved };
         }
         const existingPlanIds = new Set(companyWorkloads
@@ -677,7 +702,7 @@ class AgentCompanyService {
                     .filter((entry) => entry?.id && currentWorkloadIds.has(entry.id) && !createdIds.has(entry.id))
                     .slice(0, 50)),
             ],
-        });
+        }, config);
 
         return {
             available: true,
@@ -789,11 +814,12 @@ class AgentCompanyService {
         };
     }
 
-    async listCompanyWorkloads(goalHash = '', weekKey = '') {
+    async listCompanyWorkloads(goalHash = '', weekKey = '', sessionId = '') {
         const workloads = await this.workloadService.listAdminWorkloads(200);
         return workloads.filter((workload) => {
             const metadata = workload?.metadata?.agentCompany || {};
             return metadata.enabled === true
+                && (!sessionId || !workload.sessionId || workload.sessionId === sessionId)
                 && (!goalHash || metadata.companyGoalHash === goalHash)
                 && (!weekKey || metadata.weekKey === weekKey);
         });

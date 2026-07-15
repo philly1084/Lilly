@@ -2882,6 +2882,40 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning::b
     border-top: 1px solid var(--border-secondary);
 }
 
+.company-project-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+}
+
+.company-project-bar label {
+    font-weight: 600;
+}
+
+.company-project-bar select {
+    width: min(22rem, 100%);
+}
+
+.company-project-summary {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    margin-left: auto;
+}
+
+@media (max-width: 720px) {
+    .company-project-bar select,
+    .company-project-summary {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
 .company-action-history__header,
 .company-action-history__item {
     display: grid;

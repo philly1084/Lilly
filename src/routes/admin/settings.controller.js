@@ -1328,6 +1328,31 @@ class SettingsController {
     next.maxConcurrentWorkloads = parseBoundedPositiveInteger(next.maxConcurrentWorkloads, current.maxConcurrentWorkloads || 1, 4);
     next.ownerId = String(next.ownerId || 'system').trim().slice(0, 80) || 'system';
     next.sessionId = String(next.sessionId || 'agent-company').trim().slice(0, 120) || 'agent-company';
+    next.projects = (Array.isArray(next.projects) ? next.projects : [])
+      .map((project, index) => {
+        if (!project || typeof project !== 'object' || Array.isArray(project)) return null;
+        const id = String(project.id || `project-${index + 1}`)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 80);
+        const sessionId = String(project.sessionId || '').trim().slice(0, 120);
+        if (!id || !sessionId) return null;
+        return {
+          id,
+          name: String(project.name || `Project ${index + 1}`).trim().slice(0, 120) || `Project ${index + 1}`,
+          sessionId,
+          companyGoal: String(project.companyGoal || '').trim().slice(0, 4000),
+          enabled: project.enabled === true,
+          archived: project.archived === true,
+          createdAt: String(project.createdAt || '').trim().slice(0, 40) || null,
+          updatedAt: String(project.updatedAt || '').trim().slice(0, 40) || null,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 40);
+    next.activeProjectId = String(next.activeProjectId || '').trim().slice(0, 80);
     next.primaryModel = String(next.primaryModel || '').trim().slice(0, 120);
     next.escalationModels = this.normalizeStringArray(
       next.escalationModels ?? next.fallbackModels ?? next.modelFallbacks,
@@ -1342,6 +1367,12 @@ class SettingsController {
     delete next.fallbackModels;
     delete next.modelFallbacks;
     return next;
+  }
+
+  async updateAgentCompanySettings(value = {}) {
+    this.settings.agentCompany = this.normalizeAgentCompanySettings(value);
+    await this.saveSettings();
+    return this.getEffectiveAgentCompanyConfig();
   }
 
   getPublicSettings() {

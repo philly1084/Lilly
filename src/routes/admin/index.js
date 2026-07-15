@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const router = express.Router();
@@ -50,6 +51,51 @@ function getRequestOwnerId(req) {
   return String(req.user?.username || req.user?.id || '').trim() || null;
 }
 
+function sanitizeProjectId(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function getAgentCompanyProjects(config = {}) {
+  const configured = Array.isArray(config.projects) ? config.projects.filter((project) => !project.archived) : [];
+  if (configured.length > 0) {
+    return configured;
+  }
+  return [{
+    id: 'main',
+    name: 'Main project',
+    sessionId: config.sessionId || 'agent-company',
+    companyGoal: config.companyGoal || '',
+    enabled: config.enabled === true,
+    archived: false,
+    createdAt: null,
+    updatedAt: null,
+  }];
+}
+
+function snapshotActiveAgentCompanyProject(config = {}, projects = [], now = new Date().toISOString()) {
+  const activeId = config.activeProjectId
+    || projects.find((project) => project.sessionId === config.sessionId)?.id
+    || projects[0]?.id;
+  return projects.map((project) => project.id === activeId ? {
+    ...project,
+    companyGoal: config.companyGoal || '',
+    enabled: config.enabled === true,
+    updatedAt: now,
+  } : project);
+}
+
+async function saveAgentCompanyProjectConfig(config = {}) {
+  if (typeof settingsController.updateAgentCompanySettings !== 'function') {
+    throw new Error('Agent company project settings are unavailable');
+  }
+  return settingsController.updateAgentCompanySettings(config);
+}
+
 function getAgentCompanyMetadata(entry = {}) {
   return entry?.metadata?.agentCompany
     || entry?.workload?.metadata?.agentCompany
@@ -59,11 +105,15 @@ function getAgentCompanyMetadata(entry = {}) {
 function isAgentCompanyEntry(entry = {}, status = {}) {
   const metadata = getAgentCompanyMetadata(entry);
   const companyHash = status?.state?.companyGoalHash || status?.config?.companyGoalHash || '';
+  const sessionId = status?.config?.sessionId || 'agent-company';
+  if (entry.sessionId) {
+    return entry.sessionId === sessionId;
+  }
   return metadata.enabled === true
     || metadata.heartbeatManaged === true
     || Boolean(metadata.planItemId)
     || (companyHash && metadata.companyGoalHash === companyHash)
-    || entry.sessionId === (status?.config?.sessionId || 'agent-company');
+    || entry.sessionId === sessionId;
 }
 
 function extractRunOutputArtifacts(run = {}) {
@@ -230,8 +280,18 @@ function normalizeRunOutputPreview(run = {}, maxLength = 220) {
   return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trimEnd()}...` : raw;
 }
 
-function getAgentCompanyActionHistoryPath() {
-  return path.join(getStateDirectory(), 'agent-company', 'ceo-action-history.json');
+function getAgentCompanyActionHistoryPath(sessionId = 'agent-company') {
+  const normalizedSessionId = String(sessionId || 'agent-company').trim() || 'agent-company';
+  if (normalizedSessionId === 'agent-company') {
+    return path.join(getStateDirectory(), 'agent-company', 'ceo-action-history.json');
+  }
+  return path.join(
+    getStateDirectory(),
+    'agent-company',
+    'projects',
+    sanitizeProjectId(normalizedSessionId) || 'agent-company',
+    'ceo-action-history.json',
+  );
 }
 
 function getActionLookupKey(action = {}) {
@@ -261,9 +321,9 @@ function normalizeCeoActionSnapshot(action = {}, snapshotAt = new Date().toISOSt
   };
 }
 
-async function readCeoActionHistory() {
+async function readCeoActionHistory(sessionId = 'agent-company') {
   try {
-    const raw = await fs.readFile(getAgentCompanyActionHistoryPath(), 'utf8');
+    const raw = await fs.readFile(getAgentCompanyActionHistoryPath(sessionId), 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed?.actions) ? parsed.actions : [];
   } catch (error) {
@@ -274,15 +334,15 @@ async function readCeoActionHistory() {
   }
 }
 
-async function writeCeoActionHistory(actions = []) {
-  const historyPath = getAgentCompanyActionHistoryPath();
+async function writeCeoActionHistory(actions = [], sessionId = 'agent-company') {
+  const historyPath = getAgentCompanyActionHistoryPath(sessionId);
   await fs.mkdir(path.dirname(historyPath), { recursive: true });
   const tempPath = `${historyPath}.tmp`;
   await fs.writeFile(tempPath, JSON.stringify({ actions }, null, 2), 'utf8');
   await fs.rename(tempPath, historyPath);
 }
 
-async function snapshotCeoActions(actions = []) {
+async function snapshotCeoActions(actions = [], sessionId = 'agent-company') {
   if (process.env.NODE_ENV === 'test' && !getConfiguredStateDirectoryValue()) {
     return;
   }
@@ -299,22 +359,22 @@ async function snapshotCeoActions(actions = []) {
   try {
     const byKey = new Map();
     snapshots.forEach((action) => byKey.set(action.actionKey, action));
-    const existing = await readCeoActionHistory();
+    const existing = await readCeoActionHistory(sessionId);
     existing.forEach((action) => {
       const actionKey = getActionLookupKey(action);
       if (actionKey && !byKey.has(actionKey)) {
         byKey.set(actionKey, action);
       }
     });
-    await writeCeoActionHistory(Array.from(byKey.values()).slice(0, CEO_ACTION_HISTORY_LIMIT));
+    await writeCeoActionHistory(Array.from(byKey.values()).slice(0, CEO_ACTION_HISTORY_LIMIT), sessionId);
   } catch (error) {
     console.warn('[Admin] Failed to snapshot Agent Company action history:', error.message);
   }
 }
 
-async function listRecentCeoActionHistory(limit = 6) {
+async function listRecentCeoActionHistory(limit = 6, sessionId = 'agent-company') {
   const seen = new Set();
-  return (await readCeoActionHistory())
+  return (await readCeoActionHistory(sessionId))
     .filter((action) => {
       const actionKey = getActionLookupKey(action);
       if (!actionKey || seen.has(actionKey)) {
@@ -631,8 +691,8 @@ async function buildAgentCompanyWorkspacePayload(req) {
     workloads,
     runs,
   );
-  await snapshotCeoActions(actionQueue);
-  const actionHistory = await listRecentCeoActionHistory();
+  await snapshotCeoActions(actionQueue, sessionId);
+  const actionHistory = await listRecentCeoActionHistory(6, sessionId);
 
   return {
     status,
@@ -1021,10 +1081,134 @@ router.get('/agent-company/workspace', async (req, res, next) => {
   }
 });
 
+router.get('/agent-company/projects', async (req, res, next) => {
+  try {
+    const config = settingsController.getEffectiveAgentCompanyConfig();
+    const projects = getAgentCompanyProjects(config);
+    const activeProjectId = config.activeProjectId
+      || projects.find((project) => project.sessionId === config.sessionId)?.id
+      || projects[0]?.id;
+    const workloadService = req.app.locals.agentWorkloadService;
+    let workloads = [];
+    let runs = [];
+    if (workloadService?.isAvailable?.()) {
+      [workloads, runs] = await Promise.all([
+        workloadService.listAdminWorkloads(500),
+        workloadService.listAdminRuns(500),
+      ]);
+    }
+    res.json({
+      success: true,
+      data: {
+        activeProjectId,
+        projects: projects.map((project) => ({
+          ...project,
+          workloadCount: workloads.filter((workload) => workload.sessionId === project.sessionId).length,
+          runCount: runs.filter((run) => run.sessionId === project.sessionId).length,
+          activeRunCount: runs.filter((run) => run.sessionId === project.sessionId && ['queued', 'running'].includes(run.status)).length,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/agent-company/projects', async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || '').trim().slice(0, 120);
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Project name is required' });
+    }
+    const now = new Date().toISOString();
+    const config = settingsController.getEffectiveAgentCompanyConfig();
+    const projects = snapshotActiveAgentCompanyProject(config, getAgentCompanyProjects(config), now);
+    const baseId = sanitizeProjectId(name) || 'project';
+    let id = baseId;
+    let suffix = 2;
+    while (projects.some((project) => project.id === id)) {
+      id = `${baseId}-${suffix++}`.slice(0, 80);
+    }
+    const sessionId = `agent-company-${id}-${crypto.randomUUID().slice(0, 8)}`.slice(0, 120);
+    const project = {
+      id,
+      name,
+      sessionId,
+      companyGoal: String(req.body?.companyGoal || '').trim().slice(0, 4000),
+      enabled: req.body?.enabled === true,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const nextConfig = await saveAgentCompanyProjectConfig({
+      ...config,
+      activeProjectId: id,
+      projects: [...projects, project],
+      sessionId,
+      companyGoal: project.companyGoal,
+      enabled: project.enabled,
+    });
+    res.status(201).json({ success: true, data: { project, config: nextConfig } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/agent-company/projects/:id/activate', async (req, res, next) => {
+  try {
+    const targetId = sanitizeProjectId(req.params.id);
+    const now = new Date().toISOString();
+    const config = settingsController.getEffectiveAgentCompanyConfig();
+    const projects = snapshotActiveAgentCompanyProject(config, getAgentCompanyProjects(config), now);
+    const project = projects.find((candidate) => candidate.id === targetId && !candidate.archived);
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Agent company project was not found' });
+    }
+    const nextConfig = await saveAgentCompanyProjectConfig({
+      ...config,
+      activeProjectId: project.id,
+      projects,
+      sessionId: project.sessionId,
+      companyGoal: project.companyGoal || '',
+      enabled: project.enabled === true,
+    });
+    res.json({ success: true, data: { project, config: nextConfig } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/agent-company/projects/:id', async (req, res, next) => {
+  try {
+    const targetId = sanitizeProjectId(req.params.id);
+    const now = new Date().toISOString();
+    const config = settingsController.getEffectiveAgentCompanyConfig();
+    const projects = snapshotActiveAgentCompanyProject(config, getAgentCompanyProjects(config), now);
+    const activeProjectId = config.activeProjectId
+      || projects.find((project) => project.sessionId === config.sessionId)?.id
+      || projects[0]?.id;
+    if (targetId === activeProjectId) {
+      return res.status(409).json({ success: false, error: 'Switch projects before archiving the active project' });
+    }
+    if (!projects.some((project) => project.id === targetId)) {
+      return res.status(404).json({ success: false, error: 'Agent company project was not found' });
+    }
+    const nextProjects = projects.map((project) => project.id === targetId
+      ? { ...project, archived: true, updatedAt: now }
+      : project);
+    await saveAgentCompanyProjectConfig({ ...config, projects: nextProjects, activeProjectId });
+    res.json({ success: true, data: { archivedProjectId: targetId } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/agent-company/action-history', async (req, res, next) => {
   try {
     const limit = normalizeCeoActionHistoryLimit(req.query.limit);
-    const actions = await listRecentCeoActionHistory(limit);
+    const status = await req.app.locals.agentCompanyService?.getStatus?.();
+    const sessionId = status?.config?.sessionId || 'agent-company';
+    const actions = await listRecentCeoActionHistory(limit, sessionId);
     res.json({
       success: true,
       data: {
@@ -1034,6 +1218,17 @@ router.get('/agent-company/action-history', async (req, res, next) => {
         maxLimit: CEO_ACTION_HISTORY_LIMIT,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/agent-company/action-history', async (req, res, next) => {
+  try {
+    const status = await req.app.locals.agentCompanyService?.getStatus?.();
+    const sessionId = status?.config?.sessionId || 'agent-company';
+    await writeCeoActionHistory([], sessionId);
+    res.json({ success: true, data: { cleared: true, sessionId } });
   } catch (error) {
     next(error);
   }
@@ -1050,7 +1245,8 @@ router.get('/agent-company/action', async (req, res, next) => {
     const action = findCeoAction(payload.actionQueue, actionKey);
 
     if (!action) {
-      const historicalAction = findCeoAction(await readCeoActionHistory(), actionKey);
+      const sessionId = payload?.workspace?.sessionId || 'agent-company';
+      const historicalAction = findCeoAction(await readCeoActionHistory(sessionId), actionKey);
       if (!historicalAction) {
         return res.status(404).json({ success: false, error: 'Agent company action was not found' });
       }
