@@ -36,6 +36,8 @@ const NotationAPI = {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     reconnectDelay: 3000,
+    reconnectTimer: null,
+    shouldReconnect: true,
     isConnected: false,
     sessionId: null,
 
@@ -185,14 +187,28 @@ const NotationAPI = {
      * Connect WebSocket
      */
     connectWebSocket() {
+        this.shouldReconnect = true;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
         if (this.ws) {
-            this.ws.close();
+            const previousSocket = this.ws;
+            this.ws = null;
+            this.isConnected = false;
+            previousSocket.onclose = null;
+            previousSocket.close();
         }
 
         try {
-            this.ws = new WebSocket(this.config.wsUrl);
+            const socket = new WebSocket(this.config.wsUrl);
+            this.ws = socket;
 
-            this.ws.onopen = () => {
+            socket.onopen = () => {
+                if (this.ws !== socket || !this.shouldReconnect) {
+                    return;
+                }
                 console.log('WebSocket connected');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
@@ -203,7 +219,10 @@ const NotationAPI = {
                 }
             };
 
-            this.ws.onmessage = (event) => {
+            socket.onmessage = (event) => {
+                if (this.ws !== socket) {
+                    return;
+                }
                 try {
                     const data = JSON.parse(event.data);
                     this._handleWebSocketMessage(data);
@@ -212,7 +231,11 @@ const NotationAPI = {
                 }
             };
 
-            this.ws.onclose = () => {
+            socket.onclose = () => {
+                if (this.ws !== socket) {
+                    return;
+                }
+                this.ws = null;
                 console.log('WebSocket closed');
                 this.isConnected = false;
                 this._notifyStatus('disconnected');
@@ -221,11 +244,15 @@ const NotationAPI = {
                     this.callbacks.onDisconnect();
                 }
 
-                // Attempt reconnection
-                this._attemptReconnect();
+                if (this.shouldReconnect) {
+                    this._attemptReconnect();
+                }
             };
 
-            this.ws.onerror = (error) => {
+            socket.onerror = (error) => {
+                if (this.ws !== socket) {
+                    return;
+                }
                 console.error('WebSocket error:', error);
                 this._notifyStatus('error');
                 
@@ -243,9 +270,21 @@ const NotationAPI = {
      * Disconnect WebSocket
      */
     disconnect() {
+        this.shouldReconnect = false;
+        this.reconnectAttempts = 0;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
         if (this.ws) {
-            this.ws.close();
+            const socket = this.ws;
             this.ws = null;
+            socket.onclose = null;
+            socket.close();
+            this._notifyStatus('disconnected');
+            if (this.callbacks.onDisconnect) {
+                this.callbacks.onDisconnect();
+            }
         }
         this.isConnected = false;
     },
@@ -406,6 +445,9 @@ const NotationAPI = {
      * @private
      */
     _attemptReconnect() {
+        if (!this.shouldReconnect) {
+            return;
+        }
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.warn('Max reconnection attempts reached');
             this._notifyStatus('failed');
@@ -423,8 +465,11 @@ const NotationAPI = {
             this.callbacks.onReconnecting(this.reconnectAttempts);
         }
 
-        setTimeout(() => {
-            this.connectWebSocket();
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            if (this.shouldReconnect) {
+                this.connectWebSocket();
+            }
         }, delay);
     },
 

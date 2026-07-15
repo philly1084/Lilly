@@ -12,16 +12,34 @@ function loadNotationApi(fetchMock = jest.fn()) {
             host: 'localhost:3000',
         },
     };
+    class WebSocketMock {
+        static instances = [];
+        static OPEN = 1;
+
+        constructor(url) {
+            this.url = url;
+            this.readyState = 0;
+            this.send = jest.fn();
+            WebSocketMock.instances.push(this);
+        }
+
+        close() {
+            this.onclose?.();
+        }
+    }
+    const setTimeoutMock = jest.fn(() => ({ timer: true }));
+    const clearTimeoutMock = jest.fn();
     const context = {
         module: { exports: {} },
         exports: {},
         window,
-        WebSocket: class WebSocket {},
+        WebSocket: WebSocketMock,
         fetch: fetchMock,
         AbortSignal: {
             timeout: jest.fn((ms) => ({ timeoutMs: ms })),
         },
-        setTimeout: jest.fn(),
+        setTimeout: setTimeoutMock,
+        clearTimeout: clearTimeoutMock,
         console,
     };
     window.window = window;
@@ -32,7 +50,10 @@ function loadNotationApi(fetchMock = jest.fn()) {
     return {
         NotationAPI: context.module.exports,
         abortSignal: context.AbortSignal,
+        clearTimeoutMock,
         fetchMock,
+        setTimeoutMock,
+        WebSocketMock,
     };
 }
 
@@ -48,6 +69,70 @@ describe('notation API health check', () => {
             signal: { timeoutMs: 10000 },
         });
         expect(abortSignal.timeout).toHaveBeenCalledWith(10000);
+    });
+});
+
+describe('notation API WebSocket lifecycle', () => {
+    test('intentional disconnect closes without scheduling a reconnect', () => {
+        const { NotationAPI, setTimeoutMock, WebSocketMock } = loadNotationApi();
+        const onDisconnect = jest.fn();
+        NotationAPI.callbacks = { ...NotationAPI.callbacks, onDisconnect };
+
+        NotationAPI.connectWebSocket();
+        const socket = WebSocketMock.instances[0];
+        socket.readyState = WebSocketMock.OPEN;
+        socket.onopen();
+
+        NotationAPI.disconnect();
+
+        expect(NotationAPI.isConnected).toBe(false);
+        expect(NotationAPI.ws).toBeNull();
+        expect(setTimeoutMock).not.toHaveBeenCalled();
+        expect(onDisconnect).toHaveBeenCalledTimes(1);
+    });
+
+    test('replaces an active socket without treating its close as a disconnect', () => {
+        const { NotationAPI, setTimeoutMock, WebSocketMock } = loadNotationApi();
+        const onDisconnect = jest.fn();
+        NotationAPI.callbacks = { ...NotationAPI.callbacks, onDisconnect };
+
+        NotationAPI.connectWebSocket();
+        const firstSocket = WebSocketMock.instances[0];
+        firstSocket.readyState = WebSocketMock.OPEN;
+        firstSocket.onopen();
+
+        NotationAPI.connectWebSocket();
+
+        expect(WebSocketMock.instances).toHaveLength(2);
+        expect(NotationAPI.ws).toBe(WebSocketMock.instances[1]);
+        expect(setTimeoutMock).not.toHaveBeenCalled();
+        expect(onDisconnect).not.toHaveBeenCalled();
+    });
+
+    test('disconnect cancels a pending reconnect before it can open another socket', () => {
+        const {
+            NotationAPI,
+            clearTimeoutMock,
+            setTimeoutMock,
+            WebSocketMock,
+        } = loadNotationApi();
+
+        NotationAPI.connectWebSocket();
+        WebSocketMock.instances[0].onclose();
+        const [reconnect] = setTimeoutMock.mock.calls[0];
+        const reconnectTimer = setTimeoutMock.mock.results[0].value;
+
+        NotationAPI.disconnect();
+        reconnect();
+
+        expect(clearTimeoutMock).toHaveBeenCalledWith(reconnectTimer);
+        expect(WebSocketMock.instances).toHaveLength(1);
+    });
+
+    test('serves the socket lifecycle fix with a cache-busted API script', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(html).toContain('<script src="js/api.js?v=20260715-socket-lifecycle"></script>');
     });
 });
 
