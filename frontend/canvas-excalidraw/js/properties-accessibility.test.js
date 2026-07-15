@@ -107,3 +107,32 @@ describe('canvas custom color input accessibility', () => {
         expect(document.getElementById('customBackgroundColor')?.labels).toHaveLength(1);
     });
 });
+
+describe('canvas grid snapping accessibility', () => {
+    test('keeps the toggle pressed state synchronized with grid snapping', () => {
+        const dom = new JSDOM(`
+            <button id="snapToGridBtn" class="action-btn" type="button" aria-pressed="false">
+                Snap to Grid
+            </button>
+        `);
+        dom.window.infiniteCanvas = {
+            snapToGrid: false,
+            toggleSnapToGrid() {
+                this.snapToGrid = !this.snapToGrid;
+                return this.snapToGrid;
+            },
+        };
+        const PropertiesManager = loadPropertiesManager(dom);
+
+        new PropertiesManager();
+
+        const button = dom.window.document.getElementById('snapToGridBtn');
+        button.click();
+        expect(button.classList.contains('active')).toBe(true);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+
+        button.click();
+        expect(button.classList.contains('active')).toBe(false);
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+    });
+});

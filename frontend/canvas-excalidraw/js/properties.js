@@ -280,6 +280,7 @@ class PropertiesManager {
             const btn = document.getElementById('snapToGridBtn');
             if (btn) {
                 btn.classList.toggle('active', enabled);
+                btn.setAttribute('aria-pressed', String(enabled));
             }
         });
         
