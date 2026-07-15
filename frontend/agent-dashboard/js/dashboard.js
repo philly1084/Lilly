@@ -1563,6 +1563,9 @@ class Dashboard {
             return;
         }
 
+        this.state.workloadsLoading = true;
+        this.updateWorkloadControls();
+
         try {
             const [workloadsResponse, runsResponse] = await Promise.all([
                 apiClient.getAdminWorkloads(100),
@@ -1612,6 +1615,8 @@ class Dashboard {
             this.renderAdminRuns([], this.state.workloadErrorMessage);
             this.renderAdminRunDetails(null, error, this.state.workloadErrorMessage);
             this.renderAgentCompanyDashboard();
+        } finally {
+            this.state.workloadsLoading = false;
             this.updateWorkloadControls();
         }
     }
@@ -1663,10 +1668,25 @@ class Dashboard {
         }
 
         const unsupported = this.state.workloadsSupported === false;
-        refreshButton.disabled = unsupported;
+        const loading = this.state.workloadsLoading === true;
+        const label = refreshButton.querySelector('#refreshWorkloadsLabel');
+
+        refreshButton.disabled = unsupported || loading;
+        refreshButton.setAttribute('aria-label', loading ? 'Refreshing workloads' : 'Refresh workloads');
+        if (loading) {
+            refreshButton.setAttribute('aria-busy', 'true');
+        } else {
+            refreshButton.removeAttribute('aria-busy');
+        }
         refreshButton.title = unsupported
             ? 'Deferred workloads require Postgres persistence.'
-            : 'Refresh deferred workloads';
+            : loading
+                ? 'Refreshing deferred workloads'
+                : 'Refresh deferred workloads';
+
+        if (label) {
+            label.textContent = loading ? 'Refreshing...' : 'Refresh Workloads';
+        }
     }
 
     async loadSelfReflectionUpdates({ force = false } = {}) {

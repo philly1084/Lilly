@@ -918,14 +918,14 @@
                 <!-- Workloads View -->
                 <section class="view" id="workloadsView">
                     <div class="page-actions">
-                        <button class="btn btn-primary" id="refreshWorkloadsBtn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <button class="btn btn-primary" id="refreshWorkloadsBtn" type="button" aria-label="Refresh workloads">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path d="M23 4v6h-6"/>
                                 <path d="M1 20v-6h6"/>
                                 <path d="M3.51 9a9 9 0 0114.13-3.36L23 10"/>
                                 <path d="M20.49 15a9 9 0 01-14.13 3.36L1 14"/>
                             </svg>
-                            Refresh Workloads
+                            <span id="refreshWorkloadsLabel">Refresh Workloads</span>
                         </button>
                     </div>
 
@@ -2644,6 +2644,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-modal-focus-lifecycle-v1"></script>
+    <script src="js/dashboard.js?v=admin-workload-refresh-progress-v1"></script>
 </body>
 </html>

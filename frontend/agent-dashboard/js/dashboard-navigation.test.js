@@ -732,6 +732,57 @@ describe('agent dashboard navigation accessibility', () => {
         expect(refreshButton.textContent).toBe('Refresh');
     });
 
+    test('exposes workload refresh progress and prevents duplicate requests', async () => {
+        const dom = new JSDOM(`
+            <button id="refreshWorkloadsBtn" type="button" aria-label="Refresh workloads">
+                <span id="refreshWorkloadsLabel">Refresh Workloads</span>
+            </button>
+        `);
+        let resolveWorkloads;
+        const apiClient = {
+            getAdminWorkloads: jest.fn(() => new Promise(resolve => {
+                resolveWorkloads = resolve;
+            })),
+            getAdminRuns: jest.fn(async () => []),
+        };
+        const Dashboard = loadDashboardClass(dom, { apiClient });
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.state = {
+            workloadsSupported: true,
+            workloads: [],
+            runs: [],
+            selectedRun: null,
+        };
+        dashboard.unwrapApiPayload = Dashboard.prototype.unwrapApiPayload.bind(dashboard);
+        dashboard.normalizeAdminWorkload = jest.fn(value => value);
+        dashboard.normalizeAdminRun = jest.fn(value => value);
+        dashboard.renderWorkloadSummary = jest.fn();
+        dashboard.renderAdminWorkloads = jest.fn();
+        dashboard.renderAdminRuns = jest.fn();
+        dashboard.renderAdminRunDetails = jest.fn();
+        dashboard.renderAgentCompanyDashboard = jest.fn();
+
+        const loading = dashboard.loadWorkloads();
+        const refreshButton = dom.window.document.getElementById('refreshWorkloadsBtn');
+
+        expect(refreshButton.disabled).toBe(true);
+        expect(refreshButton.getAttribute('aria-busy')).toBe('true');
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refreshing workloads');
+        expect(dom.window.document.getElementById('refreshWorkloadsLabel').textContent).toBe('Refreshing...');
+
+        resolveWorkloads([]);
+        await loading;
+
+        expect(refreshButton.disabled).toBe(false);
+        expect(refreshButton.hasAttribute('aria-busy')).toBe(false);
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refresh workloads');
+        expect(dom.window.document.getElementById('refreshWorkloadsLabel').textContent).toBe('Refresh Workloads');
+    });
+
     test('keeps password reveal labels synchronized after toggles', () => {
         const dom = new JSDOM(`
             <input type="password" id="apiKey">
@@ -1140,7 +1191,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-modal-focus-lifecycle-v1');
+        expect(html).toContain('dashboard.js?v=admin-workload-refresh-progress-v1');
         expect(html).toContain('css/dashboard.css?v=admin-trustworthy-mission-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
