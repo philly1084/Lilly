@@ -699,6 +699,57 @@ describe('DashboardController', () => {
     expect(toolStep.details.diagnostics).toEqual(diagnostics);
   });
 
+  test.each(['false', '0', 'no', 'off', 0])(
+    'keeps serialized tool failure value %p visible in admin traces',
+    (success) => {
+      const controller = new DashboardController(null);
+      const task = controller.recordRuntimeTaskStart({
+        sessionId: 'session-serialized-tool-failure',
+        input: 'Fetch the protected source.',
+        model: 'gpt-test',
+        mode: 'chat',
+        transport: 'http',
+        metadata: {},
+      });
+
+      controller.recordRuntimeTaskComplete(task.id, {
+        responseId: 'resp-serialized-tool-failure',
+        output: 'The source request was denied.',
+        model: 'gpt-test',
+        duration: 400,
+        metadata: {
+          toolEvents: [{
+            toolCall: {
+              function: {
+                name: 'web-fetch',
+                arguments: JSON.stringify({ url: 'https://example.test/protected' }),
+              },
+            },
+            result: {
+              success,
+              error: 'Source request was denied',
+            },
+          }],
+        },
+      });
+
+      const completedTask = controller.taskStore.get(task.id);
+      expect(completedTask.result.toolEvents[0]).toMatchObject({
+        toolId: 'web-fetch',
+        success: false,
+        error: 'Source request was denied',
+      });
+
+      const trace = tracesController.addTrace.mock.calls[0][0];
+      expect(trace.timeline.find((step) => step.name === 'Tool call (web-fetch)')).toMatchObject({
+        status: 'error',
+        details: expect.objectContaining({
+          error: 'Source request was denied',
+        }),
+      });
+    },
+  );
+
   test('reports optional admin capabilities in health without treating them as core service failures', async () => {
     const controller = new DashboardController(null);
 

@@ -61,6 +61,30 @@ function firstArray(...values) {
   return values.find((value) => Array.isArray(value)) || [];
 }
 
+function normalizeSuccessFlag(value, fallback = true) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['false', '0', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  if (['true', '1', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  return fallback;
+}
+
 class DashboardController {
   constructor(agentOrchestrator) {
     this.orchestrator = agentOrchestrator;
@@ -170,7 +194,8 @@ class DashboardController {
       || event?.name
       || 'unknown-tool';
     const duration = Number(result?.duration || result?.duration_ms || event?.duration || event?.duration_ms || 0);
-    const success = result?.success !== false && event?.success !== false;
+    const success = normalizeSuccessFlag(result?.success, true)
+      && normalizeSuccessFlag(event?.success, true);
     const endTime = result?.endedAt
       || result?.ended_at
       || result?.timestamp
