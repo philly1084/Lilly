@@ -10,7 +10,7 @@ const { normalizeWhitespace, stripNullCharacters } = require('../utils/text');
 const { transcriptionService } = require('../audio/transcription-service');
 const { audioProcessingService } = require('../audio/audio-processing-service');
 const { parseWavBuffer } = require('../audio/wav-utils');
-const { artifactService } = require('../artifacts/artifact-service');
+const { artifactService, extractResponseText } = require('../artifacts/artifact-service');
 const { artifactStore } = require('../artifacts/artifact-store');
 const {
   getLocalGeneratedAudioArtifact,
@@ -269,25 +269,6 @@ function uniqueOrdered(items = []) {
       seen.add(item);
       return true;
     });
-}
-
-function getResponseText(response = {}) {
-  if (typeof response?.output_text === 'string' && response.output_text.trim()) {
-    return response.output_text.trim();
-  }
-
-  const output = Array.isArray(response?.output) ? response.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    for (const chunk of content) {
-      const text = chunk?.text || chunk?.output_text || '';
-      if (typeof text === 'string' && text.trim()) {
-        return text.trim();
-      }
-    }
-  }
-
-  return '';
 }
 
 function splitTranscriptSegments(transcript = '') {
@@ -1448,7 +1429,7 @@ class PodcastVideoService {
         requestTimeoutMs: Math.max(30000, Number(params.planTimeoutMs) || 90000),
         requestMaxRetries: 0,
       });
-      const parsed = parseLenientJson(getResponseText(response));
+      const parsed = parseLenientJson(extractResponseText(response));
       const scenes = (Array.isArray(parsed?.scenes) ? parsed.scenes : [])
         .slice(0, MAX_SCENES)
         .map((scene, index) => normalizeScene(scene, index));

@@ -86,6 +86,47 @@ describe('PodcastVideoService', () => {
     expect(result.scenes).toHaveLength(2);
   });
 
+  test('accepts compatible provider response text for model-planned storyboards', async () => {
+    const service = new PodcastVideoService({
+      createResponse: jest.fn(async () => ({
+        model: 'compatible-storyboard-model',
+        outputText: JSON.stringify({
+          title: 'Grid storage explained',
+          scenes: [
+            {
+              summary: 'A battery bank absorbs surplus renewable energy',
+              caption: 'Store clean power when supply is abundant.',
+              visualPrompt: 'utility-scale battery containers beside wind turbines',
+            },
+            {
+              summary: 'Stored energy supports the evening peak',
+              caption: 'Release power when homes need it most.',
+              visualPrompt: 'evening city grid supplied by battery storage',
+            },
+          ],
+        }),
+      })),
+    });
+
+    const result = await service.planStoryboard({
+      title: 'Battery storage',
+      transcript: 'Batteries store surplus energy and return it when demand rises.',
+      durationSeconds: 20,
+      sceneCount: 2,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      title: 'Grid storage explained',
+      planning: {
+        provider: 'model',
+        model: 'compatible-storyboard-model',
+      },
+    }));
+    expect(result.scenes).toHaveLength(2);
+    expect(result.scenes[0].summary).toBe('A battery bank absorbs surplus renewable energy');
+    expect(result.scenes[1].end).toBeCloseTo(20);
+  });
+
   test('builds cinematic low-text prompts for generated scene backdrops', () => {
     const prompt = buildSceneImagePrompt({
       id: 'scene-04',
