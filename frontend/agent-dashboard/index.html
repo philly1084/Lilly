@@ -1159,11 +1159,11 @@
                     <div class="dashboard-grid company-dashboard-grid mt-4">
                         <div class="card">
                             <div class="card-header">
-                                <h3>CEO Direction</h3>
+                                <h3 id="companyCeoDirectionLabel">CEO Direction</h3>
                                 <span class="status-badge neutral" id="companyWorkspaceStatus">workspace loading</span>
                             </div>
                             <div class="card-body">
-                                <textarea class="company-ceo-direction" id="companyCeoDirection" rows="5" placeholder="Tell the business what to build, research, maintain, or improve next."></textarea>
+                                <textarea class="company-ceo-direction" id="companyCeoDirection" rows="5" aria-labelledby="companyCeoDirectionLabel" placeholder="Tell the business what to build, research, maintain, or improve next."></textarea>
                                 <div class="company-ceo-actions">
                                     <button class="btn btn-primary" id="saveCompanyDirectionBtn" type="button">Save Direction</button>
                                     <button class="btn btn-secondary" id="companyStartCycleBtn" type="button">Start Work Cycle</button>

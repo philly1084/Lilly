@@ -549,6 +549,9 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('companyHeartbeatBtn').getAttribute('type')).toBe('button');
         expect(dom.window.document.getElementById('companyDailyAlignmentBtn').getAttribute('type')).toBe('button');
         expect(dom.window.document.getElementById('configureAgentCompanyBtn').getAttribute('type')).toBe('button');
+        const direction = dom.window.document.getElementById('companyCeoDirection');
+        const directionLabel = dom.window.document.getElementById(direction.getAttribute('aria-labelledby'));
+        expect(directionLabel.textContent.trim()).toBe('CEO Direction');
         expect(dom.window.document.getElementById('companyWorkSearch').getAttribute('type')).toBe('search');
         expect(dom.window.document.getElementById('companyWorkStatusFilter')).not.toBeNull();
         expect(dom.window.document.getElementById('companyRoleFilter')).not.toBeNull();
