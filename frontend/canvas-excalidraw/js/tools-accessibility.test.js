@@ -64,6 +64,9 @@ describe('canvas tool button accessibility', () => {
         const dom = createToolsDom();
         const ToolManager = loadToolManager(dom);
         const manager = new ToolManager();
+        dom.window.app = {
+            syncToolDockActive: jest.fn(),
+        };
 
         manager.setTool('rectangle');
 
@@ -78,5 +81,6 @@ describe('canvas tool button accessibility', () => {
             true,
             false,
         ]);
+        expect(dom.window.app.syncToolDockActive).toHaveBeenCalledWith('rectangle');
     });
 });

@@ -148,6 +148,7 @@ class ToolManager {
         this.currentTool = toolName;
         
         this.syncToolButtonStates(toolName);
+        window.app?.syncToolDockActive?.(toolName);
         
         // Update cursor
         const container = document.getElementById('canvasContainer');

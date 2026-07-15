@@ -1190,8 +1190,14 @@ class App {
         document.querySelectorAll('.tool-dock-btn').forEach((btn) => {
             const matchesTool = btn.dataset.dockTool === toolName;
             const matchesOpenGroup = btn.dataset.dockGroup && btn.dataset.dockGroup === this.activeDockGroup;
-            const matchesToolGroup = !this.activeDockGroup && btn.dataset.dockGroup === toolToGroup[toolName];
-            btn.classList.toggle('active', matchesTool || matchesOpenGroup || matchesToolGroup);
+            const matchesToolGroup = !this.activeDockGroup
+                && Boolean(btn.dataset.dockGroup)
+                && btn.dataset.dockGroup === toolToGroup[toolName];
+            const isActive = Boolean(matchesTool || matchesOpenGroup || matchesToolGroup);
+            if (btn.dataset.dockTool) {
+                btn.setAttribute('aria-pressed', matchesTool ? 'true' : 'false');
+            }
+            btn.classList.toggle('active', isActive);
         });
     }
 

@@ -568,6 +568,39 @@ describe('canvas tool group header accessibility', () => {
         expect(category.classList.contains('expanded')).toBe(true);
         expect(header.getAttribute('aria-expanded')).toBe('true');
     });
+
+    test('keeps direct tool dock pressed state aligned with the selected tool', () => {
+        const dom = new JSDOM(`
+            <button class="tool-dock-btn active" type="button" data-dock-tool="selection" aria-label="Select tool" aria-pressed="true"></button>
+            <button class="tool-dock-btn" type="button" data-dock-group="shapes" aria-label="Open shape tools" aria-expanded="false"></button>
+            <button class="tool-dock-btn" type="button" data-dock-tool="image" aria-label="Place image" aria-pressed="false"></button>
+        `, { url: 'http://localhost:3000/canvas/' });
+        const App = loadAppClass(dom);
+        const app = Object.create(App.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        app.activeDockGroup = '';
+        app.currentTool = 'selection';
+        app.syncToolDockActive('image');
+
+        const selection = document.querySelector('[data-dock-tool="selection"]');
+        const image = document.querySelector('[data-dock-tool="image"]');
+        const shapes = document.querySelector('[data-dock-group="shapes"]');
+
+        expect(selection.getAttribute('aria-pressed')).toBe('false');
+        expect(selection.classList.contains('active')).toBe(false);
+        expect(image.getAttribute('aria-pressed')).toBe('true');
+        expect(image.classList.contains('active')).toBe(true);
+        expect(shapes.hasAttribute('aria-pressed')).toBe(false);
+        expect(shapes.getAttribute('aria-expanded')).toBe('false');
+
+        app.syncToolDockActive('selection');
+
+        expect(selection.getAttribute('aria-pressed')).toBe('true');
+        expect(image.getAttribute('aria-pressed')).toBe('false');
+    });
 });
 
 describe('canvas AI mode toggle accessibility', () => {
