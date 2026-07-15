@@ -48,6 +48,39 @@ describe('UnifiedRegistry invocation stats', () => {
     ]);
   });
 
+  test('records serialized false tool results as failures', () => {
+    const registry = new UnifiedRegistry();
+
+    registry.register({
+      id: 'web-fetch',
+      name: 'Web Fetch',
+      description: 'Fetch a web page',
+      category: 'web',
+      backend: {
+        handler: async () => ({}),
+      },
+    });
+
+    registry.recordInvocation('web-fetch', {
+      success: 'false',
+      error: 'Source request was denied',
+      duration: 80,
+    });
+
+    expect(registry.getStats('web-fetch')).toEqual(expect.objectContaining({
+      invocations: 1,
+      successes: 0,
+      failures: 1,
+      successRate: 0,
+      recentUsage: [
+        expect.objectContaining({
+          success: false,
+          error: 'Source request was denied',
+        }),
+      ],
+    }));
+  });
+
   test('derives normalized trigger patterns and confirmation from tool metadata', () => {
     const registry = new UnifiedRegistry();
 

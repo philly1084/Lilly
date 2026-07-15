@@ -13,6 +13,22 @@ const {
   summarizeToolReadiness,
 } = require('../../orchestration/tool-readiness');
 
+function isSuccessfulResult(result = {}) {
+  const value = result?.success;
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  return Boolean(value);
+}
+
 class UnifiedRegistry extends EventEmitter {
   constructor() {
     super();
@@ -66,10 +82,12 @@ class UnifiedRegistry extends EventEmitter {
   }
 
   buildUsageEntry(id, result = {}, context = {}) {
+    const success = isSuccessfulResult(result);
+
     return {
       toolId: id,
       timestamp: result.timestamp || new Date().toISOString(),
-      success: result.success !== false,
+      success,
       duration: Number(result.duration || 0),
       sessionId: context.sessionId || null,
       route: context.route || null,
@@ -78,7 +96,7 @@ class UnifiedRegistry extends EventEmitter {
       model: context.model || null,
       userId: context.userId || null,
       paramKeys: Object.keys(context.params || {}).sort(),
-      error: result.success === false ? (result.error || 'Unknown error') : null,
+      error: success ? null : (result.error || 'Unknown error'),
     };
   }
 
@@ -350,10 +368,11 @@ class UnifiedRegistry extends EventEmitter {
   recordInvocation(id, result, context = {}) {
     const stats = this.stats.get(id);
     if (stats) {
+      const success = isSuccessfulResult(result);
       stats.invocations++;
       stats.lastUsed = new Date().toISOString();
       
-      if (result.success) {
+      if (success) {
         stats.successes++;
       } else {
         stats.failures++;
