@@ -228,15 +228,15 @@
                 <p id="import-description" class="text-text-secondary mb-4">Import from various file formats:</p>
                 
                 <!-- Drag & Drop Zone -->
-                <div id="import-dropzone" class="import-dropzone">
-                    <div class="import-dropzone-content">
+                <button type="button" id="import-dropzone" class="import-dropzone w-full">
+                    <span class="import-dropzone-content">
                         <i data-lucide="upload-cloud" class="w-12 h-12 text-text-secondary mb-3" aria-hidden="true"></i>
-                        <p class="text-sm font-medium text-text-primary mb-1">Drop your file here</p>
-                        <p class="text-xs text-text-secondary">or click to browse</p>
-                        <input type="file" id="import-file-input" class="hidden" 
-                               accept=".docx,.pdf,.html,.htm,.md,.markdown,.txt,.json">
-                    </div>
-                </div>
+                        <span class="text-sm font-medium text-text-primary mb-1 block">Drop your file here</span>
+                        <span class="text-xs text-text-secondary block">or click to browse</span>
+                    </span>
+                </button>
+                <input type="file" id="import-file-input" class="hidden"
+                       accept=".docx,.pdf,.html,.htm,.md,.markdown,.txt,.json">
 
                 <!-- Supported Formats -->
                 <div class="import-formats mt-4">

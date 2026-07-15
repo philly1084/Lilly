@@ -197,6 +197,8 @@ describe('web-chat index redirect', () => {
 
         expect(html).toContain('aria-describedby="import-description"');
         expect(html).toContain('id="import-description"');
+        expect(html).toContain('<button type="button" id="import-dropzone" class="import-dropzone w-full">');
+        expect(html).not.toContain('<div id="import-dropzone" class="import-dropzone">');
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
