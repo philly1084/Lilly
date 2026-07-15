@@ -508,6 +508,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         const modelSelect = dom.window.document.getElementById('modelSelect');
         const commandInput = dom.window.document.getElementById('commandInput');
         const commandAssist = dom.window.document.getElementById('commandAssist');
+        const cancelRequestButton = dom.window.document.getElementById('cancelRequestButton');
         const statusIndicator = dom.window.document.querySelector('.status-indicator');
         const statusDot = dom.window.document.getElementById('statusDot');
         const drawer = dom.window.document.getElementById('commandDrawer');
@@ -530,9 +531,30 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dom.window.document.getElementById('autocomplete').getAttribute('role')).toBe('listbox');
         expect(commandAssist.getAttribute('role')).toBe('status');
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
+        expect(cancelRequestButton.hidden).toBe(true);
+        expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
+        expect(indexMarkup).toContain('js/api.js?v=20260715a');
+        expect(indexMarkup).toContain('js/app.js?v=20260715a');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
+    });
+
+    test('stops the active AI request and exposes pending cancellation state', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<button id="cancelRequestButton" hidden>Stop</button>');
+        app.cancelRequestButton = dom.window.document.getElementById('cancelRequestButton');
+        app.currentRequestController = new AbortController();
+
+        app.setRequestCancellationState(true);
+
+        expect(app.cancelRequestButton.hidden).toBe(false);
+        expect(app.cancelCurrentRequest()).toBe(true);
+        expect(app.currentRequestController.signal.aborted).toBe(true);
+        expect(app.cancelRequestButton.disabled).toBe(true);
+        expect(app.cancelRequestButton.textContent).toBe('Stopping...');
+        expect(app.cancelRequestButton.getAttribute('aria-label')).toBe('Stopping current AI request');
+        expect(app.cancelCurrentRequest()).toBe(false);
     });
 
     function createDrawerHarness() {

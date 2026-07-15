@@ -174,6 +174,84 @@ describe('web-cli API artifact metadata normalization', () => {
     });
 });
 
+describe('web-cli API request cancellation', () => {
+    test('honors caller cancellation without retrying or reporting a timeout', async () => {
+        const fetchMock = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => {
+                const error = new Error('The operation was aborted.');
+                error.name = 'AbortError';
+                reject(error);
+            }, { once: true });
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+        const controller = new AbortController();
+
+        const request = api.fetchWithRetry('/api/slow', {
+            signal: controller.signal,
+        }, 3, 30000);
+        controller.abort();
+
+        await expect(request).rejects.toMatchObject({
+            name: 'AbortError',
+            message: 'The operation was aborted.',
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test('interrupts retry backoff when the caller cancels', async () => {
+        const { api } = loadWebCliApi();
+        const controller = new AbortController();
+        const delay = api.waitForRetryDelay(30000, controller.signal);
+
+        controller.abort();
+
+        await expect(delay).rejects.toMatchObject({
+            name: 'AbortError',
+            message: 'The operation was aborted.',
+        });
+    });
+
+    test('surfaces chat cancellation as a cancelled stream event', async () => {
+        let markChatStarted;
+        const chatStarted = new Promise((resolve) => {
+            markChatStarted = resolve;
+        });
+        const fetchMock = jest.fn((url, options) => {
+            if (String(url).endsWith('/api/sessions')) {
+                return Promise.resolve(createJsonResponse({ id: 'session-cancel-1' }));
+            }
+
+            markChatStarted();
+            return new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => {
+                    const error = new Error('The operation was aborted.');
+                    error.name = 'AbortError';
+                    reject(error);
+                }, { once: true });
+            });
+        });
+        const { api } = loadWebCliApi(fetchMock);
+        const controller = new AbortController();
+        const stream = api.streamChat('stop this request', null, 'chat', [], {
+            signal: controller.signal,
+        });
+        const nextEvent = stream.next();
+
+        await chatStarted;
+        controller.abort();
+
+        await expect(nextEvent).resolves.toEqual({
+            done: false,
+            value: {
+                type: 'error',
+                error: 'Request cancelled.',
+                cancelled: true,
+            },
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('web-cli API tool event metadata normalization', () => {
     test('promotes assistant metadata tool events from fallback stream payloads', async () => {
         const fetchMock = jest.fn(async (url) => {

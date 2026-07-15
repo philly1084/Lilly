@@ -79,6 +79,7 @@ class CodeCLIApp {
         this.historyIndex = -1;
         this.currentOutput = '';
         this.isProcessing = false;
+        this.currentRequestController = null;
         this.themeCatalog = window.KimiBuiltThemePresets || null;
         this.theme = this.normalizeThemeId(
             localStorage.getItem('codecli-theme')
@@ -194,6 +195,7 @@ class CodeCLIApp {
         this.cliStatus = document.getElementById('cliStatus');
         this.queueIndicator = document.getElementById('queueIndicator');
         this.commandAssist = document.getElementById('commandAssist');
+        this.cancelRequestButton = document.getElementById('cancelRequestButton');
         this.shortcutsReturnFocus = null;
         // Queue elements removed - using inline status only
         this.queueSection = null;
@@ -3171,6 +3173,10 @@ class CodeCLIApp {
                     this.copyLastOutput();
                 }
             } else if (e.key === 'Escape') {
+                if (this.isProcessing) {
+                    e.preventDefault();
+                    this.cancelCurrentRequest();
+                }
                 this.hideAutocomplete();
                 this.closeCommandDrawer();
                 this.closeShortcuts();
@@ -5496,6 +5502,9 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
         }
         
         this.isProcessing = true;
+        const requestController = new AbortController();
+        this.currentRequestController = requestController;
+        this.setRequestCancellationState(true);
         
         // Update status
         this.setStatus('thinking');
@@ -5505,6 +5514,7 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             const chatOptions = {
                 ...this.buildVoxelChatOptions(input),
                 ...(options || {}),
+                signal: requestController.signal,
                 metadata: {
                     ...(this.buildVoxelChatOptions(input)?.metadata || {}),
                     ...(options?.metadata || {}),
@@ -5562,6 +5572,15 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             this.recordVoxelInteraction(input, response.content || '');
             
         } catch (error) {
+            if (error.cancelled || requestController.signal.aborted) {
+                if (this.liveProgressState) {
+                    this.finalizeLiveProgressCard({ phase: 'cancelled', detail: 'Request cancelled by user.' });
+                }
+                this.printSystem('Request cancelled.');
+                this.setStatus('ready');
+                this.reactVoxelPet(input, 'idle');
+                return;
+            }
             if (this.liveProgressState) {
                 this.finalizeLiveProgressCard({ phase: 'blocked', detail: error.message });
             }
@@ -5569,12 +5588,42 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             this.handlePetAction('guard', { silent: true });
             this.setStatus('error');
         } finally {
+            if (this.currentRequestController === requestController) {
+                this.currentRequestController = null;
+                this.setRequestCancellationState(false);
+            }
             this.isProcessing = false;
             this.currentOutput = '';
             this.finalizeProgressLine();
             // Process any queued commands
             this.processQueue();
         }
+    }
+
+    setRequestCancellationState(active) {
+        if (!this.cancelRequestButton) {
+            return;
+        }
+
+        this.cancelRequestButton.hidden = !active;
+        this.cancelRequestButton.disabled = false;
+        this.cancelRequestButton.textContent = 'Stop';
+        this.cancelRequestButton.setAttribute('aria-label', 'Stop current AI request');
+    }
+
+    cancelCurrentRequest() {
+        const controller = this.currentRequestController;
+        if (!controller || controller.signal.aborted) {
+            return false;
+        }
+
+        controller.abort();
+        if (this.cancelRequestButton) {
+            this.cancelRequestButton.disabled = true;
+            this.cancelRequestButton.textContent = 'Stopping...';
+            this.cancelRequestButton.setAttribute('aria-label', 'Stopping current AI request');
+        }
+        return true;
     }
 
     parsePodcastCliOptions(input = '') {

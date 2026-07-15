@@ -783,6 +783,35 @@
             color: var(--text-muted);
         }
 
+        .request-cancel-btn {
+            flex: 0 0 auto;
+            border: 1px solid color-mix(in srgb, var(--error) 55%, var(--border-color));
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--error) 12%, transparent);
+            color: var(--error);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .request-cancel-btn:hover:not(:disabled),
+        .request-cancel-btn:focus-visible {
+            background: color-mix(in srgb, var(--error) 20%, transparent);
+            outline: 2px solid color-mix(in srgb, var(--error) 45%, transparent);
+            outline-offset: 2px;
+        }
+
+        .request-cancel-btn:disabled {
+            cursor: wait;
+            opacity: 0.75;
+        }
+
+        .request-cancel-btn[hidden] {
+            display: none;
+        }
+
         .input-meta {
             display: flex;
             align-items: center;
@@ -1988,6 +2017,7 @@
                             autocapitalize="off"
                             spellcheck="false"
                         >
+                        <button id="cancelRequestButton" class="request-cancel-btn" type="button" onclick="app.cancelCurrentRequest()" aria-label="Stop current AI request" hidden>Stop</button>
                     </div>
                     <div id="voxelToolbelt" class="voxel-toolbelt" role="toolbar" aria-label="Agent quick tools">
                         <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Ask Lilly with agent companion. Currently selected." aria-label="Ask Lilly with agent companion. Currently selected." aria-pressed="true">
@@ -2125,10 +2155,10 @@
     <script defer src="../shared/openai-sse.js?v=20260424e"></script>
     <script defer src="../shared/model-output-parser.js?v=20260426b"></script>
     <script defer src="../shared/theme-presets.js?v=20260426a"></script>
-    <script defer src="js/api.js?v=20260523b"></script>
+    <script defer src="js/api.js?v=20260715a"></script>
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260713b"></script>
+    <script defer src="js/app.js?v=20260715a"></script>
 </body>
 </html>

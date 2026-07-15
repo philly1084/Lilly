@@ -609,27 +609,69 @@ class WebCLIAPI {
      */
     async fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-        
+        const externalSignal = options.signal;
+        let timedOut = false;
+        const abortFromCaller = () => controller.abort();
+        const timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, timeout);
+
+        if (externalSignal?.aborted) {
+            abortFromCaller();
+        } else {
+            externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+        }
+
         try {
             const response = await fetch(url, {
                 ...options,
                 signal: controller.signal
             });
-            clearTimeout(timeoutId);
             return response;
         } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
+            if (error.name === 'AbortError' && timedOut) {
                 throw new Error(`Request timeout after ${timeout}ms`);
             }
             throw error;
+        } finally {
+            clearTimeout(timeoutId);
+            externalSignal?.removeEventListener('abort', abortFromCaller);
         }
     }
 
     /**
      * Retry a fetch request with exponential backoff
      */
+    async waitForRetryDelay(delay, signal = null) {
+        if (!signal) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return;
+        }
+
+        await new Promise((resolve, reject) => {
+            let timeoutId;
+            const rejectCancellation = () => {
+                clearTimeout(timeoutId);
+                const error = new Error('The operation was aborted.');
+                error.name = 'AbortError';
+                reject(error);
+            };
+            const finishDelay = () => {
+                signal.removeEventListener('abort', rejectCancellation);
+                resolve();
+            };
+
+            if (signal.aborted) {
+                rejectCancellation();
+                return;
+            }
+
+            signal.addEventListener('abort', rejectCancellation, { once: true });
+            timeoutId = setTimeout(finishDelay, delay);
+        });
+    }
+
     async fetchWithRetry(url, options = {}, retries = MAX_RETRIES, timeout = DEFAULT_TIMEOUT) {
         let lastError;
         
@@ -639,7 +681,11 @@ class WebCLIAPI {
                 return response;
             } catch (error) {
                 lastError = error;
-                
+
+                if (options.signal?.aborted) {
+                    throw error;
+                }
+
                 // Don't retry on client errors (4xx) except 429 (rate limit)
                 if (error.message.includes('HTTP 4') && !error.message.includes('429')) {
                     throw error;
@@ -648,7 +694,7 @@ class WebCLIAPI {
                 if (i < retries) {
                     const delay = RETRY_DELAY * Math.pow(2, i);
                     console.warn(`Request failed, retrying in ${delay}ms... (${i + 1}/${retries})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    await this.waitForRetryDelay(delay, options.signal);
                 }
             }
         }
@@ -741,7 +787,10 @@ class WebCLIAPI {
     }
 
     async *streamChat(message, model = null, mode = 'chat', conversationHistory = [], options = {}) {
-        await this.ensureSession({ title: options.sessionTitle || 'Voxel CLI' });
+        await this.ensureSession({
+            title: options.sessionTitle || 'Voxel CLI',
+            signal: options.signal,
+        });
 
         const messages = [
             ...(Array.isArray(options.systemMessages) ? options.systemMessages : []),
@@ -785,6 +834,7 @@ class WebCLIAPI {
                     'Accept': 'text/event-stream',
                 },
                 body: JSON.stringify(params),
+                signal: options.signal,
             }, MAX_RETRIES, this.getChatTimeout(params.model, true));
 
             if (!response.ok) {
@@ -965,6 +1015,14 @@ class WebCLIAPI {
                 }
             }
         } catch (error) {
+            if (options.signal?.aborted) {
+                yield {
+                    type: 'error',
+                    error: 'Request cancelled.',
+                    cancelled: true,
+                };
+                return;
+            }
             console.error('Stream error:', error);
             let suggestions = ['Check your internet connection', 'Verify the backend is running'];
             
@@ -1021,7 +1079,9 @@ class WebCLIAPI {
                     onChunk(chunk);
                 }
             } else if (chunk.type === 'error') {
-                throw new Error(chunk.error);
+                const error = new Error(chunk.error);
+                error.cancelled = chunk.cancelled === true;
+                throw error;
             } else if (chunk.type === 'done') {
                 finalChunk = chunk;
                 break;
@@ -1674,6 +1734,7 @@ class WebCLIAPI {
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: options.signal,
                 body: JSON.stringify({
                     taskType: WEB_CLI_TASK_TYPE,
                     clientSurface: WEB_CLI_CLIENT_SURFACE,
