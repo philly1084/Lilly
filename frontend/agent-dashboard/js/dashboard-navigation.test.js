@@ -992,6 +992,24 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('associates Test Prompt dialog controls with their visible labels', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const modal = dom.window.document.getElementById('testPromptModal');
+        const controls = [
+            ['testModel', 'Model'],
+            ['testTemperature', 'Temperature'],
+            ['testInput', 'Test Input'],
+        ];
+
+        controls.forEach(([controlId, label]) => {
+            const control = modal.querySelector(`#${controlId}`);
+
+            expect(control.labels).toHaveLength(1);
+            expect(control.labels[0].textContent.trim()).toBe(label);
+        });
+    });
+
     test('moves focus into admin dialogs and returns it to the invoking control', () => {
         const dom = new JSDOM(`
             <button id="openDialog" type="button">Open dialog</button>
