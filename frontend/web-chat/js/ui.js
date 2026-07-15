@@ -10254,6 +10254,12 @@ class UIHelpers {
     // Search Functionality
     // ============================================
 
+    updateSearchTriggerState(expanded) {
+        document.querySelectorAll('[aria-controls="search-bar"]').forEach((trigger) => {
+            trigger.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+
     openSearch() {
         const searchBar = document.getElementById('search-bar');
         const searchInput = document.getElementById('search-input');
@@ -10270,6 +10276,7 @@ class UIHelpers {
         this.searchLastFocusedElement = document.activeElement;
         searchBar.classList.remove('hidden');
         searchBar.setAttribute('aria-hidden', 'false');
+        this.updateSearchTriggerState(true);
         this.playMenuCue('menu-open');
         this.trapFocus(searchPanel || searchBar);
         searchInput.focus();
@@ -10284,6 +10291,7 @@ class UIHelpers {
 
         searchBar.classList.add('hidden');
         searchBar.setAttribute('aria-hidden', 'true');
+        this.updateSearchTriggerState(false);
         searchInput.value = '';
         this.clearSearchHighlights();
         this.searchResults = [];

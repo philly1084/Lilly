@@ -742,7 +742,7 @@
                     </button>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                    <button id="search-toggle" class="btn-secondary flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all" onclick="app.openSearch()" title="Search">
+                    <button id="search-toggle" class="btn-secondary flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all" onclick="app.openSearch()" title="Search" aria-haspopup="dialog" aria-expanded="false" aria-controls="search-bar">
                         <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
                         <span class="sidebar-btn-text">Search</span>
                     </button>
@@ -814,7 +814,7 @@
                         </div>
                     </div>
                     <div class="header-control-group header-control-group--utilities">
-                        <button id="search-btn" class="btn-icon p-2 rounded-lg hidden sm:flex full-shell-control" title="Search messages (Ctrl+F)" onclick="app.openSearch()" aria-label="Search messages (Ctrl+F)">
+                        <button id="search-btn" class="btn-icon p-2 rounded-lg hidden sm:flex full-shell-control" title="Search messages (Ctrl+F)" onclick="app.openSearch()" aria-label="Search messages (Ctrl+F)" aria-haspopup="dialog" aria-expanded="false" aria-controls="search-bar">
                             <i data-lucide="search" class="w-5 h-5" aria-hidden="true"></i>
                         </button>
                         <button id="export-chat-btn" class="btn-icon p-2 rounded-lg hidden sm:flex full-shell-control" title="Export conversation" onclick="uiHelpers.openExportModal()" aria-label="Export conversation">
@@ -1386,7 +1386,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260715a"></script>
+    <script defer src="js/ui.js?v=20260715b"></script>
     <script defer src="js/app.js?v=20260714c"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
