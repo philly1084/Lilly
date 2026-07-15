@@ -115,6 +115,30 @@ describe('Notes export menu accessibility', () => {
     });
 });
 
+describe('Notes template chooser accessibility', () => {
+    test('opens a named modal with keyboard-operable template choices and focus return', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+
+        expect(source).toContain('showTemplateModal(triggerElement = document.activeElement)');
+        expect(source).toContain("modal.setAttribute('role', 'dialog')");
+        expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
+        expect(source).toContain("modal.setAttribute('aria-labelledby', 'template-modal-title')");
+        expect(source).toContain('id="template-modal-title" class="template-modal-title"');
+        expect(source).toContain('class="template-modal-close" type="button" aria-label="Close template chooser"');
+        expect(source).toContain('class="template-card" type="button" data-template="${t.id}"');
+        expect(source).toContain("if (e.key === 'Escape')");
+        expect(source).toContain("if (e.key !== 'Tab') return;");
+        expect(source).toContain('triggerElement.focus({ preventScroll: true })');
+        expect(source).toContain("modal.querySelector('.template-card')?.focus({ preventScroll: true })");
+        expect(styles).toContain('.template-card:focus-visible');
+        expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
+        expect(html).toContain('js/sidebar.js?v=20260715-template-dialog');
+    });
+});
+
 describe('Notes page icon picker accessibility', () => {
     test('announces the picker and keeps its keyboard state synchronized', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -125,7 +149,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('id="emoji-picker" class="emoji-picker" role="dialog"');
         expect(html).toContain('aria-label="Choose a page icon" aria-hidden="true"');
         expect(html).toContain('id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons"');
-        expect(html).toContain('css/styles.css?v=20260715-block-style-picker');
+        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("span.setAttribute('role', 'button')");
@@ -233,7 +257,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260714-page-icon-picker');
+        expect(html).toContain('js/sidebar.js?v=20260715-template-dialog');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });
@@ -244,7 +268,7 @@ describe('Notes mobile content containment', () => {
         const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
         const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260715-block-style-picker');
+        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
         expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
         expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);

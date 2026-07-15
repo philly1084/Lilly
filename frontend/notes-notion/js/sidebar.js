@@ -562,7 +562,7 @@ const Sidebar = (function() {
         };
     }
 
-    function showTemplateModal() {
+    function showTemplateModal(triggerElement = document.activeElement) {
         let templates = [
             { id: 'blank', name: 'Blank Page', icon: '📄', desc: 'Start from scratch' },
             { id: 'todo', name: 'To-do List', icon: '☑️', desc: 'Track tasks' },
@@ -575,12 +575,15 @@ const Sidebar = (function() {
         
         const modal = document.createElement('div');
         modal.className = 'template-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'template-modal-title');
         modal.innerHTML = `
             <div class="template-modal-content">
                 <div class="template-modal-header">
-                    <span class="template-modal-title">Choose a template</span>
-                    <button class="template-modal-close">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <span id="template-modal-title" class="template-modal-title">Choose a template</span>
+                    <button class="template-modal-close" type="button" aria-label="Close template chooser">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
@@ -588,35 +591,63 @@ const Sidebar = (function() {
                 </div>
                 <div class="template-grid">
                     ${templates.map(t => `
-                        <div class="template-card" data-template="${t.id}">
-                            <div class="template-card-icon">${t.icon}</div>
+                        <button class="template-card" type="button" data-template="${t.id}">
+                            <div class="template-card-icon" aria-hidden="true">${t.icon}</div>
                             <div class="template-card-title">${t.name}</div>
                             <div class="template-card-desc">${t.desc}</div>
-                        </div>
+                        </button>
                     `).join('')}
                 </div>
             </div>
         `;
+
+        const closeTemplateModal = () => {
+            modal.remove();
+            if (triggerElement?.isConnected) {
+                triggerElement.focus({ preventScroll: true });
+            }
+        };
         
         // Handle template selection
         modal.querySelectorAll('.template-card').forEach(card => {
             card.addEventListener('click', () => {
                 const templateId = card.dataset.template;
                 createNewPageWithTemplate(templateId);
-                modal.remove();
+                closeTemplateModal();
             });
         });
         
         // Close handlers
         modal.querySelector('.template-modal-close').addEventListener('click', () => {
-            modal.remove();
+            closeTemplateModal();
         });
         
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeTemplateModal();
+        });
+
+        modal.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeTemplateModal();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+            const focusable = Array.from(modal.querySelectorAll('button:not(:disabled)'));
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last?.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first?.focus();
+            }
         });
         
         document.body.appendChild(modal);
+        modal.querySelector('.template-card')?.focus({ preventScroll: true });
     }
     
     /**

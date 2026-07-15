@@ -3507,10 +3507,14 @@ body {
 }
 
 .template-card {
+    width: 100%;
     padding: 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
@@ -3519,6 +3523,12 @@ body {
     border-color: var(--accent-color);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
+}
+
+.template-card:focus-visible {
+    border-color: var(--accent-color);
+    outline: 3px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
+    outline-offset: 2px;
 }
 
 .template-card-icon {
@@ -3536,6 +3546,18 @@ body {
 .template-card-desc {
     font-size: 12px;
     color: var(--text-secondary);
+}
+
+@media (max-width: 600px) {
+    .template-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 16px;
+    }
+
+    .template-card {
+        min-width: 0;
+    }
 }
 
 /* ===== Responsive ===== */
