@@ -443,23 +443,62 @@ function normalizePageTarget(value = null) {
   return Math.min(Math.floor(numeric), 20);
 }
 
+function extractDocumentResponsePartText(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  const candidates = [
+    value.text,
+    value.output_text,
+    value.outputText,
+    value.refusal,
+    value.value,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate) {
+      return candidate;
+    }
+  }
+
+  return '';
+}
+
 class AIDocumentGenerator {
   constructor(openaiClient) {
     this.openai = openaiClient;
   }
 
   extractText(response) {
+    const directText = extractDocumentResponsePartText({
+      output_text: response?.output_text,
+      outputText: response?.outputText,
+    }).trim();
+    if (directText) {
+      return directText;
+    }
+
     if (Array.isArray(response?.output)) {
       return response.output
         .filter((item) => item?.type === 'message')
         .map((item) => (Array.isArray(item.content) ? item.content : [])
-          .map((content) => content?.text || '')
+          .map((content) => extractDocumentResponsePartText(content))
           .join(''))
         .join('\n')
         .trim();
     }
 
-    return String(response?.choices?.[0]?.message?.content || '').trim();
+    const choiceContent = response?.choices?.[0]?.message?.content;
+    if (Array.isArray(choiceContent)) {
+      return choiceContent.map((content) => extractDocumentResponsePartText(content)).join('').trim();
+    }
+
+    return String(choiceContent || '').trim();
   }
 
   async requestResponse({ messages, model, reasoningEffort = null, stream = false }) {

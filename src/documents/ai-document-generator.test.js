@@ -10,6 +10,55 @@ function buildResponse(text) {
 }
 
 describe('AIDocumentGenerator', () => {
+  test('extracts text from compatible Responses API envelopes', () => {
+    const generator = new AIDocumentGenerator({});
+
+    expect(generator.extractText({ outputText: 'Camel-case document text.' }))
+      .toBe('Camel-case document text.');
+    expect(generator.extractText({ output_text: 'Snake-case document text.' }))
+      .toBe('Snake-case document text.');
+    expect(generator.extractText({
+      output: [{
+        type: 'message',
+        content: [
+          { type: 'output_text', outputText: 'First section.' },
+          { type: 'output_text', output_text: 'Second section.' },
+        ],
+      }],
+    })).toBe('First section.Second section.');
+    expect(generator.extractText({
+      choices: [{
+        message: {
+          content: [
+            { type: 'text', text: 'Chat section.' },
+            { type: 'text', text: 'Next section.' },
+          ],
+        },
+      }],
+    })).toBe('Chat section.Next section.');
+  });
+
+  test('generates a document from top-level compatible output text', async () => {
+    const generator = new AIDocumentGenerator({
+      createResponse: jest.fn(async () => ({
+        outputText: JSON.stringify({
+          title: 'Provider Brief',
+          sections: [{
+            heading: 'Decision',
+            content: 'Use the compatible response without losing the document.',
+          }],
+        }),
+      })),
+    });
+
+    const result = await generator.generate('Create a provider brief', {
+      qualityPass: false,
+    });
+
+    expect(result.title).toBe('Provider Brief');
+    expect(result.sections[0].content).toContain('without losing the document');
+  });
+
   test('extracts JSON payloads from prose-wrapped responses', async () => {
     const generator = new AIDocumentGenerator({
       createResponse: jest.fn(async () => buildResponse(
