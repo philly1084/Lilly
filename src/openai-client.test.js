@@ -4418,6 +4418,35 @@ describe('openai-client automatic tool orchestration helpers', () => {
         })).toBe('I cannot help with that request.');
     });
 
+    test('preserves compatible camel-case top-level response text', () => {
+        expect(__testUtils.normalizeModelResponse({
+            id: 'resp-compatible-camel',
+            object: 'response',
+            model: 'custom-responses-model',
+            outputText: 'Visible Responses answer',
+        }).output[0].content[0].text).toBe('Visible Responses answer');
+
+        expect(__testUtils.normalizeModelResponse({
+            id: 'chat-compatible-camel',
+            model: 'custom-chat-model',
+            outputText: 'Visible chat answer',
+        }).output[0].content[0].text).toBe('Visible chat answer');
+
+        expect(__testUtils.getResponseApiText({
+            output: [{
+                type: 'message',
+                role: 'assistant',
+                content: [{ outputText: 'Nested Responses answer' }],
+            }],
+        })).toBe('Nested Responses answer');
+
+        expect(__testUtils.getChatCompletionText({
+            choices: [{
+                message: { outputText: 'Nested chat answer' },
+            }],
+        })).toBe('Nested chat answer');
+    });
+
     test('normalizes streamed chat completions into a populated final response', async () => {
         async function* streamChunks() {
             yield {

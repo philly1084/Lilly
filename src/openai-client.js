@@ -5915,6 +5915,10 @@ function getResponseApiText(response) {
         return response.output_text;
     }
 
+    if (typeof response?.outputText === 'string') {
+        return response.outputText;
+    }
+
     if (!Array.isArray(response?.output)) {
         return '';
     }
@@ -5935,7 +5939,7 @@ function getResponseApiText(response) {
                 return content.refusal || content.text || '';
             }
 
-            return content?.text || content?.output_text || content?.refusal || '';
+            return content?.text || content?.output_text || content?.outputText || content?.refusal || '';
         })
         .filter(Boolean)
         .join('');
@@ -6547,6 +6551,7 @@ function getChatCompletionText(response) {
         normalizeMessageContent(message.items),
         normalizeMessageContent(message.text),
         normalizeMessageContent(message.output_text),
+        normalizeMessageContent(message.outputText),
         normalizeMessageContent(message.reasoning_content),
         normalizeMessageContent(message.reasoning),
         normalizeMessageContent(message.refusal),
@@ -6556,6 +6561,7 @@ function getChatCompletionText(response) {
         normalizeMessageContent(firstCandidate?.parts),
         normalizeMessageContent(firstCandidate?.text),
         normalizeMessageContent(response?.output_text),
+        normalizeMessageContent(response?.outputText),
     ];
 
     return candidates.find((value) => typeof value === 'string' && value.trim()) || '';
