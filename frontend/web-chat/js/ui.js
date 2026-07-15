@@ -6533,8 +6533,11 @@ class UIHelpers {
     setContentStudioStep(step) {
         this.contentStudioState.step = step;
         document.querySelectorAll('[data-studio-step]').forEach((item) => {
-            item.classList.toggle('active', item.dataset.studioStep === step);
+            const isCurrentStep = item.dataset.studioStep === step;
+            item.classList.toggle('active', isCurrentStep);
             item.classList.toggle('complete', ['review', 'produce'].includes(step) && item.dataset.studioStep === 'brief');
+            if (isCurrentStep) item.setAttribute('aria-current', 'step');
+            else item.removeAttribute('aria-current');
         });
         document.getElementById('podcast-brief-panel')?.classList.toggle('hidden', step !== 'brief');
         document.getElementById('podcast-review-panel')?.classList.toggle('hidden', step === 'brief');

@@ -107,6 +107,36 @@ function loadUIHelpersPrototype(options = {}) {
 }
 
 describe('web-chat markdown normalization', () => {
+    test('exposes the current Content Studio progress step', () => {
+        const { prototype, context } = loadUIHelpersPrototype({ withContext: true });
+        const helper = Object.create(prototype);
+        helper.contentStudioState = {};
+        const steps = ['brief', 'review', 'produce'].map((studioStep) => ({
+            dataset: { studioStep },
+            attributes: {},
+            classList: { toggle: jest.fn() },
+            setAttribute(name, value) {
+                this.attributes[name] = value;
+            },
+            removeAttribute(name) {
+                delete this.attributes[name];
+            },
+        }));
+        const panels = {
+            'podcast-brief-panel': { classList: { toggle: jest.fn() } },
+            'podcast-review-panel': { classList: { toggle: jest.fn() } },
+        };
+        context.document.querySelectorAll = () => steps;
+        context.document.getElementById = (id) => panels[id] || null;
+
+        helper.setContentStudioStep('review');
+
+        expect(helper.contentStudioState.step).toBe('review');
+        expect(steps.map((step) => step.attributes['aria-current'] || null)).toEqual([null, 'step', null]);
+        expect(panels['podcast-brief-panel'].classList.toggle).toHaveBeenCalledWith('hidden', true);
+        expect(panels['podcast-review-panel'].classList.toggle).toHaveBeenCalledWith('hidden', false);
+    });
+
     test('renders a concise goal card with adaptive effort and sanitized work labels', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildGoalProgressTrackerMarkup({
