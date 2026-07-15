@@ -166,3 +166,65 @@ describe('canvas API image model lookup', () => {
         }));
     });
 });
+
+describe('canvas API chat model lookup', () => {
+    test('serves the capability-aware model filter script', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(html).toContain('<script defer src="js/api.js?v=20260715b"></script>');
+    });
+
+    test('keeps capable gateway chat models while excluding generation-only models', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [
+                    {
+                        id: 'gpt-4o-image-input-preview',
+                        owned_by: 'openai',
+                        capabilities: ['chat', 'image_input'],
+                    },
+                    {
+                        id: 'custom-contract-router',
+                        owned_by: 'gateway',
+                        contract: {
+                            capabilityMap: { chat: 'supported' },
+                        },
+                    },
+                    {
+                        id: 'custom-router-no-metadata',
+                        owned_by: 'gateway',
+                    },
+                    {
+                        id: 'gpt-image-2',
+                        capabilities: { image_generation: 'supported' },
+                    },
+                    {
+                        id: 'text-embedding-3-small',
+                        capabilities: ['embeddings'],
+                    },
+                ],
+            }),
+        }));
+        const { OpenAICanvasAPI } = loadCanvasApi(fetchMock);
+        const api = new OpenAICanvasAPI('http://localhost:3000/v1');
+
+        await expect(api.getModels()).resolves.toEqual([
+            {
+                id: 'gpt-4o-image-input-preview',
+                name: 'gpt-4o-image-input-preview',
+                provider: 'openai',
+            },
+            {
+                id: 'custom-contract-router',
+                name: 'custom-contract-router',
+                provider: 'gateway',
+            },
+            {
+                id: 'custom-router-no-metadata',
+                name: 'custom-router-no-metadata',
+                provider: 'gateway',
+            },
+        ]);
+    });
+});

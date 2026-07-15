@@ -6,6 +6,51 @@
 const CANVAS_EXCALIDRAW_TASK_TYPE = 'canvas';
 const CANVAS_EXCALIDRAW_CLIENT_SURFACE = 'canvas-excalidraw';
 const CANVAS_DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+const CANVAS_NON_CHAT_CAPABILITIES = new Set([
+    'image',
+    'image_generation',
+    'image-generation',
+    'images',
+    'embedding',
+    'embeddings',
+    'text-embedding',
+    'tts',
+    'speech',
+    'audio',
+    'transcription',
+    'transcribe',
+    'moderation',
+    'realtime',
+]);
+const CANVAS_NON_CHAT_MODEL_TOKENS = [
+    'embed',
+    'embedding',
+    'gpt-image',
+    'image-gen',
+    'image_generation',
+    'image-generation',
+    'image-edit',
+    'image_edit',
+    'image-model',
+    'image_model',
+    'image-router',
+    'image_router',
+    'image-generator',
+    'image_generator',
+    'text-to-image',
+    'dall-e',
+    'dalle',
+    'imagen',
+    'flux',
+    'diffusion',
+    'tts',
+    'speech',
+    'audio',
+    'transcribe',
+    'whisper',
+    'realtime',
+    'moderation',
+];
 const CANVAS_EXCALIDRAW_ACTION_CONTRACT = [
     'Return JSON only: {"content":"{\\"message\\":\\"short\\",\\"actions\\":[...],\\"elements\\":[]}","metadata":{"type":"diagram","surface":"canvas-excalidraw"},"suggestions":[]}.',
     'Actions: add, add_many, update, update_many, delete, select.',
@@ -738,26 +783,27 @@ class OpenAICanvasAPI {
     }
 
     filterModels(models = []) {
-        return models.filter((model) => {
-            const id = String(model.id || '').toLowerCase();
-            if (!id) return false;
+        const seen = new Set();
 
-            const looksLikeChatModel = [
-                'gpt',
-                'claude',
-                'gemini',
-                'kimi',
-                'llama',
-                'mistral',
-                'qwen',
-                'phi',
-                'ollama',
-                'antigravity',
-                'deepseek',
-                'deepseak',
-            ].some((token) => id.includes(token));
+        return (Array.isArray(models) ? models : []).filter((model) => {
+            const id = String(model?.id || '').trim();
+            const normalizedId = id.toLowerCase();
+            if (!normalizedId || seen.has(normalizedId)) {
+                return false;
+            }
 
-            return looksLikeChatModel && !id.includes('image');
+            const capabilities = this.collectModelCapabilities(model);
+            const explicitlyChatCapable = capabilities.has('chat');
+            const explicitlyNonChat = [...capabilities]
+                .some((capability) => CANVAS_NON_CHAT_CAPABILITIES.has(capability));
+
+            if (!explicitlyChatCapable && (explicitlyNonChat
+                || CANVAS_NON_CHAT_MODEL_TOKENS.some((token) => normalizedId.includes(token)))) {
+                return false;
+            }
+
+            seen.add(normalizedId);
+            return true;
         });
     }
 
