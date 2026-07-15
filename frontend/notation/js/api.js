@@ -305,17 +305,31 @@ const NotationAPI = {
                 });
 
                 if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.message || `HTTP ${response.status}: ${response.statusText}`);
+                    const errorPayload = await response.json().catch(() => ({}));
+                    const errorMessage = errorPayload?.error?.message
+                        || errorPayload?.message
+                        || (typeof errorPayload?.error === 'string' ? errorPayload.error : '')
+                        || `HTTP ${response.status}: ${response.statusText}`;
+                    const requestError = new Error(errorMessage);
+                    requestError.status = response.status;
+                    throw requestError;
                 }
 
                 return await response.json();
             } catch (error) {
                 lastError = error;
-                
-                if (i < this.config.retries - 1) {
-                    await this._delay(this.config.retryDelay * (i + 1));
+
+                const status = Number(error?.status);
+                const hasHttpStatus = Number.isFinite(status);
+                const retryable = !hasHttpStatus
+                    || status === 408
+                    || status === 429
+                    || status >= 500;
+                if (!retryable || i >= this.config.retries - 1) {
+                    break;
                 }
+
+                await this._delay(this.config.retryDelay * (i + 1));
             }
         }
 

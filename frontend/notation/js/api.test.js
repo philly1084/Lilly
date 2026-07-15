@@ -103,6 +103,49 @@ describe('notation API artifact handoff payloads', () => {
     });
 });
 
+describe('notation API retry policy', () => {
+    test('returns nested validation errors without retrying deterministic client failures', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            json: async () => ({
+                error: { message: 'Notation is required' },
+            }),
+        }));
+        const { NotationAPI } = loadNotationApi(fetchMock);
+        NotationAPI._delay = jest.fn().mockResolvedValue(undefined);
+
+        await expect(NotationAPI.process({ notation: '' }))
+            .rejects.toThrow('Notation is required');
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(NotationAPI._delay).not.toHaveBeenCalled();
+    });
+
+    test('still retries transient server failures', async () => {
+        const fetchMock = jest.fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                statusText: 'Service Unavailable',
+                json: async () => ({ message: 'Provider is restarting' }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ result: 'Expanded notation' }),
+            });
+        const { NotationAPI } = loadNotationApi(fetchMock);
+        NotationAPI._delay = jest.fn().mockResolvedValue(undefined);
+
+        await expect(NotationAPI.process({ notation: 'user -> report' }))
+            .resolves.toEqual({ result: 'Expanded notation' });
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(NotationAPI._delay).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('notation API WebSocket metadata normalization', () => {
     test('promotes top-level reasoning summary aliases into assistant metadata', () => {
         const { NotationAPI } = loadNotationApi();
