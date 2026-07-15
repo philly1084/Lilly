@@ -158,6 +158,35 @@ describe('after-process audit', () => {
         }));
     });
 
+    test('treats serialized false tool results as failures in audit evidence', () => {
+        const input = {
+            objective: 'Fetch a protected deployment page.',
+            output: 'The page could not be verified.',
+            toolEvents: [{
+                toolCall: { function: { name: 'web-fetch' } },
+                result: {
+                    toolId: 'web-fetch',
+                    success: 'false',
+                    error: 'permission denied by the upstream service',
+                },
+            }],
+        };
+
+        const evidence = buildAuditEvidence(input);
+        const fallback = require('./after-process-audit').buildFallbackAudit(input);
+
+        expect(evidence.toolEvents[0]).toEqual(expect.objectContaining({
+            toolId: 'web-fetch',
+            success: false,
+            error: 'permission denied by the upstream service',
+        }));
+        expect(evidence.toolFailureReview.failedToolCalls[0]).toEqual(expect.objectContaining({
+            toolId: 'web-fetch',
+            failureKind: 'auth_or_secret',
+        }));
+        expect(fallback.auditDecision).toBe('needs_followup');
+    });
+
     test('runs model audit and normalizes review output', async () => {
         createResponse.mockResolvedValue({
             model: 'codex-latest',

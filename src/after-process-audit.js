@@ -54,6 +54,10 @@ function normalizeOptionalBoolean(value) {
     return null;
 }
 
+function isToolResultSuccessful(result = {}) {
+    return normalizeBooleanFlag(result?.success, true);
+}
+
 function getToolEventId(event = {}) {
     return String(
         event?.toolCall?.function?.name
@@ -100,10 +104,11 @@ function summarizeToolEvents(toolEvents = []) {
     return (Array.isArray(toolEvents) ? toolEvents : []).slice(-12).map((event) => {
         const toolId = getToolEventId(event);
         const result = event?.result && typeof event.result === 'object' ? event.result : {};
+        const success = isToolResultSuccessful(result);
         return {
             toolId,
-            success: result.success !== false,
-            error: result.success === false ? trimText(result.error || result.message || '', 220) : '',
+            success,
+            error: success ? '' : trimText(result.error || result.message || '', 220),
             verificationStatus: result.verification?.status || '',
             summary: trimText(
                 result.summary
@@ -129,7 +134,7 @@ function getToolEventErrorText(event = {}, limit = 260) {
 
 function summarizeFailedToolEvents(toolEvents = []) {
     const failedEvents = (Array.isArray(toolEvents) ? toolEvents : [])
-        .filter((event) => event?.result?.success === false)
+        .filter((event) => !isToolResultSuccessful(event?.result))
         .slice(-8);
     const signatureCounts = new Map();
     const failedToolCalls = failedEvents.map((event) => {
