@@ -392,11 +392,14 @@ describe('web-cli tool form rendering', () => {
 });
 
 describe('web-cli agent companion dialog focus', () => {
-    test('returns focus to the invoking control when the dialog closes', () => {
+    test('contains keyboard focus and returns it to the invoking control', () => {
         const dom = new JSDOM(`
             <button id="opener" type="button">Open companion</button>
-            <aside id="voxelDock" class="hidden"></aside>
-            <input id="voxelPetPrompt">
+            <aside id="voxelDock" class="hidden" role="dialog" aria-modal="true">
+                <button id="firstAction" type="button">First action</button>
+                <input id="voxelPetPrompt">
+                <button id="lastAction" type="button">Last action</button>
+            </aside>
         `, { pretendToBeVisual: true });
         const { document } = dom.window;
         const { CodeCLIApp } = loadWebCliToolFormHelpers({
@@ -417,7 +420,23 @@ describe('web-cli agent companion dialog focus', () => {
         expect(app.voxelCreatorReturnFocus).toBe(opener);
         expect(app.voxelDock.classList.contains('hidden')).toBe(false);
 
-        app.closeVoxelCreator();
+        const firstAction = document.getElementById('firstAction');
+        const lastAction = document.getElementById('lastAction');
+        lastAction.focus();
+        const forwardTab = { key: 'Tab', shiftKey: false, preventDefault: jest.fn() };
+        app.handleVoxelCreatorKeydown(forwardTab);
+        expect(forwardTab.preventDefault).toHaveBeenCalled();
+        expect(document.activeElement).toBe(firstAction);
+
+        firstAction.focus();
+        const backwardTab = { key: 'Tab', shiftKey: true, preventDefault: jest.fn() };
+        app.handleVoxelCreatorKeydown(backwardTab);
+        expect(backwardTab.preventDefault).toHaveBeenCalled();
+        expect(document.activeElement).toBe(lastAction);
+
+        const escape = { key: 'Escape', preventDefault: jest.fn() };
+        app.handleVoxelCreatorKeydown(escape);
+        expect(escape.preventDefault).toHaveBeenCalled();
         expect(document.activeElement).toBe(opener);
         expect(app.voxelCreatorReturnFocus).toBeNull();
         expect(app.voxelDock.classList.contains('hidden')).toBe(true);
@@ -534,7 +553,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
         expect(indexMarkup).toContain('js/api.js?v=20260715b');
-        expect(indexMarkup).toContain('js/app.js?v=20260715b');
+        expect(indexMarkup).toContain('js/app.js?v=20260715c');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);

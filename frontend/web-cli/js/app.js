@@ -3206,6 +3206,10 @@ class CodeCLIApp {
             this.handleShortcutsKeydown(e);
         });
 
+        this.voxelDock?.addEventListener('keydown', (e) => {
+            this.handleVoxelCreatorKeydown(e);
+        });
+
         if (this.voxelPetPrompt) {
             this.voxelPetPrompt.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -3645,6 +3649,41 @@ class CodeCLIApp {
             this.voxelCreatorReturnFocus.focus({ preventScroll: true });
         }
         this.voxelCreatorReturnFocus = null;
+    }
+
+    handleVoxelCreatorKeydown(event) {
+        if (!event || this.voxelDock?.classList.contains('hidden')) {
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeVoxelCreator();
+            return;
+        }
+
+        if (event.key !== 'Tab') {
+            return;
+        }
+
+        const focusable = Array.from(this.voxelDock.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+        )).filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+        if (focusable.length === 0) {
+            event.preventDefault();
+            this.voxelDock.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     }
 
     getVoxelRoamPlacement(action = 'scout') {
