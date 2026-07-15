@@ -24,7 +24,7 @@ const CODEX_AGENT_TERMINAL_EVENTS = new Set([
   'turn_input_required',
 ]);
 
-const PROVIDER_AGENT_RESULT_PATTERN = /(?:^|\n)\s*REMOTE_AGENT_RESULT\s*[:=]\s*(success|failed)\b/i;
+const PROVIDER_AGENT_RESULT_PATTERN = /(?:^|\n)\s*(?:[-*]\s*)?(?:\*\*|__)?REMOTE_AGENT_RESULT(?:(?:\*\*|__)\s*)?[:=]\s*(success|failed)\b/i;
 
 function normalizeBooleanFlag(value, fallback = false) {
   if (value === undefined || value === null || String(value).trim() === '') {
@@ -341,7 +341,7 @@ function readMarkerLine(text = '', keys = []) {
 
   const lines = String(text || '').split(/\r?\n/);
   for (const line of lines) {
-    const match = line.match(new RegExp(`^\\s*(?:[-*]\\s*)?(?:${keyPattern})\\s*[:=]\\s*(.+?)\\s*$`, 'i'));
+    const match = line.match(new RegExp(`^\\s*(?:[-*]\\s*)?(?:\\*\\*|__)?(?:${keyPattern})(?:(?:\\*\\*|__)\\s*)?[:=]\\s*(.+?)\\s*(?:\\*\\*|__)?\\s*$`, 'i'));
     if (match?.[1]) {
       return cleanMarkerValue(match[1]);
     }
@@ -360,7 +360,7 @@ function readMarkerLines(text = '', keys = []) {
 
   return String(text || '')
     .split(/\r?\n/)
-    .map((line) => line.match(new RegExp(`^\\s*(?:[-*]\\s*)?(?:${keyPattern})\\s*[:=]\\s*(.+?)\\s*$`, 'i'))?.[1] || '')
+    .map((line) => line.match(new RegExp(`^\\s*(?:[-*]\\s*)?(?:\\*\\*|__)?(?:${keyPattern})(?:(?:\\*\\*|__)\\s*)?[:=]\\s*(.+?)\\s*(?:\\*\\*|__)?\\s*$`, 'i'))?.[1] || '')
     .map((value) => cleanMarkerValue(value))
     .filter(Boolean);
 }
@@ -1287,7 +1287,10 @@ function buildProviderAgentTask({
 
 function normalizeProviderAgentOutput(value = '') {
   return String(value || '')
-    .replace(/(^|\n)(\s*REMOTE_AGENT_RESULT)\s*:/gi, '$1$2=');
+    .replace(
+      /(^|\n)(\s*(?:[-*]\s*)?)(?:\*\*|__)?REMOTE_AGENT_RESULT(?:(?:\*\*|__)\s*)?[:=]\s*(success|failed)\b/gi,
+      '$1$2REMOTE_AGENT_RESULT=$3',
+    );
 }
 
 function readProviderAgentResultStatus(value = '') {

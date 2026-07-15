@@ -788,7 +788,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(progress.some((event) => event.toolEvents?.[0]?.providerId === providerId)).toBe(true);
   });
 
-  test('keeps consuming provider output when a success marker is split across events', async () => {
+  test('accepts Markdown-bold provider proof markers split across events', async () => {
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
         return {
@@ -810,11 +810,12 @@ describe('RemoteCliAgentsSdkRunner', () => {
             start(controller) {
               const encoder = new TextEncoder();
               for (const data of [
-                'REMOTE_AGENT_RESULT: success GRO',
-                'K_REMOTE_OK\n',
-                'WORKSPACE=/opt/kimibuilt\nWHAT_CHANGED=Read-only verification.\n',
-                'VERIFY_COMMANDS=pwd\nVERIFY_RESULTS=GROK_REMOTE_OK /opt/kimibuilt\n',
-                'PUBLIC_URL=not_available\nBLOCKER=none\n',
+                '**REMOTE_AGENT_RESULT',
+                ': success GRO',
+                'K_REMOTE_OK**\n',
+                '**WORKSPACE**=/opt/kimibuilt\n**WHAT_CHANGED**=Read-only verification.\n',
+                '**VERIFY_COMMANDS**=pwd\n**VERIFY_RESULTS**=GROK_REMOTE_OK /opt/kimibuilt\n',
+                '**PUBLIC_URL**=not_available\n**BLOCKER**=none\n',
               ]) {
                 controller.enqueue(encoder.encode(
                   `event: output\ndata: ${JSON.stringify({ type: 'output', data })}\n\n`,
