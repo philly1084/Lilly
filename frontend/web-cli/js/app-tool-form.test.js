@@ -851,6 +851,18 @@ describe('web-cli file manager dialog', () => {
 });
 
 describe('web-cli agent quick tool state', () => {
+    test('associates the visible companion request label with its prompt field', () => {
+        const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(indexMarkup);
+        const prompt = dom.window.document.getElementById('voxelPetPrompt');
+        const label = dom.window.document.querySelector('label[for="voxelPetPrompt"]');
+
+        expect(label).not.toBeNull();
+        expect(label.textContent.trim()).toBe('Agent companion request');
+        expect(prompt.labels).toHaveLength(1);
+        expect(prompt.labels[0]).toBe(label);
+    });
+
     test('marks quick tools as a toolbar with an exposed active state', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(indexMarkup);
