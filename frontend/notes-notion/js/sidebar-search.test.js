@@ -125,7 +125,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('id="emoji-picker" class="emoji-picker" role="dialog"');
         expect(html).toContain('aria-label="Choose a page icon" aria-hidden="true"');
         expect(html).toContain('id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons"');
-        expect(html).toContain('css/styles.css?v=20260714-page-icon-picker');
+        expect(html).toContain('css/styles.css?v=20260715-block-style-picker');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("span.setAttribute('role', 'button')");
@@ -150,6 +150,29 @@ describe('Notes block action menu accessibility', () => {
         expect(source).toContain("if (e.key === 'Enter' || e.key === ' ')");
         expect(source).toContain("['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)");
         expect(source).toContain('items[nextIndex]?.focus()');
+    });
+
+    test('opens the block style picker as a keyboard-operable named dialog', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = fs.readFileSync(path.join(__dirname, 'selection.js'), 'utf8');
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+
+        expect(html).toContain('id="color-picker" class="color-picker" role="dialog" aria-modal="false" aria-labelledby="color-picker-title" aria-hidden="true"');
+        expect(html).toContain('id="color-picker-title" class="sr-only">Block style</div>');
+        expect(html).toContain('js/selection.js?v=20260715-block-style-picker-v3');
+        expect(source).toContain('showColorPicker(blockId, menu.returnFocusTarget)');
+        expect(source).toContain("picker.classList.add('is-open')");
+        expect(source).toContain("picker.classList.remove('is-open')");
+        expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
+        expect(source).toContain("returnFocusTarget.setAttribute('tabindex', '-1')");
+        expect(source).toContain("option.setAttribute('role', 'button')");
+        expect(source).toContain("option.setAttribute('tabindex', '0')");
+        expect(source).toContain("if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.color-option, .style-option'))");
+        expect(source).toContain('closeColorPicker(true)');
+        expect(styles).toContain('.color-option:focus-visible,');
+        expect(styles).toContain('.style-option:focus-visible');
+        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
+        expect(fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8')).toContain('.color-picker.is-open');
     });
 });
 
@@ -211,7 +234,7 @@ describe('Notes cover picker selection state', () => {
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
         expect(html).toContain('js/sidebar.js?v=20260714-page-icon-picker');
-        expect(html).toContain('css/notion-refinements.css?v=20260714-mobile-overflow-v1');
+        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });
 
@@ -221,8 +244,8 @@ describe('Notes mobile content containment', () => {
         const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
         const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260714-page-icon-picker');
-        expect(html).toContain('css/notion-refinements.css?v=20260714-mobile-overflow-v1');
+        expect(html).toContain('css/styles.css?v=20260715-block-style-picker');
+        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
         expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
         expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);
         expect(responsiveStyles).toMatch(/\.database-scroll-region,\s*\.chart-scroll-region\s*{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);

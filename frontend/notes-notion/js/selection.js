@@ -379,7 +379,7 @@ const Selection = (function() {
             selectBlock(blockId);
             showTurnIntoMenu(blockId, e);
         });
-        
+
         // Right-click on block to show context menu
         blockElement.addEventListener('contextmenu', (e) => {
             // Don't show if clicking on input
@@ -741,7 +741,7 @@ const Selection = (function() {
                     if (callbacks.onWipeBlock) callbacks.onWipeBlock(blockId);
                     break;
                 case 'color':
-                    showColorPicker(blockId);
+                    showColorPicker(blockId, menu.returnFocusTarget);
                     break;
             }
         });
@@ -789,7 +789,7 @@ const Selection = (function() {
     /**
      * Show color picker
      */
-    function showColorPicker(blockId) {
+    function showColorPicker(blockId, returnFocusTarget = null) {
         const picker = document.getElementById('color-picker');
         if (!picker) return;
         
@@ -815,29 +815,71 @@ const Selection = (function() {
         
         picker.style.left = `${left}px`;
         picker.style.top = `${top}px`;
+        picker.classList.add('is-open');
         picker.style.display = 'block';
+        picker.setAttribute('aria-hidden', 'false');
         picker.dataset.blockId = blockId;
+        if (returnFocusTarget && !returnFocusTarget.hasAttribute('tabindex')) {
+            returnFocusTarget.setAttribute('tabindex', '-1');
+        }
+        picker.returnFocusTarget = returnFocusTarget;
+        picker.querySelector('[role="button"]')?.focus({ preventScroll: true });
         
         // Close on outside click
         const closePicker = (e) => {
             if (!picker.contains(e.target)) {
-                picker.style.display = 'none';
-                document.removeEventListener('click', closePicker);
+                closeColorPicker(false);
             }
         };
+        picker.outsideClickHandler = closePicker;
         
         setTimeout(() => {
             document.addEventListener('click', closePicker);
         }, 0);
     }
     
+    function closeColorPicker(restoreFocus = false) {
+        const picker = document.getElementById('color-picker');
+        if (!picker) return;
+
+        picker.style.display = 'none';
+        picker.classList.remove('is-open');
+        picker.setAttribute('aria-hidden', 'true');
+        if (picker.outsideClickHandler) {
+            document.removeEventListener('click', picker.outsideClickHandler);
+            picker.outsideClickHandler = null;
+        }
+        if (restoreFocus) {
+            picker.returnFocusTarget?.focus?.({ preventScroll: true });
+        }
+    }
+
     /**
      * Setup color picker
      */
     function setupColorPicker() {
         const picker = document.getElementById('color-picker');
         if (!picker) return;
-        
+
+        picker.querySelectorAll('.color-option, .style-option').forEach((option) => {
+            option.setAttribute('role', 'button');
+            option.setAttribute('tabindex', '0');
+            option.setAttribute('aria-label', option.getAttribute('title') || 'Block style option');
+        });
+
+        picker.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeColorPicker(true);
+                return;
+            }
+
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.color-option, .style-option')) {
+                e.preventDefault();
+                e.target.click();
+            }
+        });
+
         picker.addEventListener('click', (e) => {
             const option = e.target.closest('.color-option, .style-option');
             if (!option) return;
@@ -850,7 +892,7 @@ const Selection = (function() {
                 if (callbacks.onTextColorChange) {
                     callbacks.onTextColorChange(blockId, textColor === 'default' ? null : textColor);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
 
@@ -859,7 +901,7 @@ const Selection = (function() {
                 if (callbacks.onFontFamilyChange) {
                     callbacks.onFontFamilyChange(blockId, fontFamily === 'default' ? null : fontFamily);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
 
@@ -868,7 +910,7 @@ const Selection = (function() {
                 if (callbacks.onFontSizeChange) {
                     callbacks.onFontSizeChange(blockId, fontSize === 'default' ? null : fontSize);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
 
@@ -877,7 +919,7 @@ const Selection = (function() {
                 if (callbacks.onFontWeightChange) {
                     callbacks.onFontWeightChange(blockId, fontWeight === 'default' ? null : fontWeight);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
 
@@ -886,7 +928,7 @@ const Selection = (function() {
                 if (callbacks.onTextAlignChange) {
                     callbacks.onTextAlignChange(blockId, textAlign === 'default' ? null : textAlign);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
 
@@ -896,7 +938,7 @@ const Selection = (function() {
                 if (callbacks.onColorChange) {
                     callbacks.onColorChange(blockId, bgColor === 'default' ? null : bgColor);
                 }
-                picker.style.display = 'none';
+                closeColorPicker(true);
                 return;
             }
             
@@ -904,7 +946,7 @@ const Selection = (function() {
             const color = option.dataset.color;
             if (color !== undefined && blockId && callbacks.onColorChange) {
                 callbacks.onColorChange(blockId, color === 'default' ? null : color);
-                picker.style.display = 'none';
+                closeColorPicker(true);
             }
         });
     }

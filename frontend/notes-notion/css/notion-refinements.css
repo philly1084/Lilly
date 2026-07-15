@@ -3952,6 +3952,10 @@ body.agent-chat-open .main-content {
   display: block !important;
 }
 
+.color-picker.is-open {
+  display: block !important;
+}
+
 .emoji-picker {
   width: min(360px, calc(100vw - 16px));
 }
