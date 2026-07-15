@@ -1260,6 +1260,16 @@ function resolveProviderAgentSelection(model = '') {
   return null;
 }
 
+function resolveProviderAgentContinuationSessionId(selection = null, sessionId = '') {
+  if (selection?.providerId !== 'grok-build-cli') {
+    return '';
+  }
+  const normalized = normalizeText(sessionId);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)
+    ? normalized
+    : '';
+}
+
 function buildProviderAgentTask({
   task = '',
   providerLabel = 'CLI provider',
@@ -2226,6 +2236,7 @@ class RemoteCliAgentsSdkRunner {
     task = '',
     selection = null,
     agentRunTimeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS,
+    sessionId = '',
     continuitySummary = '',
     onProgress = null,
   } = {}) {
@@ -2238,9 +2249,10 @@ class RemoteCliAgentsSdkRunner {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     timer?.unref?.();
+    const continuationSessionId = resolveProviderAgentContinuationSessionId(selection, sessionId);
     const outputParts = [];
     let taskId = '';
-    let sessionId = '';
+    let providerSessionId = '';
     let markerComplete = false;
     let markerStatus = '';
     let terminalEvent = null;
@@ -2285,6 +2297,7 @@ class RemoteCliAgentsSdkRunner {
             continuitySummary,
           }),
           ...(selection.providerModel ? { model: selection.providerModel } : {}),
+          ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
         }),
         ...(controller ? { signal: controller.signal } : {}),
       });
@@ -2293,7 +2306,7 @@ class RemoteCliAgentsSdkRunner {
         throw new Error(normalizeText(startBody?.error || startBody?.message) || `${selection.providerLabel} remote-agent start failed with status ${startResponse?.status || 'unknown'}.`);
       }
       taskId = normalizeText(startBody?.task?.id);
-      sessionId = normalizeText(startBody?.task?.sessionId);
+      providerSessionId = normalizeText(startBody?.task?.sessionId);
       const streamUrl = normalizeText(startBody?.streamUrl);
       if (!taskId || !streamUrl) {
         throw new Error(`${selection.providerLabel} remote-agent response did not include task id and stream URL.`);
@@ -2351,7 +2364,7 @@ class RemoteCliAgentsSdkRunner {
         fragments: [output],
         targetId,
         cwd,
-        sessionId,
+        sessionId: providerSessionId,
         status: failed ? 'failed' : 'completed',
         fallbackWhatChanged: failed
           ? `${selection.providerLabel} exited before reporting successful completion.`
@@ -2375,8 +2388,8 @@ class RemoteCliAgentsSdkRunner {
         providerId: selection.providerId,
         targetId,
         cwd: runMetadata.workspace || cwd,
-        sessionId: runMetadata.sessionId || sessionId || null,
-        remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
+        sessionId: runMetadata.sessionId || providerSessionId || null,
+        remoteCodeSessionId: runMetadata.sessionId || providerSessionId || null,
         remoteCodeJobId: taskId || null,
         gitRepo: runMetadata.gitRepo || null,
         gitBranch: runMetadata.gitBranch || null,
@@ -2613,6 +2626,7 @@ class RemoteCliAgentsSdkRunner {
         task,
         selection: providerSelection,
         agentRunTimeoutMs,
+        sessionId,
         continuitySummary,
         onProgress: input.onProgress,
       });
@@ -3015,6 +3029,7 @@ module.exports = {
   isStaleMcpSessionError,
   hasRemoteSoftwareDeploymentIntent,
   resolveAdminMode,
+  resolveProviderAgentContinuationSessionId,
   resolveProviderAgentSelection,
   trimTrailingSlash,
 };

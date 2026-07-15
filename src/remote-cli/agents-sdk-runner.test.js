@@ -14,6 +14,7 @@ const {
   buildRemoteCliDiagnostics,
   isStaleMcpSessionError,
   resolveAdminMode,
+  resolveProviderAgentContinuationSessionId,
   resolveProviderAgentSelection,
   resolveRemoteCliTargetId,
 } = require('./agents-sdk-runner');
@@ -31,6 +32,16 @@ describe('RemoteCliAgentsSdkRunner', () => {
       providerModel: '',
     });
     expect(resolveProviderAgentSelection('gpt-5.6-sol')).toBeNull();
+  });
+
+  test('only forwards native Grok UUIDs for provider-agent continuation', () => {
+    const grok = resolveProviderAgentSelection('grok-build');
+    const kimi = resolveProviderAgentSelection('kimi-k2.7-code');
+    const sessionId = '019f6357-10a2-7f61-9bf8-541fa830de18';
+
+    expect(resolveProviderAgentContinuationSessionId(grok, sessionId)).toBe(sessionId);
+    expect(resolveProviderAgentContinuationSessionId(grok, 'ps_legacy_gateway_session')).toBe('');
+    expect(resolveProviderAgentContinuationSessionId(kimi, sessionId)).toBe('');
   });
 
   test('keeps the MCP SDK as a production dependency for Docker optional-omit installs', () => {
@@ -696,6 +707,9 @@ describe('RemoteCliAgentsSdkRunner', () => {
     ['kimi-k2.7-code', 'kimi-code-cli', undefined, 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
     const progress = [];
+    const continuationSessionId = providerId === 'grok-build-cli'
+      ? '019f6357-10a2-7f61-9bf8-541fa830de18'
+      : undefined;
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
         const body = JSON.parse(options.body);
@@ -704,6 +718,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
           targetId: 'k3s-prod',
           cwd: '/opt/kimibuilt',
         });
+        if (continuationSessionId) {
+          expect(body.sessionId).toBe(continuationSessionId);
+        } else {
+          expect(body.sessionId).toBeUndefined();
+        }
         if (providerModel) {
           expect(body.model).toBe(providerModel);
         } else {
@@ -773,6 +792,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     const result = await runner.run({
       task: 'Fix the selected remote app and verify it.',
       model: selectedModel,
+      ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
       onProgress: (event) => progress.push(event),
     });
 
