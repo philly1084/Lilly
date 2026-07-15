@@ -11096,6 +11096,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }
         const active = this.isEnterpriseModeActive();
         this.enterpriseButton.classList.toggle('is-active', active);
+        this.enterpriseButton.setAttribute('aria-pressed', String(active));
         this.enterpriseButton.title = active ? 'Enterprise Mode active' : 'Enable Enterprise Mode';
         this.enterpriseButton.setAttribute('aria-label', active ? 'Enterprise Mode active' : 'Enable Enterprise Mode');
     }

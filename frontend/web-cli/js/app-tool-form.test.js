@@ -534,7 +534,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
         expect(indexMarkup).toContain('js/api.js?v=20260715a');
-        expect(indexMarkup).toContain('js/app.js?v=20260715a');
+        expect(indexMarkup).toContain('js/app.js?v=20260715b');
+        expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
@@ -922,6 +923,30 @@ describe('web-cli theme control state', () => {
         expect(app.themeButton.querySelector('span').textContent).toBe('Light');
         expect(app.themeButton.getAttribute('title')).toBe('Theme: Light');
         expect(app.themeButton.getAttribute('aria-label')).toBe('Cycle theme. Current theme: Light');
+    });
+});
+
+describe('web-cli enterprise mode control state', () => {
+    test('keeps the pressed state aligned with the active preset', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<button id="enterpriseButton" aria-pressed="false"></button>');
+        app.enterpriseButton = dom.window.document.getElementById('enterpriseButton');
+        app.isEnterpriseModeActive = jest.fn(() => true);
+
+        app.updateEnterpriseButton();
+
+        expect(app.enterpriseButton.classList.contains('is-active')).toBe(true);
+        expect(app.enterpriseButton.getAttribute('aria-pressed')).toBe('true');
+        expect(app.enterpriseButton.getAttribute('title')).toBe('Enterprise Mode active');
+        expect(app.enterpriseButton.getAttribute('aria-label')).toBe('Enterprise Mode active');
+
+        app.isEnterpriseModeActive.mockReturnValue(false);
+        app.updateEnterpriseButton();
+
+        expect(app.enterpriseButton.classList.contains('is-active')).toBe(false);
+        expect(app.enterpriseButton.getAttribute('aria-pressed')).toBe('false');
+        expect(app.enterpriseButton.getAttribute('title')).toBe('Enable Enterprise Mode');
+        expect(app.enterpriseButton.getAttribute('aria-label')).toBe('Enable Enterprise Mode');
     });
 });
 
