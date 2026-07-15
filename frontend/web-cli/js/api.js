@@ -678,6 +678,13 @@ class WebCLIAPI {
         for (let i = 0; i <= retries; i++) {
             try {
                 const response = await this.fetchWithTimeout(url, options, timeout);
+                const shouldRetryResponse = response.status === 429 || response.status >= 500;
+                if (!response.ok && shouldRetryResponse && i < retries) {
+                    const delay = RETRY_DELAY * Math.pow(2, i);
+                    console.warn(`Request returned HTTP ${response.status}, retrying in ${delay}ms... (${i + 1}/${retries})`);
+                    await this.waitForRetryDelay(delay, options.signal);
+                    continue;
+                }
                 return response;
             } catch (error) {
                 lastError = error;

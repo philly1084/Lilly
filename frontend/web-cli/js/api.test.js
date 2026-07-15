@@ -252,6 +252,45 @@ describe('web-cli API request cancellation', () => {
     });
 });
 
+describe('web-cli API request retries', () => {
+    test.each([429, 503])('retries transient HTTP %i responses', async (status) => {
+        const fetchMock = jest.fn()
+            .mockResolvedValueOnce(createJsonResponse({ message: 'Try again shortly.' }, {
+                ok: false,
+                status,
+            }))
+            .mockResolvedValueOnce(createJsonResponse({ ok: true }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.waitForRetryDelay = jest.fn().mockResolvedValue();
+
+        const response = await api.fetchWithRetry('/api/transient', {}, 1, 30000);
+
+        expect(response.ok).toBe(true);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(api.waitForRetryDelay).toHaveBeenCalledTimes(1);
+    });
+
+    test('returns non-retryable client responses immediately', async () => {
+        const fetchMock = jest.fn().mockResolvedValue(createJsonResponse({
+            message: 'Invalid request payload.',
+        }, {
+            ok: false,
+            status: 400,
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.waitForRetryDelay = jest.fn().mockResolvedValue();
+
+        const response = await api.fetchWithRetry('/api/invalid', {}, 3, 30000);
+
+        expect(response.status).toBe(400);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(api.waitForRetryDelay).not.toHaveBeenCalled();
+        await expect(response.json()).resolves.toEqual({
+            message: 'Invalid request payload.',
+        });
+    });
+});
+
 describe('web-cli API tool event metadata normalization', () => {
     test('promotes assistant metadata tool events from fallback stream payloads', async () => {
         const fetchMock = jest.fn(async (url) => {

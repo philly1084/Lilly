@@ -533,7 +533,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
-        expect(indexMarkup).toContain('js/api.js?v=20260715a');
+        expect(indexMarkup).toContain('js/api.js?v=20260715b');
         expect(indexMarkup).toContain('js/app.js?v=20260715b');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
