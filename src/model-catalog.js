@@ -266,6 +266,26 @@ function getExplicitContextWindow(model = {}) {
     return null;
 }
 
+function getExplicitRoutingTier(model = {}, camelKey = '', snakeKey = '') {
+    const candidates = [
+        model?.[camelKey],
+        model?.[snakeKey],
+        model?.metadata?.[camelKey],
+        model?.metadata?.[snakeKey],
+        model?.contract?.[camelKey],
+        model?.contract?.[snakeKey],
+    ];
+
+    for (const candidate of candidates) {
+        const value = String(candidate || '').trim().toLowerCase();
+        if (value) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
 function buildModelContract(model = {}, options = {}) {
     const id = normalizeModelId(typeof model === 'string' ? model : model.id);
     const capabilities = inferModelCapabilities(typeof model === 'string' ? { id } : model);
@@ -289,20 +309,11 @@ function buildModelContract(model = {}, options = {}) {
             streaming: capabilitySet.has('streaming'),
         },
         contextWindow: getExplicitContextWindow(model) || inferContextWindow(model),
-        costTier: model?.costTier
-            || model?.cost_tier
-            || model?.metadata?.costTier
-            || model?.metadata?.cost_tier
+        costTier: getExplicitRoutingTier(model, 'costTier', 'cost_tier')
             || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-5|opus|large|pro/i.test(id) ? 'high' : 'medium')),
-        latencyTier: model?.latencyTier
-            || model?.latency_tier
-            || model?.metadata?.latencyTier
-            || model?.metadata?.latency_tier
+        latencyTier: getExplicitRoutingTier(model, 'latencyTier', 'latency_tier')
             || (/mini|flash|groq|8b|7b/i.test(id) ? 'low' : 'medium'),
-        reliabilityTier: model?.reliabilityTier
-            || model?.reliability_tier
-            || model?.metadata?.reliabilityTier
-            || model?.metadata?.reliability_tier
+        reliabilityTier: getExplicitRoutingTier(model, 'reliabilityTier', 'reliability_tier')
             || (officialOpenAI ? 'high' : 'unknown'),
         openaiFirst: officialOpenAI,
     };

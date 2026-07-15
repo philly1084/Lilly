@@ -177,6 +177,36 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('normalizes contract-wrapped routing tiers before auto selection', () => {
+        const selected = selectAutoModel([
+            {
+                id: 'custom-standard-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+            },
+            {
+                id: 'custom-contract-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+                contract: {
+                    costTier: ' LOW ',
+                    latency_tier: 'LOW',
+                    reliabilityTier: 'HIGH',
+                },
+            },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'custom-contract-router',
+            costTier: 'low',
+            latencyTier: 'low',
+            reliabilityTier: 'high',
+        }));
+    });
+
     test('uses nested provider context windows when selecting an auto model', () => {
         const selected = selectAutoModel([
             {
