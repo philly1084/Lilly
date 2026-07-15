@@ -1123,8 +1123,37 @@ class OpenAIAPIClient extends EventTarget {
     /**
      * Sleep utility for retry delays
      */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    sleep(ms, signal = null) {
+        if (!signal) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        return new Promise((resolve, reject) => {
+            const abortError = () => {
+                const error = new Error('Request cancelled');
+                error.name = 'AbortError';
+                return error;
+            };
+
+            if (signal.aborted) {
+                reject(abortError());
+                return;
+            }
+
+            let timeoutId = null;
+            const handleAbort = () => {
+                if (timeoutId !== null) {
+                    clearTimeout(timeoutId);
+                }
+                reject(abortError());
+            };
+
+            timeoutId = setTimeout(() => {
+                signal.removeEventListener('abort', handleAbort);
+                resolve();
+            }, ms);
+            signal.addEventListener('abort', handleAbort, { once: true });
+        });
     }
 
     /**
@@ -1602,7 +1631,7 @@ class OpenAIAPIClient extends EventTarget {
                     const delay = this.getRetryDelay(attempt - 1);
                     console.log(`Retrying stream chat (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}) after ${delay}ms`);
                     yield { type: 'retry', attempt: attempt + 1, maxAttempts: RETRY_CONFIG.maxRetries + 1 };
-                    await this.sleep(delay);
+                    await this.sleep(delay, signal);
                 }
 
                 const response = await fetch(`${API_BASE_URL}/chat/completions`, {

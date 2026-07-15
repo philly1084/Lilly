@@ -66,6 +66,45 @@ describe('web-chat stream cancellation', () => {
             }),
         ]);
     });
+
+    test('stops retry backoff immediately when the caller aborts', async () => {
+        jest.useFakeTimers();
+
+        try {
+            const fetchMock = jest.fn().mockRejectedValueOnce(new TypeError('fetch failed'));
+            const { apiClient } = loadApiClient(fetchMock);
+            const controller = new AbortController();
+            const iterator = apiClient.streamChatWithFetch(
+                { messages: [{ role: 'user', content: 'Cancel the retry' }] },
+                controller.signal,
+                'request-1',
+            );
+
+            await expect(iterator.next()).resolves.toEqual({
+                value: expect.objectContaining({
+                    type: 'retry',
+                    attempt: 2,
+                }),
+                done: false,
+            });
+
+            const pendingResult = iterator.next();
+            controller.abort();
+
+            await expect(pendingResult).resolves.toEqual({
+                value: expect.objectContaining({
+                    type: 'error',
+                    cancelled: true,
+                    error: 'Request cancelled',
+                }),
+                done: false,
+            });
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+        } finally {
+            jest.useRealTimers();
+        }
+    });
 });
 
 describe('web-chat image API client', () => {

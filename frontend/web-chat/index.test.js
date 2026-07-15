@@ -133,7 +133,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260714e');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260714c');
+        expect(html).toContain('js/ui.js?v=20260715a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -389,7 +389,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('data-studio-step="brief"');
         expect(html).toContain('id="podcast-brand-kit-select"');
         expect(html).toContain('id="podcast-review-panel"');
-        expect(html).toContain('js/api.js?v=20260714d');
+        expect(html).toContain('js/api.js?v=20260715a');
         expect(html).toContain('js/ui.js?v=20260714c');
         expect(html).toContain('js/app.js?v=20260714c');
         expect(uiSource).toContain('renderPodcastLaunchKitReview(campaign)');
