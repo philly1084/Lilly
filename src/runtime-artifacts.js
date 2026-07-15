@@ -21,6 +21,19 @@ const ARTIFACT_RESULT_KEYS = [
     'video_artifact',
 ];
 
+function isSuccessfulToolResult(result = {}) {
+    const value = result?.success;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    }
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+    return value !== false;
+}
+
 function normalizeDownloadUrl(value = '') {
     return normalizeInternalUrl(value, INTERNAL_DOWNLOAD_PATH_PATTERN);
 }
@@ -190,7 +203,7 @@ function extractArtifactsFromValue(value, depth = 0) {
 function extractArtifactsFromToolEvents(toolEvents = []) {
     return mergeRuntimeArtifacts(
         ...(Array.isArray(toolEvents) ? toolEvents : [])
-            .filter((event) => event?.result?.success !== false)
+            .filter((event) => isSuccessfulToolResult(event?.result))
             .map((event) => {
                 const data = event?.result?.data;
                 const candidates = [

@@ -33,6 +33,32 @@ describe('runtime artifact helpers', () => {
         ]);
     });
 
+    test.each(['false', '0', 'no', 'off', 0])(
+        'omits artifacts from failed tool events with success %p',
+        (success) => {
+            const artifacts = extractArtifactsFromToolEvents([{
+                toolCall: {
+                    function: {
+                        name: 'document-workflow',
+                    },
+                },
+                result: {
+                    success,
+                    data: {
+                        document: {
+                            id: 'doc-partial-1',
+                            filename: 'partial-brief.pdf',
+                            mimeType: 'application/pdf',
+                            downloadUrl: '/api/documents/doc-partial-1/download',
+                        },
+                    },
+                },
+            }]);
+
+            expect(artifacts).toEqual([]);
+        },
+    );
+
     test('extracts deep-research presentation documents from successful tool events', () => {
         const artifacts = extractArtifactsFromToolEvents([{
             toolCall: {
