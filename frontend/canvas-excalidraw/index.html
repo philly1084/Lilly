@@ -553,8 +553,8 @@
         <textarea class="text-editor" id="textEditor" style="display: none;"></textarea>
         <!-- Generated Image Prompt Tooltip -->
         <div class="ai-image-tooltip" id="aiImageTooltip" style="display: none;">
-            Click on canvas to place generated image
-            <button class="ai-tooltip-close" id="aiTooltipClose">&times;</button>
+            <span role="status" aria-live="polite" aria-atomic="true">Click on canvas to place generated image</span>
+            <button class="ai-tooltip-close" id="aiTooltipClose" type="button" aria-label="Dismiss image placement guidance">&times;</button>
         </div>
         <!-- Toast Container -->
         <div id="toastContainer" class="toast-container"></div>

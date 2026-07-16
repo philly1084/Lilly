@@ -1090,6 +1090,22 @@ describe('canvas advanced AI settings accessibility', () => {
     });
 });
 
+describe('canvas AI image placement guidance accessibility', () => {
+    test('announces the transient instruction and names its dismiss control', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const tooltip = dom.window.document.getElementById('aiImageTooltip');
+        const status = tooltip.querySelector('[role="status"]');
+        const dismissButton = dom.window.document.getElementById('aiTooltipClose');
+
+        expect(status.textContent.trim()).toBe('Click on canvas to place generated image');
+        expect(status.getAttribute('aria-live')).toBe('polite');
+        expect(status.getAttribute('aria-atomic')).toBe('true');
+        expect(dismissButton.type).toBe('button');
+        expect(dismissButton.getAttribute('aria-label')).toBe('Dismiss image placement guidance');
+    });
+});
+
 describe('canvas context menu accessibility', () => {
     afterEach(() => {
         delete global.document;
