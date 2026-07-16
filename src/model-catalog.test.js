@@ -320,6 +320,61 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('canonicalizes camel-case gateway capability names before routing', () => {
+        const contract = buildModelContract({
+            id: 'camel-capability-router',
+            owned_by: 'gateway',
+            capabilityMap: {
+                chat: true,
+                toolCalling: true,
+                imageInput: true,
+                structuredOutputs: true,
+                responsesApi: true,
+            },
+        });
+
+        expect(contract.capabilities).toEqual([
+            'chat',
+            'tools',
+            'image_input',
+            'structured_outputs',
+            'responses',
+            'streaming',
+        ]);
+        expect(contract.supports).toEqual(expect.objectContaining({
+            chat: true,
+            responses: true,
+            tools: true,
+            vision: true,
+            structured_outputs: true,
+        }));
+        expect(selectAutoModel([
+            { id: 'plain-chat-router', owned_by: 'gateway', capabilities: ['chat'] },
+            {
+                id: 'camel-capability-router',
+                owned_by: 'gateway',
+                capabilityMap: {
+                    chat: true,
+                    toolCalling: true,
+                    imageInput: true,
+                    structuredOutputs: true,
+                    responsesApi: true,
+                },
+            },
+        ], {
+            apiMode: 'responses',
+            needsTools: true,
+            needsVision: true,
+            needsStructuredOutputs: true,
+        })).toEqual(expect.objectContaining({
+            id: 'camel-capability-router',
+        }));
+        expect(isPublicChatModel({
+            id: 'custom-render-router',
+            capabilities: ['imageGeneration'],
+        })).toBe(false);
+    });
+
     test('normalizes provider support maps before model routing', () => {
         const selected = selectAutoModel([
             { id: 'image-output-router', owned_by: 'gateway', supports: { image_generation: true } },

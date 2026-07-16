@@ -55,6 +55,18 @@ const NON_CHAT_CAPABILITIES = new Set([
     'realtime',
 ]);
 
+const CAPABILITY_ALIASES = Object.freeze({
+    function_calling: 'tools',
+    function_calls: 'tools',
+    image_inputs: 'image_input',
+    response_api: 'responses',
+    responses_api: 'responses',
+    structured_output: 'structured_outputs',
+    tool_calling: 'tools',
+    tool_calls: 'tools',
+    tool_use: 'tools',
+});
+
 const DOCUMENTED_REASONING_EFFORTS_BY_MODEL = Object.freeze({
     'gpt-5.4': ['low', 'medium', 'high', 'xhigh'],
     'gpt-5.4-pro': ['medium', 'high', 'xhigh'],
@@ -83,7 +95,13 @@ function normalizeCapabilities(model = {}) {
 }
 
 function normalizeCapabilityName(entry = '') {
-    return String(entry || '').trim().toLowerCase();
+    const normalized = String(entry || '')
+        .trim()
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toLowerCase();
+    return CAPABILITY_ALIASES[normalized] || normalized;
 }
 
 function parseCapabilityEntries(value = null) {
