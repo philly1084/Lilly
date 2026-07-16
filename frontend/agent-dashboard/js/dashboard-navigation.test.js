@@ -453,6 +453,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('associates the Perplexity research setting with its label and guidance', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const select = dom.window.document.getElementById('settingsPerplexityResearchLevel');
+
+        expect(select.labels[0].textContent.trim()).toBe('Perplexity research level');
+        expect(select.getAttribute('aria-describedby')).toBe('settingsPerplexityResearchLevelDescription');
+        expect(dom.window.document.getElementById('settingsPerplexityResearchLevelDescription').textContent.trim())
+            .toContain('Choose how aggressively agents use Perplexity');
+    });
+
     test('labels prompt editor fields and insertion controls', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
