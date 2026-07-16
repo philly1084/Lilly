@@ -67,6 +67,47 @@ describe('project-memory', () => {
         expect(update.tasks[0].summary).toMatch(/Created the file/i);
     });
 
+    test.each(['false', '0', 'no', 'off', 0])(
+        'keeps failed tool handoffs out of project carryover memory for success=%p',
+        (success) => {
+            const toolEvents = [{
+                toolCall: {
+                    function: {
+                        name: 'document-workflow',
+                    },
+                },
+                result: {
+                    success,
+                    toolId: 'document-workflow',
+                    data: {
+                        previewUrl: 'https://failed.example.com/preview',
+                        artifacts: [{
+                            id: 'artifact-failed',
+                            filename: 'partial-dashboard.html',
+                            format: 'html',
+                            downloadUrl: '/api/artifacts/artifact-failed/download',
+                            previewUrl: '/api/artifacts/artifact-failed/preview',
+                        }],
+                    },
+                },
+            }];
+
+            const update = buildProjectMemoryUpdate({
+                assistantText: 'The dashboard build failed before verification.',
+                toolEvents,
+            });
+
+            expect(update.tasks[0]).toEqual(expect.objectContaining({
+                status: 'partial',
+                artifactIds: [],
+            }));
+            expect(update.urls.map((entry) => entry.url)).not.toContain('https://failed.example.com/preview');
+            expect(update.urls.map((entry) => entry.url)).not.toContain('/api/artifacts/artifact-failed/download');
+            expect(update.artifacts).toEqual([]);
+            expect(buildActiveProjectPreviewUpdate({ toolEvents })).toBeNull();
+        },
+    );
+
     test('promotes previewable HTML artifacts into an active project preview', () => {
         const activeProject = buildActiveProjectPreviewUpdate({
             assistantText: 'Created a dashboard preview.',

@@ -137,6 +137,19 @@ function buildArtifactRefs(artifacts = [], capturedAt = new Date().toISOString()
         .filter(Boolean);
 }
 
+function isSuccessfulToolResult(result = {}) {
+    const value = result?.success;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    }
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+    return value !== false;
+}
+
 function normalizeArtifactPreviewUrl(url = '') {
     const normalized = normalizeUrl(url);
     return normalized || '';
@@ -169,6 +182,7 @@ function isPreviewableSiteArtifact(artifact = {}) {
 
 function buildActiveProjectPreviewUpdate({ assistantText = '', toolEvents = [], artifacts = [] } = {}) {
     const derivedArtifacts = (Array.isArray(toolEvents) ? toolEvents : [])
+        .filter((event) => isSuccessfulToolResult(event?.result))
         .flatMap((event) => extractArtifactsFromValue(event?.result?.data));
     const combinedArtifacts = [...(Array.isArray(artifacts) ? artifacts : []), ...derivedArtifacts]
         .filter((artifact) => artifact && typeof artifact === 'object');
@@ -261,7 +275,7 @@ function buildTaskRef({ userText = '', assistantText = '', toolEvents = [], arti
     const toolIds = Array.from(new Set(normalizedToolEvents
         .map((event) => event?.toolCall?.function?.name || event?.result?.toolId || '')
         .filter(Boolean)));
-    const failed = normalizedToolEvents.some((event) => event?.result?.success === false);
+    const failed = normalizedToolEvents.some((event) => !isSuccessfulToolResult(event?.result));
     const summary = sanitizeText(
         assistantText
         || userText
@@ -284,7 +298,9 @@ function buildTaskRef({ userText = '', assistantText = '', toolEvents = [], arti
 
 function buildProjectMemoryUpdate({ userText = '', assistantText = '', toolEvents = [], artifacts = [] }) {
     const capturedAt = new Date().toISOString();
-    const derivedArtifacts = (Array.isArray(toolEvents) ? toolEvents : [])
+    const successfulToolEvents = (Array.isArray(toolEvents) ? toolEvents : [])
+        .filter((event) => isSuccessfulToolResult(event?.result));
+    const derivedArtifacts = successfulToolEvents
         .flatMap((event) => extractArtifactsFromValue(event?.result?.data));
     const combinedArtifacts = [...(Array.isArray(artifacts) ? artifacts : []), ...derivedArtifacts];
     const urlRefs = [
@@ -292,7 +308,7 @@ function buildProjectMemoryUpdate({ userText = '', assistantText = '', toolEvent
         ...buildUrlRefs(extractUrlsFromText(assistantText), 'assistant', { capturedAt, title: sanitizeText(assistantText, 120) }),
     ];
 
-    for (const event of Array.isArray(toolEvents) ? toolEvents : []) {
+    for (const event of successfulToolEvents) {
         const toolId = event?.toolCall?.function?.name || event?.result?.toolId || null;
         const reason = sanitizeText(event?.reason || '', 120);
         urlRefs.push(...buildUrlRefs(
