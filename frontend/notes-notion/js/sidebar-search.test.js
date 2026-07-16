@@ -135,7 +135,27 @@ describe('Notes template chooser accessibility', () => {
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
         expect(html).toContain('css/styles.css?v=20260715-template-dialog');
-        expect(html).toContain('js/sidebar.js?v=20260715-template-dialog');
+        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
+    });
+});
+
+describe('Notes storage information accessibility', () => {
+    test('opens as a named modal and returns keyboard focus when closed', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+
+        expect(source).toContain('showStorageInfo(triggerElement = document.activeElement)');
+        expect(source).toContain("showStorageInfo(document.getElementById('settings-btn'))");
+        expect(source).toContain("modal.setAttribute('role', 'dialog')");
+        expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
+        expect(source).toContain("modal.setAttribute('aria-labelledby', 'storage-status-title')");
+        expect(source).toContain('id="storage-status-title">Storage Information</span>');
+        expect(source).toContain('class="close-btn storage-status-close" type="button" aria-label="Close storage information"');
+        expect(source).toContain("if (e.key === 'Escape')");
+        expect(source).toContain("if (e.key !== 'Tab') return;");
+        expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
+        expect(source).toContain('closeButton.focus({ preventScroll: true })');
+        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
     });
 });
 
@@ -257,7 +277,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260715-template-dialog');
+        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });

@@ -1824,7 +1824,7 @@ const Sidebar = (function() {
                 
             // Data management
             case 'storage-info':
-                showStorageInfo();
+                showStorageInfo(document.getElementById('settings-btn'));
                 break;
                 
             case 'clear-all':
@@ -2881,18 +2881,21 @@ const Sidebar = (function() {
     /**
      * Show storage information
      */
-    function showStorageInfo() {
+    function showStorageInfo(triggerElement = document.activeElement) {
         const status = Storage.getStorageStatus();
 
         const modal = document.createElement('div');
         modal.id = 'storage-status-modal';
         modal.className = 'ai-modal is-open';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'storage-status-title');
         modal.innerHTML = `
             <div class="ai-modal-content storage-status-content">
                 <div class="ai-modal-header storage-status-header">
-                    <span>&#128190;</span>
-                    <span>Storage Information</span>
-                    <button class="close-btn storage-status-close" aria-label="Close storage information">&times;</button>
+                    <span aria-hidden="true">&#128190;</span>
+                    <span id="storage-status-title">Storage Information</span>
+                    <button class="close-btn storage-status-close" type="button" aria-label="Close storage information">&times;</button>
                 </div>
                 <div class="storage-status-body">
                     <section class="storage-status-section">
@@ -2930,12 +2933,30 @@ const Sidebar = (function() {
             </div>
         `;
 
-        modal.querySelector('.close-btn').addEventListener('click', () => modal.remove());
+        const closeButton = modal.querySelector('.close-btn');
+        const closeStorageInfo = () => {
+            modal.remove();
+            triggerElement?.focus?.({ preventScroll: true });
+        };
+
+        closeButton.addEventListener('click', closeStorageInfo);
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeStorageInfo();
+        });
+        modal.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeStorageInfo();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+            e.preventDefault();
+            closeButton.focus();
         });
 
         document.body.appendChild(modal);
+        closeButton.focus({ preventScroll: true });
     }
 
     /**
