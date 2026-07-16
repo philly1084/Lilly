@@ -1558,47 +1558,79 @@ const Sidebar = (function() {
     /**
      * Show trash
      */
-    function showTrash() {
+    function showTrash(event) {
         const trash = Storage.getTrash();
         if (trash.length === 0) {
             showToast('Trash is empty', 'info');
             return;
         }
-        
+        const triggerElement = event?.currentTarget || document.activeElement;
+
         const modal = document.createElement('div');
         modal.className = 'ai-modal';
         modal.style.display = 'flex';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'trash-modal-title');
         modal.innerHTML = `
-            <div class="ai-modal-content" style="max-width: 400px;">
+            <div class="ai-modal-content trash-modal-content">
                 <div class="ai-modal-header">
-                    <span>🗑️</span>
-                    <span>Trash</span>
+                    <span aria-hidden="true">🗑️</span>
+                    <span id="trash-modal-title">Trash</span>
                 </div>
                 <div style="padding: 20px;">
                     ${trash.map(p => `
                         <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
                             <span>${p.icon || '📄'} ${p.title || 'Untitled'}</span>
-                            <button class="restore-btn" data-id="${p.id}" style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer;">Restore</button>
+                            <button class="restore-btn" type="button" data-id="${p.id}" style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer;">Restore</button>
                         </div>
                     `).join('')}
                 </div>
                 <div style="padding: 0 20px 20px; display: flex; gap: 10px; justify-content: flex-end;">
-                    <button class="ai-btn empty-trash">Empty Trash</button>
-                    <button class="ai-btn primary close-modal">Close</button>
+                    <button class="ai-btn empty-trash" type="button">Empty Trash</button>
+                    <button class="ai-btn primary close-modal" type="button">Close</button>
                 </div>
             </div>
         `;
         
-        modal.querySelector('.close-modal').addEventListener('click', () => modal.remove());
+        const closeButton = modal.querySelector('.close-modal');
+        const closeTrash = () => {
+            modal.remove();
+            if (triggerElement?.isConnected) {
+                triggerElement.focus({ preventScroll: true });
+            }
+        };
+
+        closeButton.addEventListener('click', closeTrash);
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeTrash();
+        });
+        modal.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeTrash();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+            const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         });
         
         modal.querySelectorAll('.restore-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 Storage.restorePage(btn.dataset.id);
                 refreshPageTree();
-                modal.remove();
+                closeTrash();
                 showToast('Page restored', 'success');
             });
         });
@@ -1606,12 +1638,13 @@ const Sidebar = (function() {
         modal.querySelector('.empty-trash').addEventListener('click', () => {
             if (confirm('Empty trash permanently? This cannot be undone.')) {
                 trash.forEach(p => Storage.permanentDeletePage(p.id));
-                modal.remove();
+                closeTrash();
                 showToast('Trash emptied', 'success');
             }
         });
         
         document.body.appendChild(modal);
+        closeButton.focus({ preventScroll: true });
     }
     
     /**
