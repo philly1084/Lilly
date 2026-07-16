@@ -5971,7 +5971,11 @@ function getResponseFunctionCalls(response) {
 }
 
 function isResponsesApiResponse(response) {
-    return Boolean(response && (response.object === 'response' || Object.prototype.hasOwnProperty.call(response, 'output_text')));
+    return Boolean(response && (
+        response.object === 'response'
+        || Object.prototype.hasOwnProperty.call(response, 'output_text')
+        || (Array.isArray(response.output) && !Array.isArray(response.choices))
+    ));
 }
 
 function buildNormalizedResponseMetadata(response = null, metadata = {}) {

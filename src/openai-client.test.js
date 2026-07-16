@@ -4447,6 +4447,32 @@ describe('openai-client automatic tool orchestration helpers', () => {
         })).toBe('Nested chat answer');
     });
 
+    test('recognizes compatible Responses output envelopes without an object discriminator', () => {
+        const normalized = __testUtils.normalizeModelResponse({
+            id: 'resp-compatible-output',
+            created_at: 1710000000,
+            model: 'custom-responses-model',
+            output: [
+                {
+                    type: 'reasoning',
+                    summary: [{ type: 'summary_text', text: 'Checked the available evidence.' }],
+                },
+                {
+                    type: 'message',
+                    role: 'assistant',
+                    content: [{ type: 'output_text', text: 'Visible compatible answer' }],
+                },
+            ],
+        });
+
+        expect(normalized.created).toBe(1710000000);
+        expect(normalized.output[0].content[0].text).toBe('Visible compatible answer');
+        expect(normalized.metadata).toEqual(expect.objectContaining({
+            reasoningSummary: 'Checked the available evidence.',
+            reasoningAvailable: true,
+        }));
+    });
+
     test('normalizes streamed chat completions into a populated final response', async () => {
         async function* streamChunks() {
             yield {
