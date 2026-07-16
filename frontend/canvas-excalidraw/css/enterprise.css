@@ -3075,7 +3075,7 @@ body.canvas-core-mode #canvasCommandClose {
     width: 34px;
     height: 34px;
     color: var(--enterprise-muted);
-    background: #17202a;
+    background: var(--enterprise-panel-2);
     border: 1px solid var(--enterprise-line);
     border-radius: 8px;
     cursor: pointer;
@@ -3096,7 +3096,7 @@ body.canvas-core-mode .canvas-command-search {
     min-height: 42px;
     padding: 0 11px;
     color: var(--enterprise-muted);
-    background: #0f151c;
+    background: var(--enterprise-panel-2);
     border: 1px solid var(--enterprise-line);
     border-radius: 8px;
 }
@@ -3132,7 +3132,7 @@ body.canvas-core-mode .canvas-command-item {
     min-height: 56px;
     padding: 9px 10px;
     color: var(--enterprise-text);
-    background: #17202a;
+    background: var(--enterprise-panel-2);
     border: 1px solid rgba(167, 180, 194, 0.16);
     border-radius: 8px;
     cursor: pointer;

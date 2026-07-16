@@ -1014,6 +1014,16 @@ describe('canvas command rail accessibility', () => {
         delete global.document;
         delete global.window;
     });
+
+    test('keeps command palette controls on theme-aware readable surfaces', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'enterprise.css'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(css).toMatch(/#canvasCommandClose\s*\{[^}]*background:\s*var\(--enterprise-panel-2\);/s);
+        expect(css).toMatch(/\.canvas-command-search\s*\{[^}]*background:\s*var\(--enterprise-panel-2\);/s);
+        expect(css).toMatch(/\.canvas-command-item\s*\{[^}]*background:\s*var\(--enterprise-panel-2\);/s);
+        expect(html).toContain('css/enterprise.css?v=20260716a');
+    });
 });
 
 describe('canvas side panel tabs accessibility', () => {
