@@ -1489,6 +1489,28 @@ class PdfGenerator {
    */
   buildInvoice(v) {
     const content = [];
+    const rawItems = Array.isArray(v.line_items)
+      ? v.line_items
+      : (Array.isArray(v.items) ? v.items : []);
+    const lineItems = rawItems
+      .map((item, index) => {
+        if (Array.isArray(item)) {
+          return item.slice(0, 4).map((cell) => String(cell ?? ''));
+        }
+
+        if (!item || typeof item !== 'object') {
+          const description = String(item ?? '').trim();
+          return description ? [description, '', '', ''] : null;
+        }
+
+        return [
+          item.description || item.name || item.item || `Item ${index + 1}`,
+          item.quantity ?? item.qty ?? '',
+          item.unit_price ?? item.unitPrice ?? item.rate ?? item.price ?? '',
+          item.amount ?? item.total ?? '',
+        ].map((cell) => String(cell ?? ''));
+      })
+      .filter(Boolean);
 
     // Header
     content.push({
@@ -1498,12 +1520,13 @@ class PdfGenerator {
           stack: [
             { text: 'INVOICE', style: 'title', alignment: 'right' },
             { text: `Invoice #: ${v.invoice_number || ''}`, alignment: 'right' },
-            { text: `Date: ${v.invoice_date || new Date().toLocaleDateString()}`, alignment: 'right' }
+            { text: `Date: ${v.invoice_date || new Date().toLocaleDateString()}`, alignment: 'right' },
+            ...(v.due_date ? [{ text: `Due: ${v.due_date}`, alignment: 'right' }] : []),
           ],
-          width: 'auto'
-        }
+          width: 'auto',
+        },
       ],
-      margin: [0, 0, 0, 30]
+      margin: [0, 0, 0, 30],
     });
 
     // From/To
@@ -1514,9 +1537,9 @@ class PdfGenerator {
         stack: [
           { text: 'From:', bold: true, margin: [0, 0, 0, 5] },
           { text: v.company_name },
-          { text: v.company_address || '' }
+          { text: v.company_address || '' },
         ],
-        width: '*'
+        width: '*',
       });
     }
 
@@ -1525,9 +1548,9 @@ class PdfGenerator {
         stack: [
           { text: 'To:', bold: true, margin: [0, 0, 0, 5] },
           { text: v.client_name },
-          { text: v.client_address || '' }
+          { text: v.client_address || '' },
         ],
-        width: '*'
+        width: '*',
       });
     }
 
@@ -1535,8 +1558,59 @@ class PdfGenerator {
       content.push({ columns, margin: [0, 0, 0, 30] });
     }
 
-    // Items table would go here
-    content.push({ text: 'Invoice content would be rendered here', margin: [0, 20, 0, 0] });
+    if (lineItems.length > 0) {
+      content.push({
+        table: {
+          headerRows: 1,
+          widths: ['*', 55, 85, 85],
+          body: [
+            [
+              { text: 'Description', style: 'tableHeader' },
+              { text: 'Qty', style: 'tableHeader', alignment: 'center' },
+              { text: 'Unit Price', style: 'tableHeader', alignment: 'right' },
+              { text: 'Amount', style: 'tableHeader', alignment: 'right' },
+            ],
+            ...lineItems.map((row) => [
+              { text: row[0] || '' },
+              { text: row[1] || '', alignment: 'center' },
+              { text: row[2] || '', alignment: 'right' },
+              { text: row[3] || '', alignment: 'right' },
+            ]),
+          ],
+        },
+        layout: 'lightHorizontalLines',
+        margin: [0, 0, 0, 18],
+      });
+    }
+
+    const totals = [
+      ['Subtotal', v.subtotal],
+      ['Tax', v.tax],
+      ['Total', v.total],
+      ['Amount Due', v.amount_due],
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
+
+    if (totals.length > 0) {
+      content.push({
+        table: {
+          widths: ['*', 110],
+          body: totals.map(([label, value]) => {
+            const isGrandTotal = label === 'Total' || label === 'Amount Due';
+            return [
+              { text: label, alignment: 'right', bold: isGrandTotal },
+              { text: String(value), alignment: 'right', bold: isGrandTotal },
+            ];
+          }),
+        },
+        layout: 'noBorders',
+        margin: [0, 0, 0, 20],
+      });
+    }
+
+    if (v.notes || v.terms) {
+      content.push({ text: 'Notes', style: 'heading2' });
+      content.push({ text: v.notes || v.terms, margin: [0, 0, 0, 10] });
+    }
 
     return content;
   }

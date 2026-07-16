@@ -124,4 +124,52 @@ describe('PdfGenerator', () => {
       sections: 1,
     }));
   });
+
+  test('renders invoice line items and totals without placeholder copy', () => {
+    const generator = new PdfGenerator();
+    const definition = generator.buildDocumentDefinition({
+      id: 'invoice',
+      variables: {
+        invoice_number: 'INV-1042',
+        invoice_date: '2026-07-16',
+        due_date: '2026-07-30',
+        company_name: 'Northstar Studio',
+        client_name: 'Harbour Labs',
+        line_items: [
+          {
+            description: 'Interface review',
+            quantity: 2,
+            unit_price: '$125.00',
+            amount: '$250.00',
+          },
+          {
+            name: 'Accessibility audit',
+            qty: 1,
+            rate: '$175.00',
+            total: '$175.00',
+          },
+        ],
+        subtotal: '$425.00',
+        tax: '$63.75',
+        total: '$488.75',
+        notes: 'Thank you for your business.',
+      },
+    }, {});
+
+    const serializedContent = JSON.stringify(definition.content);
+    const itemsTable = definition.content.find((node) => (
+      Array.isArray(node?.table?.body)
+      && node.table.body[0]?.[0]?.text === 'Description'
+    ));
+
+    expect(serializedContent).not.toContain('Invoice content would be rendered here');
+    expect(itemsTable).toBeTruthy();
+    expect(itemsTable.table.widths).toEqual(['*', 55, 85, 85]);
+    expect(serializedContent).toContain('Interface review');
+    expect(serializedContent).toContain('Accessibility audit');
+    expect(serializedContent).toContain('Due: 2026-07-30');
+    expect(serializedContent).toContain('Subtotal');
+    expect(serializedContent).toContain('$488.75');
+    expect(serializedContent).toContain('Thank you for your business.');
+  });
 });
