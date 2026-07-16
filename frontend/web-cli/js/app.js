@@ -10705,12 +10705,12 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                             const fileType = this.escapeHtml(f.type);
                             const fileSize = this.escapeHtml(this.formatFileSize(f.size));
                             return `
-                            <div class="file-item" role="button" tabindex="0" onclick="app.downloadFileById('${fileId}')" onkeydown="app.handleFileManagerFileKey(event, '${fileId}')" aria-label="Download ${filenameAttr}">
+                            <button class="file-item" type="button" onclick="app.downloadFileById('${fileId}')" aria-label="Download ${filenameAttr}">
                                 <span class="file-icon">${this.getFileIcon(f.filename)}</span>
                                 <span class="file-name">${filename}</span>
                                 <span class="file-meta">${fileSize} | ${fileType}</span>
-                                <button class="file-download-btn" type="button" onclick="event.stopPropagation(); app.downloadFileById('${fileId}')" aria-label="Download ${filenameAttr}">Download</button>
-                            </div>
+                                <span class="file-download-btn" aria-hidden="true">Download</span>
+                            </button>
                         `;
                         }).join('')
                     }
@@ -10732,15 +10732,6 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         modal.querySelector('.file-manager-close')?.focus();
     }
 
-    handleFileManagerFileKey(event, id) {
-        if (!event || (event.key !== 'Enter' && event.key !== ' ')) {
-            return;
-        }
-
-        event.preventDefault();
-        this.downloadFileById(id);
-    }
-    
     /**
      * Close file manager modal
      */

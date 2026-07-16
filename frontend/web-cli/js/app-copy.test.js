@@ -181,7 +181,7 @@ describe('web-cli file manager modal', () => {
         expect(document.activeElement).toBe(filesButton);
     });
 
-    test('renders file rows as keyboard-operable download targets', () => {
+    test('renders each file as one native download button', () => {
         const { app, document } = createCopyHarness();
         app.sessionFiles = [{
             id: 7,
@@ -197,19 +197,15 @@ describe('web-cli file manager modal', () => {
         app.renderFileManager();
 
         const row = document.querySelector('.file-item');
-        const button = document.querySelector('.file-download-btn');
-        expect(row.getAttribute('role')).toBe('button');
-        expect(row.getAttribute('tabindex')).toBe('0');
+        const downloadLabel = document.querySelector('.file-download-btn');
+        expect(row.tagName).toBe('BUTTON');
+        expect(row.type).toBe('button');
         expect(row.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
+        expect(row.getAttribute('onclick')).toBe("app.downloadFileById('7')");
         expect(row.querySelector('.file-icon').textContent).toBe('MD');
         expect(row.querySelector('.file-name').innerHTML).toBe('launch brief &lt;draft&gt;.md');
-        expect(button.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
-
-        const preventDefault = jest.fn();
-        app.handleFileManagerFileKey({ key: ' ', preventDefault }, '7');
-
-        expect(preventDefault).toHaveBeenCalled();
-        expect(app.downloadFileById).toHaveBeenCalledWith('7');
+        expect(downloadLabel.getAttribute('aria-hidden')).toBe('true');
+        expect(row.querySelectorAll('button')).toHaveLength(0);
     });
 });
 
