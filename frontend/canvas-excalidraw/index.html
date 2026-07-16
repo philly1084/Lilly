@@ -683,10 +683,10 @@
 
             <!-- Stroke Color Section -->
             <div class="property-group advanced-color-group">
-                <label>Advanced Stroke</label>
+                <label id="advancedStrokeLabel">Advanced Stroke</label>
                 <div class="color-section" data-target="stroke" id="strokeColorSection">
-                    <button type="button" class="color-section-header" data-color-section-toggle="strokeColorSection" aria-expanded="false">
-                        <span class="section-title">
+                    <button type="button" class="color-section-header" data-color-section-toggle="strokeColorSection" aria-expanded="false" aria-controls="strokeColorSectionContent" aria-labelledby="advancedStrokeLabel strokeColorSectionTitle">
+                        <span class="section-title" id="strokeColorSectionTitle">
                             <svg viewBox="0 0 24 24" width="14" height="14">
                                 <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
@@ -700,7 +700,7 @@
                             <path fill="currentColor" d="M7 10l5 5 5-5z"/>
                         </svg>
                     </button>
-                    <div class="color-section-content">
+                    <div class="color-section-content" id="strokeColorSectionContent">
                         <!-- Quick Colors -->
                         <div class="color-picker" id="strokeColorPicker">
                             <button class="color-btn active" data-color="#000000" style="background: #000000;" title="Black">
@@ -822,10 +822,10 @@
 
             <!-- Background Color Section -->
             <div class="property-group advanced-color-group">
-                <label>Advanced Fill</label>
+                <label id="advancedFillLabel">Advanced Fill</label>
                 <div class="color-section" data-target="background" id="backgroundColorSection">
-                    <button type="button" class="color-section-header" data-color-section-toggle="backgroundColorSection" aria-expanded="false">
-                        <span class="section-title">
+                    <button type="button" class="color-section-header" data-color-section-toggle="backgroundColorSection" aria-expanded="false" aria-controls="backgroundColorSectionContent" aria-labelledby="advancedFillLabel backgroundColorSectionTitle">
+                        <span class="section-title" id="backgroundColorSectionTitle">
                             <svg viewBox="0 0 24 24" width="14" height="14">
                                 <rect x="3" y="3" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
@@ -839,7 +839,7 @@
                             <path fill="currentColor" d="M7 10l5 5 5-5z"/>
                         </svg>
                     </button>
-                    <div class="color-section-content">
+                    <div class="color-section-content" id="backgroundColorSectionContent">
                         <!-- Fill Type Tabs with Previews -->
                         <div class="color-tabs bg-tabs">
                             <button class="color-tab-btn active" data-bg-tab="solid">

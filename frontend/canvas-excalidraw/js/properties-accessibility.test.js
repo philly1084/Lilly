@@ -108,6 +108,26 @@ describe('canvas custom color input accessibility', () => {
     });
 });
 
+describe('canvas advanced color disclosure accessibility', () => {
+    test('names each disclosure with its visible section context and controlled panel', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const document = dom.window.document;
+
+        const strokeButton = document.querySelector('[data-color-section-toggle="strokeColorSection"]');
+        const fillButton = document.querySelector('[data-color-section-toggle="backgroundColorSection"]');
+
+        expect(strokeButton.getAttribute('aria-labelledby'))
+            .toBe('advancedStrokeLabel strokeColorSectionTitle');
+        expect(strokeButton.getAttribute('aria-controls')).toBe('strokeColorSectionContent');
+        expect(document.getElementById('strokeColorSectionContent')).not.toBeNull();
+        expect(fillButton.getAttribute('aria-labelledby'))
+            .toBe('advancedFillLabel backgroundColorSectionTitle');
+        expect(fillButton.getAttribute('aria-controls')).toBe('backgroundColorSectionContent');
+        expect(document.getElementById('backgroundColorSectionContent')).not.toBeNull();
+    });
+});
+
 describe('canvas grid snapping accessibility', () => {
     test('keeps the toggle pressed state synchronized with grid snapping', () => {
         const dom = new JSDOM(`
