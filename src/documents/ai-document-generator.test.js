@@ -422,6 +422,34 @@ describe('AIDocumentGenerator', () => {
     expect(prompt).toContain('If the request would benefit from a hybrid structure, combine patterns from multiple templates');
   });
 
+  test('preserves compatible object-shaped presentation bullets as visible text', async () => {
+    const createResponse = jest.fn(async () => buildResponse(JSON.stringify({
+      title: 'Launch Decision',
+      slides: [{
+        layout: 'content',
+        title: 'Recommendation',
+        bullets: [
+          { text: 'Approve the pilot.' },
+          { content: 'Measure conversion weekly.' },
+          { label: 'Keep rollback ownership explicit.' },
+          { unsupported: 'Do not stringify this object.' },
+        ],
+      }],
+    })));
+    const generator = new AIDocumentGenerator({ createResponse });
+
+    const result = await generator.generatePresentationContent('Build a decision deck', {
+      qualityPass: false,
+    });
+
+    expect(result.slides[0].bullets).toEqual([
+      'Approve the pilot.',
+      'Measure conversion weekly.',
+      'Keep rollback ownership explicit.',
+    ]);
+    expect(JSON.stringify(result)).not.toContain('[object Object]');
+  });
+
   test('scrubs placeholder and internal thought residue from presentation slides', async () => {
     const createResponse = jest.fn(async () => buildResponse(JSON.stringify({
       title: '<analysis>Private title draft.</analysis>Launch Readiness Deck',

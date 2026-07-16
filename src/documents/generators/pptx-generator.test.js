@@ -84,6 +84,32 @@ describe('PptxGenerator', () => {
     expect(allText).not.toContain('"slides"');
   });
 
+  test('renders compatible object-shaped bullets instead of object placeholders', () => {
+    const presentation = new PptxGenerator().normalizePresentationContent({
+      title: 'Structured Deck',
+      slides: [
+        { layout: 'title', title: 'Structured Deck' },
+        {
+          layout: 'content',
+          title: 'Decision',
+          bullets: [
+            { text: 'Approve the pilot.' },
+            { content: 'Measure conversion weekly.' },
+            { label: 'Keep rollback ownership explicit.' },
+            { unsupported: 'Do not stringify this object.' },
+          ],
+        },
+      ],
+    });
+
+    expect(presentation.slides[1].bullets).toEqual([
+      'Approve the pilot.',
+      'Measure conversion weekly.',
+      'Keep rollback ownership explicit.',
+    ]);
+    expect(JSON.stringify(presentation)).not.toContain('[object Object]');
+  });
+
   test('uses title and content labels as structure instead of visible prose', () => {
     const presentation = new PptxGenerator().normalizePresentationContent({
       content: [

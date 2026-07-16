@@ -251,7 +251,7 @@ class PptxGenerator {
 
   normalizeBullets(value) {
     if (Array.isArray(value)) {
-      return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+      return value.map((entry) => this.normalizeBulletText(entry)).filter(Boolean);
     }
 
     if (typeof value === 'string') {
@@ -259,6 +259,18 @@ class PptxGenerator {
     }
 
     return [];
+  }
+
+  normalizeBulletText(entry) {
+    const candidate = entry && typeof entry === 'object'
+      ? entry.text ?? entry.content ?? entry.label ?? entry.title ?? entry.value
+      : entry;
+
+    if (typeof candidate !== 'string' && typeof candidate !== 'number') {
+      return '';
+    }
+
+    return String(candidate).trim();
   }
 
   tryParsePresentationJson(value = '') {

@@ -1616,7 +1616,7 @@ Return JSON:
   normalizeStringList(value) {
     if (Array.isArray(value)) {
       return value
-        .map((entry) => sanitizeVisibleDocumentText(entry))
+        .map((entry) => this.normalizeStringListEntry(entry))
         .filter(Boolean);
     }
 
@@ -1628,6 +1628,18 @@ Return JSON:
     }
 
     return [];
+  }
+
+  normalizeStringListEntry(entry) {
+    const candidate = entry && typeof entry === 'object'
+      ? entry.text ?? entry.content ?? entry.label ?? entry.title ?? entry.value
+      : entry;
+
+    if (typeof candidate !== 'string' && typeof candidate !== 'number') {
+      return '';
+    }
+
+    return sanitizeVisibleDocumentText(candidate);
   }
 
   normalizeStats(stats = []) {
