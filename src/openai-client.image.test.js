@@ -45,6 +45,17 @@ describe('openai-client image generation', () => {
         delete process.env.OPENAI_IMAGE_ALLOW_OFFICIAL_FALLBACK;
     });
 
+    test('extracts compatible camel-case structured image prompts', () => {
+        const { __testUtils } = require('./openai-client');
+
+        expect(__testUtils.extractImagePromptText({
+            inputText: 'A clean product hero image',
+        })).toBe('A clean product hero image');
+        expect(__testUtils.extractImagePromptText({
+            content: [{ outputText: 'A cinematic supporting scene' }],
+        })).toBe('A cinematic supporting scene');
+    });
+
     test('uses the current OpenAI image generation request shape for official media calls', async () => {
         global.fetch = jest.fn(async (_url, init = {}) => ({
             ok: true,

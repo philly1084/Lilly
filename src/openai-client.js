@@ -780,7 +780,7 @@ function extractImagePromptText(value, depth = 0) {
         return '';
     }
 
-    const promptKeys = ['text', 'input_text', 'output_text', 'content', 'value'];
+    const promptKeys = ['text', 'input_text', 'inputText', 'output_text', 'outputText', 'content', 'value'];
     return promptKeys
         .map((key) => extractImagePromptText(value[key], depth + 1))
         .filter(Boolean)
@@ -7646,6 +7646,7 @@ module.exports = {
     listModels,
     listImageModels,
     createResponse,
+    extractImagePromptText,
     transcribeAudio,
     generateImage,
     generateImageBatch,
@@ -7659,6 +7660,7 @@ module.exports = {
         buildResponsesInput,
         collectInputSystemMessages,
         extractExplicitWebResearchQuery,
+        extractImagePromptText,
         extractPiiRelationshipFormulaPlanRequest,
         extractRequestedDirectoryPath,
         formatDirectToolResultMessage,

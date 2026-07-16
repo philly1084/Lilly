@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { validate } = require('../middleware/validate');
 const { sessionStore } = require('../session-store');
-const { generateImageBatch, listImageModels } = require('../openai-client');
+const { extractImagePromptText, generateImageBatch, listImageModels } = require('../openai-client');
 const { searchImages, isConfigured: isUnsplashConfigured } = require('../unsplash-client');
 const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
 const { persistGeneratedImages } = require('../generated-image-artifacts');
@@ -61,28 +61,8 @@ const imageSchema = {
     batchMode: { required: false, type: 'string', enum: ['auto', 'single', 'parallel'] },
 };
 
-function extractPromptText(value, depth = 0) {
-    if (depth > 8 || value == null) {
-        return '';
-    }
-    if (typeof value === 'string') {
-        return value.trim();
-    }
-    if (Array.isArray(value)) {
-        return value.map((entry) => extractPromptText(entry, depth + 1)).filter(Boolean).join(' ').trim();
-    }
-    if (typeof value === 'object') {
-        return ['text', 'input_text', 'output_text', 'content', 'value']
-            .map((key) => extractPromptText(value[key], depth + 1))
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-    }
-    return '';
-}
-
 function describePromptForLog(prompt) {
-    return extractPromptText(prompt).replace(/\s+/g, ' ').slice(0, 50);
+    return extractImagePromptText(prompt).replace(/\s+/g, ' ').slice(0, 50);
 }
 
 router.post('/', validate(imageSchema), async (req, res, next) => {
@@ -110,7 +90,7 @@ router.post('/', validate(imageSchema), async (req, res, next) => {
             batchMode = 'auto',
         } = req.body;
         modelForFailure = model;
-        if (!extractPromptText(prompt)) {
+        if (!extractImagePromptText(prompt)) {
             return res.status(400).json({
                 error: {
                     type: 'validation_error',
@@ -118,7 +98,7 @@ router.post('/', validate(imageSchema), async (req, res, next) => {
                 },
             });
         }
-        promptText = extractPromptText(prompt);
+        promptText = extractImagePromptText(prompt);
         const requestedCount = Math.min(Math.max(Number(n) || 1, 1), 10);
         requestedCountForFailure = requestedCount;
         let { sessionId } = req.body;
