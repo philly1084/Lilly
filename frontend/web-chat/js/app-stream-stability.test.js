@@ -89,6 +89,10 @@ function loadChatAppContext() {
         URL,
         console,
         uiHelpers: {},
+        sessionManager: {
+            currentSessionId: 'session-1',
+            isLocalSession: () => true,
+        },
     };
 
     vm.createContext(context);
@@ -111,6 +115,11 @@ function flushAsync() {
 }
 
 describe('web-chat stream stability', () => {
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
+
     test('keeps accepted interrupted streams in resync mode instead of retry fallback', () => {
         const app = Object.create(loadChatAppPrototype());
         app.getTrackedStreamRequest = () => ({ acceptedByServer: true });
@@ -474,6 +483,42 @@ describe('web-chat stream stability', () => {
             name: 'Remote CLI Agent',
             icon: 'server',
         }));
+    });
+
+    test('stops a pending reconnect before it can resend the last prompt', async () => {
+        jest.useFakeTimers();
+        const context = loadChatAppContext();
+        context.uiHelpers.showToast = jest.fn();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        const app = Object.create(context.ChatApp.prototype);
+        app.isCancellingCurrentRequest = false;
+        app.isProcessing = true;
+        app.retryAttempt = 0;
+        app.maxRetries = 3;
+        app.pendingRetryTimer = null;
+        app.pendingRetrySessionId = '';
+        app.pendingStreamResync = null;
+        app.activeStreamRequest = {
+            sessionId: 'session-1',
+            acceptedByServer: false,
+        };
+        app.currentAbortController = null;
+        app.getTrackedStreamRequest = () => app.activeStreamRequest;
+        app.isVisibleSession = () => true;
+        app.shouldResyncAfterDisconnect = () => false;
+        app.processMessageQueue = jest.fn();
+        app.updateSendButton = jest.fn();
+        app.handleCancelled = jest.fn();
+        app.retryLastRequest = jest.fn();
+
+        app.handleError('Failed to fetch');
+        await app.cancelCurrentRequest();
+        jest.advanceTimersByTime(1000);
+
+        expect(app.retryAttempt).toBe(1);
+        expect(app.retryLastRequest).not.toHaveBeenCalled();
+        expect(app.handleCancelled).toHaveBeenCalledWith({ reason: 'user_cancelled' });
     });
 
     test('supports arrow key navigation through the plus menu controls', () => {

@@ -726,6 +726,8 @@ class ChatApp {
         // Track retry state
         this.retryAttempt = 0;
         this.maxRetries = 3;
+        this.pendingRetryTimer = null;
+        this.pendingRetrySessionId = '';
         
         // Abort controller for current stream
         this.currentAbortController = null;
@@ -8215,7 +8217,8 @@ class ChatApp {
         }
 
         const trackedRequest = this.pendingStreamResync || this.activeStreamRequest;
-        if (!this.isProcessing && !trackedRequest) {
+        const hasPendingRetry = this.pendingRetryTimer != null;
+        if (!this.isProcessing && !trackedRequest && !hasPendingRetry) {
             return false;
         }
 
@@ -8223,6 +8226,7 @@ class ChatApp {
         this.updateSendButton();
 
         const sessionId = String(trackedRequest?.sessionId || sessionManager.currentSessionId || '').trim();
+        this.clearPendingRetryTimer(sessionId);
         const requestId = String(
             trackedRequest?.requestId
             || trackedRequest?.assistantMessageId
@@ -12172,6 +12176,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             || sessionManager.currentSessionId
             || '',
         ).trim();
+        this.clearPendingRetryTimer(finalizedSessionId);
 
         const shouldTouchVisibleIndicator = !finalizedSessionId || this.isVisibleSession(finalizedSessionId);
 
@@ -12563,23 +12568,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 'Reconnecting'
             );
             
-            // Wait a bit and retry the last request
-            setTimeout(() => {
-                // If we have a current streaming message, keep it in "thinking" state
-                if (this.currentStreamingMessageId) {
-                    const el = document.getElementById(this.currentStreamingMessageId);
-                    if (el) {
-                        // Update the message to show we're retrying
-                        const contentEl = el.querySelector('.message-content');
-                        if (contentEl) {
-                            contentEl.innerHTML = '<p class="text-text-secondary italic">Reconnecting...</p>';
-                        }
-                    }
-                }
-                
-                // Retry the request
-                this.retryLastRequest();
-            }, 1000 * this.retryAttempt); // Exponential backoff
+            this.scheduleRetryLastRequest(1000 * this.retryAttempt, sessionId);
             
             return;
         }
@@ -12625,11 +12614,60 @@ curl -fsSIL --max-time 20 "https://$host"`;
         uiHelpers.showToast(displayMessage, 'error', errorTitle);
         void this.processMessageQueue({ sessionId });
     }
+
+    clearPendingRetryTimer(sessionId = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (
+            normalizedSessionId
+            && this.pendingRetrySessionId
+            && this.pendingRetrySessionId !== normalizedSessionId
+        ) {
+            return false;
+        }
+
+        if (this.pendingRetryTimer != null) {
+            clearTimeout(this.pendingRetryTimer);
+        }
+        this.pendingRetryTimer = null;
+        this.pendingRetrySessionId = '';
+        return true;
+    }
+
+    scheduleRetryLastRequest(delayMs = 0, sessionId = '') {
+        const normalizedSessionId = String(sessionId || this.getTrackedStreamSessionId('')).trim();
+        this.clearPendingRetryTimer();
+        this.pendingRetrySessionId = normalizedSessionId;
+        this.pendingRetryTimer = setTimeout(() => {
+            this.pendingRetryTimer = null;
+            this.pendingRetrySessionId = '';
+            if (this.isCancellingCurrentRequest || !this.isProcessing) {
+                return;
+            }
+
+            const trackedSessionId = this.getTrackedStreamSessionId('');
+            if (normalizedSessionId && trackedSessionId !== normalizedSessionId) {
+                return;
+            }
+
+            // Keep the active placeholder visibly in reconnecting state.
+            if (this.currentStreamingMessageId) {
+                const el = document.getElementById(this.currentStreamingMessageId);
+                const contentEl = el?.querySelector('.message-content');
+                if (contentEl) {
+                    contentEl.innerHTML = '<p class="text-text-secondary italic">Reconnecting...</p>';
+                }
+            }
+
+            this.retryLastRequest();
+        }, Math.max(0, Number(delayMs) || 0));
+        return this.pendingRetryTimer;
+    }
     
     retryLastRequest() {
         // This is called to retry the last message
         // For now, we'll just try to regenerate the last user message
         const sessionId = this.getTrackedStreamSessionId();
+        this.clearPendingRetryTimer(sessionId);
         if (!sessionId || !this.isVisibleSession(sessionId)) {
             return;
         }
