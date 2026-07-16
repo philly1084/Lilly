@@ -144,6 +144,13 @@ function extractScratchSummary(text = '', retainChars = DEFAULT_RETAIN_CHARS) {
     return truncateText(signalLines || source, retainChars);
 }
 
+function removeNegatedProblemSignals(text = '') {
+    return sanitizeText(text)
+        .replace(/\b(?:no|zero|0)\s+(?:unresolved\s+)?(?:blockers?|errors?|failures?|regressions?)\b/gi, '')
+        .replace(/\bwithout\s+(?:any\s+)?(?:blockers?|errors?|failures?|regressions?)\b/gi, '')
+        .replace(/\b(?:is|are|was|were)\s+not\s+blocked\b/gi, '');
+}
+
 function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded = true, error = null } = {}) {
     const longAgent = normalizeLongAgentMetadata(workload?.metadata || {}, {
         goal: workload?.prompt,
@@ -156,10 +163,11 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
     const outputText = sanitizeText(result?.outputText || result?.artifactMessage || error?.message || '');
     const scratchSummary = extractScratchSummary(outputText, longAgent.compaction.retainChars);
     const lowerOutput = outputText.toLowerCase();
+    const problemSignalText = removeNegatedProblemSignals(outputText);
     const blocked = !succeeded
-        || /\b(blocked|cannot continue|need user|needs user|missing credential|permission denied|auth required|failed|error)\b/i.test(outputText);
+        || /\b(blocked|cannot continue|need user|needs user|missing credential|permission denied|auth required|failed|error)\b/i.test(problemSignalText);
     const needsReview = blocked
-        || /\b(incomplete|needs repair|needs review|not verified|tests? failing|still broken|regression)\b/i.test(outputText);
+        || /\b(incomplete|needs repair|needs review|not verified|tests? failing|still broken|regression)\b/i.test(problemSignalText);
     const goalComplete = succeeded
         && /\b(overall goal complete|project complete|all acceptance criteria (?:met|passed)|nothing remains|ready for final handoff)\b/i.test(lowerOutput);
     const maxStepsReached = step >= longAgent.maxAutoSteps;
