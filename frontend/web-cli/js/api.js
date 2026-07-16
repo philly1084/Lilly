@@ -1175,8 +1175,6 @@ class WebCLIAPI {
     }
 
     async generateImage(prompt, options = {}) {
-        await this.ensureSession({ title: 'Voxel Image' });
-        
         const {
             model = 'gpt-image-2',
             size = 'auto',
@@ -1188,7 +1186,10 @@ class WebCLIAPI {
             output_compression = null,
             moderation = null,
             background = null,
+            signal = null,
         } = options;
+
+        await this.ensureSession({ title: 'Voxel Image', signal });
 
         try {
             const response = await this.fetchWithRetry(`${API_BASE_URL}/images/generations`, {
@@ -1198,6 +1199,7 @@ class WebCLIAPI {
                     'Accept': 'application/json',
                 }),
                 credentials: 'same-origin',
+                signal,
                 body: JSON.stringify({
                     prompt,
                     model: model || 'gpt-image-2',
@@ -1229,6 +1231,9 @@ class WebCLIAPI {
             }
             return data;
         } catch (error) {
+            if (signal?.aborted || error?.name === 'AbortError') {
+                throw error;
+            }
             console.error('Image generation error:', error);
             throw error;
         }

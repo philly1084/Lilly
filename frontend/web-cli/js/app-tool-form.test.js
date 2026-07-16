@@ -552,8 +552,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
-        expect(indexMarkup).toContain('js/api.js?v=20260715b');
-        expect(indexMarkup).toContain('js/app.js?v=20260716a');
+        expect(indexMarkup).toContain('js/api.js?v=20260716b');
+        expect(indexMarkup).toContain('js/app.js?v=20260716b');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -575,6 +575,46 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(app.cancelRequestButton.textContent).toBe('Stopping...');
         expect(app.cancelRequestButton.getAttribute('aria-label')).toBe('Stopping current AI request');
         expect(app.cancelCurrentRequest()).toBe(false);
+    });
+
+    test('lets users stop long-running image generation without an error banner', async () => {
+        const api = {
+            generateImage: jest.fn((_prompt, options) => new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => {
+                    const error = new Error('The operation was aborted.');
+                    error.name = 'AbortError';
+                    reject(error);
+                }, { once: true });
+            })),
+        };
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({ api, AbortController });
+        const app = Object.create(CodeCLIApp.prototype);
+        const dom = new JSDOM('<button id="cancelRequestButton" hidden>Stop</button>');
+        app.cancelRequestButton = dom.window.document.getElementById('cancelRequestButton');
+        app.parseImageArgs = jest.fn(() => ({
+            prompt: 'A long-running image request',
+            options: { model: 'gpt-image-2' },
+        }));
+        app.printSystem = jest.fn();
+        app.printError = jest.fn();
+        app.setStatus = jest.fn();
+
+        const request = app.generateImage('A long-running image request');
+        await Promise.resolve();
+
+        expect(api.generateImage).toHaveBeenCalledWith(
+            'A long-running image request',
+            expect.objectContaining({ signal: expect.any(Object) }),
+        );
+        expect(app.cancelRequestButton.hidden).toBe(false);
+        expect(app.cancelCurrentRequest()).toBe(true);
+        await request;
+
+        expect(app.printSystem).toHaveBeenCalledWith('Image generation cancelled.');
+        expect(app.printError).not.toHaveBeenCalled();
+        expect(app.setStatus).toHaveBeenLastCalledWith('ready');
+        expect(app.cancelRequestButton.hidden).toBe(true);
+        expect(app.currentRequestController).toBeNull();
     });
 
     function createDrawerHarness() {

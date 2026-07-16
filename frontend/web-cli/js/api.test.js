@@ -250,6 +250,20 @@ describe('web-cli API request cancellation', () => {
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+
+    test('passes caller cancellation through image generation', async () => {
+        const { api } = loadWebCliApi();
+        api.ensureSession = jest.fn().mockResolvedValue('session-image-cancel-1');
+        api.fetchWithRetry = jest.fn().mockResolvedValue(createJsonResponse({ data: [] }));
+        const controller = new AbortController();
+
+        await api.generateImage('A long-running image request', {
+            signal: controller.signal,
+        });
+
+        expect(api.ensureSession.mock.calls[0][0].signal === controller.signal).toBe(true);
+        expect(api.fetchWithRetry.mock.calls[0][1].signal === controller.signal).toBe(true);
+    });
 });
 
 describe('web-cli API request retries', () => {

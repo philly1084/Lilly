@@ -9486,11 +9486,17 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
         }
         
         this.isProcessing = true;
+        const requestController = new AbortController();
+        this.currentRequestController = requestController;
+        this.setRequestCancellationState(true);
         this.setStatus('thinking');
         this.printSystem(`Generating image with ${options.model || 'gpt-image-2'}...`);
         
         try {
-            const response = await api.generateImage(prompt, options);
+            const response = await api.generateImage(prompt, {
+                ...options,
+                signal: requestController.signal,
+            });
             
             const generatedImages = Array.isArray(response.data) ? response.data : [];
 
@@ -9530,9 +9536,18 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
             
             this.setStatus('ready');
         } catch (error) {
+            if (error?.name === 'AbortError' || requestController.signal.aborted) {
+                this.printSystem('Image generation cancelled.');
+                this.setStatus('ready');
+                return;
+            }
             this.printError(`Image generation failed: ${error.message}`);
             this.setStatus('error');
         } finally {
+            if (this.currentRequestController === requestController) {
+                this.currentRequestController = null;
+                this.setRequestCancellationState(false);
+            }
             this.isProcessing = false;
         }
     }
