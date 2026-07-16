@@ -573,6 +573,8 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('.search-box input:focus-visible');
         expect(css).toContain('body[data-ui-surface="admin"] .sidebar-toggle:focus-visible');
         expect(css).toContain('body[data-ui-surface="admin"] .modal-close:focus-visible');
+        expect(css).toContain('.modal-header .modal-close {');
+        expect(css).not.toMatch(/\n\.modal-close \{\n/);
         expect(css).toContain('body[data-ui-surface="admin"] .toast-close:focus-visible');
         expect(css).toContain('.toast:focus-within');
         expect(css).toContain('.tab-btn:focus-visible');
@@ -1090,6 +1092,7 @@ describe('agent dashboard navigation accessibility', () => {
         const trigger = dom.window.document.getElementById('openDialog');
         const modal = dom.window.document.getElementById('exampleModal');
         const closeButton = modal.querySelector('.modal-close');
+        const dialogInput = dom.window.document.getElementById('dialogInput');
 
         global.document = dom.window.document;
         global.window = dom.window;
@@ -1099,6 +1102,17 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.openModal('exampleModal', trigger);
 
         expect(modal.classList.contains('active')).toBe(true);
+        expect(dom.window.document.activeElement).toBe(closeButton);
+
+        closeButton.focus();
+        const backwardTab = { shiftKey: true, preventDefault: jest.fn() };
+        dashboard.containModalFocus(modal, backwardTab);
+        expect(backwardTab.preventDefault).toHaveBeenCalledTimes(1);
+        expect(dom.window.document.activeElement).toBe(dialogInput);
+
+        const forwardTab = { shiftKey: false, preventDefault: jest.fn() };
+        dashboard.containModalFocus(modal, forwardTab);
+        expect(forwardTab.preventDefault).toHaveBeenCalledTimes(1);
         expect(dom.window.document.activeElement).toBe(closeButton);
 
         dashboard.closeModal('exampleModal');
@@ -1205,8 +1219,8 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=agent-company-project-archive-guard-v1');
-        expect(html).toContain('css/dashboard.css?v=agent-company-projects-v1');
+        expect(html).toContain('dashboard.js?v=admin-modal-dialog-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-modal-dialog-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
@@ -2254,7 +2268,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=agent-company-projects-v1');
+        expect(html).toContain('dashboard.css?v=admin-modal-dialog-v1');
     });
 
     test('renders named Agent Company projects with active-run context', () => {

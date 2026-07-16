@@ -4906,7 +4906,7 @@ a.lilly-pulse-chip:hover {
     color: var(--text-primary);
 }
 
-.modal-close {
+.modal-header .modal-close {
     width: 32px;
     height: 32px;
     display: flex;
@@ -4921,8 +4921,8 @@ a.lilly-pulse-chip:hover {
     transition: all var(--transition-fast);
 }
 
-.modal-close:hover,
-.modal-close:focus-visible {
+.modal-header .modal-close:hover,
+.modal-header .modal-close:focus-visible {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
 }

@@ -814,6 +814,12 @@ class Dashboard {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            const activeModal = document.querySelector('.modal.active');
+            if (e.key === 'Tab' && activeModal) {
+                this.containModalFocus(activeModal, e);
+                return;
+            }
+
             if (e.key === 'Escape') {
                 this.closeMobileNavigation();
                 document.querySelectorAll('.modal.active').forEach(modal => {
@@ -5083,6 +5089,32 @@ class Dashboard {
             '[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
         initialFocus?.focus();
+    }
+
+    containModalFocus(modal, event) {
+        const focusableElements = Array.from(modal.querySelectorAll(
+            'a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter(element => (
+            element.type !== 'hidden'
+            && !element.closest('[hidden]')
+            && element.getAttribute('aria-hidden') !== 'true'
+        ));
+
+        if (focusableElements.length === 0) {
+            return;
+        }
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        const focusIsOutside = !modal.contains(document.activeElement);
+
+        if (event.shiftKey && (document.activeElement === firstElement || focusIsOutside)) {
+            event.preventDefault();
+            lastElement.focus();
+        } else if (!event.shiftKey && (document.activeElement === lastElement || focusIsOutside)) {
+            event.preventDefault();
+            firstElement.focus();
+        }
     }
     
     closeModal(modalId) {
