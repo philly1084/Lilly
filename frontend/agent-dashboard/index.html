@@ -1102,7 +1102,7 @@
                             <option value="">Loading projects...</option>
                         </select>
                         <button class="btn btn-primary btn-sm" id="companyNewProjectBtn" type="button">New Project</button>
-                        <button class="btn btn-secondary btn-sm" id="companyArchiveProjectBtn" type="button">Archive Project</button>
+                        <button class="btn btn-secondary btn-sm" id="companyArchiveProjectBtn" type="button" aria-describedby="companyProjectSummary">Archive Project</button>
                         <button class="btn btn-secondary btn-sm" id="companyClearHistoryBtn" type="button">Clear Saved History</button>
                         <span id="companyProjectSummary" class="company-project-summary">Project work stays separated by session.</span>
                     </div>
@@ -2655,6 +2655,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=agent-company-projects-v1"></script>
+    <script src="js/dashboard.js?v=agent-company-project-archive-guard-v1"></script>
 </body>
 </html>

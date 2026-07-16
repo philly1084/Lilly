@@ -174,7 +174,7 @@ function createAgentCompanyHarness(options = {}) {
         <span id="companyWorkspaceStatus"></span>
         <span id="companyDeliverableStatus"></span>
         <select id="companyProjectSelect"></select>
-        <button id="companyArchiveProjectBtn"></button>
+        <button id="companyArchiveProjectBtn" aria-describedby="companyProjectSummary"></button>
         <span id="companyProjectSummary"></span>
         <span id="companyFileManagerStatus"></span>
         <span id="companyImprovementLoopStatus"></span>
@@ -207,7 +207,7 @@ function createAgentCompanyHarness(options = {}) {
         <div id="adminRunDetails"></div>
         <div id="companyRunDetails"></div>
     `, { url });
-    const Dashboard = loadDashboardClass(dom);
+    const Dashboard = loadDashboardClass(dom, options.dependencies || {});
     const dashboard = Object.create(Dashboard.prototype);
 
     global.document = dom.window.document;
@@ -1194,7 +1194,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=agent-company-projects-v1');
+        expect(html).toContain('dashboard.js?v=agent-company-project-archive-guard-v1');
         expect(html).toContain('css/dashboard.css?v=agent-company-projects-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
@@ -2260,6 +2260,82 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyProjectSelect').value).toBe('alpha');
         expect(document.getElementById('companyProjectSelect').textContent).toContain('Alpha launch (2 active)');
         expect(document.getElementById('companyProjectSummary').textContent).toContain('3 workloads, 5 runs, 2 active');
+        expect(document.getElementById('companyProjectSummary').textContent).toContain('Finish or cancel active runs before archiving.');
+        expect(document.getElementById('companyArchiveProjectBtn').disabled).toBe(true);
+        expect(document.getElementById('companyArchiveProjectBtn').title).toBe('Finish or cancel 2 active runs before archiving.');
+        expect(document.getElementById('companyArchiveProjectBtn').getAttribute('aria-describedby')).toBe('companyProjectSummary');
+
+        dashboard.state.activeAgentCompanyProjectId = 'archive';
+        dashboard.renderAgentCompanyProjects();
+
         expect(document.getElementById('companyArchiveProjectBtn').disabled).toBe(false);
+        expect(document.getElementById('companyArchiveProjectBtn').title).toBe('Archive this Agent Company project.');
+
+        dashboard.state.agentCompanyProjects = [dashboard.state.agentCompanyProjects[1]];
+        dashboard.renderAgentCompanyProjects();
+
+        expect(document.getElementById('companyProjectSummary').textContent).toContain('Keep at least one Agent Company project.');
+        expect(document.getElementById('companyArchiveProjectBtn').disabled).toBe(true);
+        expect(document.getElementById('companyArchiveProjectBtn').title).toBe('Keep at least one Agent Company project.');
+    });
+
+    test('does not switch away from a project that still has active runs', async () => {
+        const { dashboard, dom } = createAgentCompanyHarness();
+        dashboard.state.agentCompanyProjects = [
+            { id: 'alpha', name: 'Alpha launch', activeRunCount: 1 },
+            { id: 'beta', name: 'Beta launch', activeRunCount: 0 },
+        ];
+        dashboard.state.activeAgentCompanyProjectId = 'alpha';
+        dashboard.activateAgentCompanyProject = jest.fn();
+        dashboard.showToast = jest.fn();
+        dom.window.confirm = jest.fn();
+
+        await dashboard.archiveAgentCompanyProject();
+
+        expect(dashboard.activateAgentCompanyProject).not.toHaveBeenCalled();
+        expect(dom.window.confirm).not.toHaveBeenCalled();
+        expect(dashboard.showToast).toHaveBeenCalledWith('Finish or cancel 1 active run before archiving', 'warning');
+    });
+
+    test('keeps the active project selected when the server detects a newly active run', async () => {
+        const serverError = Object.assign(new Error('Archive blocked'), {
+            status: 409,
+            userMessage: 'Finish or cancel 1 active run before archiving Alpha launch',
+            data: {
+                data: {
+                    projectId: 'alpha',
+                    activeRunCount: 1,
+                },
+            },
+        });
+        const apiClient = {
+            delete: jest.fn(async () => { throw serverError; }),
+        };
+        const { dashboard, dom } = createAgentCompanyHarness({ dependencies: { apiClient } });
+        dashboard.state.agentCompanyProjects = [
+            { id: 'alpha', name: 'Alpha launch', activeRunCount: 0 },
+            { id: 'beta', name: 'Beta launch', activeRunCount: 0 },
+        ];
+        dashboard.state.activeAgentCompanyProjectId = 'alpha';
+        dashboard.activateAgentCompanyProject = jest.fn();
+        dashboard.loadSettings = jest.fn();
+        dashboard.loadAgentCompanyDashboard = jest.fn();
+        dashboard.showToast = jest.fn();
+        dom.window.confirm = jest.fn(() => true);
+
+        await dashboard.archiveAgentCompanyProject();
+
+        expect(apiClient.delete).toHaveBeenCalledWith('/api/admin/agent-company/projects/alpha');
+        expect(dashboard.activateAgentCompanyProject).not.toHaveBeenCalled();
+        expect(dashboard.state.activeAgentCompanyProjectId).toBe('alpha');
+        expect(dashboard.state.agentCompanyProjects[0].activeRunCount).toBe(1);
+        expect(dom.window.document.getElementById('companyArchiveProjectBtn').disabled).toBe(true);
+        expect(dom.window.document.getElementById('companyProjectSummary').textContent).toContain('1 active');
+        expect(dashboard.loadSettings).not.toHaveBeenCalled();
+        expect(dashboard.loadAgentCompanyDashboard).not.toHaveBeenCalled();
+        expect(dashboard.showToast).toHaveBeenCalledWith(
+            'Finish or cancel 1 active run before archiving Alpha launch',
+            'error',
+        );
     });
 });

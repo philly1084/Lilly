@@ -177,9 +177,13 @@ describe('/api/admin workload routes', () => {
                 { id: 'work-beta', sessionId: 'agent-company-beta' },
             ]),
             listAdminRuns: jest.fn(async () => [
-                { id: 'run-alpha', sessionId: 'agent-company-alpha', status: 'running' },
+                { id: 'run-alpha', sessionId: 'agent-company-alpha', status: 'completed' },
                 { id: 'run-beta', sessionId: 'agent-company-beta', status: 'completed' },
             ]),
+            getSessionSummaries: jest.fn(async () => ({
+                'agent-company-alpha': { queued: 0, running: 1, failed: 0 },
+                'agent-company-beta': { queued: 0, running: 0, failed: 0 },
+            })),
         };
 
         try {
@@ -196,6 +200,103 @@ describe('/api/admin workload routes', () => {
             expect(response.body.data.projects[1].activeRunCount).toBe(0);
         } finally {
             configSpy.mockRestore();
+        }
+    });
+
+    test('keeps projects with active runs available for CEO inspection', async () => {
+        const config = {
+            activeProjectId: 'alpha',
+            sessionId: 'agent-company-alpha',
+            companyGoal: 'Ship alpha.',
+            enabled: true,
+            projects: [
+                { id: 'alpha', name: 'Alpha', sessionId: 'agent-company-alpha', companyGoal: 'Ship alpha.', enabled: true },
+                { id: 'beta', name: 'Beta', sessionId: 'agent-company-beta', companyGoal: 'Ship beta.', enabled: true },
+            ],
+        };
+        const configSpy = jest.spyOn(settingsController, 'getEffectiveAgentCompanyConfig').mockReturnValue(config);
+        const updateSpy = jest.spyOn(settingsController, 'updateAgentCompanySettings').mockResolvedValue(config);
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminRuns: jest.fn(async () => [
+                { id: 'run-alpha', sessionId: 'agent-company-alpha', status: 'completed' },
+                { id: 'run-beta', sessionId: 'agent-company-beta', status: 'completed' },
+            ]),
+            getSessionSummaries: jest.fn(async () => ({
+                'agent-company-alpha': { queued: 1, running: 1, failed: 0 },
+            })),
+        };
+
+        try {
+            const blocked = await request(buildApp(service)).delete('/api/admin/agent-company/projects/alpha');
+
+            expect(blocked.status).toBe(409);
+            expect(blocked.body).toEqual(expect.objectContaining({
+                success: false,
+                error: 'Finish or cancel 2 active runs before archiving Alpha',
+                data: {
+                    projectId: 'alpha',
+                    activeRunCount: 2,
+                },
+            }));
+            expect(updateSpy).not.toHaveBeenCalled();
+
+            expect(service.getSessionSummaries).toHaveBeenCalledWith(['agent-company-alpha']);
+            service.getSessionSummaries.mockResolvedValue({
+                'agent-company-alpha': { queued: 0, running: 0, failed: 0 },
+            });
+            const archived = await request(buildApp(service)).delete('/api/admin/agent-company/projects/alpha');
+
+            expect(archived.status).toBe(200);
+            expect(archived.body.data).toEqual({
+                archivedProjectId: 'alpha',
+                activeProjectId: 'beta',
+            });
+            expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+                activeProjectId: 'beta',
+                sessionId: 'agent-company-beta',
+                companyGoal: 'Ship beta.',
+                enabled: true,
+                projects: expect.arrayContaining([
+                    expect.objectContaining({ id: 'alpha', archived: true }),
+                ]),
+            }));
+        } finally {
+            configSpy.mockRestore();
+            updateSpy.mockRestore();
+        }
+    });
+
+    test('fails closed when project run state cannot be inspected', async () => {
+        const config = {
+            activeProjectId: 'beta',
+            sessionId: 'agent-company-beta',
+            projects: [
+                { id: 'alpha', name: 'Alpha', sessionId: 'agent-company-alpha' },
+                { id: 'beta', name: 'Beta', sessionId: 'agent-company-beta' },
+            ],
+        };
+        const configSpy = jest.spyOn(settingsController, 'getEffectiveAgentCompanyConfig').mockReturnValue(config);
+        const updateSpy = jest.spyOn(settingsController, 'updateAgentCompanySettings').mockResolvedValue(config);
+
+        const unavailableSummary = jest.fn(async () => ({}));
+        try {
+            for (const service of [
+                undefined,
+                { isAvailable: jest.fn(() => true) },
+                { isAvailable: jest.fn(() => false), getSessionSummaries: unavailableSummary },
+            ]) {
+                const response = await request(buildApp(service))
+                    .delete('/api/admin/agent-company/projects/alpha');
+
+                expect(response.status).toBe(503);
+                expect(response.body.error).toBe('Agent Company run state is unavailable; project archival was not attempted');
+            }
+            expect(unavailableSummary).not.toHaveBeenCalled();
+            expect(updateSpy).not.toHaveBeenCalled();
+        } finally {
+            configSpy.mockRestore();
+            updateSpy.mockRestore();
         }
     });
 

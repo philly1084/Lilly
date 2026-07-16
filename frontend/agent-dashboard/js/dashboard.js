@@ -5269,11 +5269,21 @@ class Dashboard {
             : '<option value="">Main project</option>';
         select.value = this.state.activeAgentCompanyProjectId || projects[0]?.id || '';
         const active = projects.find((project) => project.id === select.value);
+        const activeRunCount = Number(active?.activeRunCount || 0);
+        const archiveBlockedByActiveRuns = activeRunCount > 0;
+        const archiveBlockedByProjectCount = projects.length <= 1;
         this.setTextContent('companyProjectSummary', active
-            ? `${active.workloadCount || 0} workloads, ${active.runCount || 0} runs${active.activeRunCount ? `, ${active.activeRunCount} active` : ''}. Other projects keep their files and history.`
+            ? `${active.workloadCount || 0} workloads, ${active.runCount || 0} runs${activeRunCount ? `, ${activeRunCount} active` : ''}. Other projects keep their files and history.${archiveBlockedByProjectCount ? ' Keep at least one Agent Company project.' : archiveBlockedByActiveRuns ? ' Finish or cancel active runs before archiving.' : ''}`
             : 'Project work stays separated by session.');
         const archiveButton = document.getElementById('companyArchiveProjectBtn');
-        if (archiveButton) archiveButton.disabled = projects.length <= 1;
+        if (archiveButton) {
+            archiveButton.disabled = archiveBlockedByProjectCount || archiveBlockedByActiveRuns;
+            archiveButton.title = archiveBlockedByProjectCount
+                ? 'Keep at least one Agent Company project.'
+                : archiveBlockedByActiveRuns
+                    ? `Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before archiving.`
+                    : 'Archive this Agent Company project.';
+        }
     }
 
     async createAgentCompanyProject() {
@@ -5315,14 +5325,27 @@ class Dashboard {
         const id = this.state.activeAgentCompanyProjectId;
         const active = this.state.agentCompanyProjects.find((project) => project.id === id);
         if (!active || this.state.agentCompanyProjects.length <= 1) return;
-        const next = this.state.agentCompanyProjects.find((project) => project.id !== id);
-        if (!next || !window.confirm?.(`Archive “${active.name}”? Its stored work will remain available on disk.`)) return;
+        const activeRunCount = Number(active.activeRunCount || 0);
+        if (activeRunCount > 0) {
+            this.showToast(`Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before archiving`, 'warning');
+            return;
+        }
+        if (!window.confirm?.(`Archive “${active.name}”? Its stored work will remain available on disk.`)) return;
         try {
-            await this.activateAgentCompanyProject(next.id);
             await apiClient.delete(`/api/admin/agent-company/projects/${encodeURIComponent(id)}`);
-            await this.loadAgentCompanyProjects();
+            this.state.companyActionHistory = [];
+            this.state.companyActionHistorySummary = null;
+            this.state.companyActionHistoryExpanded = false;
+            this.dirtyInputIds?.delete('companyCeoDirection');
+            await this.loadSettings();
+            await this.loadAgentCompanyDashboard();
             this.showToast(`${active.name} archived`, 'success');
         } catch (error) {
+            const serverActiveRunCount = Number(error.data?.data?.activeRunCount || 0);
+            if (error.status === 409 && error.data?.data?.projectId === id && serverActiveRunCount > 0) {
+                active.activeRunCount = serverActiveRunCount;
+                this.renderAgentCompanyProjects();
+            }
             this.showToast(error.userMessage || error.message || 'Failed to archive project', 'error');
         }
     }

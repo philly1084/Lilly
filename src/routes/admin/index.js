@@ -1091,22 +1091,35 @@ router.get('/agent-company/projects', async (req, res, next) => {
     const workloadService = req.app.locals.agentWorkloadService;
     let workloads = [];
     let runs = [];
+    let sessionSummaries = {};
     if (workloadService?.isAvailable?.()) {
-      [workloads, runs] = await Promise.all([
+      [workloads, runs, sessionSummaries] = await Promise.all([
         workloadService.listAdminWorkloads(500),
         workloadService.listAdminRuns(500),
+        typeof workloadService.getSessionSummaries === 'function'
+          ? workloadService.getSessionSummaries(projects.map((project) => project.sessionId))
+          : {},
       ]);
     }
     res.json({
       success: true,
       data: {
         activeProjectId,
-        projects: projects.map((project) => ({
-          ...project,
-          workloadCount: workloads.filter((workload) => workload.sessionId === project.sessionId).length,
-          runCount: runs.filter((run) => run.sessionId === project.sessionId).length,
-          activeRunCount: runs.filter((run) => run.sessionId === project.sessionId && ['queued', 'running'].includes(run.status)).length,
-        })),
+        projects: projects.map((project) => {
+          const summary = sessionSummaries?.[project.sessionId];
+          const activeRunCount = summary
+            ? Number(summary.queued || 0) + Number(summary.running || 0)
+            : runs.filter((run) => (
+              run.sessionId === project.sessionId
+              && ['queued', 'running'].includes(String(run.status || '').trim().toLowerCase())
+            )).length;
+          return {
+            ...project,
+            workloadCount: workloads.filter((workload) => workload.sessionId === project.sessionId).length,
+            runCount: runs.filter((run) => run.sessionId === project.sessionId).length,
+            activeRunCount,
+          };
+        }),
       },
     });
   } catch (error) {
@@ -1187,17 +1200,58 @@ router.delete('/agent-company/projects/:id', async (req, res, next) => {
     const activeProjectId = config.activeProjectId
       || projects.find((project) => project.sessionId === config.sessionId)?.id
       || projects[0]?.id;
-    if (targetId === activeProjectId) {
-      return res.status(409).json({ success: false, error: 'Switch projects before archiving the active project' });
-    }
-    if (!projects.some((project) => project.id === targetId)) {
+    const project = projects.find((candidate) => candidate.id === targetId);
+    if (!project) {
       return res.status(404).json({ success: false, error: 'Agent company project was not found' });
+    }
+    const fallbackProject = projects.find((candidate) => candidate.id !== targetId);
+    if (!fallbackProject) {
+      return res.status(409).json({ success: false, error: 'Keep at least one Agent Company project' });
+    }
+    const workloadService = req.app.locals.agentWorkloadService;
+    if (!workloadService?.isAvailable?.() || typeof workloadService.getSessionSummaries !== 'function') {
+      return res.status(503).json({
+        success: false,
+        error: 'Agent Company run state is unavailable; project archival was not attempted',
+      });
+    }
+    let activeRunCount = 0;
+    if (typeof workloadService?.getSessionSummaries === 'function') {
+      const summaries = await workloadService.getSessionSummaries([project.sessionId]);
+      const summary = summaries?.[project.sessionId] || {};
+      activeRunCount = Number(summary.queued || 0) + Number(summary.running || 0);
+    }
+    if (activeRunCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: `Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before archiving ${project.name}`,
+        data: {
+          projectId: project.id,
+          activeRunCount,
+        },
+      });
     }
     const nextProjects = projects.map((project) => project.id === targetId
       ? { ...project, archived: true, updatedAt: now }
       : project);
-    await saveAgentCompanyProjectConfig({ ...config, projects: nextProjects, activeProjectId });
-    res.json({ success: true, data: { archivedProjectId: targetId } });
+    const nextActiveProject = activeProjectId === targetId
+      ? fallbackProject
+      : projects.find((candidate) => candidate.id === activeProjectId) || fallbackProject;
+    await saveAgentCompanyProjectConfig({
+      ...config,
+      projects: nextProjects,
+      activeProjectId: nextActiveProject.id,
+      sessionId: nextActiveProject.sessionId,
+      companyGoal: nextActiveProject.companyGoal || '',
+      enabled: nextActiveProject.enabled === true,
+    });
+    res.json({
+      success: true,
+      data: {
+        archivedProjectId: targetId,
+        activeProjectId: nextActiveProject.id,
+      },
+    });
   } catch (error) {
     next(error);
   }
