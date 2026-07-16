@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const EventEmitter = require('events');
 const { createResponse } = require('./openai-client');
+const { isSuccessfulResult } = require('./agent-sdk/registry/UnifiedRegistry');
 const { config } = require('./config');
 const { buildModelRoutingShadow } = require('./model-routing-shadow');
 const { extractResponseText } = require('./artifacts/artifact-service');
@@ -9295,7 +9296,7 @@ function normalizeToolResult(result, fallbackToolId, timing = {}) {
     const durationFromTimestamps = Math.max(0, new Date(endTime).getTime() - new Date(fallbackStartTime).getTime());
 
     const base = {
-        success: result?.success !== false,
+        success: isSuccessfulResult(result, true),
         toolId: result?.toolId || fallbackToolId,
         duration: Number(result?.duration || durationFromTimestamps || 0),
         data: sanitizeValue(result?.data),
@@ -13856,7 +13857,7 @@ class ConversationOrchestrator extends EventEmitter {
                 });
                 budgetExceeded = budgetExceeded || (Number.isFinite(autonomyDeadline) && Date.now() >= autonomyDeadline);
 
-                if (result?.success === false || budgetExceeded) {
+                if (normalizedResult.success === false || budgetExceeded) {
                     break;
                 }
             } catch (error) {

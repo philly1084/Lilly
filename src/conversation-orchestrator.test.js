@@ -627,6 +627,45 @@ describe('ConversationOrchestrator', () => {
         remoteRunnerService.runners.clear();
     });
 
+    test('stops planned work when a compatible tool serializes failure', async () => {
+        const toolManager = {
+            getTool: jest.fn((toolId) => ({ id: toolId })),
+            executeTool: jest.fn()
+                .mockResolvedValueOnce({
+                    success: 'false',
+                    toolId: 'remote-command',
+                    error: 'Permission denied',
+                })
+                .mockResolvedValueOnce({
+                    success: true,
+                    toolId: 'remote-command',
+                    data: { stdout: 'should not run' },
+                }),
+        };
+        const orchestrator = new ConversationOrchestrator({ toolManager });
+
+        const result = await orchestrator.executePlan({
+            plan: [
+                { tool: 'remote-command', params: { command: 'inspect' } },
+                { tool: 'remote-command', params: { command: 'change state' } },
+            ],
+            toolManager,
+            objective: 'Inspect before changing state.',
+            toolPolicy: {
+                candidateToolIds: ['remote-command'],
+                allowedToolIds: ['remote-command'],
+                toolContracts: {},
+            },
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+        expect(result.toolEvents).toHaveLength(1);
+        expect(result.toolEvents[0].result).toEqual(expect.objectContaining({
+            success: false,
+            error: 'Permission denied',
+        }));
+    });
+
     test('adds neural-wave guidance to runtime instructions when enabled for broad R&D work', () => {
         settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
             enabled: true,
