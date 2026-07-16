@@ -135,7 +135,7 @@ describe('Notes template chooser accessibility', () => {
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
         expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
-        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-settings-dialog');
     });
 });
 
@@ -155,7 +155,27 @@ describe('Notes storage information accessibility', () => {
         expect(source).toContain("if (e.key !== 'Tab') return;");
         expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
-        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-settings-dialog');
+    });
+});
+
+describe('Notes settings dialog accessibility', () => {
+    test('opens as a named modal, contains focus, and restores the launcher', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+
+        expect(html).toContain('id="settings-btn" class="footer-btn" type="button" aria-haspopup="dialog"');
+        expect(html).toContain('js/sidebar.js?v=20260716-settings-dialog');
+        expect(source).toContain('function openSettings(event)');
+        expect(source).toContain("modal.setAttribute('role', 'dialog')");
+        expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
+        expect(source).toContain("modal.setAttribute('aria-labelledby', 'settings-modal-title')");
+        expect(source).toContain('id="settings-modal-title">Settings</span>');
+        expect(source).toContain('class="settings-close" type="button" aria-label="Close settings"');
+        expect(source).toContain("if (e.key === 'Escape')");
+        expect(source).toContain("if (e.key !== 'Tab') return;");
+        expect(source).toContain('triggerElement.focus({ preventScroll: true })');
+        expect(source).toContain('closeButton.focus({ preventScroll: true })');
     });
 });
 
@@ -172,7 +192,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
         expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
         expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
-        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-settings-dialog');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)");
@@ -283,7 +303,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-settings-dialog');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });

@@ -1617,16 +1617,20 @@ const Sidebar = (function() {
     /**
      * Open settings
      */
-    function openSettings() {
+    function openSettings(event) {
+        const triggerElement = event?.currentTarget || document.activeElement;
         const modal = document.createElement('div');
         modal.className = 'ai-modal';
         modal.style.display = 'flex';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'settings-modal-title');
         modal.innerHTML = `
             <div class="ai-modal-content" style="max-width: 450px; max-height: 80vh; overflow-y: auto;">
                 <div class="ai-modal-header">
-                    <span>⚙️</span>
-                    <span>Settings</span>
-                    <button class="settings-close" style="margin-left: auto; background: transparent; border: none; color: white; cursor: pointer; font-size: 18px;">✕</button>
+                    <span aria-hidden="true">⚙️</span>
+                    <span id="settings-modal-title">Settings</span>
+                    <button class="settings-close" type="button" aria-label="Close settings" style="margin-left: auto; background: transparent; border: none; color: white; cursor: pointer; font-size: 18px;">✕</button>
                 </div>
                 <div style="padding: 20px; display: flex; flex-direction: column; gap: 4px;">
                     
@@ -1634,42 +1638,42 @@ const Sidebar = (function() {
                     <div class="settings-section">
                         <div class="settings-section-title">📤 Export Current Page</div>
                         <div class="settings-btn-group">
-                            <button class="settings-btn" data-action="export-docx">
+                            <button class="settings-btn" type="button" data-action="export-docx">
                                 <span>📄</span>
                                 <div>
                                     <div>Word Document (.docx)</div>
                                     <div class="settings-btn-subtitle">Microsoft Word format with formatting</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="export-pdf">
+                            <button class="settings-btn" type="button" data-action="export-pdf">
                                 <span>📑</span>
                                 <div>
                                     <div>PDF Document (.pdf)</div>
                                     <div class="settings-btn-subtitle">Print-ready PDF with page breaks</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="export-html">
+                            <button class="settings-btn" type="button" data-action="export-html">
                                 <span>🌐</span>
                                 <div>
                                     <div>HTML Document (.html)</div>
                                     <div class="settings-btn-subtitle">Web-ready HTML with styling</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="export-md">
+                            <button class="settings-btn" type="button" data-action="export-md">
                                 <span>📝</span>
                                 <div>
                                     <div>Markdown (.md)</div>
                                     <div class="settings-btn-subtitle">Plain text with formatting</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="export-json">
+                            <button class="settings-btn" type="button" data-action="export-json">
                                 <span>📋</span>
                                 <div>
                                     <div>Lilly JSON (.json)</div>
                                     <div class="settings-btn-subtitle">LillyBuilt-compatible format</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="export-txt">
+                            <button class="settings-btn" type="button" data-action="export-txt">
                                 <span>📃</span>
                                 <div>
                                     <div>Plain Text (.txt)</div>
@@ -1683,14 +1687,14 @@ const Sidebar = (function() {
                     <div class="settings-section">
                         <div class="settings-section-title">📦 Export All Pages</div>
                         <div class="settings-btn-group">
-                            <button class="settings-btn" data-action="export-all-md">
+                            <button class="settings-btn" type="button" data-action="export-all-md">
                                 <span>📚</span>
                                 <div>
                                     <div>Export All as Markdown</div>
                                     <div class="settings-btn-subtitle">Single file with all pages</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="backup">
+                            <button class="settings-btn" type="button" data-action="backup">
                                 <span>💾</span>
                                 <div>
                                     <div>Full Backup (.json)</div>
@@ -1704,14 +1708,14 @@ const Sidebar = (function() {
                     <div class="settings-section">
                         <div class="settings-section-title">📥 Import</div>
                         <div class="settings-btn-group">
-                            <button class="settings-btn" data-action="import-file">
+                            <button class="settings-btn" type="button" data-action="import-file">
                                 <span>📂</span>
                                 <div>
                                     <div>Import from File</div>
                                     <div class="settings-btn-subtitle">DOCX, PDF, HTML, MD, JSON, TXT</div>
                                 </div>
                             </button>
-                            <button class="settings-btn" data-action="import-md">
+                            <button class="settings-btn" type="button" data-action="import-md">
                                 <span>📝</span>
                                 <div>
                                     <div>Paste Markdown</div>
@@ -1725,14 +1729,14 @@ const Sidebar = (function() {
                     <div class="settings-section">
                         <div class="settings-section-title">💿 Data Management</div>
                         <div class="settings-btn-group">
-                            <button class="settings-btn" data-action="storage-info">
+                            <button class="settings-btn" type="button" data-action="storage-info">
                                 <span>💿</span>
                                 <div>
                                     <div>Storage Information</div>
                                     <div class="settings-btn-subtitle">Check storage usage and status</div>
                                 </div>
                             </button>
-                            <button class="settings-btn danger" data-action="clear-all" style="color: #ef4444;">
+                            <button class="settings-btn danger" type="button" data-action="clear-all" style="color: #ef4444;">
                                 <span>🗑️</span>
                                 <div>
                                     <div>Clear All Data</div>
@@ -1773,21 +1777,50 @@ const Sidebar = (function() {
             });
         });
         
-        // Handle actions
-        modal.querySelector('.settings-close').addEventListener('click', () => modal.remove());
+        const closeButton = modal.querySelector('.settings-close');
+        const closeSettings = ({ restoreFocus = true } = {}) => {
+            modal.remove();
+            if (restoreFocus && triggerElement?.isConnected) {
+                triggerElement.focus({ preventScroll: true });
+            }
+        };
+
+        closeButton.addEventListener('click', () => closeSettings());
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeSettings();
+        });
+        modal.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeSettings();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+            const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         });
         
         modal.querySelectorAll('.settings-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 handleSettingsAction(action);
-                modal.remove();
+                const opensFollowup = ['export-all-md', 'import-file', 'import-md', 'storage-info'].includes(action);
+                closeSettings({ restoreFocus: !opensFollowup });
             });
         });
         
         document.body.appendChild(modal);
+        closeButton.focus({ preventScroll: true });
     }
     
     /**
