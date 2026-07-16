@@ -7235,10 +7235,12 @@ class UIHelpers {
     }
     
     updateModelSelectorAria(expanded) {
-        const btn = document.getElementById('model-selector-btn');
-        if (btn) {
-            btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        }
+        ['model-selector-btn', 'input-model-indicator'].forEach((buttonId) => {
+            const btn = document.getElementById(buttonId);
+            if (btn) {
+                btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        });
     }
 
     async openModelSelector() {
@@ -7554,10 +7556,14 @@ class UIHelpers {
     updateModelUI() {
         const label = document.getElementById('current-model-label');
         const inputLabel = document.getElementById('input-model-label');
+        const inputIndicator = document.getElementById('input-model-indicator');
         const displayName = this.getModelDisplayName({ id: this.currentModel });
         
         if (label) label.textContent = displayName;
         if (inputLabel) inputLabel.textContent = displayName;
+        if (inputIndicator) {
+            inputIndicator.setAttribute('aria-label', `Current model: ${displayName}. Open assistant settings`);
+        }
         this.updateAssistantModelSelect();
         this.updateMobileActionSheetUI();
     }
