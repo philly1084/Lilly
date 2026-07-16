@@ -669,10 +669,10 @@
                 <i data-lucide="search" class="w-5 h-5 text-text-secondary" aria-hidden="true"></i>
                 <input type="text" id="search-input" placeholder="Search in conversation…" autocomplete="off" inputmode="search" aria-label="Search messages">
                 <span id="search-count" class="search-count" aria-live="polite"></span>
-                <button class="btn-icon" onclick="app.navigateSearch(-1)" title="Previous result" aria-label="Previous result">
+                <button type="button" id="search-previous-btn" class="btn-icon" onclick="app.navigateSearch(-1)" title="Previous result" aria-label="Previous result" disabled>
                     <i data-lucide="chevron-up" class="w-4 h-4" aria-hidden="true"></i>
                 </button>
-                <button class="btn-icon" onclick="app.navigateSearch(1)" title="Next result" aria-label="Next result">
+                <button type="button" id="search-next-btn" class="btn-icon" onclick="app.navigateSearch(1)" title="Next result" aria-label="Next result" disabled>
                     <i data-lucide="chevron-down" class="w-4 h-4" aria-hidden="true"></i>
                 </button>
             </div>
@@ -1386,7 +1386,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260715b"></script>
+    <script defer src="js/ui.js?v=20260716c"></script>
     <script defer src="js/app.js?v=20260716b"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>

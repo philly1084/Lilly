@@ -10420,11 +10420,21 @@ class UIHelpers {
 
     updateSearchCount() {
         const countEl = document.getElementById('search-count');
-        if (this.searchResults.length === 0) {
-            countEl.textContent = '';
-        } else {
-            countEl.textContent = `${this.currentSearchIndex + 1} / ${this.searchResults.length}`;
+        const searchInput = document.getElementById('search-input');
+        const previousButton = document.getElementById('search-previous-btn');
+        const nextButton = document.getElementById('search-next-btn');
+        const resultCount = this.searchResults.length;
+        const hasQuery = Boolean(searchInput?.value.trim());
+
+        if (countEl) {
+            countEl.textContent = resultCount > 0
+                ? `${this.currentSearchIndex + 1} / ${resultCount}`
+                : (hasQuery ? 'No matches' : '');
         }
+
+        const navigationDisabled = resultCount < 2;
+        previousButton?.toggleAttribute('disabled', navigationDisabled);
+        nextButton?.toggleAttribute('disabled', navigationDisabled);
     }
 
     escapeRegex(string) {
