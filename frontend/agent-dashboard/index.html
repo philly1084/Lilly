@@ -1443,13 +1443,13 @@
                     <div class="traces-toolbar">
                         <div class="traces-filters">
                             <div class="filter-group">
-                                <label>Session</label>
+                                <label for="traceSessionFilter">Session</label>
                                 <select class="select-sm" id="traceSessionFilter">
                                     <option value="all">All Sessions</option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label>Status</label>
+                                <label for="traceStatusFilter">Status</label>
                                 <select class="select-sm" id="traceStatusFilter">
                                     <option value="all">All Status</option>
                                     <option value="completed">Completed</option>
@@ -1458,6 +1458,7 @@
                                 </select>
                             </div>
                             <div class="filter-group search">
+                                <label class="sr-only" for="traceSearch">Search traces</label>
                                 <input type="text" placeholder="Search traces..." id="traceSearch">
                             </div>
                         </div>

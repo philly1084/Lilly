@@ -647,6 +647,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.querySelector('#logsTable .col-actions').getAttribute('aria-label')).toBe('Log actions');
     });
 
+    test('associates trace toolbar labels with every filter', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html, { url: 'http://localhost:3000/admin/?view=traces' });
+        const document = dom.window.document;
+
+        expect(document.getElementById('traceSessionFilter').labels[0].textContent.trim()).toBe('Session');
+        expect(document.getElementById('traceStatusFilter').labels[0].textContent.trim()).toBe('Status');
+        expect(document.getElementById('traceSearch').labels[0].textContent.trim()).toBe('Search traces');
+        expect(document.getElementById('traceSearch').labels[0].classList.contains('sr-only')).toBe(true);
+    });
+
     test('toggles and persists the admin light and dark theme state', () => {
         const { dom, dashboard } = createThemeHarness({ prefersLight: true });
 
