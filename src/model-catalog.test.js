@@ -145,6 +145,34 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('honors explicit Responses API support from compatible gateways', () => {
+        const explicitContract = buildModelContract({
+            id: 'custom-responses-router',
+            owned_by: 'gateway',
+            capabilities: ['chat', 'responses', 'tools'],
+        });
+        const inferredContract = buildModelContract({
+            id: 'custom-chat-router',
+            owned_by: 'gateway',
+        });
+
+        expect(explicitContract.supports.responses).toBe(true);
+        expect(inferredContract.supports.responses).toBe(false);
+        expect(selectAutoModel([
+            { id: 'custom-chat-router', owned_by: 'gateway' },
+            {
+                id: 'custom-responses-router',
+                owned_by: 'gateway',
+                supports: { chat: true, responses: true, tools: true },
+            },
+        ], {
+            needsTools: true,
+            apiMode: 'responses',
+        })).toEqual(expect.objectContaining({
+            id: 'custom-responses-router',
+        }));
+    });
+
     test('uses provider snake-case routing tiers when selecting an auto model', () => {
         const selected = selectAutoModel([
             {

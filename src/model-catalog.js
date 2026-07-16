@@ -288,7 +288,13 @@ function getExplicitRoutingTier(model = {}, camelKey = '', snakeKey = '') {
 
 function buildModelContract(model = {}, options = {}) {
     const id = normalizeModelId(typeof model === 'string' ? model : model.id);
-    const capabilities = inferModelCapabilities(typeof model === 'string' ? { id } : model);
+    const modelRecord = typeof model === 'string' ? { id } : model;
+    const explicitCapabilities = new Set(
+        getCapabilityEntries(modelRecord)
+            .map((entry) => normalizeCapabilityName(entry))
+            .filter(Boolean),
+    );
+    const capabilities = inferModelCapabilities(modelRecord);
     const capabilitySet = new Set(capabilities);
     const provider = options.provider || inferProviderFamily(model);
     const officialOpenAI = provider === 'openai' || options.officialOpenAI === true;
@@ -300,7 +306,8 @@ function buildModelContract(model = {}, options = {}) {
         reasoningEfforts: inferModelReasoningEfforts(typeof model === 'string' ? { id } : model),
         supports: {
             chat: capabilitySet.has('chat'),
-            responses: officialOpenAI && capabilitySet.has('responses'),
+            responses: capabilitySet.has('responses')
+                && (officialOpenAI || explicitCapabilities.has('responses')),
             tools: capabilitySet.has('tools'),
             vision: capabilitySet.has('vision') || capabilitySet.has('image_input'),
             reasoning: capabilitySet.has('reasoning'),
