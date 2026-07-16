@@ -652,6 +652,7 @@ class ChatApp {
         this.newWorkloadBtn = document.getElementById('new-workload-btn');
         this.workloadModal = document.getElementById('workload-modal');
         this.workloadModalTitle = document.getElementById('workload-modal-title');
+        this.workloadModalReturnFocus = null;
         this.workloadFormError = document.getElementById('workload-form-error');
         this.workloadScenarioInput = document.getElementById('workload-scenario-input');
         this.workloadScenarioBuildBtn = document.getElementById('workload-scenario-build-btn');
@@ -4499,6 +4500,7 @@ class ChatApp {
             return;
         }
 
+        this.workloadModalReturnFocus = document.activeElement;
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         this.editingWorkload = existing;
         this.workloadModalTitle.textContent = existing ? 'Edit workload' : 'Create workload';
@@ -4539,10 +4541,15 @@ class ChatApp {
     }
 
     closeWorkloadModal() {
+        const returnFocus = this.workloadModalReturnFocus;
         this.editingWorkload = null;
+        this.workloadModalReturnFocus = null;
         this.clearWorkloadFormError();
         this.workloadModal?.classList.add('hidden');
         this.workloadModal?.setAttribute('aria-hidden', 'true');
+        if (returnFocus?.isConnected && typeof returnFocus.focus === 'function') {
+            returnFocus.focus();
+        }
     }
 
     updateWorkloadTriggerFields() {

@@ -1227,12 +1227,12 @@
     <!-- Toast Container -->
     <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2" role="region" aria-live="polite" aria-label="Notifications"></div>
 
-    <div id="workload-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-overlay" data-close-workload-modal="true"></div>
+    <div id="workload-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="workload-modal-title" aria-hidden="true">
+        <div class="modal-overlay" data-close-workload-modal="true" aria-hidden="true"></div>
         <div class="modal-content export-modal-content">
             <div class="modal-header">
                 <h2 id="workload-modal-title">Create workload</h2>
-                <button class="btn-icon" id="close-workload-modal-btn" aria-label="Close workload modal">
+                <button type="button" class="btn-icon" id="close-workload-modal-btn" aria-label="Close workload modal">
                     <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
                 </button>
             </div>
@@ -1361,8 +1361,8 @@
                 </details>
             </div>
             <div class="modal-footer">
-                <button id="cancel-workload-btn" class="btn-secondary px-4 py-2 rounded-lg">Cancel</button>
-                <button id="save-workload-btn" class="btn-primary px-4 py-2 rounded-lg">Save workload</button>
+                <button type="button" id="cancel-workload-btn" class="btn-secondary px-4 py-2 rounded-lg">Cancel</button>
+                <button type="button" id="save-workload-btn" class="btn-primary px-4 py-2 rounded-lg">Save workload</button>
             </div>
         </div>
     </div>
@@ -1387,7 +1387,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260715b"></script>
-    <script defer src="js/app.js?v=20260714c"></script>
+    <script defer src="js/app.js?v=20260716a"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
 </html>
