@@ -948,16 +948,25 @@ class App {
     setDropdownOpen(dropdown, trigger, isOpen) {
         dropdown.classList.toggle('active', isOpen);
         trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        this.syncDropdownMenuTabStop(dropdown, isOpen ? this.getDropdownMenuItems(dropdown)[0] : null);
     }
 
     getDropdownMenuItems(dropdown) {
         return Array.from(dropdown?.querySelectorAll('[role="menuitem"]:not([disabled])') || []);
     }
 
+    syncDropdownMenuTabStop(dropdown, activeItem = null) {
+        const items = this.getDropdownMenuItems(dropdown);
+        items.forEach((item) => {
+            item.setAttribute('tabindex', item === activeItem ? '0' : '-1');
+        });
+    }
+
     focusDropdownMenuItem(dropdown, nextIndex = 0) {
         const items = this.getDropdownMenuItems(dropdown);
         if (!items.length) return false;
         const normalizedIndex = ((nextIndex % items.length) + items.length) % items.length;
+        this.syncDropdownMenuTabStop(dropdown, items[normalizedIndex]);
         items[normalizedIndex].focus();
         return true;
     }
@@ -966,6 +975,7 @@ class App {
         if (!dropdown || !trigger) return;
         const menu = dropdown.querySelector('[role="menu"]');
         if (!menu) return;
+        this.syncDropdownMenuTabStop(dropdown);
 
         trigger.addEventListener('keydown', (event) => {
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -1001,6 +1011,12 @@ class App {
 
             event.preventDefault();
             this.focusDropdownMenuItem(dropdown, nextIndex);
+        });
+
+        dropdown.addEventListener('focusout', (event) => {
+            if (event.relatedTarget && !dropdown.contains(event.relatedTarget)) {
+                this.closeDropdown(dropdown, trigger);
+            }
         });
     }
 

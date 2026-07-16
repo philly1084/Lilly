@@ -166,6 +166,7 @@ function createDropdownHarness() {
                 <button class="dropdown-item" type="button" role="menuitem" data-export="html">HTML</button>
             </div>
         </div>
+        <button id="afterDropdown" type="button">After dropdowns</button>
     `, { url: 'http://localhost:3000/canvas/' });
     const App = loadAppClass(dom);
     const app = Object.create(App.prototype);
@@ -680,6 +681,9 @@ describe('canvas top-bar dropdown accessibility', () => {
 
         app.setupEventListeners();
 
+        expect(themeItems.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1']);
+        expect(exportItems.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1']);
+
         themeTrigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'ArrowDown',
             bubbles: true,
@@ -688,6 +692,7 @@ describe('canvas top-bar dropdown accessibility', () => {
         expect(themeDropdown.classList.contains('active')).toBe(true);
         expect(themeTrigger.getAttribute('aria-expanded')).toBe('true');
         expect(document.activeElement).toBe(themeItems[0]);
+        expect(themeItems.map((item) => item.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
 
         document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'End',
@@ -695,6 +700,7 @@ describe('canvas top-bar dropdown accessibility', () => {
             cancelable: true,
         }));
         expect(document.activeElement).toBe(themeItems[2]);
+        expect(themeItems.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '0']);
 
         document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'ArrowDown',
@@ -711,6 +717,7 @@ describe('canvas top-bar dropdown accessibility', () => {
         expect(themeDropdown.classList.contains('active')).toBe(false);
         expect(themeTrigger.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(themeTrigger);
+        expect(themeItems.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1']);
 
         exportTrigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'ArrowUp',
@@ -725,6 +732,12 @@ describe('canvas top-bar dropdown accessibility', () => {
             cancelable: true,
         }));
         expect(document.activeElement).toBe(exportItems[0]);
+        expect(exportItems.map((item) => item.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+
+        document.getElementById('afterDropdown').focus();
+        expect(exportMenu.parentElement.classList.contains('active')).toBe(false);
+        expect(exportTrigger.getAttribute('aria-expanded')).toBe('false');
+        expect(exportItems.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1']);
     });
 
     test('returns focus to top-bar dropdown triggers after menu item selection', async () => {
