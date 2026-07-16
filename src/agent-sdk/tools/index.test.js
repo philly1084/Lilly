@@ -154,6 +154,57 @@ describe('ToolManager image tools', () => {
     expect(toolManager.getTool('podcast')).toBeTruthy();
   });
 
+  test.each(['false', '0', 'no', 'off', 0])(
+    'keeps serialized tool failure %p failed across execution handoffs',
+    async (success) => {
+      const toolId = `serialized-failure-${String(success)}`;
+      const toolManager = new ToolManager();
+      toolManager.registry.register({
+        id: toolId,
+        name: 'Serialized failure probe',
+        description: 'Returns a compatible serialized failure result',
+        category: 'web',
+        backend: {
+          handler: async () => ({}),
+        },
+      });
+      toolManager.loadedTools.set(toolId, {
+        id: toolId,
+        category: 'web',
+        execute: jest.fn().mockResolvedValue({
+          success,
+          error: 'Source request was denied',
+          duration: 12,
+          timestamp: '2026-07-16T12:00:00.000Z',
+        }),
+      });
+
+      try {
+        const result = await toolManager.executeTool(toolId, {}, {});
+        const readiness = toolManager.registry.getToolReadiness(toolId);
+
+        expect(result).toEqual(expect.objectContaining({
+          success: false,
+          failureKind: 'tool_failure',
+          verification: {
+            status: 'failed',
+            evidence: 'Tool returned an error result.',
+          },
+        }));
+        expect(readiness).toEqual(expect.objectContaining({
+          reason: 'Last execution failed: Source request was denied',
+          lastProbe: expect.objectContaining({
+            success: false,
+            failureKind: 'tool_failure',
+          }),
+        }));
+      } finally {
+        toolManager.loadedTools.delete(toolId);
+        toolManager.registry.unregister(toolId);
+      }
+    },
+  );
+
   test('registers modern agent capability map and gap-covering skills', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();

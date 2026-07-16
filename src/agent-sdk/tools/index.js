@@ -3,7 +3,7 @@
  * Loads and registers all tool categories
  */
 
-const { getUnifiedRegistry } = require('../registry/UnifiedRegistry');
+const { getUnifiedRegistry, isSuccessfulResult } = require('../registry/UnifiedRegistry');
 const { getAgentBus } = require('../agents/AgentBus');
 const { readToolDoc, getToolDocMetadata } = require('../tool-docs');
 const { generateImageBatch } = require('../../openai-client');
@@ -6148,7 +6148,12 @@ class ToolManager {
       throw new Error(`Tool ${id} has no executable handler`);
     }
 
-    const failureKind = result?.success === false
+    result = {
+      ...(result || {}),
+      success: isSuccessfulResult(result, true),
+    };
+
+    const failureKind = result.success === false
       ? classifyFailureText([
           result?.error,
           result?.errorCode,

@@ -13,8 +13,12 @@ const {
   summarizeToolReadiness,
 } = require('../../orchestration/tool-readiness');
 
-function isSuccessfulResult(result = {}) {
+function isSuccessfulResult(result = {}, fallback = false) {
   const value = result?.success;
+
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
 
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
@@ -635,4 +639,4 @@ function getUnifiedRegistry() {
   return instance;
 }
 
-module.exports = { UnifiedRegistry, getUnifiedRegistry };
+module.exports = { UnifiedRegistry, getUnifiedRegistry, isSuccessfulResult };
