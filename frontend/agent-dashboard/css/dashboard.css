@@ -129,7 +129,7 @@ body[data-ui-surface="admin"][data-admin-theme="light"] {
     --danger: #c53030;
     --danger-light: #9b1c1c;
     --info: #1f6feb;
-    --info-light: #2b7fff;
+    --info-light: #164ea6;
 
     --shadow-sm: 0 1px 2px rgba(15, 35, 65, 0.12);
     --shadow-md: 0 4px 12px rgba(15, 35, 65, 0.16);

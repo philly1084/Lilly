@@ -649,6 +649,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.querySelector('#logsTable .col-actions').getAttribute('aria-label')).toBe('Log actions');
     });
 
+    test('keeps informational log badges readable in the light theme', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(css).toContain('body[data-ui-surface="admin"][data-admin-theme="light"]');
+        expect(css).toContain('--info-light: #164ea6;');
+        expect(css).toContain('.log-level.info');
+        expect(css).toContain('color: var(--info-light);');
+        expect(html).toContain('css/dashboard.css?v=admin-log-info-contrast-v1');
+    });
+
     test('associates trace toolbar labels with every filter', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html, { url: 'http://localhost:3000/admin/?view=traces' });
@@ -1220,7 +1231,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
         expect(html).toContain('dashboard.js?v=admin-modal-dialog-v1');
-        expect(html).toContain('css/dashboard.css?v=admin-modal-dialog-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-log-info-contrast-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
@@ -2268,7 +2279,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-modal-dialog-v1');
+        expect(html).toContain('dashboard.css?v=admin-log-info-contrast-v1');
     });
 
     test('renders named Agent Company projects with active-run context', () => {
