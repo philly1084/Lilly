@@ -91,6 +91,14 @@ function sanitizeText(value = '') {
     return String(value || '').trim();
 }
 
+function normalizeModelIdentifier(value = '') {
+    return sanitizeText(value)
+        .toLowerCase()
+        .replace(/[–—]/g, '-')
+        .replace(/[\s_]+/g, '-')
+        .replace(/-+/g, '-');
+}
+
 function sanitizeProjectStateKey(value = '') {
     return sanitizeText(value)
         .toLowerCase()
@@ -208,10 +216,10 @@ function normalizeConfig(config = {}) {
         ? config.roles.map(normalizeRole).filter((role) => role.name)
         : [];
     const escalationModels = Array.isArray(config.escalationModels)
-        ? config.escalationModels.map(sanitizeText).filter(Boolean)
+        ? config.escalationModels.map(normalizeModelIdentifier).filter(Boolean)
         : String(config.escalationModels || '')
             .split(',')
-            .map(sanitizeText)
+            .map(normalizeModelIdentifier)
             .filter(Boolean);
 
     return {
@@ -235,7 +243,7 @@ function normalizeConfig(config = {}) {
         }),
         ownerId: sanitizeText(config.ownerId || DEFAULT_OWNER_ID) || DEFAULT_OWNER_ID,
         sessionId: sanitizeText(config.sessionId || DEFAULT_SESSION_ID) || DEFAULT_SESSION_ID,
-        primaryModel: sanitizeText(config.primaryModel || ''),
+        primaryModel: normalizeModelIdentifier(config.primaryModel || ''),
         escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         roles: roles.slice(0, 8),
         dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),

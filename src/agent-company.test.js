@@ -48,11 +48,15 @@ describe('AgentCompanyService', () => {
             heartbeatMinutes: 1,
             weeklyWorkloadLimit: 50,
             maxConcurrentWorkloads: 20,
+            primaryModel: 'Gpt-5.6 Sol',
+            escalationModels: ['Gpt-5.6 Terra', 'gpt_5.6-luna'],
         });
 
         expect(config.heartbeatMinutes).toBe(15);
         expect(config.weeklyWorkloadLimit).toBe(12);
         expect(config.maxConcurrentWorkloads).toBe(4);
+        expect(config.primaryModel).toBe('gpt-5.6-sol');
+        expect(config.escalationModels).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna']);
     });
 
     test('records standby state when persistence-backed workloads are unavailable', async () => {
