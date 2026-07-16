@@ -134,8 +134,8 @@ describe('Notes template chooser accessibility', () => {
         expect(source).toContain("modal.querySelector('.template-card')?.focus({ preventScroll: true })");
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
-        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
+        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
     });
 });
 
@@ -155,7 +155,7 @@ describe('Notes storage information accessibility', () => {
         expect(source).toContain("if (e.key !== 'Tab') return;");
         expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
-        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
+        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
     });
 });
 
@@ -169,9 +169,15 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('id="emoji-picker" class="emoji-picker" role="dialog"');
         expect(html).toContain('aria-label="Choose a page icon" aria-hidden="true"');
         expect(html).toContain('id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons"');
-        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
+        expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
+        expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
+        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
+        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
+        expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)");
+        expect(source).toContain("item.setAttribute('tabindex', index === categoryIndex ? '0' : '-1')");
+        expect(source).toContain('focusCategory(nextIndex)');
         expect(source).toContain("span.setAttribute('role', 'button')");
         expect(source).toContain("span.setAttribute('aria-label', `Use ${emoji} as page icon`)");
         expect(source).toContain("if (e.key !== 'Escape') return;");
@@ -277,7 +283,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260716-storage-dialog');
+        expect(html).toContain('js/sidebar.js?v=20260716-icon-toolbar');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });
@@ -288,7 +294,7 @@ describe('Notes mobile content containment', () => {
         const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
         const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260715-template-dialog');
+        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
         expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
         expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);

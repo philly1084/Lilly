@@ -1196,9 +1196,16 @@ const Sidebar = (function() {
 
         picker.dataset.sidebarEventsBound = 'true';
 
-        picker.querySelectorAll('.emoji-category').forEach(category => {
+        const categories = Array.from(picker.querySelectorAll('.emoji-category'));
+        const focusCategory = (categoryIndex) => {
+            categories.forEach((item, index) => {
+                item.setAttribute('tabindex', index === categoryIndex ? '0' : '-1');
+            });
+            categories[categoryIndex]?.focus();
+        };
+        categories.forEach((category, categoryIndex) => {
             const selectCategory = () => {
-                picker.querySelectorAll('.emoji-category').forEach(item => {
+                categories.forEach(item => {
                     item.classList.remove('active');
                     item.setAttribute('aria-pressed', 'false');
                 });
@@ -1208,9 +1215,14 @@ const Sidebar = (function() {
             };
             category.addEventListener('click', selectCategory);
             category.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter' && e.key !== ' ') return;
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
                 e.preventDefault();
-                selectCategory();
+                const nextIndex = e.key === 'Home'
+                    ? 0
+                    : e.key === 'End'
+                        ? categories.length - 1
+                        : (categoryIndex + (e.key === 'ArrowRight' ? 1 : -1) + categories.length) % categories.length;
+                focusCategory(nextIndex);
             });
         });
 

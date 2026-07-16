@@ -2381,10 +2381,15 @@ body {
 .emoji-category {
     width: 32px;
     height: 32px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: inherit;
+    background: transparent;
+    border: 0;
     font-size: 18px;
+    font-family: inherit;
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: background 0.15s;
