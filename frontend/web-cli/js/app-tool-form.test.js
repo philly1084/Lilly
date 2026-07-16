@@ -553,7 +553,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
         expect(indexMarkup).toContain('js/api.js?v=20260715b');
-        expect(indexMarkup).toContain('js/app.js?v=20260715c');
+        expect(indexMarkup).toContain('js/app.js?v=20260716a');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -611,6 +611,11 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(app.getCommandDrawerItems()).toEqual([sessions, clear, home]);
 
         sessions.focus();
+        app.setCommandDrawerTabStop(sessions);
+        expect(sessions.getAttribute('tabindex')).toBe('0');
+        expect(clear.getAttribute('tabindex')).toBe('-1');
+        expect(home.getAttribute('tabindex')).toBe('-1');
+
         app.handleCommandDrawerKeydown({
             key: 'ArrowDown',
             target: sessions,
@@ -618,6 +623,8 @@ describe('web-cli command drawer keyboard navigation', () => {
             stopPropagation: jest.fn(),
         });
         expect(document.activeElement).toBe(clear);
+        expect(sessions.getAttribute('tabindex')).toBe('-1');
+        expect(clear.getAttribute('tabindex')).toBe('0');
 
         app.handleCommandDrawerKeydown({
             key: 'ArrowDown',
@@ -626,6 +633,8 @@ describe('web-cli command drawer keyboard navigation', () => {
             stopPropagation: jest.fn(),
         });
         expect(document.activeElement).toBe(home);
+        expect(clear.getAttribute('tabindex')).toBe('-1');
+        expect(home.getAttribute('tabindex')).toBe('0');
 
         app.handleCommandDrawerKeydown({
             key: 'ArrowDown',
@@ -634,6 +643,8 @@ describe('web-cli command drawer keyboard navigation', () => {
             stopPropagation: jest.fn(),
         });
         expect(document.activeElement).toBe(sessions);
+        expect(sessions.getAttribute('tabindex')).toBe('0');
+        expect(home.getAttribute('tabindex')).toBe('-1');
 
         app.handleCommandDrawerKeydown({
             key: 'End',
@@ -642,6 +653,7 @@ describe('web-cli command drawer keyboard navigation', () => {
             stopPropagation: jest.fn(),
         });
         expect(document.activeElement).toBe(home);
+        expect(home.getAttribute('tabindex')).toBe('0');
 
         app.handleCommandDrawerKeydown({
             key: 'Home',
@@ -650,6 +662,8 @@ describe('web-cli command drawer keyboard navigation', () => {
             stopPropagation: jest.fn(),
         });
         expect(document.activeElement).toBe(sessions);
+        expect(sessions.getAttribute('tabindex')).toBe('0');
+        expect(home.getAttribute('tabindex')).toBe('-1');
     });
 
     test('updates the drawer trigger label for open and closed states', () => {

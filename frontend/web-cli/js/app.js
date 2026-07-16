@@ -3352,7 +3352,17 @@ class CodeCLIApp {
 
         const currentIndex = Math.max(0, items.indexOf(currentItem));
         const nextIndex = (currentIndex + direction + items.length) % items.length;
-        items[nextIndex].focus({ preventScroll: true });
+        this.setCommandDrawerTabStop(items[nextIndex]);
+    }
+
+    setCommandDrawerTabStop(activeItem = null) {
+        const items = this.getCommandDrawerItems();
+        const nextItem = items.includes(activeItem) ? activeItem : items[0] || null;
+
+        items.forEach((item) => {
+            item.setAttribute('tabindex', item === nextItem ? '0' : '-1');
+        });
+        nextItem?.focus({ preventScroll: true });
     }
 
     handleCommandDrawerToggleKeydown(e) {
@@ -3369,7 +3379,7 @@ class CodeCLIApp {
 
         const items = this.getCommandDrawerItems();
         const targetItem = openFromEndKeys.includes(e.key) ? items[items.length - 1] : items[0];
-        targetItem?.focus({ preventScroll: true });
+        this.setCommandDrawerTabStop(targetItem);
     }
 
     handleCommandDrawerKeydown(e) {
@@ -3396,14 +3406,14 @@ class CodeCLIApp {
 
         if (e.key === 'Home') {
             e.preventDefault();
-            this.getCommandDrawerItems()[0]?.focus({ preventScroll: true });
+            this.setCommandDrawerTabStop(this.getCommandDrawerItems()[0]);
             return;
         }
 
         if (e.key === 'End') {
             e.preventDefault();
             const items = this.getCommandDrawerItems();
-            items[items.length - 1]?.focus({ preventScroll: true });
+            this.setCommandDrawerTabStop(items[items.length - 1]);
         }
     }
 
@@ -3419,7 +3429,7 @@ class CodeCLIApp {
         this.commandDrawerToggle.setAttribute('title', toggleLabel);
 
         if (shouldOpen) {
-            this.getCommandDrawerItems()[0]?.focus({ preventScroll: true });
+            this.setCommandDrawerTabStop();
         }
     }
 
