@@ -75,6 +75,7 @@ class XlsxGenerator {
     sheets.push({
       name: sanitizeSheetName('Overview', usedNames),
       rows: overviewRows,
+      headerRowIndex: 0,
     });
 
     const sectionRows = [
@@ -96,6 +97,7 @@ class XlsxGenerator {
     sheets.push({
       name: sanitizeSheetName('Sections', usedNames),
       rows: sectionRows,
+      headerRowIndex: 0,
     });
 
     sections.forEach((section, index) => {
@@ -108,6 +110,7 @@ class XlsxGenerator {
           tableRows.push(['Caption', section.table.caption]);
           tableRows.push([]);
         }
+        const headerRowIndex = headers.length > 0 ? tableRows.length : null;
         if (headers.length > 0) {
           tableRows.push(headers);
         }
@@ -116,6 +119,7 @@ class XlsxGenerator {
         sheets.push({
           name: sanitizeSheetName(`${section.heading || `Section ${index + 1}`} Table`, usedNames),
           rows: tableRows.length > 0 ? tableRows : [['No table rows available']],
+          headerRowIndex,
         });
       }
 
@@ -130,6 +134,7 @@ class XlsxGenerator {
         if (chartRows.length > 0) {
           chartRows.push([]);
         }
+        const headerRowIndex = chartRows.length;
         chartRows.push(['Label', 'Value']);
         section.chart.series.forEach((point) => {
           chartRows.push([
@@ -141,6 +146,7 @@ class XlsxGenerator {
         sheets.push({
           name: sanitizeSheetName(`${section.heading || `Section ${index + 1}`} Chart`, usedNames),
           rows: chartRows,
+          headerRowIndex,
         });
       }
     });
@@ -161,6 +167,9 @@ class XlsxGenerator {
       '.workbook-header p { margin: 0; color: #64748B; }',
       '.workbook-sheet { margin: 0 0 24px; padding: 22px; border: 1px solid #D8E1F0; border-radius: 20px; background: #FFFFFF; }',
       '.workbook-sheet h2 { margin: 0 0 14px; font-size: 1.15rem; }',
+      '.workbook-sheet-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0 0 14px; color: #475569; }',
+      '.workbook-sheet-meta dt { font-weight: 700; }',
+      '.workbook-sheet-meta dd { margin: 0; }',
       '.workbook-sheet table { width: 100%; border-collapse: collapse; }',
       '.workbook-sheet th, .workbook-sheet td { border-bottom: 1px solid #E2E8F0; padding: 10px 12px; text-align: left; vertical-align: top; }',
       '.workbook-sheet th { background: #F8FAFC; font-weight: 700; }',
@@ -181,13 +190,24 @@ class XlsxGenerator {
       return `<section class="workbook-sheet"><h2>${escapeHtml(sheet.name || 'Sheet')}</h2><p>No rows.</p></section>`;
     }
 
-    const headerIndex = rows.findIndex((row) => Array.isArray(row) && row.length === maxColumns && row.every((cell) => normalizeText(cell)));
+    const hasExplicitHeader = Number.isInteger(sheet.headerRowIndex)
+      && sheet.headerRowIndex >= 0
+      && sheet.headerRowIndex < rows.length;
+    const headerIndex = hasExplicitHeader
+      ? sheet.headerRowIndex
+      : rows.findIndex((row) => Array.isArray(row) && row.length === maxColumns && row.every((cell) => normalizeText(cell)));
     const headerRow = headerIndex >= 0 ? rows[headerIndex] : null;
+    const contextRows = hasExplicitHeader
+      ? rows.slice(0, headerIndex).filter((row) => Array.isArray(row) && row.some((cell) => normalizeText(cell)))
+      : [];
     const bodyRows = headerIndex >= 0 ? rows.slice(headerIndex + 1) : rows;
 
     return [
       '<section class="workbook-sheet">',
       `<h2>${escapeHtml(sheet.name || 'Sheet')}</h2>`,
+      contextRows.length > 0
+        ? `<dl class="workbook-sheet-meta">${contextRows.map((row) => `<dt>${escapeHtml(String(row[0] ?? ''))}</dt><dd>${escapeHtml(String(row.slice(1).join(' ') || ''))}</dd>`).join('')}</dl>`
+        : '',
       '<table>',
       headerRow
         ? `<thead><tr>${headerRow.map((cell) => `<th>${escapeHtml(String(cell ?? ''))}</th>`).join('')}</tr></thead>`
