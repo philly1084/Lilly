@@ -82,6 +82,7 @@ function isLikelyTranscriptDependentTurn(text = '') {
 
     const shortTurn = normalized.length <= 120;
     const referentialCue = [
+        /^(?:sorry[,;:]?\s+)?(?:repeat|repeat that|say that again|can you repeat|could you repeat)\b/,
         /^(?:it|that|this|them|those)\b/,
         /^(?:what about|how about|and|also)\b[\s\S]*\b(?:it|that|this|them|those|same)\b/,
         /\b(the commands|what you listed|the one you listed|the ones you listed|what i asked|same task|same thing|that one)\b/,
@@ -96,7 +97,7 @@ function isLikelyTranscriptDependentTurn(text = '') {
     const openEndedCue = /\b(?:in|at|for|to|on|from|with|about|into|around|using|and|then)\s*$/.test(normalized);
     const weakStandaloneCue = shortTurn
         && (
-            /^(?:continue|retry|try again|again|later|tomorrow|same|next|then|proceed|resume|go ahead|keep going)\b/.test(normalized)
+            /^(?:sorry[,;:]?\s+)?(?:continue|repeat|retry|try again|again|later|tomorrow|same|next|then|proceed|resume|go ahead|keep going)\b/.test(normalized)
             || /^(?:do|run|make|schedule|set up|queue|create|get|fetch|check|use)\s*$/.test(normalized)
         );
 

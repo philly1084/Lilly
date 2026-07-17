@@ -5603,9 +5603,30 @@ function shouldAllowGuardedCompletionContinuation({
     return objectiveNeedsDeterministicFollowup;
 }
 
+function normalizeLooseEnvelopeKey(key = '') {
+    return String(key || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+}
+
+function getLooseEnvelopeValue(source = {}, aliases = []) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        return undefined;
+    }
+
+    const acceptedKeys = new Set((Array.isArray(aliases) ? aliases : [])
+        .map((alias) => normalizeLooseEnvelopeKey(alias))
+        .filter(Boolean));
+    const matchingEntry = Object.entries(source)
+        .find(([key]) => acceptedKeys.has(normalizeLooseEnvelopeKey(key)));
+
+    return matchingEntry?.[1];
+}
+
 function isSerializedToolCallWrapperText(text = '') {
     const trimmed = String(text || '').trim();
-    if (!trimmed || !/tool_calls|finish_reason|output_text/i.test(trimmed)) {
+    if (!trimmed) {
         return false;
     }
 
@@ -5614,23 +5635,50 @@ function isSerializedToolCallWrapperText(text = '') {
         return false;
     }
 
-    const toolCalls = Array.isArray(parsed.tool_calls) ? parsed.tool_calls : [];
+    const toolCallsValue = getLooseEnvelopeValue(parsed, ['tool_calls', 'toolCalls']);
+    const toolCalls = Array.isArray(toolCallsValue) ? toolCallsValue : [];
     if (toolCalls.length === 0) {
         return false;
     }
 
-    const finishReason = String(parsed.finish_reason || parsed.finishReason || '').trim().toLowerCase();
-    const outputText = String(parsed.output_text || parsed.outputText || '').trim();
+    const finishReason = String(getLooseEnvelopeValue(parsed, ['finish_reason', 'finishReason']) || '').trim().toLowerCase();
+    const outputText = String(getLooseEnvelopeValue(parsed, ['output_text', 'outputText']) || '').trim();
     const displayText = [
-        parsed.assistant_reply,
-        parsed.assistantReply,
-        parsed.message,
-        parsed.content,
-        parsed.text,
-        parsed.answer,
-    ].find((entry) => typeof entry === 'string' && entry.trim());
+        'assistant_reply',
+        'assistantReply',
+        'message',
+        'content',
+        'text',
+        'answer',
+    ]
+        .map((alias) => getLooseEnvelopeValue(parsed, [alias]))
+        .find((entry) => typeof entry === 'string' && entry.trim());
 
-    return !displayText && (!outputText || finishReason === 'tool_calls');
+    return !displayText
+        && (!outputText || normalizeLooseEnvelopeKey(finishReason) === 'toolcalls');
+}
+
+function isPromiseOnlyRuntimeResponseText(text = '') {
+    const source = normalizeInlineText(String(text || '')).trim();
+    if (!source || source.length > 320 || source.includes('?') || /:\s+\S/.test(source)) {
+        return false;
+    }
+
+    const sentenceCount = source
+        .split(/[.!?]+(?:\s+|$)/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .length;
+    if (sentenceCount > 1) {
+        return false;
+    }
+
+    const startsWithFutureAction = /^(?:okay[,;:]?\s+|sure[,;:]?\s+)?(?:i(?:['’]ll|\s+will|['’]m\s+going\s+to|\s+am\s+going\s+to)|let\s+me)\s+(?:repeat|continue|check|research|investigate|inspect|look|work|build|create|fix|update|deploy|run|generate|prepare|gather|start|retry|redo|do|handle|make|find|review|test|verify|answer|explain)\b/i.test(source);
+    if (!startsWithFutureAction) {
+        return false;
+    }
+
+    return !/\b(?:here(?:['’]s|\s+is|\s+are)|results?|completed|done|i\s+(?:found|fixed|built|created|updated|ran|checked|verified))\b/i.test(source);
 }
 
 function collectJsonCandidatesFromText(text = '') {
@@ -5937,6 +5985,9 @@ function buildRecoveryPlanFromLeakedRemoteCommandPayload(text = '', toolPolicy =
 
 function isInvalidRuntimeResponseText(text = '') {
     if (isSerializedToolCallWrapperText(text)) {
+        return true;
+    }
+    if (isPromiseOnlyRuntimeResponseText(text)) {
         return true;
     }
     if (isLeakedRemoteCommandPayloadText(text)) {
@@ -6847,8 +6898,15 @@ function buildEndToEndWorkflowBlockedOutput(workflow = null) {
 }
 
 function shouldRepairInvalidRuntimeResponse({ output = '', toolEvents = [], toolPolicy = {} } = {}) {
-    return isInvalidRuntimeResponseText(output)
-        && Array.isArray(toolPolicy?.candidateToolIds)
+    if (!isInvalidRuntimeResponseText(output)) {
+        return false;
+    }
+
+    if (isSerializedToolCallWrapperText(output) || isPromiseOnlyRuntimeResponseText(output)) {
+        return true;
+    }
+
+    return Array.isArray(toolPolicy?.candidateToolIds)
         && toolPolicy.candidateToolIds.length > 0
         && Array.isArray(toolEvents)
         && toolEvents.length > 0;
@@ -11638,7 +11696,7 @@ class ConversationOrchestrator extends EventEmitter {
                     startedAt: repairStartedAt,
                     endedAt: new Date().toISOString(),
                     details: {
-                        reason: 'Invalid tool-availability claim after verified tool execution',
+                        reason: 'Invalid or incomplete runtime answer repaired before completion',
                         previousOutput: truncateText(previousInvalidOutput, 800),
                     },
                 }));
@@ -13957,10 +14015,15 @@ class ConversationOrchestrator extends EventEmitter {
             repair: roleOptions.routingShadow,
         };
 
+        const hasVerifiedToolResults = Array.isArray(toolEvents) && toolEvents.length > 0;
         const repairPrompt = [
-            'The previous draft was invalid after verified tool execution.',
-            'It may have denied runtime tool access, returned a tool-call wrapper object, leaked a remote-command JSON payload, or surfaced execution metadata instead of a user-facing answer.',
-            'Rewrite the answer using only the verified tool results below.',
+            hasVerifiedToolResults
+                ? 'The previous draft was invalid after verified tool execution.'
+                : 'The previous draft was invalid before any verified tool execution was available.',
+            'It may have denied runtime tool access, returned a tool-call wrapper object, leaked a remote-command JSON payload, surfaced execution metadata, or only promised future work instead of completing the answer.',
+            hasVerifiedToolResults
+                ? 'Rewrite the answer using only the verified tool results below.'
+                : 'Rewrite the answer as a complete user-facing response to the original request. Do not merely describe what you will do next.',
             'Do not mention turn-level tool availability, missing tools, sandbox limits, inability to execute commands, raw remote-command JSON payloads, or raw tool-call wrapper fields.',
             'If additional work may still be needed, explain what remains based on the verified results and the user request without claiming the tool is unavailable.',
             'If a tool failed, state the exact tool failure plainly.',
@@ -15238,6 +15301,8 @@ module.exports = {
     filterRepeatedPlanStepsWithReport,
     inferAgencyProfile,
     inferCompletionEvidenceFromToolEvent,
+    isPromiseOnlyRuntimeResponseText,
+    isSerializedToolCallWrapperText,
     normalizeExecutionProfile,
     DEFAULT_EXECUTION_PROFILE,
     REMOTE_BUILD_EXECUTION_PROFILE,

@@ -16,6 +16,8 @@ const {
     filterRepeatedPlanStepsWithReport,
     inferAgencyProfile,
     inferCompletionEvidenceFromToolEvent,
+    isPromiseOnlyRuntimeResponseText,
+    isSerializedToolCallWrapperText,
 } = require('./conversation-orchestrator');
 
 function buildResponse(text, id = 'resp_test') {
@@ -46,6 +48,29 @@ function buildResponseWithPromptState(text, id = 'resp_test_prompt_state', promp
         },
     };
 }
+
+describe('runtime response completion guards', () => {
+    test('recognizes compatible tool wrappers whose structural keys contain stray spaces', () => {
+        expect(isSerializedToolCallWrapperText(JSON.stringify({
+            ' output _text ': '',
+            ' tool _calls ': [{
+                ' id ': 'call_1',
+                ' name ': 'user-checkpoint',
+                ' arguments ': { question: 'Which pairing do you mean?' },
+            }],
+            ' finish _reason ': 'tool _calls',
+        }))).toBe(true);
+    });
+
+    test('distinguishes promise-only narration from a completed direct answer', () => {
+        expect(isPromiseOnlyRuntimeResponseText(
+            'I’ll repeat the quick clarification so I can give you relevant examples.',
+        )).toBe(true);
+        expect(isPromiseOnlyRuntimeResponseText(
+            'I’ll answer directly. Fable is an F#-to-JavaScript compiler, while Sol can refer to several unrelated projects.',
+        )).toBe(false);
+    });
+});
 
 describe('HarnessRunState', () => {
     test('records canonical metadata and review transitions', () => {
@@ -664,6 +689,52 @@ describe('ConversationOrchestrator', () => {
             success: false,
             error: 'Permission denied',
         }));
+    });
+
+    test('repairs promise-only narration before marking a direct response complete', async () => {
+        const llmClient = {
+            createResponse: jest.fn()
+                .mockResolvedValueOnce(buildResponse(
+                    'I’ll repeat the quick clarification so I can give you relevant examples.',
+                    'resp_promise_only',
+                ))
+                .mockResolvedValueOnce(buildResponse(
+                    'Fable commonly refers to the F#-to-JavaScript compiler, while Sol can refer to several unrelated projects. Which Sol project did you mean?',
+                    'resp_promise_repaired',
+                )),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const toolManager = {
+            getTool: jest.fn().mockReturnValue(null),
+            executeTool: jest.fn(),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-repeat-repair', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'What are cool tools people are making for Fable and Sol? Sorry repeat',
+            sessionId: 'session-repeat-repair',
+            stream: false,
+        });
+
+        expect(llmClient.createResponse).toHaveBeenCalledTimes(2);
+        expect(toolManager.executeTool).not.toHaveBeenCalled();
+        expect(result.output).toBe('Fable commonly refers to the F#-to-JavaScript compiler, while Sol can refer to several unrelated projects. Which Sol project did you mean?');
     });
 
     test('adds neural-wave guidance to runtime instructions when enabled for broad R&D work', () => {

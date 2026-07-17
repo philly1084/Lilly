@@ -31,6 +31,20 @@ describe('conversation continuity', () => {
         });
     });
 
+    test('resolves a polite repeat request back to the last explicit user request', () => {
+        const recentMessages = [
+            { role: 'user', content: 'What are cool tools people are making for Fable and Sol?' },
+            { role: 'assistant', content: '{" output _text ":""," tool _calls ":[{" name ":" user-checkpoint "}]}' },
+        ];
+
+        expect(isLikelyTranscriptDependentTurn('Sorry repeat')).toBe(true);
+        expect(resolveTranscriptObjectiveFromSession('Sorry repeat', recentMessages)).toEqual({
+            objective: 'What are cool tools people are making for Fable and Sol? Sorry repeat',
+            usedTranscriptContext: true,
+            priorUserObjective: 'What are cool tools people are making for Fable and Sol?',
+        });
+    });
+
     test('does not blend prior transcript into a self-contained uploaded image turn', () => {
         const input = 'I just uploaded an image. did you see it?';
         const recentMessages = [
