@@ -91,16 +91,35 @@ function normalizeArtifactEntry(value = null) {
         return null;
     }
 
-    const rawArtifactId = value.id || value.artifactId || value.artifact_id || '';
+    const explicitArtifactId = value.artifactId || value.artifact_id || '';
     const rawDocumentId = value.documentId || value.document_id || '';
+    const rawArtifactId = explicitArtifactId || value.id || '';
     const id = String(rawArtifactId || rawDocumentId || '').trim();
-    const downloadUrl = normalizeDownloadUrl(
+    const explicitDownloadUrl = normalizeDownloadUrl(
         value.downloadUrl
         || value.download_url
         || value.inlinePath
         || value.inline_path
         || '',
-    ) || buildFallbackDownloadUrl(id, rawArtifactId ? 'artifact' : 'document');
+    );
+    const hasArtifactDescriptor = Boolean(
+        String(value.filename || '').trim()
+        || String(value.mimeType || value.mime_type || '').trim()
+        || String(value.format || value.extension || '').trim(),
+    );
+    const hasExplicitArtifactIdentity = Boolean(
+        String(explicitArtifactId || rawDocumentId || '').trim(),
+    );
+
+    // Generic tool payloads frequently contain records with an `id` and `name`
+    // (managed apps, jobs, sessions, and similar inventory rows). An id alone is
+    // not artifact evidence and must not create a fabricated download URL.
+    if (!hasExplicitArtifactIdentity && !explicitDownloadUrl && !hasArtifactDescriptor) {
+        return null;
+    }
+
+    const downloadUrl = explicitDownloadUrl
+        || buildFallbackDownloadUrl(id, rawArtifactId ? 'artifact' : 'document');
 
     if (!id || !downloadUrl) {
         return null;
@@ -227,31 +246,10 @@ function mergeRuntimeArtifacts(...artifactSets) {
             return;
         }
 
-        const normalized = normalizeArtifactEntry(artifact) || {
-            ...artifact,
-            id: String(artifact.id || '').trim(),
-            filename: String(artifact.filename || '').trim(),
-            format: normalizeFormat(
-                artifact.format
-                || artifact.extension
-                || inferFormat(artifact.filename, artifact.mimeType),
-            ) || '',
-            extension: String(artifact.extension || '').trim(),
-            mimeType: String(artifact.mimeType || '').trim(),
-            downloadUrl: normalizeDownloadUrl(artifact.downloadUrl || artifact.inlinePath || '')
-                || buildFallbackDownloadUrl(artifact.id),
-            size: normalizeSizeBytes(artifact),
-            sizeBytes: normalizeSizeBytes(artifact),
-            ...(normalizePreviewUrl(artifact.previewUrl || artifact.preview_url || '')
-                ? { previewUrl: normalizePreviewUrl(artifact.previewUrl || artifact.preview_url || '') }
-                : {}),
-            ...(normalizeSandboxUrl(artifact.sandboxUrl || artifact.sandbox_url || '')
-                ? { sandboxUrl: normalizeSandboxUrl(artifact.sandboxUrl || artifact.sandbox_url || '') }
-                : {}),
-            ...(normalizeBundleDownloadUrl(artifact.bundleDownloadUrl || artifact.bundle_download_url || '')
-                ? { bundleDownloadUrl: normalizeBundleDownloadUrl(artifact.bundleDownloadUrl || artifact.bundle_download_url || '') }
-                : {}),
-        };
+        const normalized = normalizeArtifactEntry(artifact);
+        if (!normalized) {
+            return;
+        }
         const identity = normalized.id || normalized.downloadUrl || '';
         if (!identity || seen.has(identity)) {
             return;

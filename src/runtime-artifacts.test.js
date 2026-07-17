@@ -1,6 +1,49 @@
 const { extractArtifactsFromToolEvents, mergeRuntimeArtifacts } = require('./runtime-artifacts');
 
 describe('runtime artifact helpers', () => {
+    test('does not turn managed-app inventory records into artifacts', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            toolCall: {
+                function: {
+                    name: 'managed-apps',
+                },
+            },
+            result: {
+                success: true,
+                data: Array.from({ length: 50 }, (_, index) => ({
+                    id: `managed-app-${index + 1}`,
+                    name: `Managed App ${index + 1}`,
+                    status: 'ready',
+                    publicHost: `app-${index + 1}.example.test`,
+                })),
+            },
+        }]);
+
+        expect(artifacts).toEqual([]);
+    });
+
+    test('keeps id-based artifacts when their file metadata proves the shape', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            result: {
+                success: true,
+                data: {
+                    id: 'artifact-file-metadata-1',
+                    filename: 'release-brief.pdf',
+                    mimeType: 'application/pdf',
+                },
+            },
+        }]);
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-file-metadata-1',
+                filename: 'release-brief.pdf',
+                format: 'pdf',
+                downloadUrl: '/api/artifacts/artifact-file-metadata-1/download',
+            }),
+        ]);
+    });
+
     test('extracts nested document-workflow artifacts from successful tool events', () => {
         const artifacts = extractArtifactsFromToolEvents([{
             toolCall: {
