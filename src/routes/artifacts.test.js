@@ -7,6 +7,7 @@ jest.mock('../session-store', () => ({
         resolveOwnedSession: jest.fn(),
         getOrCreateOwned: jest.fn(),
         getOwned: jest.fn(),
+        get: jest.fn(),
     },
 }));
 
@@ -137,6 +138,47 @@ describe('/api/artifacts route', () => {
         expect(response.status).toBe(200);
         expect(response.text).toBe('company artifact');
         expect(sessionStore.getOwned).toHaveBeenCalledWith('agent-company', null);
+    });
+
+    test('allows admins to download system-owned Agent Company artifacts surfaced in Admin', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-company-1',
+            sessionId: 'agent-company',
+            filename: 'company.md',
+            mimeType: 'text/markdown',
+            contentBuffer: Buffer.from('company artifact'),
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        sessionStore.get.mockResolvedValue({
+            id: 'agent-company',
+            metadata: { ownerId: 'system', clientSurface: 'agent-company' },
+        });
+
+        const response = await request(buildApp({
+            user: { username: 'phill', role: 'admin' },
+        })).get('/api/artifacts/artifact-company-1/download');
+
+        expect(response.status).toBe(200);
+        expect(response.text).toBe('company artifact');
+        expect(sessionStore.get).toHaveBeenCalledWith('agent-company');
+    });
+
+    test('does not grant non-admin users access to a system-owned Agent Company artifact', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-company-1',
+            sessionId: 'agent-company',
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        sessionStore.get.mockResolvedValue({
+            id: 'agent-company',
+            metadata: { ownerId: 'system', clientSurface: 'agent-company' },
+        });
+
+        const response = await request(buildApp({
+            user: { username: 'member', role: 'member' },
+        })).get('/api/artifacts/artifact-company-1/download');
+
+        expect(response.status).toBe(404);
     });
 
     test('serves local generated audio fallback downloads without Postgres artifacts', async () => {

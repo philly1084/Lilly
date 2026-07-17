@@ -274,6 +274,12 @@ function getRequestOwnerId(req) {
     return String(req.user?.username || '').trim() || null;
 }
 
+function canAdminAccessAgentCompanyArtifact(req, session = {}) {
+    const role = String(req.user?.role || '').trim().toLowerCase();
+    const clientSurface = String(session?.metadata?.clientSurface || '').trim().toLowerCase();
+    return role === 'admin' && clientSurface === 'agent-company';
+}
+
 async function rehydratePreviewBuffer(buffer, artifact, req, {
     contentType = '',
     path: previewPath = '',
@@ -338,11 +344,15 @@ async function getOwnedArtifact(req, artifactId, options = {}) {
     }
 
     const session = await sessionStore.getOwned(artifact.sessionId, getRequestOwnerId(req));
-    if (!session) {
-        return null;
+    if (session) {
+        return artifact;
     }
 
-    return artifact;
+    // Agent Company runs under its own system-owned session. Its deliverables
+    // are intentionally listed in the Admin workspace, so let the signed-in
+    // administrator fetch only those explicitly marked shared company files.
+    const sharedSession = await sessionStore.get(artifact.sessionId);
+    return canAdminAccessAgentCompanyArtifact(req, sharedSession) ? artifact : null;
 }
 
 const generationSchema = {
