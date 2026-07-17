@@ -4461,7 +4461,25 @@ class UIHelpers {
 
     buildArtifactLineageTrayMarkup(artifacts = [], message = {}) {
         const normalizedArtifacts = (Array.isArray(artifacts) ? artifacts : [])
-            .filter((artifact) => artifact && typeof artifact === 'object' && String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim())
+            .filter((artifact) => {
+                if (!artifact || typeof artifact !== 'object') {
+                    return false;
+                }
+                const artifactId = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+                const hasArtifactDescriptor = Boolean(String(
+                    artifact.filename
+                    || artifact.fileName
+                    || artifact.file_name
+                    || artifact.title
+                    || artifact.format
+                    || artifact.extension
+                    || artifact.mimeType
+                    || artifact.mime_type
+                    || '',
+                ).trim());
+                const hasExplicitArtifactId = Boolean(String(artifact.artifactId || artifact.artifact_id || '').trim());
+                return Boolean(artifactId && (hasExplicitArtifactId || hasArtifactDescriptor));
+            })
             .slice(0, 8);
         if (normalizedArtifacts.length === 0) {
             return '';

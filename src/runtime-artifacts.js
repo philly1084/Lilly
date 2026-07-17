@@ -114,7 +114,7 @@ function normalizeArtifactEntry(value = null) {
     // Generic tool payloads frequently contain records with an `id` and `name`
     // (managed apps, jobs, sessions, and similar inventory rows). An id alone is
     // not artifact evidence and must not create a fabricated download URL.
-    if (!hasExplicitArtifactIdentity && !explicitDownloadUrl && !hasArtifactDescriptor) {
+    if (!hasExplicitArtifactIdentity && !hasArtifactDescriptor) {
         return null;
     }
 

@@ -22,6 +22,18 @@ describe('runtime artifact helpers', () => {
         expect(artifacts).toEqual([]);
     });
 
+    test('does not restore fabricated download-only rows from saved messages', () => {
+        const merged = mergeRuntimeArtifacts([{
+            id: 'managed-app-saved-1',
+            filename: '',
+            format: '',
+            mimeType: '',
+            downloadUrl: '/api/artifacts/managed-app-saved-1/download',
+        }]);
+
+        expect(merged).toEqual([]);
+    });
+
     test('keeps id-based artifacts when their file metadata proves the shape', () => {
         const artifacts = extractArtifactsFromToolEvents([{
             result: {

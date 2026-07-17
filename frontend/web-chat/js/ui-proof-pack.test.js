@@ -98,6 +98,23 @@ describe('Web Chat proof pack and artifact lineage', () => {
     expect(canvasUrl).toBe('/canvas/?artifactId=artifact+current&missionId=mission+1&parentArtifactId=artifact+parent&revision=2');
   });
 
+  test('hides saved download-only rows from the artifact lineage tray', () => {
+    const helper = loadHelper();
+    const fakeMarkup = helper.buildArtifactLineageTrayMarkup([{
+      id: 'managed-app-saved-1',
+      downloadUrl: '/api/artifacts/managed-app-saved-1/download',
+    }]);
+    const realMarkup = helper.buildArtifactLineageTrayMarkup([{
+      id: 'artifact-report-1',
+      filename: 'report.pdf',
+      downloadUrl: '/api/artifacts/artifact-report-1/download',
+    }]);
+
+    expect(fakeMarkup).toBe('');
+    expect(realMarkup).toContain('Open in Notes');
+    expect(realMarkup).toContain('Open in Canvas');
+  });
+
   test('reads the canonical run proof pack and typed verdicts', () => {
     const helper = loadHelper();
     const normalized = helper.normalizeProofPack({
