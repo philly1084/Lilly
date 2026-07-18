@@ -534,6 +534,16 @@ function createHttpClient({ baseUrl, apiKey, requestTimeoutMs, fetchImpl = globa
         return result.payload;
     }
 
+    async function requestStatusResult(pathname, options = {}) {
+        const { response, url, finish } = await request(pathname, options);
+        try {
+            await readBoundedBuffer(response, MAX_JSON_BYTES);
+            return { status: response.status, ok: response.ok, pathname: url.pathname };
+        } finally {
+            finish();
+        }
+    }
+
     async function requestBuffer(pathname, options = {}) {
         const { response, url, finish } = await request(pathname, {
             ...options,
@@ -560,6 +570,7 @@ function createHttpClient({ baseUrl, apiKey, requestTimeoutMs, fetchImpl = globa
     return {
         requestJson,
         requestJsonResult,
+        requestStatusResult,
         requestBuffer,
         get networkRequestsMade() {
             return networkRequestsMade;
@@ -578,6 +589,22 @@ function artifactApiPath(value, fallbackPath, baseUrl, suffixPattern = null) {
         throw new Error('Canary refused an unsafe artifact URL.');
     }
     return `${candidate.pathname}${candidate.search}`;
+}
+
+function sandboxWorkspacePreviewApiPath(value, workspaceId, baseUrl) {
+    const normalizedWorkspaceId = String(workspaceId || '').trim();
+    const expectedPath = `/api/sandbox-workspaces/${encodeURIComponent(normalizedWorkspaceId)}/preview/`;
+    const candidate = new URL(String(value || expectedPath), baseUrl);
+    if (!/^[a-z0-9._-]{1,140}$/i.test(normalizedWorkspaceId)
+        || candidate.origin !== baseUrl.origin
+        || candidate.username
+        || candidate.password
+        || candidate.hash
+        || candidate.search
+        || (candidate.pathname !== expectedPath && candidate.pathname !== expectedPath.slice(0, -1))) {
+        throw new Error('Canary refused an unsafe sandbox workspace preview URL.');
+    }
+    return candidate.pathname;
 }
 
 async function validateSandboxBundle(buffer, fixtures = createFixtureFiles()) {
@@ -915,6 +942,10 @@ async function createSandboxSource(client, sourceSession, runtime) {
         ? toolEnvelope.data
         : toolEnvelope;
     const artifactId = String(result?.artifact?.id || '').trim();
+    const workspaceId = String(result?.workspaceId || '').trim();
+    if (/^[a-z0-9._-]{1,140}$/i.test(workspaceId) && !runtime.workspaceIds.includes(workspaceId)) {
+        runtime.workspaceIds.push(workspaceId);
+    }
     const failureReasons = [
         ...(response?.success !== true ? ['route-not-successful'] : []),
         ...(toolEnvelope?.success === false
@@ -925,7 +956,11 @@ async function createSandboxSource(client, sourceSession, runtime) {
         ...(result?.exitCode !== 0 ? ['project-exit-not-zero'] : []),
         ...(result?.artifactError ? ['artifact-persistence-error'] : []),
         ...(!artifactId ? ['artifact-id-missing'] : []),
+        ...(!workspaceId ? ['workspace-id-missing'] : []),
         ...(artifactId && result?.artifact?.sessionId !== sourceSession.id ? ['artifact-session-mismatch'] : []),
+        ...(workspaceId && result?.artifact?.metadata?.sandboxWorkspaceId !== workspaceId
+            ? ['artifact-workspace-mismatch']
+            : []),
     ];
     if (failureReasons.length > 0) {
         throw new Error(
@@ -937,8 +972,22 @@ async function createSandboxSource(client, sourceSession, runtime) {
         || artifact?.sessionId !== sourceSession.id
         || String(artifact?.format || '').trim().toLowerCase() !== 'zip'
         || String(artifact?.mimeType || '').split(';')[0].trim().toLowerCase() !== 'application/zip'
-        || !artifact?.bundleDownloadUrl) {
+        || !artifact?.bundleDownloadUrl
+        || artifact?.metadata?.sandboxWorkspaceId !== workspaceId) {
         throw new Error('Sandbox artifact serialization did not expose a native ZIP bundle.');
+    }
+    const workspacePreviewPath = sandboxWorkspacePreviewApiPath(
+        result.workspacePreviewUrl,
+        workspaceId,
+        runtime.baseUrl,
+    );
+    const workspacePreview = await client.requestBuffer(workspacePreviewPath, {
+        accept: 'text/html',
+        maxBytes: MAX_JSON_BYTES,
+    });
+    const previewDocument = new JSDOM(workspacePreview.toString('utf8')).window.document;
+    if (previewDocument.querySelector('meta[name="sandbox-agent-attach-canary"]')?.getAttribute('content') !== CANARY_VERSION) {
+        throw new Error('Sandbox workspace preview did not serve the canary project entry file.');
     }
     const downloadPath = artifactApiPath(
         artifact.downloadUrl,
@@ -964,6 +1013,8 @@ async function createSandboxSource(client, sourceSession, runtime) {
     }
     return {
         artifactId,
+        workspaceId,
+        workspacePreviewVerified: true,
         sha256: storedEvidence.sha256,
         sizeBytes: storedEvidence.sizeBytes,
         paths: storedEvidence.paths,
@@ -1075,6 +1126,8 @@ async function cleanupRuntime(client, runtime) {
         return {
             deletedSessionIds: [],
             retainedSessionIds: [...runtime.sessionIds],
+            deletedWorkspaceIds: [],
+            retainedWorkspaceIds: [...runtime.workspaceIds],
             error: [
                 ...errors,
                 `Canary sessions retained because ${runtime.activeRunIds.size} run(s) remain non-terminal or a run start is untrackable.`,
@@ -1090,9 +1143,28 @@ async function cleanupRuntime(client, runtime) {
             errors.push(`session ${sessionId}: ${error.message}`);
         }
     }
+    const deletedWorkspaceIds = [];
+    const retainedWorkspaceIds = [];
+    for (const workspaceId of runtime.workspaceIds) {
+        try {
+            const previewPath = sandboxWorkspacePreviewApiPath('', workspaceId, runtime.baseUrl);
+            const result = await client.requestStatusResult(previewPath);
+            if (result.status === 404) {
+                deletedWorkspaceIds.push(workspaceId);
+            } else {
+                retainedWorkspaceIds.push(workspaceId);
+                errors.push(`workspace ${workspaceId}: preview remained available with HTTP ${result.status}`);
+            }
+        } catch (error) {
+            retainedWorkspaceIds.push(workspaceId);
+            errors.push(`workspace ${workspaceId}: ${error.message}`);
+        }
+    }
     return {
         deletedSessionIds,
         retainedSessionIds: runtime.sessionIds.filter((id) => !deletedSessionIds.includes(id)),
+        deletedWorkspaceIds,
+        retainedWorkspaceIds,
         error: errors.join(' '),
     };
 }
@@ -1110,6 +1182,7 @@ async function runLive(lanes, options = {}) {
         activeRunIds: new Set(),
         runStartUncertain: false,
         sessionIds: [],
+        workspaceIds: [],
     };
     let primaryError = null;
     let cleanup = null;
@@ -1228,6 +1301,8 @@ async function runLive(lanes, options = {}) {
         networkRequestsMade: client.networkRequestsMade,
         ephemeralSessionsDeleted: cleanup.deletedSessionIds.length,
         retainedSessionIds: cleanup.retainedSessionIds,
+        ephemeralWorkspacesDeleted: cleanup.deletedWorkspaceIds.length,
+        retainedWorkspaceIds: cleanup.retainedWorkspaceIds,
     };
 }
 
@@ -1287,7 +1362,7 @@ function describeDryRun(lanes, env) {
             'canary-owned Notes session requested as Canvas must return ARTIFACT_ATTACH_TARGET_SESSION_MISMATCH',
         ],
         plannedAsyncRuns: lanes.length * 3,
-        cleanupGate: 'Delete ephemeral sessions only after every async run is terminal and every run start is trackable.',
+        cleanupGate: 'Delete ephemeral sessions and their exact artifact-linked sandbox workspaces only after every async run is terminal and every run start is trackable.',
         lanes: lanePlans,
         note: 'All payloads and exact-byte expectations were validated locally. No HTTP request, sandbox write, remote agent run, attachment, or deployment was attempted.',
     };

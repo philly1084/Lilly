@@ -1,4 +1,5 @@
 const { SandboxTool } = require('./SandboxTool');
+const { artifactService } = require('../../../../artifacts/artifact-service');
 
 describe('SandboxTool runtime configuration', () => {
   function buildProjectResult(overrides = {}) {
@@ -11,6 +12,7 @@ describe('SandboxTool runtime configuration', () => {
       killed: false,
       killReason: null,
       mode: 'project',
+      workspaceId: 'project',
       workspacePath: '/tmp/sandbox-project',
       files: [],
       artifact: {
@@ -173,6 +175,45 @@ describe('SandboxTool runtime configuration', () => {
         artifact: expect.objectContaining({ id: 'artifact-project' }),
       }),
     }));
+  });
+
+  test('links a persisted project artifact to its exact sandbox workspace', async () => {
+    const tool = new SandboxTool();
+    const stored = {
+      id: 'artifact-project',
+      sessionId: 'session-project',
+      sourceMode: 'sandbox',
+      filename: 'project.zip',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      sizeBytes: 100,
+      metadata: {},
+    };
+    const createSpy = jest.spyOn(artifactService, 'createStoredArtifact').mockResolvedValue(stored);
+
+    try {
+      await tool.persistProjectArtifact({
+        projectName: 'Project',
+        workspaceId: 'project-workspace-123',
+        entry: 'index.html',
+        files: [{ path: 'index.html', content: '<main>Project</main>' }],
+        language: 'html',
+        context: { sessionId: 'session-project' },
+      });
+
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'session-project',
+        sourceMode: 'sandbox',
+        metadata: expect.objectContaining({
+          createdByAgentTool: true,
+          toolId: 'code-sandbox',
+          projectMode: 'frontend',
+          sandboxWorkspaceId: 'project-workspace-123',
+        }),
+      }));
+    } finally {
+      createSpy.mockRestore();
+    }
   });
 
   test('preserves the project artifact diagnostic when persistence is skipped', async () => {

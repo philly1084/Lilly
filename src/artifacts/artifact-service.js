@@ -48,12 +48,12 @@ const {
 const { sanitizeRuntimePayload, rehydrateText, resolvePiiPolicy } = require('../pii');
 const {
     deleteLocalGeneratedArtifact,
-    deleteLocalGeneratedArtifactsBySession,
     getLocalGeneratedArtifact,
     isLocalGeneratedArtifactId,
     listLocalGeneratedArtifactsBySession,
     persistGeneratedArtifactLocally,
 } = require('../generated-file-artifacts');
+const { deleteSandboxWorkspacesForArtifacts } = require('../sandbox-workspace-storage');
 const MULTI_PASS_DOCUMENT_FORMATS = new Set(['html', 'pdf']);
 const DEFAULT_DOCUMENT_IMAGE_TARGET = 20;
 const DEFAULT_DOCUMENT_REASONING_EFFORT = 'high';
@@ -2448,7 +2448,16 @@ class ArtifactService {
 
     async deleteArtifact(id) {
         if (isLocalGeneratedArtifactId(id)) {
-            return deleteLocalGeneratedArtifact(id);
+            const artifact = await getLocalGeneratedArtifact(id);
+            const deleted = await deleteLocalGeneratedArtifact(id);
+            if (deleted && artifact) {
+                try {
+                    await deleteSandboxWorkspacesForArtifacts([artifact]);
+                } catch (error) {
+                    console.warn(`[Artifacts] Failed to delete sandbox workspace for artifact ${id}:`, error.message);
+                }
+            }
+            return deleted;
         }
 
         if (!this.isEnabled()) {
@@ -2466,11 +2475,17 @@ class ArtifactService {
             } catch (error) {
                 console.warn('[Artifacts] Failed to remove artifact from asset index:', error.message);
             }
+            try {
+                await deleteSandboxWorkspacesForArtifacts([artifact]);
+            } catch (error) {
+                console.warn(`[Artifacts] Failed to delete sandbox workspace for artifact ${id}:`, error.message);
+            }
         }
         return deleted;
     }
 
     async deleteArtifactsForSession(sessionId) {
+        const deletedArtifacts = [];
         if (this.isEnabled()) {
             try {
                 const artifacts = await artifactStore.listBySession(sessionId);
@@ -2478,11 +2493,26 @@ class ArtifactService {
                     await vectorStore.deleteArtifact(artifact.id);
                 }
                 await artifactStore.deleteBySession(sessionId);
+                deletedArtifacts.push(...artifacts);
             } catch (error) {
                 console.warn('[Artifacts] Failed to delete Postgres artifacts:', error.message);
             }
         }
-        await deleteLocalGeneratedArtifactsBySession(sessionId);
+        try {
+            const localArtifacts = await listLocalGeneratedArtifactsBySession(sessionId);
+            for (const artifact of localArtifacts) {
+                if (await deleteLocalGeneratedArtifact(artifact.id)) {
+                    deletedArtifacts.push(artifact);
+                }
+            }
+        } catch (error) {
+            console.warn('[Artifacts] Failed to delete local artifacts:', error.message);
+        }
+        try {
+            await deleteSandboxWorkspacesForArtifacts(deletedArtifacts);
+        } catch (error) {
+            console.warn(`[Artifacts] Failed to delete sandbox workspaces for session ${sessionId}:`, error.message);
+        }
         try {
             await assetManager.removeArtifactsForSession(sessionId);
         } catch (error) {

@@ -110,6 +110,7 @@ class SandboxTool extends ToolBase {
           memoryUsage: { type: 'number' },
           killed: { type: 'boolean' },
           killReason: { type: 'string', nullable: true },
+          workspaceId: { type: 'string' },
           workspacePath: { type: 'string' },
           files: { type: 'array' },
           artifact: { type: 'object', nullable: true },
@@ -412,7 +413,7 @@ class SandboxTool extends ToolBase {
     return written;
   }
 
-  async persistProjectArtifact({ projectName, entry, files, language, context }) {
+  async persistProjectArtifact({ projectName, workspaceId, entry, files, language, context }) {
     const sessionId = String(context?.sessionId || '').trim();
     if (!sessionId) {
       return {
@@ -445,6 +446,7 @@ class SandboxTool extends ToolBase {
           toolId: this.id,
           projectName,
           projectMode: 'frontend',
+          sandboxWorkspaceId: workspaceId,
         },
         vectorize: false
       });
@@ -476,6 +478,7 @@ class SandboxTool extends ToolBase {
     const writtenFiles = await this.writeProjectFiles(workspacePath, normalizedFiles, tracker);
     const { artifact, artifactError } = await this.persistProjectArtifact({
       projectName: safeProjectName,
+      workspaceId,
       entry,
       files: normalizedFiles,
       language,
@@ -509,6 +512,7 @@ class SandboxTool extends ToolBase {
       killed: false,
       killReason: null,
       mode: 'project',
+      workspaceId,
       workspacePath,
       files: writtenFiles,
       artifact,
