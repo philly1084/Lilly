@@ -906,6 +906,125 @@ describe('/api/artifacts route', () => {
         );
     });
 
+    test('blocks preflight and mutation when exact prepared HTML fails artifact quality validation', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-quality-html',
+            sessionId: 'session-1',
+            filename: 'broken-preview.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            contentBuffer: Buffer.from('{"not":"html"}', 'utf8'),
+            previewHtml: '{"not":"html"}',
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-quality-html/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-quality-html/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            targetPaths: [],
+            fileCount: 0,
+            sizeBytes: 0,
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+                blocker: 'artifact_quality_blocked',
+                details: expect.objectContaining({
+                    status: 'blocked',
+                    blockers: expect.arrayContaining([
+                        expect.objectContaining({ code: 'REMOTE_AGENT_ARTIFACT_HTML_INVALID' }),
+                    ]),
+                }),
+            })],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+                blocker: 'artifact_quality_blocked',
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('blocks exact prepared XML, SVG, and unresolved local site references before deployment', async () => {
+        const indexHtml = `<!doctype html><html><body><main>
+            <link rel="stylesheet" href="./missing.css">
+            <a href="./design/design.xml">Design contract</a>
+            <img src="./design/design.svg" alt="Design diagram">
+        </main></body></html>`;
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-quality-members',
+            sessionId: 'session-1',
+            filename: 'broken-members.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: indexHtml },
+                    { path: 'design/design.xml', content: '<design><open></design>' },
+                    { path: 'design/design.svg', content: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>' },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 3,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'design/design.xml', mimeType: 'application/xml' },
+                        { path: 'design/design.svg', mimeType: 'image/svg+xml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-quality-members/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-quality-members/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(false);
+        const blocker = preflight.body.blockers[0];
+        expect(blocker).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+            blocker: 'artifact_quality_blocked',
+        }));
+        expect(blocker.details.blockers.map((item) => item.code)).toEqual(expect.arrayContaining([
+            'REMOTE_AGENT_ARTIFACT_XML_INVALID',
+            'REMOTE_AGENT_ARTIFACT_SVG_ROOT_INVALID',
+            'REMOTE_AGENT_ARTIFACT_SITE_REFERENCE_MISSING',
+        ]));
+        expect(blocker.details.site).toEqual(expect.objectContaining({
+            enabled: true,
+            entries: ['index.html'],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body.error.code).toBe('ARTIFACT_MANAGED_APP_QUALITY_BLOCKED');
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
     test('restores protected HTML as escaped text without preview markup or executable injection', async () => {
         const placeholder = '[[PII:NAME:canary]]';
         const restoredName = '<img src=x onerror="alert(1)">';

@@ -286,6 +286,32 @@ describe('web-chat remote CLI agent routing', () => {
         expect(renderedMessages.at(-1).content).toContain('Remote CLI Agent Result');
     });
 
+    test('forwards selected artifacts through the /remote agent lane', async () => {
+        const { app, context } = buildAppHarness();
+        context.window.fileManager.getSelectedArtifactIds.mockReturnValue([
+            'artifact-file-1',
+            'artifact-shared',
+        ]);
+        context.window.artifactManager.getSelectedIds.mockReturnValue([
+            'artifact-shared',
+            'artifact-gallery-2',
+        ]);
+
+        await app.handleRemoteCommand('agent improve the selected design');
+
+        expect(context.apiClient.invokeRemoteCliAgent).toHaveBeenCalledWith(
+            'improve the selected design',
+            expect.objectContaining({
+                artifactIds: [
+                    'artifact-file-1',
+                    'artifact-shared',
+                    'artifact-gallery-2',
+                ],
+                collectResultFiles: true,
+            }),
+        );
+    });
+
     test('formats remote agent quality status and missing gates', () => {
         const { app } = buildAppHarness();
 

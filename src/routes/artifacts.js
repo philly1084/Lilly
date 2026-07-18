@@ -35,6 +35,7 @@ const {
     resolveSessionScope,
 } = require('../session-scope');
 const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
+const { validateResultArtifactSet } = require('../artifacts/artifact-quality-gate');
 
 const router = Router();
 const UNSUPPORTED_MANAGED_APP_BINARY_ASSET_EXTENSIONS = new Set([
@@ -1017,6 +1018,78 @@ function buildManagedAppPreRestoredPiiError(affectedPaths = []) {
     };
 }
 
+function normalizeManagedAppQualityPath(filePath = '') {
+    const normalized = String(filePath || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
+    return normalized.startsWith('public/') ? normalized.slice('public/'.length) : normalized;
+}
+
+function resolveManagedAppQualityMimeType(filePath = '') {
+    const extension = path.extname(String(filePath || '')).toLowerCase();
+    if (extension === '.cjs') {
+        return 'text/javascript; charset=utf-8';
+    }
+    if (extension === '.map') {
+        // Source maps remain opaque text here because .map is not a first-class
+        // format in ArtifactStructuralQuality/v1.
+        return 'text/plain; charset=utf-8';
+    }
+    return resolveFrontendBundleContentType(filePath);
+}
+
+function buildManagedAppQualityValidationFiles(files = []) {
+    const candidates = files.map((file) => {
+        const qualityPath = normalizeManagedAppQualityPath(file?.path);
+        return {
+            path: qualityPath,
+            filename: path.basename(qualityPath),
+            mimeType: resolveManagedAppQualityMimeType(file?.path || qualityPath),
+            content: String(file?.content || ''),
+        };
+    });
+    const entry = candidates.find((file) => file.path.toLowerCase() === 'index.html')
+        || candidates.find((file) => /(?:^|\/)index\.html?$/i.test(file.path))
+        || candidates.find((file) => /\.html?$/i.test(file.path));
+
+    return candidates.map((file) => ({
+        ...file,
+        role: entry && file.path === entry.path ? 'site-entry' : 'site-file',
+    }));
+}
+
+function summarizeManagedAppQualityReport(report = {}) {
+    const blockers = Array.isArray(report?.blockers) ? report.blockers : [];
+    return {
+        version: String(report?.version || ''),
+        status: String(report?.status || 'blocked'),
+        blockerCount: blockers.length,
+        site: {
+            enabled: report?.site?.enabled === true,
+            entries: Array.isArray(report?.site?.entries)
+                ? report.site.entries.map((entry) => String(entry || '').slice(0, 512)).slice(0, 12)
+                : [],
+            checkedReferences: Number(report?.site?.checkedReferences || 0),
+        },
+        blockers: blockers.slice(0, 32).map((blocker) => ({
+            code: String(blocker?.code || 'REMOTE_AGENT_ARTIFACT_QUALITY_BLOCKED').slice(0, 160),
+            path: String(blocker?.path || '').slice(0, 512),
+            message: String(blocker?.message || 'Prepared website bytes failed artifact quality validation.').slice(0, 1200),
+            ...(blocker?.reference ? { reference: String(blocker.reference).slice(0, 1000) } : {}),
+        })),
+    };
+}
+
+function buildManagedAppQualityError(report = {}) {
+    return {
+        statusCode: 422,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+            message: 'Push to Web cannot publish the exact prepared website bytes because artifact quality validation failed.',
+            blocker: 'artifact_quality_blocked',
+            details: summarizeManagedAppQualityReport(report),
+        },
+    };
+}
+
 async function findManagedAppPreRestoredPiiPaths(artifact = {}, req) {
     const affectedPaths = [];
     if (hasPreRestoredManagedAppPii(artifact?.metadata || {})) {
@@ -1176,6 +1249,21 @@ async function prepareArtifactManagedAppSource(artifact = {}, req) {
             sizeBytes: 0,
             sha256: null,
             failure: buildEmptyManagedAppSourceError(),
+        };
+    }
+
+    const artifactQuality = validateResultArtifactSet({
+        files: buildManagedAppQualityValidationFiles(files),
+    });
+    if (artifactQuality.status !== 'passed') {
+        return {
+            sourceType,
+            contentEligible: false,
+            files: [],
+            descriptors: [],
+            sizeBytes: 0,
+            sha256: null,
+            failure: buildManagedAppQualityError(artifactQuality),
         };
     }
 

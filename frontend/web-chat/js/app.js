@@ -8666,6 +8666,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             || remoteCatalog.tools?.find((tool) => tool.id === 'remote-cli-agent')
             || null;
         const selectedModel = String(uiHelpers.getCurrentModel?.() || '').trim();
+        const artifactIds = this.collectRemoteAgentArtifactIds();
 
         return {
             cwd: remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
@@ -8674,6 +8675,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             adminMode: true,
             collectResultFiles: true,
             ...(selectedModel ? { model: selectedModel } : {}),
+            ...(artifactIds.length > 0 ? { artifactIds } : {}),
         };
     }
 
