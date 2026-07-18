@@ -212,6 +212,18 @@ async function createLiveHarness(options = {}) {
                 network: false,
             });
             expect(body.files).toHaveLength(4);
+            if (options.sandboxToolFailure === true) {
+                return jsonResponse({
+                    success: true,
+                    sessionId: 'session-source',
+                    data: {
+                        success: false,
+                        error: 'schema failure details are intentionally not exposed by the canary',
+                        errorCode: 'TOOL_OUTPUT_SCHEMA_VALIDATION_FAILED',
+                        toolId: 'code-sandbox',
+                    },
+                });
+            }
             const record = {
                 id: 'artifact-sandbox-source',
                 sessionId: 'session-source',
@@ -656,6 +668,21 @@ describe('sandbox-origin remote agent attach canary', () => {
         ]);
         expect(harness.state.deletedSessions).toEqual(['session-notes', 'session-canvas', 'session-source']);
         expect(harness.state.cancelRequests).toEqual([]);
+    });
+
+    test('reports a safe sandbox failure code and cleans up before any agent run starts', async () => {
+        const harness = await createLiveHarness({ sandboxToolFailure: true });
+
+        await expect(runCanary({
+            argv: ['--run', '--mode', 'codex'],
+            env: LIVE_ENV,
+            fetchImpl: harness.fetchImpl,
+        })).rejects.toThrow(
+            'tool-failed:TOOL_OUTPUT_SCHEMA_VALIDATION_FAILED',
+        );
+
+        expect(harness.state.runRequests).toEqual([]);
+        expect(harness.state.deletedSessions).toEqual(['session-source']);
     });
 
     test('cancels and proves an active run terminal before deleting any canary session', async () => {

@@ -1,6 +1,33 @@
 const { SandboxTool } = require('./SandboxTool');
 
 describe('SandboxTool runtime configuration', () => {
+  function buildProjectResult(overrides = {}) {
+    return {
+      stdout: 'Project workspace created.',
+      stderr: '',
+      exitCode: 0,
+      executionTime: 1,
+      memoryUsage: 0,
+      killed: false,
+      killReason: null,
+      mode: 'project',
+      workspacePath: '/tmp/sandbox-project',
+      files: [],
+      artifact: {
+        id: 'artifact-project',
+        sessionId: 'session-project',
+      },
+      artifacts: [],
+      previewUrl: '/api/artifacts/artifact-project/preview',
+      sandboxUrl: '/api/artifacts/artifact-project/sandbox',
+      workspacePreviewUrl: '/api/sandbox-workspaces/project/preview/',
+      workspaceSandboxUrl: '/api/sandbox-workspaces/project/sandbox',
+      bundleDownloadUrl: '/api/artifacts/artifact-project/bundle',
+      artifactError: null,
+      ...overrides,
+    };
+  }
+
   test('exposes Java and frontend project framework language options', () => {
     const tool = new SandboxTool();
 
@@ -127,5 +154,50 @@ describe('SandboxTool runtime configuration', () => {
     const tool = new SandboxTool();
 
     expect(tool.normalizeDependencies(['fastapi', 'bad;rm -rf /', 'react && echo no'])).toEqual(['fastapi']);
+  });
+
+  test('accepts the normal null kill reason from a successful project result', async () => {
+    const tool = new SandboxTool();
+    tool.handler = jest.fn().mockResolvedValue(buildProjectResult());
+
+    const result = await tool.execute({
+      mode: 'project',
+      language: 'html',
+      files: [{ path: 'index.html', content: '<main>Project</main>' }],
+    }, { sessionId: 'session-project' });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        killReason: null,
+        artifact: expect.objectContaining({ id: 'artifact-project' }),
+      }),
+    }));
+  });
+
+  test('preserves the project artifact diagnostic when persistence is skipped', async () => {
+    const tool = new SandboxTool();
+    tool.handler = jest.fn().mockResolvedValue(buildProjectResult({
+      artifact: null,
+      artifacts: [],
+      artifactError: 'No active sessionId was available for artifact persistence.',
+      stderr: 'Artifact persistence skipped.',
+      bundleDownloadUrl: '',
+    }));
+
+    const result = await tool.execute({
+      mode: 'project',
+      language: 'html',
+      files: [{ path: 'index.html', content: '<main>Project</main>' }],
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        killReason: null,
+        artifact: null,
+        artifactError: expect.stringContaining('No active sessionId'),
+      }),
+    }));
   });
 });
