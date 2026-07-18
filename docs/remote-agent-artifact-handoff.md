@@ -88,6 +88,8 @@ npm run canary:sandbox-agent-attach -- --run --mode all
 
 Live mode requires `KIMIBUILT_CANARY_BASE_URL` and `KIMIBUILT_FRONTEND_API_KEY`, confirms the async runtime allows live remote execution, proves that the workspace preview serves the original project entry, proves exact bytes and source lineage after every hop, and exercises typed failures for a wrong target session or surface. It deletes its three ephemeral sessions only after every accepted run is terminal and trackable; otherwise it retains them for diagnosis. Session-bound project artifacts carry an exact normalized sandbox workspace ID, and successful cleanup must prove that the formerly available preview returns 404 after the source session is deleted. This is API-level continuity proof. It does not claim that the served Canvas or Notes page imported XML/SVG into an editable native representation.
 
+During a live run, the sandbox canary writes `SandboxAgentAttachProgress/v1` JSON Lines to stderr and reserves stdout for the final result document. It emits bounded phase, run, event-cursor, attachment, and cleanup facts when they change and on a default 15-second heartbeat cadence between successful polls while a run is otherwise quiet; `KIMIBUILT_CANARY_PROGRESS_INTERVAL_MS` can set a 5–60 second interval. Progress entries never include API credentials, prompts, response/event payloads, file contents, or model output.
+
 ### Explicit Push-to-Web canary
 
 The authoring canary has an optional mutating continuation:

@@ -2,6 +2,7 @@
 
 const {
     CANARY_VERSION,
+    PROGRESS_VERSION,
     SURFACES,
     buildAgentPlan,
     buildAsyncRunPayload,
@@ -9,6 +10,7 @@ const {
     createHttpClient,
     createSandboxToolPayload,
     parseArguments,
+    pollRun,
     runCanary,
     validateCompactAgentResult,
     validateSandboxBundle,
@@ -455,7 +457,8 @@ describe('sandbox-origin remote agent attach canary', () => {
             throw new Error('dry run must not fetch');
         });
 
-        const result = await runCanary({ argv: [], env: {}, fetchImpl });
+        const onProgress = jest.fn();
+        const result = await runCanary({ argv: [], env: {}, fetchImpl, onProgress });
 
         expect(result).toMatchObject({
             version: CANARY_VERSION,
@@ -482,6 +485,40 @@ describe('sandbox-origin remote agent attach canary', () => {
             .toEqual(['canvas', 'notes', 'canvas', 'notes', 'canvas', 'notes']);
         expect(result.lanes.every((lane) => lane.origin.adminMode === false)).toBe(true);
         expect(fetchImpl).not.toHaveBeenCalled();
+        expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    test('emits bounded run heartbeats without exposing response payloads', async () => {
+        const progress = [];
+        const nowValues = [0, 0, 0, 6000, 6000, 12000, 12000];
+        const now = jest.fn(() => nowValues.shift() ?? 12000);
+        let polls = 0;
+        const client = {
+            requestJson: jest.fn(async () => {
+                polls += 1;
+                return {
+                    run: { status: polls < 3 ? 'running' : 'completed' },
+                    events: [],
+                };
+            }),
+        };
+
+        await expect(pollRun(client, 'run-heartbeat', {
+            now,
+            timeoutMs: 30000,
+            pollIntervalMs: 100,
+            progressIntervalMs: 5000,
+            sleep: jest.fn(async () => {}),
+            onProgress: (entry) => progress.push(entry),
+        }, { lane: 'codex', scenario: 'sandbox-origin' })).resolves.toMatchObject({
+            status: 'completed',
+        });
+
+        expect(progress).toHaveLength(3);
+        expect(progress.every((entry) => entry.version === PROGRESS_VERSION)).toBe(true);
+        expect(progress.map((entry) => entry.status)).toEqual(['running', 'running', 'completed']);
+        expect(progress.map((entry) => entry.elapsedMs)).toEqual([0, 6000, 12000]);
+        expect(JSON.stringify(progress)).not.toContain('payload');
     });
 
     test('parses explicit lane/run options and rejects unsupported arguments', () => {
@@ -624,6 +661,7 @@ describe('sandbox-origin remote agent attach canary', () => {
 
     test('proves the full sandbox, three-lane, Canvas/Notes attach, and attached-ID return flow', async () => {
         const harness = await createLiveHarness();
+        const progress = [];
 
         const result = await runCanary({
             argv: ['--run', '--mode', 'all'],
@@ -634,6 +672,7 @@ describe('sandbox-origin remote agent attach canary', () => {
                 let value = 0;
                 return () => ++value;
             })(),
+            onProgress: (entry) => progress.push(entry),
         });
 
         expect(result).toMatchObject({
@@ -708,6 +747,18 @@ describe('sandbox-origin remote agent attach canary', () => {
         expect(harness.state.deletedWorkspaces).toEqual(['sandbox-agent-attach-canary-workspace']);
         expect(harness.state.workspaces.size).toBe(0);
         expect(harness.state.cancelRequests).toEqual([]);
+        expect(progress.filter((entry) => entry.event === 'run_started')).toHaveLength(9);
+        expect(progress.filter((entry) => entry.event === 'run_progress')).toHaveLength(9);
+        expect(progress.filter((entry) => entry.event === 'run_completed')).toHaveLength(9);
+        expect(progress.filter((entry) => entry.event === 'attachment_completed')).toHaveLength(6);
+        expect(progress.map((entry) => entry.event)).toEqual(expect.arrayContaining([
+            'canary_started',
+            'sandbox_source_verified',
+            'cleanup_started',
+            'cleanup_completed',
+            'canary_completed',
+        ]));
+        expect(JSON.stringify(progress)).not.toContain(LIVE_ENV.KIMIBUILT_FRONTEND_API_KEY);
     });
 
     test('reports a safe sandbox failure code and cleans up before any agent run starts', async () => {
