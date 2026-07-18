@@ -417,7 +417,7 @@ describe('/api/tools routes', () => {
         expect(remoteAgent.description).toContain('Grok Build for Grok models');
         expect(remoteAgent.description).toContain('Codex for OpenAI models');
         expect(remoteAgent.support.notes.join('\n')).toContain('GIT_BRANCH');
-        expect(remoteAgent.support.notes.join('\n')).toContain('/events SSE');
+        expect(remoteAgent.support.notes.join('\n')).toContain('/admin/remote-agent-tasks');
         expect(remoteAgent.runtime.runnerAvailable).toBe(true);
         expect(remoteAgent.runtime.k3sFeedback).toEqual(expect.objectContaining({
             runnerReady: true,

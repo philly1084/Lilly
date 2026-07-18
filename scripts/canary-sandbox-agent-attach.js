@@ -15,8 +15,8 @@ const MAX_BUNDLE_BYTES = 4 * 1024 * 1024;
 const LANE_DEFAULTS = Object.freeze({
     codex: Object.freeze({
         modelEnv: 'KIMIBUILT_CANARY_CODEX_MODEL',
-        model: 'gpt-5.5',
-        transport: 'codex-agent',
+        model: 'gpt-5.6-sol',
+        transport: 'provider-agent',
         provider: '',
         providerModel: '',
     }),

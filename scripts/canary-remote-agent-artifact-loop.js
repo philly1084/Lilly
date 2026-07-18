@@ -236,8 +236,8 @@ const FIXTURE_DEFINITIONS = Object.freeze([
 const LANE_DEFAULTS = Object.freeze({
     codex: Object.freeze({
         modelEnv: 'KIMIBUILT_CANARY_CODEX_MODEL',
-        model: 'gpt-5.5',
-        transport: 'codex-agent',
+        model: 'gpt-5.6-sol',
+        transport: 'provider-agent',
     }),
     kimi: Object.freeze({
         modelEnv: 'KIMIBUILT_CANARY_KIMI_MODEL',

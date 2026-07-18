@@ -520,7 +520,7 @@ class RemoteCliAgentTool extends ToolBase {
           },
           model: {
             type: 'string',
-            description: 'Selected chat model. Kimi and Grok families choose their matching gateway CLI provider; OpenAI models use the Codex agent lane.',
+            description: 'Selected chat model. Kimi, Grok, and OpenAI families choose their matching gateway CLI provider on the shared task lane.',
           },
           instructions: {
             type: 'string',

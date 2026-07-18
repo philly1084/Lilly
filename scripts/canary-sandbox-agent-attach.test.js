@@ -491,6 +491,23 @@ describe('sandbox-origin remote agent attach canary', () => {
         });
     });
 
+    test('routes the default Codex canary through the shared provider-agent lane', () => {
+        const plan = buildAgentPlan({
+            lane: 'codex',
+            scenario: 'sandbox-origin',
+            sessionId: 'session-codex',
+            sourceArtifactId: 'artifact-codex',
+            expectedSha256: 'c'.repeat(64),
+            expectedSizeBytes: 1024,
+            env: {},
+        });
+
+        expect(plan.toolParams).toEqual(expect.objectContaining({
+            model: 'gpt-5.6-sol',
+            transport: 'provider-agent',
+        }));
+    });
+
     test('validates exact sandbox ZIP members and rejects one changed project byte stream', async () => {
         const good = buildSandboxBundle();
         await expect(validateSandboxBundle(good)).resolves.toMatchObject({

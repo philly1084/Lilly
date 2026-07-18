@@ -45,7 +45,7 @@ function buildVerifiedResultFiles(handoff, {
 }
 
 describe('RemoteCliAgentsSdkRunner', () => {
-  test('maps selected Kimi and Grok models to their matching gateway CLI providers', () => {
+  test('maps selected Codex, Kimi, and Grok models to their matching gateway CLI providers', () => {
     expect(resolveProviderAgentSelection('grok-build')).toMatchObject({
       providerId: 'grok-build-cli',
       providerLabel: 'Grok Build',
@@ -74,14 +74,20 @@ describe('RemoteCliAgentsSdkRunner', () => {
       requestedModel: 'k3',
       providerModel: 'k3',
     });
-    expect(resolveProviderAgentSelection('gpt-5.6-sol')).toBeNull();
+    expect(resolveProviderAgentSelection('gpt-5.6-sol')).toMatchObject({
+      providerId: 'codex-cli',
+      providerLabel: 'Codex',
+      providerModel: 'gpt-5.6-sol',
+    });
   });
 
-  test('only forwards native Grok UUIDs for provider-agent continuation', () => {
+  test('only forwards native Codex and Grok UUIDs for provider-agent continuation', () => {
+    const codex = resolveProviderAgentSelection('gpt-5.6-sol');
     const grok = resolveProviderAgentSelection('grok-build');
     const kimi = resolveProviderAgentSelection('kimi-k2.7-code');
     const sessionId = '019f6357-10a2-7f61-9bf8-541fa830de18';
 
+    expect(resolveProviderAgentContinuationSessionId(codex, sessionId)).toBe(sessionId);
     expect(resolveProviderAgentContinuationSessionId(grok, sessionId)).toBe(sessionId);
     expect(resolveProviderAgentContinuationSessionId(grok, 'ps_legacy_gateway_session')).toBe('');
     expect(resolveProviderAgentContinuationSessionId(kimi, sessionId)).toBe('');
@@ -749,12 +755,13 @@ describe('RemoteCliAgentsSdkRunner', () => {
   });
 
   test.each([
+    ['gpt-5.6-sol', 'codex-cli', 'gpt-5.6-sol', 'Codex'],
     ['grok-build', 'grok-build-cli', 'grok-build', 'Grok Build'],
     ['kimi-k3', 'kimi-code-cli', 'k3', 'Kimi CLI'],
     ['kimi-k2.7-code', 'kimi-code-cli', 'kimi-for-coding', 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
     const progress = [];
-    const continuationSessionId = providerId === 'grok-build-cli'
+    const continuationSessionId = ['codex-cli', 'grok-build-cli'].includes(providerId)
       ? '019f6357-10a2-7f61-9bf8-541fa830de18'
       : undefined;
     const handoff = {
@@ -888,6 +895,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
     const result = await runner.run({
       task: 'Fix the selected remote app and verify it.',
+      transport: 'provider-agent',
       model: selectedModel,
       ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
       handoff,
@@ -908,6 +916,71 @@ describe('RemoteCliAgentsSdkRunner', () => {
       resultFiles: verifiedResultFiles,
     });
     expect(progress.some((event) => event.toolEvents?.[0]?.providerId === providerId)).toBe(true);
+  });
+
+  test('uses the configured Codex provider when provider-agent has no explicit model', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks') {
+        expect(JSON.parse(options.body)).toMatchObject({
+          providerId: 'codex-cli',
+          model: 'gpt-5.6-sol',
+          targetId: 'k3s-prod',
+          cwd: '/opt/kimibuilt',
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: { id: 'task-codex-default', sessionId: 'session-codex-default' },
+              streamUrl: '/admin/remote-agent-tasks/task-codex-default/stream?token=safe-token',
+            });
+          },
+        };
+      }
+      if (url.includes('/task-codex-default/stream')) {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: output\ndata: {"type":"output","data":"WHAT_CHANGED=Verified Codex default.\\nVERIFY_RESULTS=passed\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n'
+                + 'event: exit\ndata: {"type":"exit","exitCode":0}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (url.endsWith('/task-codex-default/cancel')) {
+        return { ok: true, status: 200, async text() { return '{"ok":true}'; } };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentModel: 'gpt-5.6-sol',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      sdkLoader: () => { throw new Error('provider-agent transport should not load the MCP SDK'); },
+      fetchImpl,
+    });
+
+    const result = await runner.run({ task: 'Verify the configured Codex provider.' });
+
+    expect(result).toMatchObject({
+      transport: 'provider-agent',
+      providerId: 'codex-cli',
+      providerModel: 'gpt-5.6-sol',
+      completionStatus: 'complete',
+    });
   });
 
   test('accepts Markdown-bold provider proof markers split across events', async () => {

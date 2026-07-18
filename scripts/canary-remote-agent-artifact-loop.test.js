@@ -999,6 +999,15 @@ describe('remote agent artifact-loop canary', () => {
         )).toThrow('The codex hop 1 completed run did not match the expected run, session, and adapter identity.');
     });
 
+    test('routes the default Codex artifact loop through the shared provider-agent lane', () => {
+        const plan = buildLanePlan('codex', {}, { hop: 1 });
+
+        expect(plan).toEqual(expect.objectContaining({
+            model: 'gpt-5.6-sol',
+            transport: 'provider-agent',
+        }));
+    });
+
     test('binds authored preview and managed-app preflight to the verified bundle', () => {
         const plan = buildAuthoringPlan('codex', {});
         const authoredFiles = createAuthoredFiles(plan);

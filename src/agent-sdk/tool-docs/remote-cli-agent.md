@@ -1,6 +1,6 @@
 # remote-cli-agent
 
-Purpose: run a server-side remote coding agent through the default gateway `/api/codex-agent/run` plus `/events` SSE contract, with MCP `remote_code_run/status` retained only for explicit legacy transport requests.
+Purpose: run Codex, Kimi, or Grok as a server-side remote coding agent through the gateway's authenticated `/admin/remote-agent-tasks` contract, with direct in-pod Codex and MCP retained only as explicit compatibility transports.
 
 Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress while the remote agent owns the implementation loop.
 
@@ -10,7 +10,8 @@ For most remote software deployments, prefer `remote-cli-agent` over one-shot `r
 
 Layer boundary:
 - `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`. Use `artifactIds`/`contextFiles` for inbound files and `collectResultFiles:true` when generated files must return to the active KimiBuilt session.
-- The default transport is `codex-agent`: KimiBuilt calls `POST /api/codex-agent/run`, then consumes `GET /api/codex-agent/runs/:runId/events` as SSE.
+- The production default is `provider-agent`: KimiBuilt calls `POST /admin/remote-agent-tasks`, streams the returned same-origin task URL, and collects gateway-verified result files. The selected model maps to `codex-cli`, `kimi-code-cli`, or `grok-build-cli`.
+- The `codex-agent` transport remains available explicitly for compatible environments that can safely run the Codex app-server bridge in the gateway pod.
 - The `mcp` transport remains available for compatibility: KimiBuilt calls `remote_code_run`, then polls `remote_code_status`.
 - Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
@@ -22,9 +23,9 @@ Outer tool call shape:
   "task": "Build/fix/deploy the app and verify the public URL.",
   "adminMode": true,
   "cwd": "/srv/apps/my-app",
-  "transport": "codex-agent",
+  "transport": "provider-agent",
   "waitMs": 30000,
-  "threadId": "optional prior Codex thread id for codex-agent transport",
+  "sessionId": "optional prior provider session id for Codex or Grok continuation",
   "supportAgentResponse": "optional answer from a support agent for a resumed CLI thread",
   "artifactIds": ["session-owned-sandbox-or-document-artifact-id"],
   "contextFiles": [
@@ -58,11 +59,11 @@ For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
 Server-side configuration:
 
 ```bash
-REMOTE_CLI_AGENT_TRANSPORT=codex-agent
+REMOTE_CLI_AGENT_TRANSPORT=provider-agent
 REMOTE_CLI_CODEX_AGENT_BASE_URL=https://gateway.example.com
 REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN=server-side-frontend-or-admin-key
 REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH=/srv/apps/my-app
-REMOTE_CLI_CODEX_AGENT_MODEL=gpt-5.5
+REMOTE_CLI_CODEX_AGENT_MODEL=gpt-5.6-sol
 REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY=never
 REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX=workspace-write
 REMOTE_CLI_DEFAULT_TARGET_ID=prod
@@ -79,22 +80,21 @@ REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS=2000
 Gateway-side requirements:
 
 ```bash
-CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS=/srv/apps
-FRONTEND_API_KEY=<server-side key accepted by /api/codex-agent/*>
+FRONTEND_API_KEY=<server-side key accepted by /admin/remote-agent-tasks>
 REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
-# Public gateway ingresses must route /api/codex-agent as well as /v1 and /mcp.
+# Keep /admin/remote-agent-tasks cluster-internal; public ingress need not expose it.
 ```
 
 Headless Codex operating model:
 
-- KimiBuilt's preferred remote CLI agent path is not a raw TTY automation. It uses the router's Codex app-server bridge: start a run with `POST /api/codex-agent/run`, then consume `GET /api/codex-agent/runs/:runId/events`.
-- This maps to the current Codex headless guidance better than driving the interactive TUI. One-shot automation can use `codex exec --json`, but multi-turn orchestration should keep a durable conversation handle. In this router contract, that handle is `threadId`.
+- KimiBuilt's preferred remote CLI agent path is not raw TTY automation. It uses the router's provider-session task bridge so Codex, Kimi, and Grok share authentication, isolated file staging, progress streaming, and verified result collection.
+- This maps to the current Codex headless guidance better than driving the interactive TUI. One-shot automation can use `codex exec --json`, but multi-turn orchestration should keep a durable conversation handle. In the provider-task contract that handle is `sessionId` when the selected CLI supports continuation; direct Codex compatibility uses `threadId`.
 - The remote agent should emit short milestone messages during inspect/edit/build/deploy/verify phases so the outer web-chat stream has real progress. Do not leave the user with only a start card and final result.
-- Treat `turn_input_required` as a controlled pause: forward the concise decision to the user, then resume with the same `threadId` when possible.
-- Support-agent back-and-forth is supported without switching transports: when the CLI agent needs a second opinion or decomposition help, it should finish that turn with `SUPPORT_AGENT_REQUIRED=<precise help request>` and `SUPPORT_AGENT_CONTEXT=<facts/files/commands/blocker>`. The outer KimiBuilt agent can run a support agent, then call `remote-cli-agent` again with the same `threadId` plus `supportAgentResponse` to continue the CLI thread.
+- Treat `turn_input_required` as a controlled pause: forward the concise decision to the user, then resume with the same `sessionId` or direct-Codex `threadId` when possible.
+- Support-agent back-and-forth is supported without switching transports: when the CLI agent needs a second opinion or decomposition help, it should finish that turn with `SUPPORT_AGENT_REQUIRED=<precise help request>` and `SUPPORT_AGENT_CONTEXT=<facts/files/commands/blocker>`. The outer KimiBuilt agent can run a support agent, then call `remote-cli-agent` again with the same `sessionId` (or direct-Codex `threadId`) plus `supportAgentResponse` to continue the CLI thread.
 - Use `SUPPORT_AGENT_REQUIRED` only for internal agent help. Use `USER_INPUT_REQUIRED` for user choices, credentials, approvals, or product direction.
 
-Codex-agent gateway contract:
+Explicit direct Codex-agent compatibility contract:
 
 - `POST /api/codex-agent/run` with `{ workspacePath, prompt, continuation?, threadId?, config?, handoff? }`.
 - `GET /api/codex-agent/runs/:runId/events` returns SSE frames with named events.

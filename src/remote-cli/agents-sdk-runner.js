@@ -1241,7 +1241,8 @@ function resolveRemoteCliTransport(input = {}, runnerConfig = {}) {
     || input.requested_model
     || input.model,
   );
-  if (!inputTransport && selectedProvider) {
+  if (!inputTransport && selectedProvider
+    && (selectedProvider.providerId !== 'codex-cli' || requested === 'provider-agent')) {
     return 'provider-agent';
   }
   if (requested === 'auto') {
@@ -1281,11 +1282,19 @@ function resolveProviderAgentSelection(model = '') {
       providerModel: isKimiK3 ? 'k3' : 'kimi-for-coding',
     };
   }
+  if (/^(?:gpt|o[134])(?:[\s\/_-]|$)|(?:^|[\s\/_-])(?:openai|codex)(?:[\s\/_-]|$)/.test(normalized)) {
+    return {
+      providerId: 'codex-cli',
+      providerLabel: 'Codex',
+      requestedModel,
+      providerModel: requestedModel,
+    };
+  }
   return null;
 }
 
 function resolveProviderAgentContinuationSessionId(selection = null, sessionId = '') {
-  if (selection?.providerId !== 'grok-build-cli') {
+  if (!['codex-cli', 'grok-build-cli'].includes(selection?.providerId)) {
     return '';
   }
   const normalized = normalizeText(sessionId);
@@ -2802,11 +2811,24 @@ class RemoteCliAgentsSdkRunner {
     }
     const transport = resolveRemoteCliTransport(input, this.config);
     this.assertConfigured({ transport, input });
-    const providerSelection = resolveProviderAgentSelection(
+    let providerSelection = resolveProviderAgentSelection(
       input.requestedModel
       || input.requested_model
       || input.model,
     );
+    if (transport === 'provider-agent' && !providerSelection) {
+      const configuredCodexModel = normalizeText(
+        input.codexAgentModel
+        || input.codex_agent_model
+        || this.config.codexAgentModel,
+      );
+      providerSelection = {
+        providerId: 'codex-cli',
+        providerLabel: 'Codex',
+        requestedModel: configuredCodexModel || 'configured default',
+        providerModel: configuredCodexModel,
+      };
+    }
 
     const targetId = resolveRemoteCliTargetId(
       input.targetId || input.target_id,
