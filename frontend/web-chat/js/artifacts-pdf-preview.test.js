@@ -265,6 +265,7 @@ describe('web-chat artifact cards and promotion', () => {
                     blockers: [{
                         code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
                         message: 'Replace the unsupported binary asset before deployment.',
+                        remediation: 'Convert the asset to SVG, regenerate the bundle, and retry.',
                     }],
                 });
             }
@@ -281,7 +282,7 @@ describe('web-chat artifact cards and promotion', () => {
             new URL(url, 'https://chat.example.test').pathname.endsWith('/managed-app')
         ))).toHaveLength(0);
         expect(showToast).toHaveBeenCalledWith(
-            'Replace the unsupported binary asset before deployment.',
+            'Replace the unsupported binary asset before deployment. Next: Convert the asset to SVG, regenerate the bundle, and retry.',
             'error',
         );
     });

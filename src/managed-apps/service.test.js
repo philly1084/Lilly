@@ -18,6 +18,128 @@ const TEST_IMAGE_DIGEST = `sha256:${'a'.repeat(64)}`;
 const EXPECTED_BUILD_IMAGE_DIGEST = `sha256:${'b'.repeat(64)}`;
 
 describe('ManagedAppService', () => {
+    test('proves repository authentication and organization access before Push-to-Web', async () => {
+        const gitlabClient = {
+            isConfigured: jest.fn(() => true),
+            getOrganization: jest.fn(async () => ({ id: 12, path: 'agent-apps' })),
+        };
+        const service = new ManagedAppService({
+            store: { isAvailable: jest.fn(() => true) },
+            gitlabClient,
+        });
+        service.getEffectiveGiteaConfig = () => ({
+            provider: 'gitlab',
+            baseURL: 'https://gitlab.example.test',
+            org: 'agent-apps',
+        });
+
+        await expect(service.inspectPushToWebReadiness()).resolves.toEqual({
+            ready: true,
+            persistenceAvailable: true,
+            repositoryControlPlane: {
+                provider: 'gitlab',
+                baseURL: 'https://gitlab.example.test',
+                org: 'agent-apps',
+                configured: true,
+                checked: true,
+                authenticated: true,
+                namespaceAccessible: true,
+                ready: true,
+            },
+            blockers: [],
+        });
+        expect(gitlabClient.getOrganization).toHaveBeenCalledWith('agent-apps');
+    });
+
+    test('returns a safe actionable blocker when GitLab rejects the credential', async () => {
+        const rejected = Object.assign(new Error('upstream body contained glpat-never-return-this'), {
+            code: 'gitlab_auth_rejected',
+            statusCode: 401,
+            remediation: 'Rotate GITLAB_TOKEN and verify organization access.',
+        });
+        const service = new ManagedAppService({
+            store: { isAvailable: jest.fn(() => true) },
+            gitlabClient: {
+                isConfigured: jest.fn(() => true),
+                getOrganization: jest.fn(async () => { throw rejected; }),
+            },
+        });
+        service.getEffectiveGiteaConfig = () => ({
+            provider: 'gitlab',
+            baseURL: 'https://gitlab.example.test',
+            org: 'agent-apps',
+        });
+
+        const result = await service.inspectPushToWebReadiness();
+
+        expect(result).toEqual(expect.objectContaining({
+            ready: false,
+            persistenceAvailable: true,
+            repositoryControlPlane: expect.objectContaining({
+                configured: true,
+                checked: true,
+                authenticated: false,
+                ready: false,
+            }),
+            blockers: [expect.objectContaining({
+                code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED',
+                blocker: 'managed_app_repository_auth_rejected',
+                upstreamStatusCode: 401,
+                remediation: 'Rotate or repair the gitlab API credential and verify organization access before starting agent authoring.',
+            })],
+        }));
+        expect(JSON.stringify(result)).not.toContain('glpat-never-return-this');
+        expect(JSON.stringify(result)).not.toContain('Rotate GITLAB_TOKEN');
+    });
+
+    test('removes credentials from the repository base URL in readiness output', async () => {
+        const service = new ManagedAppService({
+            store: { isAvailable: jest.fn(() => true) },
+            gitlabClient: {
+                isConfigured: jest.fn(() => true),
+                getOrganization: jest.fn(async () => ({ id: 12 })),
+            },
+        });
+        service.getEffectiveGiteaConfig = () => ({
+            provider: 'gitlab',
+            baseURL: 'https://user:password@gitlab.example.test/control?token=secret#private',
+            org: 'agent-apps',
+        });
+
+        const result = await service.inspectPushToWebReadiness();
+
+        expect(result.repositoryControlPlane.baseURL).toBe('https://gitlab.example.test/control');
+        expect(JSON.stringify(result)).not.toContain('user');
+        expect(JSON.stringify(result)).not.toContain('password');
+        expect(JSON.stringify(result)).not.toContain('secret');
+        expect(JSON.stringify(result)).not.toContain('private');
+    });
+
+    test('does not call GitLab when managed-app persistence is unavailable', async () => {
+        const gitlabClient = {
+            isConfigured: jest.fn(() => true),
+            getOrganization: jest.fn(),
+        };
+        const service = new ManagedAppService({
+            store: { isAvailable: jest.fn(() => false) },
+            gitlabClient,
+        });
+        service.getEffectiveGiteaConfig = () => ({
+            provider: 'gitlab',
+            baseURL: 'https://gitlab.example.test',
+            org: 'agent-apps',
+        });
+
+        const result = await service.inspectPushToWebReadiness();
+
+        expect(result.ready).toBe(false);
+        expect(result.blockers).toEqual([expect.objectContaining({
+            code: 'MANAGED_APP_PERSISTENCE_UNAVAILABLE',
+        })]);
+        expect(gitlabClient.isConfigured).not.toHaveBeenCalled();
+        expect(gitlabClient.getOrganization).not.toHaveBeenCalled();
+    });
+
     test('buildBuildEventsUrl strips a trailing /v1 from the configured API base URL', () => {
         const service = new ManagedAppService();
         const previousBaseUrl = settingsController.settings.api.baseURL;

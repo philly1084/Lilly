@@ -10833,7 +10833,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             const preflight = await api.preflightManagedAppArtifact(file.artifactId);
             const blocker = Array.isArray(preflight?.blockers) ? preflight.blockers[0] : null;
             if (preflight?.pushToWebEligible !== true) {
-                throw new Error(blocker?.message || 'This artifact is not eligible for Push to Web yet.');
+                const message = blocker?.message || 'This artifact is not eligible for Push to Web yet.';
+                throw new Error(blocker?.remediation ? `${message} Next: ${blocker.remediation}` : message);
             }
             const expectedSourceSha256 = String(preflight.sha256 || '').trim().toLowerCase();
             if (!/^[a-f0-9]{64}$/.test(expectedSourceSha256)) {

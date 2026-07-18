@@ -73,6 +73,21 @@ describe('/api/artifacts route', () => {
         app.use(express.json());
         app.locals.managedAppService = options.managedAppService || {
             isAvailable: jest.fn(() => true),
+            inspectPushToWebReadiness: jest.fn(async () => ({
+                ready: true,
+                persistenceAvailable: true,
+                repositoryControlPlane: {
+                    provider: 'gitlab',
+                    baseURL: 'https://gitlab.example.test',
+                    org: 'agent-apps',
+                    configured: true,
+                    checked: true,
+                    authenticated: true,
+                    namespaceAccessible: true,
+                    ready: true,
+                },
+                blockers: [],
+            })),
             createApp: jest.fn(async (input) => ({
                 app: {
                     id: 'managed-app-1',
@@ -1550,6 +1565,13 @@ describe('/api/artifacts route', () => {
             artifactId: 'artifact-site-preflight-parity',
             contentEligible: true,
             controlPlaneAvailable: true,
+            repositoryControlPlaneReady: true,
+            repositoryControlPlane: expect.objectContaining({
+                provider: 'gitlab',
+                authenticated: true,
+                namespaceAccessible: true,
+                ready: true,
+            }),
             pushToWebEligible: true,
             sourceType: 'native-site-archive',
             targetPaths: ['public/index.html', 'public/styles.css'],
@@ -2059,6 +2081,12 @@ describe('/api/artifacts route', () => {
         });
         const managedAppService = {
             isAvailable: jest.fn(() => false),
+            inspectPushToWebReadiness: jest.fn(async () => ({
+                ready: true,
+                persistenceAvailable: true,
+                repositoryControlPlane: { ready: true },
+                blockers: [],
+            })),
             createApp: jest.fn(),
         };
         const app = buildApp({ managedAppService });
@@ -2166,6 +2194,75 @@ describe('/api/artifacts route', () => {
                 blocker: 'managed_app_control_plane_unavailable',
             },
         });
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('blocks artifact preflight and mutation when GitLab rejects the managed-app credential', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-gitlab-auth',
+            sessionId: 'session-1',
+            filename: 'landing.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!doctype html><html><body>Ready</body></html>',
+            contentBuffer: Buffer.from('<!doctype html><html><body>Ready</body></html>', 'utf8'),
+            metadata: { title: 'Ready Landing' },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const authBlocker = {
+            code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED',
+            blocker: 'managed_app_repository_auth_rejected',
+            message: 'The gitlab repository control plane rejected the configured managed-app credential.',
+            upstreamStatusCode: 401,
+            remediation: 'Rotate GITLAB_TOKEN and verify organization access.',
+        };
+        const managedAppService = {
+            isAvailable: jest.fn(() => true),
+            inspectPushToWebReadiness: jest.fn(async () => ({
+                ready: false,
+                persistenceAvailable: true,
+                repositoryControlPlane: {
+                    provider: 'gitlab',
+                    baseURL: 'https://gitlab.example.test',
+                    org: 'agent-apps',
+                    configured: true,
+                    checked: true,
+                    authenticated: false,
+                    namespaceAccessible: false,
+                    ready: false,
+                },
+                blockers: [authBlocker],
+            })),
+            createApp: jest.fn(),
+        };
+        const app = buildApp({ managedAppService });
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-gitlab-auth/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-preflight-gitlab-auth/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: true,
+            controlPlaneAvailable: true,
+            repositoryControlPlaneReady: false,
+            repositoryControlPlane: expect.objectContaining({
+                provider: 'gitlab',
+                authenticated: false,
+                ready: false,
+            }),
+            pushToWebEligible: false,
+            blockers: [authBlocker],
+        }));
+        expect(mutation.status).toBe(503);
+        expect(mutation.body).toEqual({ error: authBlocker });
+        expect(managedAppService.inspectPushToWebReadiness).toHaveBeenCalledTimes(2);
         expect(managedAppService.createApp).not.toHaveBeenCalled();
     });
 
@@ -2723,6 +2820,12 @@ describe('/api/artifacts route', () => {
         }));
         const managedAppService = {
             isAvailable: jest.fn(() => true),
+            inspectPushToWebReadiness: jest.fn(async () => ({
+                ready: true,
+                persistenceAvailable: true,
+                repositoryControlPlane: { ready: true },
+                blockers: [],
+            })),
             createApp: jest.fn(async (input) => ({
                 app: {
                     id: 'managed-app-existing',

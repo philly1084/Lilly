@@ -61,6 +61,23 @@ function normalizeManagedAppWebhookBaseUrl(value = '') {
     }
 }
 
+function normalizeCredentialFreeControlPlaneUrl(value = '') {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+        return '';
+    }
+    try {
+        const parsed = new URL(normalized);
+        parsed.username = '';
+        parsed.password = '';
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/+$/, '');
+    } catch (_error) {
+        return '';
+    }
+}
+
 const MAX_MANAGED_APP_SLUG_LENGTH = 63;
 const MAX_KUBERNETES_NAME_LENGTH = 63;
 const DEFAULT_GITLAB_RUNNER_TAGS = 'kimibuilt,buildkit';
@@ -2012,6 +2029,108 @@ class ManagedAppService {
 
     isAvailable() {
         return this.store.isAvailable();
+    }
+
+    async inspectPushToWebReadiness() {
+        const persistenceAvailable = this.isAvailable();
+        const gitConfig = this.getEffectiveGiteaConfig();
+        const provider = normalizeText(gitConfig.provider || 'gitlab').toLowerCase() || 'gitlab';
+        const configuredBaseURL = normalizeText(gitConfig.baseURL);
+        const baseURL = normalizeCredentialFreeControlPlaneUrl(configuredBaseURL);
+        const org = normalizeText(gitConfig.org);
+        const blockers = [];
+        const repositoryControlPlane = {
+            provider,
+            baseURL,
+            org,
+            configured: false,
+            checked: false,
+            authenticated: false,
+            namespaceAccessible: false,
+            ready: false,
+        };
+
+        if (!persistenceAvailable) {
+            blockers.push({
+                code: 'MANAGED_APP_PERSISTENCE_UNAVAILABLE',
+                blocker: 'managed_app_persistence_unavailable',
+                message: 'Push to Web requires the Postgres-backed managed-app catalog to be available.',
+                remediation: 'Restore the managed-app session store before starting repository or deployment work.',
+            });
+            return {
+                ready: false,
+                persistenceAvailable,
+                repositoryControlPlane,
+                blockers,
+            };
+        }
+
+        const configured = Boolean(
+            this.giteaClient
+            && typeof this.giteaClient.isConfigured === 'function'
+            && this.giteaClient.isConfigured() === true
+            && configuredBaseURL
+            && org,
+        );
+        repositoryControlPlane.configured = configured;
+        if (!configured || typeof this.giteaClient.getOrganization !== 'function') {
+            blockers.push({
+                code: 'MANAGED_APP_REPOSITORY_CONTROL_PLANE_NOT_CONFIGURED',
+                blocker: 'managed_app_repository_control_plane_not_configured',
+                message: `Push to Web requires a configured ${provider} repository control plane.`,
+                remediation: `Configure the ${provider} base URL, organization, and API credential before starting agent authoring.`,
+            });
+            return {
+                ready: false,
+                persistenceAvailable,
+                repositoryControlPlane,
+                blockers,
+            };
+        }
+
+        repositoryControlPlane.checked = true;
+        try {
+            const organization = await this.giteaClient.getOrganization(org);
+            if (!organization) {
+                blockers.push({
+                    code: 'MANAGED_APP_REPOSITORY_NAMESPACE_UNAVAILABLE',
+                    blocker: 'managed_app_repository_namespace_unavailable',
+                    message: `The configured ${provider} organization is unavailable to the managed-app credential.`,
+                    remediation: `Create the ${org} organization or grant the configured credential access to it before starting agent authoring.`,
+                });
+            } else {
+                repositoryControlPlane.authenticated = true;
+                repositoryControlPlane.namespaceAccessible = true;
+                repositoryControlPlane.ready = true;
+            }
+        } catch (error) {
+            const upstreamStatusCode = Number(error?.statusCode || 0) || 0;
+            const authRejected = upstreamStatusCode === 401
+                || upstreamStatusCode === 403
+                || ['gitlab_auth_rejected', 'gitlab_access_forbidden'].includes(normalizeText(error?.code));
+            blockers.push({
+                code: authRejected
+                    ? 'MANAGED_APP_REPOSITORY_AUTH_REJECTED'
+                    : 'MANAGED_APP_REPOSITORY_CONTROL_PLANE_UNREACHABLE',
+                blocker: authRejected
+                    ? 'managed_app_repository_auth_rejected'
+                    : 'managed_app_repository_control_plane_unreachable',
+                message: authRejected
+                    ? `The ${provider} repository control plane rejected the configured managed-app credential.`
+                    : `The ${provider} repository control plane could not be verified.`,
+                ...(upstreamStatusCode ? { upstreamStatusCode } : {}),
+                remediation: authRejected
+                    ? `Rotate or repair the ${provider} API credential and verify organization access before starting agent authoring.`
+                    : `Verify ${provider} DNS, TLS, base URL, and API availability before starting agent authoring.`,
+            });
+        }
+
+        return {
+            ready: blockers.length === 0 && repositoryControlPlane.ready === true,
+            persistenceAvailable,
+            repositoryControlPlane,
+            blockers,
+        };
     }
 
     getEffectiveGiteaConfig() {

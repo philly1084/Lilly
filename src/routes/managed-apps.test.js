@@ -33,6 +33,46 @@ describe('/api managed app routes', () => {
         expect(response.body.count).toBe(1);
     });
 
+    test('reports Push-to-Web readiness before dynamic managed-app routes', async () => {
+        const readiness = {
+            ready: false,
+            persistenceAvailable: true,
+            repositoryControlPlane: {
+                provider: 'gitlab',
+                authenticated: false,
+                ready: false,
+            },
+            blockers: [{
+                code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED',
+                blocker: 'managed_app_repository_auth_rejected',
+                upstreamStatusCode: 401,
+            }],
+        };
+        const service = {
+            inspectPushToWebReadiness: jest.fn(async () => readiness),
+            inspectApp: jest.fn(),
+        };
+        const app = buildApp(service);
+
+        const response = await request(app).get('/api/managed-apps/readiness');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(readiness);
+        expect(service.inspectPushToWebReadiness).toHaveBeenCalledTimes(1);
+        expect(service.inspectApp).not.toHaveBeenCalled();
+    });
+
+    test('fails readiness closed when the service does not expose an inspector', async () => {
+        const app = buildApp({});
+
+        const response = await request(app).get('/api/managed-apps/readiness');
+
+        expect(response.status).toBe(503);
+        expect(response.body.error).toEqual(expect.objectContaining({
+            code: 'MANAGED_APP_READINESS_UNAVAILABLE',
+        }));
+    });
+
     test('creates a managed app', async () => {
         const service = {
             isAvailable: jest.fn(() => true),
