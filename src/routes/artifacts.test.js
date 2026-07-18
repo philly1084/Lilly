@@ -9,6 +9,9 @@ jest.mock('../session-store', () => ({
         getOrCreateOwned: jest.fn(),
         getOwned: jest.fn(),
         get: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        claimOwnershipIfNeeded: jest.fn(),
     },
 }));
 
@@ -17,6 +20,9 @@ jest.mock('../artifacts/artifact-service', () => ({
         uploadArtifact: jest.fn(),
         generateArtifact: jest.fn(),
         getArtifact: jest.fn(),
+        listSessionArtifacts: jest.fn(),
+        createStoredArtifact: jest.fn(),
+        serializeArtifact: jest.fn(),
         deleteArtifact: jest.fn(),
     },
 }));
@@ -111,6 +117,11 @@ describe('/api/artifacts route', () => {
             enabled: false,
         }));
         resolvePiiPolicy.mockReturnValue({ enabled: false });
+        artifactService.listSessionArtifacts.mockReset();
+        artifactService.createStoredArtifact.mockReset();
+        artifactService.serializeArtifact.mockReset();
+        artifactService.listSessionArtifacts.mockResolvedValue([]);
+        artifactService.serializeArtifact.mockImplementation((artifact) => artifact);
     });
 
     test('blocks artifact fetch when the artifact session is not owned by the user', async () => {
@@ -143,6 +154,690 @@ describe('/api/artifacts route', () => {
 
         expect(response.status).toBe(200);
         expect(response.text).toBe('hello');
+    });
+
+    test('attaches exact owned artifact bytes to an owner-scoped Notes session', async () => {
+        const contentBuffer = Buffer.from('# Source brief\n\nKeep these exact words.');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source-brief.md',
+            extension: 'md',
+            mimeType: 'text/markdown',
+            contentBuffer,
+            extractedText: '# Source brief\n\nKeep these exact words.',
+            previewHtml: '<h1>Source brief</h1>',
+            metadata: {
+                missionId: 'mission-1',
+                revision: 4,
+                artifactIds: ['artifact-top-level'],
+                provenance: {
+                    sourceSurface: 'web-chat',
+                    createdFromArtifactIds: ['artifact-earlier'],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-attached-1',
+            sessionId: input.sessionId,
+            parentArtifactId: input.parentArtifactId,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            id: artifact.id,
+            sessionId: artifact.sessionId,
+            parentArtifactId: artifact.parentArtifactId,
+            filename: artifact.filename,
+            format: artifact.extension,
+            mimeType: artifact.mimeType,
+            metadata: artifact.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({
+                targetSessionId: 'session-notes',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(201);
+        expect(response.body).toEqual(expect.objectContaining({
+            targetSessionId: 'session-notes',
+            sourceArtifactId: 'artifact-source-1',
+            sha256,
+            reused: false,
+            artifact: expect.objectContaining({
+                id: 'artifact-attached-1',
+                sessionId: 'session-notes',
+                parentArtifactId: null,
+            }),
+            importCapability: expect.objectContaining({
+                surface: 'notes',
+                disposition: 'direct',
+                browserImportAllowed: true,
+                fidelity: 'editable-text',
+            }),
+        }));
+        expect(sessionStore.get).toHaveBeenCalledWith('session-notes');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-notes',
+            parentArtifactId: null,
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'source-brief.md',
+            extension: 'md',
+            mimeType: 'text/markdown',
+            buffer: contentBuffer,
+            extractedText: '# Source brief\n\nKeep these exact words.',
+            previewHtml: '<h1>Source brief</h1>',
+            ownerId: 'phill',
+            vectorize: false,
+            metadata: expect.objectContaining({
+                parentArtifactId: null,
+                lineageVersion: 'ArtifactLineage/v1',
+                revision: 1,
+                createdFromArtifactIds: ['artifact-earlier', 'artifact-top-level', 'artifact-source-1'],
+                handoffSourceArtifactId: 'artifact-source-1',
+                handoffSourceSessionId: 'session-web-chat',
+                handoffSourceSha256: sha256,
+                provenance: expect.objectContaining({
+                    sessionId: 'session-notes',
+                    sourceSessionId: 'session-web-chat',
+                    sourceSurface: 'web-chat',
+                    targetSurface: 'notes',
+                    handoffSourceArtifactId: 'artifact-source-1',
+                    sourceSha256: sha256,
+                    createdFromArtifactIds: ['artifact-earlier', 'artifact-top-level', 'artifact-source-1'],
+                }),
+            }),
+        }));
+        expect(artifactService.createStoredArtifact.mock.calls[0][0].buffer.equals(contentBuffer)).toBe(true);
+    });
+
+    test('allows a missing target id to resolve a server-managed owned surface session', async () => {
+        const contentBuffer = Buffer.from('server-managed destination');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-server-target-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.resolveOwnedSession.mockResolvedValue({
+            id: 'session-notes-generated',
+            scopeKey: 'notes',
+            metadata: { ownerId: 'phill', clientSurface: 'notes', memoryScope: 'notes' },
+        });
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-server-target-copy',
+            sessionId: input.sessionId,
+            direction: input.direction,
+            sourceMode: input.sourceMode,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            sha256: createHash('sha256').update(input.buffer).digest('hex'),
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-server-target-source/attach')
+            .send({ mode: 'notes', taskType: 'notes', clientSurface: 'notes' });
+
+        expect(response.status).toBe(201);
+        expect(response.body.targetSessionId).toBe('session-notes-generated');
+        expect(sessionStore.resolveOwnedSession).toHaveBeenCalledWith(
+            null,
+            expect.objectContaining({
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+                memoryScope: 'notes',
+            }),
+            'phill',
+        );
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-notes-generated',
+            ownerId: 'phill',
+        }));
+    });
+
+    test('idempotently reuses an attached target artifact matching source id and checksum', async () => {
+        const contentBuffer = Buffer.from('<svg viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-svg-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'design.svg',
+            extension: 'svg',
+            mimeType: 'image/svg+xml',
+            contentBuffer,
+            metadata: {},
+        };
+        const attachedArtifact = {
+            id: 'artifact-attached-svg-1',
+            sessionId: 'session-canvas',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'design.svg',
+            extension: 'svg',
+            mimeType: 'image/svg+xml',
+            sha256,
+            contentBuffer,
+            metadata: {
+                handoffSourceArtifactId: 'artifact-svg-1',
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : attachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-canvas',
+            metadata: { ownerId: 'phill', clientSurface: 'canvas-excalidraw' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([{
+            id: 'artifact-attached-svg-1',
+            sessionId: 'session-canvas',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'design.svg',
+            format: 'svg',
+            metadata: {
+                handoffSourceArtifactId: 'artifact-svg-1',
+                handoffSourceSha256: sha256,
+            },
+        }]);
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            ...artifact,
+            format: artifact.extension,
+            contentBuffer: undefined,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-svg-1/attach')
+            .send({
+                targetSessionId: 'session-canvas',
+                mode: 'canvas',
+                taskType: 'canvas',
+                clientSurface: 'canvas-excalidraw',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(expect.objectContaining({
+            targetSessionId: 'session-canvas',
+            sourceArtifactId: 'artifact-svg-1',
+            sha256,
+            reused: true,
+            artifact: expect.objectContaining({ id: 'artifact-attached-svg-1' }),
+            importCapability: expect.objectContaining({
+                surface: 'canvas-excalidraw',
+                format: 'svg',
+                disposition: 'context-only',
+                browserImportAllowed: false,
+            }),
+        }));
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-attached-svg-1', { includeContent: true });
+    });
+
+    test('does not reuse a model-controlled artifact that only forges handoff metadata', async () => {
+        const contentBuffer = Buffer.from('trusted source bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-trusted-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'trusted.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-forged',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([{
+            id: 'artifact-forged-marker',
+            sessionId: 'session-notes-forged',
+            direction: 'generated',
+            sourceMode: 'notes',
+            metadata: {
+                handoffSourceArtifactId: 'artifact-trusted-source',
+                handoffSourceSha256: sha256,
+            },
+        }]);
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-real-attach',
+            sessionId: input.sessionId,
+            direction: input.direction,
+            sourceMode: input.sourceMode,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            sha256,
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-trusted-source/attach')
+            .send({
+                targetSessionId: 'session-notes-forged',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(201);
+        expect(response.body).toEqual(expect.objectContaining({
+            reused: false,
+            artifact: expect.objectContaining({ id: 'artifact-real-attach' }),
+        }));
+        expect(artifactService.getArtifact).not.toHaveBeenCalledWith('artifact-forged-marker', { includeContent: true });
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+    });
+
+    test('reuses a byte-verified attached artifact after a cluster unique-index race', async () => {
+        const contentBuffer = Buffer.from('cluster-safe exact bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-cluster-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'cluster.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        };
+        const attachedArtifact = {
+            id: 'artifact-cluster-winner',
+            sessionId: 'session-notes-cluster',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'cluster.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            sha256,
+            contentBuffer,
+            metadata: {
+                handoffSourceArtifactId: sourceArtifact.id,
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : attachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-cluster',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.listSessionArtifacts
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{
+                id: attachedArtifact.id,
+                sessionId: attachedArtifact.sessionId,
+                direction: attachedArtifact.direction,
+                sourceMode: attachedArtifact.sourceMode,
+                metadata: attachedArtifact.metadata,
+            }]);
+        artifactService.createStoredArtifact.mockRejectedValue(Object.assign(
+            new Error('duplicate handoff'),
+            {
+                code: '23505',
+                constraint: 'idx_artifacts_attach_handoff_unique',
+            },
+        ));
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            ...artifact,
+            contentBuffer: undefined,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-cluster-source/attach')
+            .send({
+                targetSessionId: 'session-notes-cluster',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(expect.objectContaining({
+            reused: true,
+            sha256,
+            artifact: expect.objectContaining({ id: 'artifact-cluster-winner' }),
+        }));
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+        expect(artifactService.listSessionArtifacts).toHaveBeenCalledTimes(2);
+    });
+
+    test('fails closed when a unique-index winner does not contain the source bytes', async () => {
+        const contentBuffer = Buffer.from('expected source bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-conflict-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        };
+        const corruptAttachedArtifact = {
+            id: 'artifact-conflict-corrupt',
+            sessionId: 'session-notes-conflict',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            sha256,
+            contentBuffer: Buffer.from('different bytes'),
+            metadata: {
+                handoffSourceArtifactId: sourceArtifact.id,
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : corruptAttachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-conflict',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        const conflictDescriptor = {
+            id: corruptAttachedArtifact.id,
+            sessionId: corruptAttachedArtifact.sessionId,
+            direction: corruptAttachedArtifact.direction,
+            sourceMode: corruptAttachedArtifact.sourceMode,
+            metadata: corruptAttachedArtifact.metadata,
+        };
+        artifactService.listSessionArtifacts.mockResolvedValue([conflictDescriptor]);
+        artifactService.createStoredArtifact.mockRejectedValue(Object.assign(
+            new Error('duplicate handoff'),
+            {
+                code: '23505',
+                constraint: 'idx_artifacts_attach_handoff_unique',
+            },
+        ));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-conflict-source/attach')
+            .send({
+                targetSessionId: 'session-notes-conflict',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_IDEMPOTENCY_CONFLICT');
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-conflict-corrupt', { includeContent: true });
+    });
+
+    test('refuses privacy-suppressed artifact attachment before resolving a target session', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-private-1',
+            sessionId: 'session-web-chat',
+            direction: 'uploaded',
+            filename: 'private.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('private'),
+            metadata: {
+                privacyPreviewSuppressed: true,
+                piiCleansing: { uploadPreviewSuppressed: true },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-private-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_PRIVACY_SUPPRESSED');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('refuses artifacts above the bounded attach size', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-large-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'large.bin',
+            extension: 'bin',
+            mimeType: 'application/octet-stream',
+            contentBuffer: Buffer.alloc((4 * 1024 * 1024) + 1, 1),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-large-1/attach')
+            .send({ clientSurface: 'canvas-excalidraw' });
+
+        expect(response.status).toBe(413);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TOO_LARGE');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('fails closed when stored source checksum and exact bytes disagree', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-corrupt-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.xml',
+            extension: 'xml',
+            mimeType: 'application/xml',
+            sha256: '0'.repeat(64),
+            contentBuffer: Buffer.from('<design/>'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-corrupt-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_SOURCE_INTEGRITY_MISMATCH');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('does not attach into a target session the owner cannot resolve', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue(null);
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({ targetSessionId: 'session-other', clientSurface: 'notes' });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_NOT_FOUND');
+        expect(sessionStore.get).toHaveBeenCalledWith('session-other');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['owned by another user', { ownerId: 'mallory', clientSurface: 'notes', memoryScope: 'notes' }],
+        ['missing owner metadata', { clientSurface: 'notes', memoryScope: 'notes' }],
+    ])('rejects an explicit target session %s without claiming or mutating it', async (_label, metadata) => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-owned-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('owner-only source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-explicit-target',
+            scopeKey: 'notes',
+            metadata,
+        });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-owned-source/attach')
+            .send({
+                targetSessionId: 'session-explicit-target',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_NOT_FOUND');
+        expect(sessionStore.get).toHaveBeenCalledWith('session-explicit-target');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.listSessionArtifacts).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('rejects an explicit target session from a different surface without falling back', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-scope-1',
+            sessionId: 'session-web-chat-source',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat-source',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-web-chat-target',
+            scopeKey: 'web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat', memoryScope: 'web-chat' },
+        });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-scope-1/attach')
+            .send({
+                targetSessionId: 'session-web-chat-target',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_MISMATCH');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.listSessionArtifacts).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('requires an authenticated owner for artifact attachment', async () => {
+        const response = await request(buildApp({
+            user: { username: 'anonymous', role: 'open' },
+        }))
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(401);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_AUTH_REQUIRED');
+        expect(artifactService.getArtifact).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+    });
+
+    test('does not attach a source artifact outside the authenticated owner boundary', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-other-1',
+            sessionId: 'session-other',
+            contentBuffer: Buffer.from('not owned'),
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        sessionStore.get.mockResolvedValue(null);
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-other-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_SOURCE_NOT_FOUND');
+        expect(sessionStore.getOwned).toHaveBeenCalledWith('session-other', 'phill');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
     });
 
     test('allows open-mode artifact downloads without anonymous owner scoping', async () => {

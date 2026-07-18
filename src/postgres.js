@@ -304,6 +304,18 @@ class PostgresManager {
         await this.query('CREATE INDEX IF NOT EXISTS idx_artifacts_direction ON artifacts(direction)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_artifacts_mime_type ON artifacts(mime_type)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at DESC)');
+        await this.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_attach_handoff_unique
+            ON artifacts (
+                session_id,
+                (metadata->>'handoffSourceArtifactId'),
+                (LOWER(metadata->>'handoffSourceSha256'))
+            )
+            WHERE direction = 'attached'
+                AND source_mode = 'artifact-attach'
+                AND NULLIF(metadata->>'handoffSourceArtifactId', '') IS NOT NULL
+                AND metadata->>'handoffSourceSha256' ~* '^[a-f0-9]{64}$'
+        `);
         await this.query('CREATE INDEX IF NOT EXISTS idx_sessions_scope_key_updated_at ON sessions(scope_key, updated_at DESC)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_sessions_scope_owner_updated_at ON sessions(scope_key, (metadata->>\'ownerId\'), updated_at DESC)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_session_messages_session_id_created_at ON session_messages(session_id, created_at DESC)');

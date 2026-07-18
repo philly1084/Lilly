@@ -61,6 +61,7 @@ const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
     'health',
 ]);
 const WEB_CLI_DEFAULT_THEME = 'command-center';
+const WEB_CLI_SELECTED_ARTIFACT_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{7,299}$/i;
 
 function formatWebCliSkillTaskPrompt(skillId = '', taskPrompt = '') {
     const normalizedSkillId = String(skillId || '').trim();
@@ -126,6 +127,8 @@ class CodeCLIApp {
         // Session file storage
         this.sessionFiles = [];
         this.nextFileId = 1;
+        this.selectedRemoteArtifactIds = new Set();
+        this.webPushInFlightArtifactIds = new Set();
         
         // Command queue
         this.commandQueue = [];
@@ -8217,10 +8220,13 @@ Examples:
 
     formatRemoteAgentResult(result = {}) {
         const finalOutput = String(result.finalOutput || result.output || '').trim();
-        const completionStatus = String(result.completionStatus || '').trim();
-        const blocker = String(result.blocker || '').trim();
+        const resultFilesError = String(result.resultFilesError || '').trim();
+        const completionStatus = this.getRemoteAgentEffectiveStatus(result);
+        const blocker = String(result.blocker || resultFilesError || '').trim();
         const verifyCommands = Array.isArray(result.verifyCommands) ? result.verifyCommands.filter(Boolean) : [];
         const verifyResults = Array.isArray(result.verifyResults) ? result.verifyResults.filter(Boolean) : [];
+        const returnedFiles = Array.isArray(result.returnedSessionFiles) ? result.returnedSessionFiles : [];
+        const observedFiles = Array.isArray(result.observedSessionFiles) ? result.observedSessionFiles : [];
         const lines = ['## Remote CLI Agent Result', ''];
         const metadata = [
             completionStatus ? `Status: \`${completionStatus}\`` : '',
@@ -8266,8 +8272,46 @@ Examples:
             lines.push('### Screenshots', '', ...result.uiScreenshots.slice(0, 6).map((item) => `- \`${item}\``), '');
         }
 
+        if (returnedFiles.length > 0) {
+            lines.push('### Returned Files', '');
+            returnedFiles.slice(0, 12).forEach((file) => {
+                const artifactId = String(file?.artifactId || '').trim();
+                const localId = String(file?.id || '').trim();
+                const label = String(file?.filename || artifactId || `file-${localId}`).trim();
+                lines.push(`- ${label}${localId ? ` (file #${localId})` : ''}${artifactId ? ` — artifact \`${artifactId}\`` : ''}`);
+            });
+            lines.push('', 'Use `/open` to preview, select, download, or push eligible site artifacts.', '');
+        }
+
+        if (observedFiles.length > 0) {
+            lines.push('### New Session Files Observed', '');
+            observedFiles.slice(0, 12).forEach((file) => {
+                const artifactId = String(file?.artifactId || '').trim();
+                const localId = String(file?.id || '').trim();
+                const label = String(file?.filename || artifactId || `file-${localId}`).trim();
+                lines.push(`- ${label}${localId ? ` (file #${localId})` : ''}${artifactId ? ` — artifact \`${artifactId}\`` : ''}`);
+            });
+            lines.push('', 'These files appeared during the run, but the agent did not return IDs that prove they belong to this result.', '');
+        }
+
         lines.push('### Agent Report', '', finalOutput || 'Remote CLI agent completed.');
         return lines.join('\n');
+    }
+
+    getRemoteAgentEffectiveStatus(result = {}) {
+        const effectiveStatus = String(result.effectiveStatus || '').trim();
+        const completionStatus = String(result.completionStatus || result.status || '').trim();
+        const resultFilesError = String(result.resultFilesError || '').trim();
+        if (resultFilesError && (!effectiveStatus || ['complete', 'completed', 'success', 'succeeded'].includes(effectiveStatus.toLowerCase()))) {
+            return 'blocked';
+        }
+        if (effectiveStatus) {
+            return effectiveStatus;
+        }
+        if (resultFilesError && (!completionStatus || ['complete', 'completed', 'success', 'succeeded'].includes(completionStatus.toLowerCase()))) {
+            return 'blocked';
+        }
+        return completionStatus;
     }
 
     async loadRemoteToolCatalog() {
@@ -8420,21 +8464,63 @@ Raw expert access remains available:
                     ],
                 });
                 this.renderLiveProgressCard();
-                const invocation = await api.invokeTool('remote-cli-agent', {
-                    task: rest,
+                let preRunArtifactBaselineReady = true;
+                try {
+                    await this.syncStoredSessionArtifacts({ throwOnError: true });
+                } catch (error) {
+                    preRunArtifactBaselineReady = false;
+                    console.warn('[CLI] Could not establish the pre-run artifact baseline:', error);
+                }
+                const preRunArtifactIds = new Set(
+                    this.sessionFiles
+                        .map((file) => String(file?.artifactId || '').trim())
+                        .filter(Boolean),
+                );
+                const selectedArtifactIds = this.getSelectedRemoteArtifactIds();
+                const invocation = await api.invokeRemoteCliAgent(rest, {
                     cwd: remoteAgent?.runtime?.defaultCwd || runtime?.remoteRunner?.defaultWorkspace || '',
                     waitMs: 30000,
                     maxTurns: 30,
                     adminMode: true,
-                }, {
-                    executionProfile: 'remote-build',
-                    timeout: 900000,
-                    metadata: {
-                        remoteBuildAutonomyApproved: true,
-                        remoteCommandSource: 'web-cli',
-                    },
+                    collectResultFiles: true,
+                    artifactIds: selectedArtifactIds,
+                    ...(api.currentModel && api.currentModel !== 'auto' ? { model: api.currentModel } : {}),
                 });
-                const result = invocation?.result?.data || invocation?.result?.result || invocation?.result || {};
+                const rawResult = invocation?.result?.data || invocation?.result?.result || invocation?.result || {};
+                const result = window.KimiBuiltRemoteArtifactWorkflow?.normalizeRemoteAgentResult
+                    ? window.KimiBuiltRemoteArtifactWorkflow.normalizeRemoteAgentResult(rawResult)
+                    : rawResult;
+                const collectedArtifacts = window.KimiBuiltRemoteArtifactWorkflow?.collectRemoteAgentArtifacts
+                    ? window.KimiBuiltRemoteArtifactWorkflow.collectRemoteAgentArtifacts(result)
+                    : this.collectArtifactsFromValue({
+                        artifacts: result.artifacts,
+                        resultFiles: result.resultFiles,
+                        siteBundleArtifact: result.siteBundleArtifact,
+                    });
+                const directArtifacts = Array.isArray(collectedArtifacts)
+                    ? collectedArtifacts
+                    : [
+                        ...(Array.isArray(collectedArtifacts?.artifacts) ? collectedArtifacts.artifacts : []),
+                        ...(collectedArtifacts?.siteBundle ? [collectedArtifacts.siteBundle] : []),
+                    ];
+                const storedFiles = await this.syncStoredSessionArtifacts();
+                const directFiles = this.syncArtifactsToSessionFiles(directArtifacts, 'remote-agent-result');
+                const returnedArtifactIds = new Set([
+                    ...(Array.isArray(result.artifactIds) ? result.artifactIds : []),
+                    result.siteBundleArtifactId,
+                    ...directArtifacts.map((artifact) => artifact?.id || artifact?.artifactId),
+                ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean));
+                const matchedFiles = this.sessionFiles.filter((file) => returnedArtifactIds.has(String(file.artifactId || '').trim()));
+                const postRunFiles = [...storedFiles, ...directFiles].filter((file, index, files) => {
+                    const artifactId = String(file?.artifactId || '').trim();
+                    return artifactId
+                        && !preRunArtifactIds.has(artifactId)
+                        && files.findIndex((candidate) => String(candidate?.artifactId || '').trim() === artifactId) === index;
+                });
+                result.returnedSessionFiles = returnedArtifactIds.size > 0 ? matchedFiles : [];
+                result.observedSessionFiles = returnedArtifactIds.size === 0 && preRunArtifactBaselineReady
+                    ? postRunFiles
+                    : [];
                 this.liveProgressState = this.normalizeProgressState({
                     ...this.liveProgressState,
                     phase: 'finalizing',
@@ -8447,12 +8533,14 @@ Raw expert access remains available:
                     ],
                 });
                 this.renderLiveProgressCard();
-                const finalStatus = String(result.completionStatus || '').trim().toLowerCase();
+                const finalStatus = this.getRemoteAgentEffectiveStatus(result).toLowerCase();
+                const resultFilesError = String(result.resultFilesError || '').trim();
+                const blocked = finalStatus === 'blocked' || Boolean(resultFilesError);
                 this.finalizeLiveProgressCard({
-                    phase: finalStatus === 'blocked' ? 'blocked' : 'ready',
-                    detail: result.blocker
-                        ? `Remote CLI agent blocked: ${result.blocker}`
-                        : (finalStatus === 'complete'
+                    phase: blocked ? 'blocked' : 'ready',
+                    detail: result.blocker || resultFilesError
+                        ? `Remote CLI agent blocked: ${result.blocker || resultFilesError}`
+                        : (['complete', 'completed', 'success', 'succeeded'].includes(finalStatus)
                             ? 'Remote CLI agent completed with verification.'
                             : 'Remote CLI agent returned a report.'),
                 });
@@ -9917,6 +10005,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.sessionStartTime = Date.now();
         this.sessionFiles = [];
         this.nextFileId = 1;
+        this.selectedRemoteArtifactIds = new Set();
     }
 
     getSessionDisplayName(session = null) {
@@ -10452,6 +10541,9 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             downloadUrl: metadata.downloadUrl || null,
             previewUrl: metadata.previewUrl || null,
             bundleDownloadUrl: metadata.bundleDownloadUrl || null,
+            artifact: metadata.artifact && typeof metadata.artifact === 'object'
+                ? { ...metadata.artifact }
+                : null,
         };
         this.sessionFiles.push(file);
         return file;
@@ -10483,6 +10575,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             'documents',
             'generatedArtifact',
             'generatedArtifacts',
+            'resultFiles',
+            'siteBundleArtifact',
             'video',
             'videoArtifact',
             'data',
@@ -10501,7 +10595,16 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             return null;
         }
 
-        const id = String(artifact.id || artifact.artifactId || artifact.artifact_id || artifact.documentId || '').trim();
+        const sharedNormalized = window.KimiBuiltRemoteArtifactWorkflow?.normalizeArtifact?.(artifact);
+        if (sharedNormalized) {
+            artifact = {
+                ...artifact,
+                ...sharedNormalized,
+            };
+        }
+
+        const rawId = String(artifact.id || artifact.artifactId || artifact.artifact_id || artifact.documentId || '').trim();
+        const id = WEB_CLI_SELECTED_ARTIFACT_ID_PATTERN.test(rawId) ? rawId : '';
         const filename = String(artifact.filename || artifact.name || '').trim();
         const downloadUrl = String(artifact.bundleDownloadUrl || artifact.bundle_download_url || artifact.downloadUrl || artifact.download_url || artifact.inlinePath || '').trim();
         const previewUrl = String(artifact.previewUrl || artifact.preview_url || artifact.sandboxUrl || '').trim();
@@ -10559,12 +10662,23 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             }
             seenInBatch.add(identity);
 
-            const exists = this.sessionFiles.some((file) => (
+            const existing = this.sessionFiles.find((file) => (
                 (normalized.id && file.artifactId === normalized.id)
                 || (normalized.downloadUrl && (file.downloadUrl === normalized.downloadUrl || file.content === normalized.downloadUrl))
                 || (normalized.bundleDownloadUrl && file.bundleDownloadUrl === normalized.bundleDownloadUrl)
             ));
-            if (exists) {
+            if (existing) {
+                existing.filename = normalized.filename || existing.filename;
+                existing.mimeType = normalized.mimeType || existing.mimeType;
+                existing.size = normalized.sizeBytes || existing.size;
+                existing.downloadUrl = normalized.downloadUrl || existing.downloadUrl;
+                existing.previewUrl = normalized.previewUrl || existing.previewUrl;
+                existing.bundleDownloadUrl = normalized.bundleDownloadUrl || existing.bundleDownloadUrl;
+                existing.content = normalized.bundleDownloadUrl || normalized.downloadUrl || normalized.previewUrl || existing.content;
+                existing.artifact = {
+                    ...(existing.artifact || {}),
+                    ...normalized,
+                };
                 return;
             }
 
@@ -10581,6 +10695,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                     downloadUrl: normalized.downloadUrl,
                     previewUrl: normalized.previewUrl,
                     bundleDownloadUrl: normalized.bundleDownloadUrl,
+                    artifact: normalized,
                 }
             );
             added.push(file);
@@ -10589,7 +10704,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         return added;
     }
 
-    async syncStoredSessionArtifacts() {
+    async syncStoredSessionArtifacts({ throwOnError = false } = {}) {
         if (!api.sessionId) {
             return [];
         }
@@ -10599,8 +10714,177 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             return this.syncArtifactsToSessionFiles(artifacts);
         } catch (error) {
             console.warn('[CLI] Failed to sync stored artifacts into session files:', error);
+            if (throwOnError) {
+                throw error;
+            }
             return [];
         }
+    }
+
+    getSelectedRemoteArtifactIds() {
+        const availableIds = new Set(
+            this.sessionFiles
+                .map((file) => String(file?.artifactId || '').trim())
+                .filter(Boolean),
+        );
+        return Array.from(this.selectedRemoteArtifactIds || [])
+            .map((artifactId) => String(artifactId || '').trim())
+            .filter((artifactId, index, values) => (
+                artifactId
+                && availableIds.has(artifactId)
+                && values.indexOf(artifactId) === index
+            ));
+    }
+
+    toggleRemoteArtifact(fileId) {
+        const normalizedFileId = Number.parseInt(fileId, 10);
+        const file = this.sessionFiles.find((entry) => entry.id === normalizedFileId);
+        const artifactId = String(file?.artifactId || '').trim();
+        if (!artifactId) {
+            this.printError('Only persisted session artifacts can be sent to a remote agent.');
+            return false;
+        }
+
+        if (!(this.selectedRemoteArtifactIds instanceof Set)) {
+            this.selectedRemoteArtifactIds = new Set();
+        }
+        if (this.selectedRemoteArtifactIds.has(artifactId)) {
+            this.selectedRemoteArtifactIds.delete(artifactId);
+        } else {
+            this.selectedRemoteArtifactIds.add(artifactId);
+        }
+        if (document.getElementById('file-manager-modal')) {
+            this.renderFileManager({
+                focusSelector: `.file-use-btn[data-file-id="${normalizedFileId}"]`,
+            });
+        }
+        return this.selectedRemoteArtifactIds.has(artifactId);
+    }
+
+    prepareRemoteAgentFromSelection() {
+        const selectedCount = this.getSelectedRemoteArtifactIds().length;
+        if (selectedCount === 0) {
+            this.printError('Select at least one persisted artifact with "Use with Agent" first.');
+            return;
+        }
+        this.closeFileManager();
+        this.commandInput.value = '/remote agent ';
+        this.commandInput.focus();
+        this.printSystem(`${selectedCount} artifact${selectedCount === 1 ? '' : 's'} attached to the next remote agent run.`);
+    }
+
+    isManagedAppCandidate(file = null) {
+        if (!file?.artifactId) {
+            return false;
+        }
+        const artifact = file.artifact || {};
+        const metadata = artifact.metadata && typeof artifact.metadata === 'object' ? artifact.metadata : {};
+        const format = String(artifact.format || artifact.extension || file.filename?.split('.').pop() || '').toLowerCase();
+        const mimeType = String(artifact.mimeType || file.mimeType || '').toLowerCase();
+        return Boolean(
+            metadata.siteBundle
+            || metadata.bundle
+            || artifact.preview?.type === 'site'
+            || format === 'html'
+            || mimeType.includes('text/html')
+        );
+    }
+
+    promptForManagedAppHost(file = null) {
+        const helpers = window.KimiBuiltRemoteArtifactWorkflow || {};
+        const artifact = file?.artifact || file || {};
+        const suggested = typeof helpers.getSuggestedDnsLabel === 'function'
+            ? helpers.getSuggestedDnsLabel(artifact)
+            : String(file?.filename || 'site').replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63) || 'site';
+        const entered = window.prompt(
+            `Choose a public DNS name. Enter a subdomain like "${suggested}" or a full host.`,
+            suggested,
+        );
+        if (entered === null) {
+            return null;
+        }
+        if (typeof helpers.resolveRequestedPublicHost === 'function') {
+            return helpers.resolveRequestedPublicHost(entered, helpers.DEFAULT_PUBLIC_WEB_DOMAIN || 'demoserver2.buzz');
+        }
+        const dnsName = String(entered || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63);
+        return dnsName ? { dnsName, publicHost: `${dnsName}.demoserver2.buzz`, slug: dnsName } : null;
+    }
+
+    async pushArtifactToWeb(fileId) {
+        const normalizedFileId = Number.parseInt(fileId, 10);
+        const file = this.sessionFiles.find((entry) => entry.id === normalizedFileId);
+        if (!this.isManagedAppCandidate(file)) {
+            this.printError('Only a persisted HTML or site-bundle artifact can be pushed to the web.');
+            return null;
+        }
+        const artifactId = String(file.artifactId || '').trim();
+        if (!(this.webPushInFlightArtifactIds instanceof Set)) {
+            this.webPushInFlightArtifactIds = new Set();
+        }
+        if (this.webPushInFlightArtifactIds.has(artifactId)) {
+            this.printSystem(`Push to Web is already running for ${file.filename}.`);
+            return null;
+        }
+        this.webPushInFlightArtifactIds.add(artifactId);
+        this.setWebPushButtonBusy(normalizedFileId, true);
+
+        try {
+            this.printSystem(`Checking final deploy bytes for ${file.filename}...`);
+            const preflight = await api.preflightManagedAppArtifact(file.artifactId);
+            const blocker = Array.isArray(preflight?.blockers) ? preflight.blockers[0] : null;
+            if (preflight?.pushToWebEligible !== true) {
+                throw new Error(blocker?.message || 'This artifact is not eligible for Push to Web yet.');
+            }
+            const expectedSourceSha256 = String(preflight.sha256 || '').trim().toLowerCase();
+            if (!/^[a-f0-9]{64}$/.test(expectedSourceSha256)) {
+                throw new Error('Website preflight did not return a valid final-byte fingerprint.');
+            }
+            const requestedHost = this.promptForManagedAppHost(file);
+            if (!requestedHost) {
+                this.printSystem('Push to Web cancelled before deployment.');
+                return null;
+            }
+
+            const result = await api.deployManagedAppArtifact(file.artifactId, {
+                requestedAction: 'deploy',
+                deployRequested: true,
+                dnsName: requestedHost.dnsName,
+                publicBaseDomain: window.KimiBuiltRemoteArtifactWorkflow?.DEFAULT_PUBLIC_WEB_DOMAIN || 'demoserver2.buzz',
+                publicHost: requestedHost.publicHost,
+                slug: requestedHost.slug,
+                expectedSourceSha256,
+                metadata: {
+                    requestedPublicHost: requestedHost.publicHost,
+                    acmeRequestHost: requestedHost.publicHost,
+                },
+            });
+            const publicHost = result?.publicHost || result?.app?.publicHost || requestedHost.publicHost;
+            this.printSystem(`Queued ${file.filename} for https://${publicHost}.`);
+            this.closeFileManager();
+            return result;
+        } catch (error) {
+            const sourceChanged = [
+                'ARTIFACT_MANAGED_APP_SOURCE_CHANGED',
+                'ARTIFACT_MANAGED_APP_SOURCE_HASH_MISMATCH',
+            ].includes(error?.code) || error?.status === 412;
+            this.printError(sourceChanged
+                ? 'The website source changed after preflight. Review it and run Push to Web again.'
+                : `Push to Web failed: ${error.message}`);
+            return null;
+        } finally {
+            this.webPushInFlightArtifactIds.delete(artifactId);
+            this.setWebPushButtonBusy(normalizedFileId, false);
+        }
+    }
+
+    setWebPushButtonBusy(fileId, busy) {
+        const button = document.querySelector(`.file-push-btn[data-file-id="${Number.parseInt(fileId, 10)}"]`);
+        if (!button) {
+            return;
+        }
+        button.disabled = busy === true;
+        button.setAttribute('aria-busy', busy === true ? 'true' : 'false');
+        button.textContent = busy === true ? 'Pushing...' : 'Push to Web';
     }
     
     /**
@@ -10671,7 +10955,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         return this.syncStoredSessionArtifacts().then(() => this.renderFileManager()).catch(() => this.renderFileManager());
     }
 
-    renderFileManager() {
+    renderFileManager({ focusSelector = '' } = {}) {
         // Remove existing modal
         const existing = document.getElementById('file-manager-modal');
         if (existing) existing.remove();
@@ -10681,6 +10965,10 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         const downloadAllLabel = hasFiles
             ? `Download all ${fileCount} session ${fileCount === 1 ? 'file' : 'files'}`
             : 'No session files to download';
+        const selectedCount = this.getSelectedRemoteArtifactIds().length;
+        const buildSelectedLabel = selectedCount > 0
+            ? `Build with remote agent using ${selectedCount} selected ${selectedCount === 1 ? 'artifact' : 'artifacts'}`
+            : 'Select persisted artifacts to build with a remote agent';
         
         const modal = document.createElement('div');
         modal.id = 'file-manager-modal';
@@ -10693,7 +10981,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                     <button class="file-manager-close" type="button" onclick="app.closeFileManager()" aria-label="Close file manager">&times;</button>
                 </div>
                 <p id="file-manager-description" class="file-manager-description">
-                    Review generated session files and download individual files or the full set.
+                    Select persisted artifacts for Codex, Kimi, or Grok; download files; or push an eligible website after preflight.
                 </p>
                 <div class="file-manager-body">
                     ${!hasFiles ?
@@ -10704,13 +10992,24 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                             const filenameAttr = this.escapeHtmlAttr(f.filename);
                             const fileType = this.escapeHtml(f.type);
                             const fileSize = this.escapeHtml(this.formatFileSize(f.size));
+                            const artifactId = String(f.artifactId || '').trim();
+                            const artifactIdAttr = this.escapeHtmlAttr(artifactId);
+                            const selected = artifactId && this.selectedRemoteArtifactIds?.has(artifactId);
+                            const canPush = this.isManagedAppCandidate(f);
+                            const pushBusy = canPush && this.webPushInFlightArtifactIds?.has(artifactId);
                             return `
-                            <button class="file-item" type="button" onclick="app.downloadFileById('${fileId}')" aria-label="Download ${filenameAttr}">
-                                <span class="file-icon">${this.getFileIcon(f.filename)}</span>
-                                <span class="file-name">${filename}</span>
-                                <span class="file-meta">${fileSize} | ${fileType}</span>
-                                <span class="file-download-btn" aria-hidden="true">Download</span>
-                            </button>
+                            <article class="file-item${selected ? ' is-selected' : ''}"${artifactId ? ` data-artifact-id="${artifactIdAttr}"` : ''}>
+                                <span class="file-icon" aria-hidden="true">${this.getFileIcon(f.filename)}</span>
+                                <span class="file-item-copy">
+                                    <span class="file-name">${filename}</span>
+                                    <span class="file-meta">${fileSize} | ${fileType}${artifactId ? ` | artifact ${this.escapeHtml(artifactId)}` : ' | local file'}</span>
+                                </span>
+                                <span class="file-item-actions">
+                                    ${artifactId ? `<button class="file-use-btn" data-file-id="${fileId}" type="button" onclick="app.toggleRemoteArtifact('${fileId}')" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${selected ? 'Remove' : 'Use'} ${filenameAttr} ${selected ? 'from' : 'with'} the remote agent">${selected ? 'Selected' : 'Use with Agent'}</button>` : ''}
+                                    ${canPush ? `<button class="file-push-btn" data-file-id="${fileId}" type="button" onclick="app.pushArtifactToWeb('${fileId}')" aria-label="Push ${filenameAttr} to the web" aria-busy="${pushBusy ? 'true' : 'false'}" ${pushBusy ? 'disabled' : ''}>${pushBusy ? 'Pushing...' : 'Push to Web'}</button>` : ''}
+                                    <button class="file-download-btn" type="button" onclick="app.downloadFileById('${fileId}')" aria-label="Download ${filenameAttr}">Download</button>
+                                </span>
+                            </article>
                         `;
                         }).join('')
                     }
@@ -10718,6 +11017,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 <div class="file-manager-footer">
                     <button class="btn" type="button" onclick="app.closeFileManager()">Close</button>
                     <button class="btn" type="button" onclick="app.downloadAllFiles()" aria-label="${downloadAllLabel}" ${hasFiles ? '' : 'disabled'}>Download All</button>
+                    <button class="btn btn-primary" type="button" onclick="app.prepareRemoteAgentFromSelection()" aria-label="${buildSelectedLabel}" ${selectedCount > 0 ? '' : 'disabled'}>Build Selected (${selectedCount})</button>
                 </div>
             </div>
         `;
@@ -10725,11 +11025,31 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             if (event.key === 'Escape') {
                 event.preventDefault();
                 this.closeFileManager();
+                return;
+            }
+            if (event.key === 'Tab') {
+                const focusable = Array.from(modal.querySelectorAll(
+                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ));
+                if (focusable.length === 0) {
+                    event.preventDefault();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             }
         });
         
         document.body.appendChild(modal);
-        modal.querySelector('.file-manager-close')?.focus();
+        const requestedFocus = focusSelector ? modal.querySelector(focusSelector) : null;
+        (requestedFocus || modal.querySelector('.file-manager-close'))?.focus();
     }
 
     /**

@@ -33,11 +33,14 @@ const {
     buildScopedSessionMetadata,
     resolveClientSurface,
     resolveSessionScope,
+    sessionMatchesScope,
 } = require('../session-scope');
 const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
 const { validateResultArtifactSet } = require('../artifacts/artifact-quality-gate');
 
 const router = Router();
+const ARTIFACT_ATTACH_MAX_BYTES = 4 * 1024 * 1024;
+const artifactAttachInFlight = new Map();
 const UNSUPPORTED_MANAGED_APP_BINARY_ASSET_EXTENSIONS = new Set([
     '.avif',
     '.bin',
@@ -433,6 +436,254 @@ async function getOwnedArtifact(req, artifactId, options = {}) {
     // administrator fetch only those explicitly marked shared company files.
     const sharedSession = await sessionStore.get(artifact.sessionId);
     return canAdminAccessAgentCompanyArtifact(req, sharedSession) ? artifact : null;
+}
+
+function normalizeArtifactAttachFormat(artifact = {}) {
+    const explicit = String(artifact.extension || artifact.format || '').trim().toLowerCase().replace(/^\./, '');
+    if (explicit) {
+        return explicit;
+    }
+    return path.extname(String(artifact.filename || '').trim()).replace(/^\./, '').toLowerCase();
+}
+
+function buildArtifactAttachImportCapability(artifact = {}, clientSurface = '') {
+    const surface = String(clientSurface || '').trim().toLowerCase();
+    const format = normalizeArtifactAttachFormat(artifact);
+    const notesSurface = surface === 'notes' || surface === 'notes-notion';
+    const canvasSurface = surface === 'canvas' || surface === 'canvas-excalidraw';
+
+    if (notesSurface) {
+        if (['md', 'markdown', 'txt', 'text'].includes(format)) {
+            return {
+                surface,
+                format,
+                disposition: 'direct',
+                browserImportAllowed: true,
+                fidelity: 'editable-text',
+                reason: 'Notes can import this text format into editable blocks.',
+            };
+        }
+        if (['html', 'htm', 'json', 'docx', 'pdf'].includes(format)) {
+            return {
+                surface,
+                format,
+                disposition: 'lossy',
+                browserImportAllowed: true,
+                fidelity: 'converted',
+                reason: 'Notes can convert this format, but source layout or structure may not be preserved exactly.',
+            };
+        }
+    }
+
+    if (canvasSurface) {
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(format)) {
+            return {
+                surface,
+                format,
+                disposition: 'direct',
+                browserImportAllowed: true,
+                fidelity: 'visual-object',
+                reason: 'Canvas can place this image as a visual object without claiming editable source structure.',
+            };
+        }
+        if (['json', 'drawio', 'csv', 'xls', 'xlsx', 'pdf', 'mm', 'opml'].includes(format)) {
+            return {
+                surface,
+                format,
+                disposition: 'lossy',
+                browserImportAllowed: true,
+                fidelity: 'converted',
+                reason: 'Canvas can attempt a validated conversion, but unsupported source details may be omitted.',
+            };
+        }
+    }
+
+    return {
+        surface: surface || 'unknown',
+        format: format || 'unknown',
+        disposition: 'context-only',
+        browserImportAllowed: false,
+        fidelity: 'source-preserved',
+        reason: 'The exact source remains attached for agent context and download; this surface has no honest direct import for the format.',
+    };
+}
+
+function isArtifactAttachPrivacySuppressed(req, artifact = {}) {
+    const piiMetadata = artifact?.metadata?.piiCleansing && typeof artifact.metadata.piiCleansing === 'object'
+        ? artifact.metadata.piiCleansing
+        : {};
+    return artifact?.metadata?.privacyPreviewSuppressed === true
+        || piiMetadata.uploadPreviewSuppressed === true
+        || shouldSuppressUploadedArtifactPreview(req, artifact);
+}
+
+function getArtifactAttachSessionOwnerId(session = null) {
+    const metadata = session?.metadata && typeof session.metadata === 'object'
+        ? session.metadata
+        : {};
+    return String(
+        metadata.ownerId
+        || metadata.userId
+        || metadata.username
+        || '',
+    ).trim();
+}
+
+function buildArtifactAttachMetadata(sourceArtifact = {}, targetSession = {}, {
+    clientSurface = '',
+    mode = '',
+    taskType = '',
+    sha256 = '',
+} = {}) {
+    const sourceMetadata = sourceArtifact.metadata && typeof sourceArtifact.metadata === 'object' && !Array.isArray(sourceArtifact.metadata)
+        ? sourceArtifact.metadata
+        : {};
+    const sourceProvenance = sourceMetadata.provenance && typeof sourceMetadata.provenance === 'object' && !Array.isArray(sourceMetadata.provenance)
+        ? sourceMetadata.provenance
+        : {};
+    const createdFromArtifactIds = Array.from(new Set([
+        ...(Array.isArray(sourceProvenance.createdFromArtifactIds) ? sourceProvenance.createdFromArtifactIds : []),
+        ...(Array.isArray(sourceMetadata.artifactIds) ? sourceMetadata.artifactIds : []),
+        sourceArtifact.id,
+    ].map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 32);
+    const sourceSurface = String(
+        sourceProvenance.sourceSurface
+        || sourceMetadata.clientSurface
+        || sourceArtifact.sourceMode
+        || 'artifact-attach',
+    ).trim().slice(0, 80);
+    const targetSurface = String(clientSurface || mode || taskType || 'artifact-attach').trim().slice(0, 80);
+
+    return {
+        ...sourceMetadata,
+        lineageVersion: 'ArtifactLineage/v1',
+        parentArtifactId: null,
+        revision: 1,
+        artifactIds: createdFromArtifactIds,
+        createdFromArtifactIds,
+        handoffSourceArtifactId: sourceArtifact.id,
+        handoffSourceSessionId: sourceArtifact.sessionId,
+        handoffSourceSha256: sha256,
+        handoffTargetSurface: clientSurface,
+        handoffAttachedAt: new Date().toISOString(),
+        provenance: {
+            ...sourceProvenance,
+            schemaVersion: 'ArtifactProvenance/v1',
+            sourceSurface,
+            targetSurface,
+            sessionId: targetSession.id,
+            sourceSessionId: sourceArtifact.sessionId,
+            handoffSourceArtifactId: sourceArtifact.id,
+            sourceSha256: sha256,
+            createdFromArtifactIds,
+            createdAt: new Date().toISOString(),
+        },
+    };
+}
+
+function hasArtifactAttachMarker(artifact = {}, sourceArtifactId = '', sha256 = '') {
+    return String(artifact?.direction || '').trim().toLowerCase() === 'attached'
+        && String(artifact?.sourceMode || artifact?.source_mode || '').trim().toLowerCase() === 'artifact-attach'
+        && String(artifact?.metadata?.handoffSourceArtifactId || '').trim() === sourceArtifactId
+        && String(artifact?.metadata?.handoffSourceSha256 || '').trim().toLowerCase() === sha256;
+}
+
+async function findVerifiedAttachedArtifact(targetSessionId = '', sourceArtifactId = '', sha256 = '') {
+    const artifacts = await artifactService.listSessionArtifacts(targetSessionId, { includeSuppressed: true });
+    const candidates = (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => (
+        hasArtifactAttachMarker(artifact, sourceArtifactId, sha256)
+    ));
+
+    for (const candidate of candidates) {
+        const stored = await artifactService.getArtifact(candidate.id, { includeContent: true });
+        if (!stored
+            || String(stored.sessionId || '').trim() !== targetSessionId
+            || !hasArtifactAttachMarker(stored, sourceArtifactId, sha256)
+            || stored.contentBuffer == null) {
+            continue;
+        }
+
+        const storedBuffer = Buffer.isBuffer(stored.contentBuffer)
+            ? stored.contentBuffer
+            : Buffer.from(stored.contentBuffer);
+        const storedSha256 = String(stored.sha256 || '').trim().toLowerCase();
+        const computedSha256 = createHash('sha256').update(storedBuffer).digest('hex');
+        if (storedSha256 !== sha256 || computedSha256 !== sha256) {
+            continue;
+        }
+
+        return typeof artifactService.serializeArtifact === 'function'
+            ? artifactService.serializeArtifact(stored)
+            : stored;
+    }
+
+    return null;
+}
+
+function isArtifactAttachUniqueConflict(error = null) {
+    return String(error?.code || '') === '23505'
+        && String(error?.constraint || '') === 'idx_artifacts_attach_handoff_unique';
+}
+
+function buildArtifactAttachIdempotencyConflictError() {
+    const error = new Error('A conflicting artifact handoff exists, but its stored bytes could not be verified.');
+    error.code = 'ARTIFACT_ATTACH_IDEMPOTENCY_CONFLICT';
+    error.statusCode = 409;
+    return error;
+}
+
+async function attachArtifactToSession({
+    sourceArtifact,
+    targetSession,
+    clientSurface,
+    mode,
+    taskType,
+    sha256,
+    ownerId,
+}) {
+    const existing = await findVerifiedAttachedArtifact(targetSession.id, sourceArtifact.id, sha256);
+    if (existing) {
+        return { artifact: existing, reused: true };
+    }
+
+    const metadata = buildArtifactAttachMetadata(sourceArtifact, targetSession, {
+        clientSurface,
+        mode,
+        taskType,
+        sha256,
+    });
+    let stored;
+    try {
+        stored = await artifactService.createStoredArtifact({
+            sessionId: targetSession.id,
+            session: targetSession,
+            parentArtifactId: null,
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: sourceArtifact.filename || `artifact-${sourceArtifact.id}`,
+            extension: normalizeArtifactAttachFormat(sourceArtifact) || 'bin',
+            mimeType: sourceArtifact.mimeType || 'application/octet-stream',
+            buffer: sourceArtifact.contentBuffer,
+            extractedText: sourceArtifact.extractedText || '',
+            previewHtml: sourceArtifact.previewHtml || '',
+            metadata,
+            ownerId,
+            vectorize: false,
+        });
+    } catch (error) {
+        if (!isArtifactAttachUniqueConflict(error)) {
+            throw error;
+        }
+        const conflictArtifact = await findVerifiedAttachedArtifact(targetSession.id, sourceArtifact.id, sha256);
+        if (conflictArtifact) {
+            return { artifact: conflictArtifact, reused: true };
+        }
+        throw buildArtifactAttachIdempotencyConflictError();
+    }
+    const serialized = typeof artifactService.serializeArtifact === 'function'
+        ? artifactService.serializeArtifact(stored)
+        : stored;
+    return { artifact: serialized, reused: false };
 }
 
 const generationSchema = {
@@ -1640,6 +1891,163 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
             artifact: result.artifact,
         });
     } catch (err) {
+        next(err);
+    }
+});
+
+router.post('/:id/attach', async (req, res, next) => {
+    try {
+        const ownerId = getRequestOwnerId(req);
+        if (!ownerId) {
+            return res.status(401).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_AUTH_REQUIRED',
+                    message: 'Artifact attachment requires an authenticated owner.',
+                },
+            });
+        }
+
+        const sourceArtifact = await getOwnedArtifact(req, req.params.id, { includeContent: true });
+        if (!sourceArtifact) {
+            return res.status(404).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_SOURCE_NOT_FOUND',
+                    message: 'Artifact not found.',
+                },
+            });
+        }
+        if (isArtifactAttachPrivacySuppressed(req, sourceArtifact)) {
+            return res.status(422).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_PRIVACY_SUPPRESSED',
+                    message: 'Privacy-protected artifact bytes cannot be attached to a browser editing surface.',
+                },
+            });
+        }
+
+        if (sourceArtifact.contentBuffer == null) {
+            return res.status(422).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_CONTENT_UNAVAILABLE',
+                    message: 'Artifact content is unavailable for attachment.',
+                },
+            });
+        }
+        const sourceBuffer = Buffer.isBuffer(sourceArtifact.contentBuffer)
+            ? sourceArtifact.contentBuffer
+            : Buffer.from(sourceArtifact.contentBuffer);
+        if (sourceBuffer.length > ARTIFACT_ATTACH_MAX_BYTES) {
+            return res.status(413).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_TOO_LARGE',
+                    message: `Artifact attachment is limited to ${ARTIFACT_ATTACH_MAX_BYTES} bytes.`,
+                },
+            });
+        }
+
+        const sha256 = createHash('sha256').update(sourceBuffer).digest('hex');
+        const declaredSha256 = String(sourceArtifact.sha256 || '').trim().toLowerCase();
+        if (/^[a-f0-9]{64}$/.test(declaredSha256) && declaredSha256 !== sha256) {
+            return res.status(409).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_SOURCE_INTEGRITY_MISMATCH',
+                    message: 'Artifact content does not match its stored checksum.',
+                },
+            });
+        }
+
+        const mode = String(req.body?.mode || 'artifact').trim().slice(0, 80) || 'artifact';
+        const taskType = String(req.body?.taskType || mode).trim().slice(0, 80) || mode;
+        const resolvedClientSurface = resolveClientSurface({
+            clientSurface: req.body?.clientSurface || taskType,
+        }, null, taskType) || taskType;
+        const clientSurface = String(resolvedClientSurface).slice(0, 80);
+        const requestedTargetSessionId = String(req.body?.targetSessionId || '').trim();
+        if (requestedTargetSessionId.length > 240) {
+            return res.status(400).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_TARGET_SESSION_INVALID',
+                    message: 'Target session id is too long.',
+                },
+            });
+        }
+        const targetSessionId = requestedTargetSessionId || null;
+        const targetSessionMetadata = buildScopedSessionMetadata({
+            mode,
+            taskType,
+            clientSurface,
+        });
+        const targetSession = targetSessionId
+            ? await sessionStore.get(targetSessionId)
+            : await sessionStore.resolveOwnedSession(null, targetSessionMetadata, ownerId);
+        const explicitTargetOwnerMatches = !targetSessionId
+            || getArtifactAttachSessionOwnerId(targetSession) === String(ownerId).trim();
+        if (!targetSession || !explicitTargetOwnerMatches) {
+            return res.status(404).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_TARGET_SESSION_NOT_FOUND',
+                    message: 'Target session not found.',
+                },
+            });
+        }
+        const targetScope = resolveSessionScope(targetSessionMetadata);
+        if (targetSessionId && (
+            String(targetSession.id || '').trim() !== targetSessionId
+            || !sessionMatchesScope(targetSession, targetScope)
+        )) {
+            return res.status(409).json({
+                error: {
+                    code: 'ARTIFACT_ATTACH_TARGET_SESSION_MISMATCH',
+                    message: 'The requested target session does not belong to the requested editing surface.',
+                },
+            });
+        }
+
+        const sourceForAttach = {
+            ...sourceArtifact,
+            contentBuffer: sourceBuffer,
+        };
+        const attachKey = `${targetSession.id}:${sourceArtifact.id}:${sha256}`;
+        let attachPromise = artifactAttachInFlight.get(attachKey);
+        if (!attachPromise) {
+            attachPromise = attachArtifactToSession({
+                sourceArtifact: sourceForAttach,
+                targetSession,
+                clientSurface,
+                mode,
+                taskType,
+                sha256,
+                ownerId,
+            });
+            artifactAttachInFlight.set(attachKey, attachPromise);
+        }
+
+        let attached;
+        try {
+            attached = await attachPromise;
+        } finally {
+            if (artifactAttachInFlight.get(attachKey) === attachPromise) {
+                artifactAttachInFlight.delete(attachKey);
+            }
+        }
+
+        return res.status(attached.reused ? 200 : 201).json({
+            targetSessionId: targetSession.id,
+            sourceArtifactId: sourceArtifact.id,
+            artifact: attached.artifact,
+            sha256,
+            reused: attached.reused,
+            importCapability: buildArtifactAttachImportCapability(sourceArtifact, clientSurface),
+        });
+    } catch (err) {
+        if (err?.code === 'ARTIFACT_ATTACH_IDEMPOTENCY_CONFLICT') {
+            return res.status(409).json({
+                error: {
+                    code: err.code,
+                    message: err.message,
+                },
+            });
+        }
         next(err);
     }
 });

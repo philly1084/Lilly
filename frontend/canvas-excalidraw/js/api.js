@@ -71,6 +71,8 @@ class OpenAICanvasAPI {
         this.sessionId = null;
         this.sdkAvailable = false;
         this.artifactLineage = this.readArtifactLineageFromLocation();
+        this.artifactHandoff = null;
+        this.artifactHandoffPromise = null;
         try {
             this.selectedModel = localStorage.getItem('kimi-canvas-model') || 'gpt-4o';
         } catch {
@@ -121,6 +123,7 @@ class OpenAICanvasAPI {
     readArtifactLineageFromLocation(search = window.location?.search || '') {
         const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
         const artifactId = String(params.get('artifactId') || '').trim();
+        const sourceArtifactId = String(params.get('sourceArtifactId') || artifactId).trim();
         const missionId = String(params.get('missionId') || '').trim();
         const parentArtifactId = String(params.get('parentArtifactId') || artifactId).trim();
         const revision = Number(params.get('revision'));
@@ -129,10 +132,84 @@ class OpenAICanvasAPI {
         }
         return {
             artifactId: artifactId || null,
+            sourceArtifactId: sourceArtifactId || null,
             missionId: missionId || null,
             parentArtifactId: parentArtifactId || null,
             revision: Number.isInteger(revision) && revision > 0 ? revision : null,
         };
+    }
+
+    getAttachedArtifactIds() {
+        const artifactId = String(this.artifactHandoff?.artifact?.id || '').trim();
+        return artifactId ? [artifactId] : [];
+    }
+
+    updateArtifactHandoffLocation(handoff = null) {
+        if (!handoff?.artifact?.id || !window.history?.replaceState || !window.location?.href) {
+            return;
+        }
+        try {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('artifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('sourceArtifactId', handoff.sourceArtifactId);
+            nextUrl.searchParams.set('parentArtifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('revision', String(handoff.artifact.revision || 1));
+            window.history.replaceState(window.history.state, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        } catch (_error) {
+            // The handoff remains valid even when browser history is unavailable.
+        }
+    }
+
+    async ensureArtifactLineageAttached() {
+        const sourceArtifactId = String(
+            this.artifactLineage?.sourceArtifactId
+            || this.artifactLineage?.artifactId
+            || '',
+        ).trim();
+        if (!sourceArtifactId) {
+            return null;
+        }
+        if (this.artifactHandoff?.sourceArtifactId === sourceArtifactId) {
+            return this.artifactHandoff;
+        }
+        if (this.artifactHandoffPromise) {
+            return this.artifactHandoffPromise;
+        }
+        const createClient = window.KimiBuiltRemoteArtifactWorkflow?.createArtifactHandoffClient;
+        if (typeof createClient !== 'function') {
+            return null;
+        }
+
+        const client = createClient({
+            baseUrl: this.getBackendBaseURL(),
+            getSessionId: () => this.sessionId,
+            setSessionId: (sessionId) => {
+                this.sessionId = sessionId || this.sessionId;
+            },
+        });
+        this.artifactHandoffPromise = client.attachArtifact(sourceArtifactId, {
+            targetSessionId: this.sessionId,
+            mode: CANVAS_EXCALIDRAW_TASK_TYPE,
+            taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
+            clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+        }).then((handoff) => {
+            this.artifactHandoff = handoff;
+            this.sessionId = handoff.targetSessionId || this.sessionId;
+            this.artifactLineage = {
+                ...(this.artifactLineage || {}),
+                schemaVersion: 'ArtifactLineage/v1',
+                sourceArtifactId: handoff.sourceArtifactId,
+                artifactId: handoff.artifact.id,
+                parentArtifactId: handoff.artifact.id,
+                revision: Number(handoff.artifact.revision || 1),
+                sourceSurface: 'canvas-excalidraw',
+            };
+            this.updateArtifactHandoffLocation(handoff);
+            return handoff;
+        }).finally(() => {
+            this.artifactHandoffPromise = null;
+        });
+        return this.artifactHandoffPromise;
     }
 
     formatCanvasGrounding(canvasContext = null, fallback = '') {
@@ -207,6 +284,7 @@ class OpenAICanvasAPI {
         existingContent = '',
         toolPlan = null,
     }) {
+        await this.ensureArtifactLineageAttached();
         const compactContext = this.compactCanvasContext(canvasContext);
         const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools.slice(0, 3) : [];
         const compactToolPlan = this.summarizeToolPlan(toolPlan);
@@ -233,6 +311,7 @@ class OpenAICanvasAPI {
                 canvasType: 'diagram',
                 existingContent: compactExistingContent,
                 model: this.selectedModel,
+                artifactIds: this.getAttachedArtifactIds(),
                 executionProfile: toolPlan?.executionProfile || 'lean-canvas',
                 enableConversationExecutor: false,
                 metadata: {
@@ -289,6 +368,7 @@ class OpenAICanvasAPI {
     }
 
     async chat(messages, canvasContext = null, toolPlan = null) {
+        await this.ensureArtifactLineageAttached();
         const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
         const compactContext = this.compactCanvasContext(canvasContext);
         const compactToolPlan = this.summarizeToolPlan(toolPlan);
@@ -300,6 +380,7 @@ class OpenAICanvasAPI {
             executionProfile: toolPlan?.executionProfile || 'lean-canvas',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+            artifact_ids: this.getAttachedArtifactIds(),
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
@@ -310,6 +391,12 @@ class OpenAICanvasAPI {
                 preferredTool: compactToolPlan?.preferredTool || plannedTools[0] || null,
                 userSelectedToolIds: plannedTools.slice(0, 3),
                 toolIds: plannedTools.slice(0, 3),
+                ...(this.artifactLineage ? {
+                    missionId: this.artifactLineage.missionId,
+                    parentArtifactId: this.artifactLineage.parentArtifactId || this.artifactLineage.artifactId,
+                    revision: this.artifactLineage.revision,
+                    artifactLineage: this.artifactLineage,
+                } : {}),
             },
         };
 
@@ -354,6 +441,7 @@ class OpenAICanvasAPI {
 
     // Generate diagram (uses chat completions with special prompt)
     async generateDiagram(message, existingContent = null, canvasContext = null, toolPlan = null) {
+        await this.ensureArtifactLineageAttached();
         const groundingText = this.formatCanvasGrounding(canvasContext, existingContent || '');
         const messages = [
             {
@@ -388,6 +476,7 @@ class OpenAICanvasAPI {
             executionProfile: toolPlan?.executionProfile || 'lean-canvas',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+            artifact_ids: this.getAttachedArtifactIds(),
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
@@ -398,6 +487,12 @@ class OpenAICanvasAPI {
                 preferredTool: compactToolPlan?.preferredTool || plannedTools[0] || null,
                 userSelectedToolIds: plannedTools.slice(0, 3),
                 toolIds: plannedTools.slice(0, 3),
+                ...(this.artifactLineage ? {
+                    missionId: this.artifactLineage.missionId,
+                    parentArtifactId: this.artifactLineage.parentArtifactId || this.artifactLineage.artifactId,
+                    revision: this.artifactLineage.revision,
+                    artifactLineage: this.artifactLineage,
+                } : {}),
             },
         };
 

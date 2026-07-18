@@ -65,6 +65,66 @@ function loadAgent(overrides = {}) {
 }
 
 describe('notes agent parsing', () => {
+    test('attaches cross-surface bytes and forwards only the destination-session artifact id', async () => {
+        const page = { id: 'page-1', metadata: {} };
+        const Editor = {
+            getCurrentPage: jest.fn(() => page),
+            savePage: jest.fn(),
+        };
+        const attachArtifact = jest.fn().mockResolvedValue({
+            targetSessionId: 'notes-session-1',
+            sourceArtifactId: 'artifact-source-full-id',
+            artifact: {
+                id: 'artifact-attached-full-id',
+                sessionId: 'notes-session-1',
+                filename: 'brief.xml',
+                revision: 1,
+            },
+            importCapability: {
+                disposition: 'context-only',
+                browserImportAllowed: false,
+            },
+        });
+        const createArtifactHandoffClient = jest.fn(() => ({ attachArtifact }));
+        const apiClient = {
+            currentSessionId: 'page-1',
+            getSessionId: jest.fn(() => 'page-1'),
+            setSessionId: jest.fn((sessionId) => {
+                apiClient.currentSessionId = sessionId;
+            }),
+        };
+        const agent = loadAgent({
+            location: {
+                origin: 'http://localhost:3000',
+                search: '?artifactId=artifact-source-full-id&missionId=agent-run-1&revision=4',
+            },
+            Editor,
+            notesAPIClient: apiClient,
+            KimiBuiltRemoteArtifactWorkflow: { createArtifactHandoffClient },
+        });
+        const lineage = agent._readArtifactLineageFromLocation();
+
+        const handoff = await agent._ensureArtifactLineageAttached(apiClient, lineage);
+        const requestOptions = agent._buildArtifactHandoffRequestOptions(handoff.lineage, handoff);
+
+        expect(attachArtifact).toHaveBeenCalledWith('artifact-source-full-id', expect.objectContaining({
+            targetSessionId: 'page-1',
+            mode: 'notes',
+            taskType: 'notes',
+            clientSurface: 'notes',
+        }));
+        expect(apiClient.setSessionId).toHaveBeenCalledWith('notes-session-1');
+        expect(requestOptions.artifactIds).toEqual(['artifact-attached-full-id']);
+        expect(requestOptions.metadata).toEqual(expect.objectContaining({
+            parentArtifactId: 'artifact-attached-full-id',
+            artifactLineage: expect.objectContaining({
+                sourceArtifactId: 'artifact-source-full-id',
+                artifactId: 'artifact-attached-full-id',
+            }),
+        }));
+        expect(page.metadata.artifactLineage.artifactId).toBe('artifact-attached-full-id');
+    });
+
     test('retains mission lineage and records a new revision after an exact edit', () => {
         const page = { id: 'page-1', metadata: {} };
         const Editor = {

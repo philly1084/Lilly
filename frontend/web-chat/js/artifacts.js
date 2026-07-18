@@ -10,7 +10,8 @@
     const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
     const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
     const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
-    const DEFAULT_PUBLIC_WEB_DOMAIN = 'demoserver2.buzz';
+    const remoteArtifactWorkflow = window.KimiBuiltRemoteArtifactWorkflow || {};
+    const DEFAULT_PUBLIC_WEB_DOMAIN = remoteArtifactWorkflow.DEFAULT_PUBLIC_WEB_DOMAIN || 'demoserver2.buzz';
 
     function isRemoteBuildAutonomyApproved() {
         try {
@@ -1995,6 +1996,9 @@
     }
 
     function normalizePublicDomainHost(value = '') {
+        if (typeof remoteArtifactWorkflow.normalizePublicDomainHost === 'function') {
+            return remoteArtifactWorkflow.normalizePublicDomainHost(value);
+        }
         const raw = String(value || '').trim().toLowerCase();
         if (!raw) return '';
         let candidate = raw;
@@ -2019,6 +2023,9 @@
     }
 
     function normalizeDnsLabel(value = '') {
+        if (typeof remoteArtifactWorkflow.normalizeDnsLabel === 'function') {
+            return remoteArtifactWorkflow.normalizeDnsLabel(value);
+        }
         const normalized = String(value || '')
             .trim()
             .toLowerCase()
@@ -2033,6 +2040,9 @@
     }
 
     function getSuggestedDnsLabel(artifact = null) {
+        if (typeof remoteArtifactWorkflow.getSuggestedDnsLabel === 'function') {
+            return remoteArtifactWorkflow.getSuggestedDnsLabel(artifact);
+        }
         const source = String(
             artifact?.metadata?.title
             || artifact?.filename
@@ -2044,6 +2054,9 @@
     }
 
     function resolveRequestedPublicHost(input = '', baseDomain = DEFAULT_PUBLIC_WEB_DOMAIN) {
+        if (typeof remoteArtifactWorkflow.resolveRequestedPublicHost === 'function') {
+            return remoteArtifactWorkflow.resolveRequestedPublicHost(input, baseDomain);
+        }
         const raw = String(input || '').trim();
         if (!raw) {
             return null;

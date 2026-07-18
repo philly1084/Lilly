@@ -19,6 +19,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 const WEB_CLI_TASK_TYPE = 'chat';
 const WEB_CLI_CLIENT_SURFACE = 'web-cli';
+const WEB_CLI_ARTIFACT_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{7,299}$/i;
 const WEB_CLI_REMOTE_BUILD_AUTONOMY_APPROVED = true;
 const WEB_CLI_SESSION_ISOLATION = true;
 const WEB_CLI_ACTIVE_SESSION_KEY = 'codecli-active-session-id';
@@ -316,6 +317,53 @@ class WebCLIAPI {
         } catch (_error) {
             return '';
         }
+    }
+
+    async createTypedResponseError(response, fallbackMessage = 'Request failed') {
+        let details = null;
+        let text = '';
+
+        try {
+            details = await response?.json();
+        } catch (_jsonError) {
+            try {
+                text = String(await response?.text() || '').trim();
+            } catch (_textError) {
+                text = '';
+            }
+        }
+
+        const errorPayload = details?.error;
+        const message = String(
+            (errorPayload && typeof errorPayload === 'object' ? errorPayload.message : errorPayload)
+            || details?.message
+            || text
+            || fallbackMessage,
+        ).trim();
+        const error = new Error(message || fallbackMessage);
+        const status = Number(response?.status);
+        if (Number.isFinite(status) && status > 0) {
+            error.status = status;
+        }
+        const code = String(
+            (errorPayload && typeof errorPayload === 'object' ? errorPayload.code : '')
+            || details?.code
+            || '',
+        ).trim();
+        if (code) {
+            error.code = code;
+        }
+        if (details && typeof details === 'object') {
+            error.details = details;
+        }
+        const blockers = Array.isArray(details?.blockers)
+            ? details.blockers
+            : (Array.isArray(errorPayload?.details?.blockers) ? errorPayload.details.blockers : []);
+        if (blockers.length > 0) {
+            error.blockers = blockers;
+            error.blocker = blockers[0];
+        }
+        return error;
     }
 
     isLikelyLocalModel(modelId = '') {
@@ -1620,6 +1668,7 @@ class WebCLIAPI {
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
                 body: JSON.stringify({
                     tool: toolId,
                     params,
@@ -1641,7 +1690,10 @@ class WebCLIAPI {
         );
 
         if (!response.ok) {
-            throw new Error(`Tool invocation failed: HTTP ${response.status}`);
+            throw await this.createTypedResponseError(
+                response,
+                `Tool invocation failed: HTTP ${response.status}`,
+            );
         }
 
         const data = await response.json();
@@ -1652,6 +1704,142 @@ class WebCLIAPI {
             result: data.data,
             sessionId: data.sessionId || this.sessionId || null,
         };
+    }
+
+    async invokeRemoteCliAgent(task, options = {}) {
+        const normalizedTask = String(task || '').trim();
+        if (!normalizedTask) {
+            const error = new Error('Remote agent task is required.');
+            error.code = 'REMOTE_AGENT_TASK_REQUIRED';
+            throw error;
+        }
+
+        const requestedModel = String(
+            options.model !== undefined ? options.model : (this.currentModel || ''),
+        ).trim();
+        const normalizedModel = requestedModel.toLowerCase() === 'auto' ? '' : requestedModel;
+        const artifactIds = Array.from(new Set(
+            (Array.isArray(options.artifactIds) ? options.artifactIds : [])
+                .map((artifactId) => String(artifactId || '').trim())
+                .filter((artifactId) => WEB_CLI_ARTIFACT_ID_PATTERN.test(artifactId)),
+        ));
+        const contextFiles = Array.isArray(options.contextFiles)
+            ? options.contextFiles.filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+            : [];
+        const resultFileGlobs = Array.from(new Set(
+            (Array.isArray(options.resultFileGlobs) ? options.resultFileGlobs : [])
+                .map((glob) => String(glob || '').trim())
+                .filter(Boolean),
+        ));
+
+        return this.invokeTool('remote-cli-agent', {
+            task: normalizedTask,
+            waitMs: options.waitMs || 30000,
+            maxTurns: options.maxTurns || 30,
+            collectResultFiles: options.collectResultFiles !== false,
+            ...(normalizedModel ? { model: normalizedModel } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
+            ...(options.workspacePath ? { workspacePath: options.workspacePath } : {}),
+            ...(options.targetId ? { targetId: options.targetId } : {}),
+            ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+            ...(options.threadId ? { threadId: options.threadId } : {}),
+            ...(options.jobId ? { jobId: options.jobId } : {}),
+            ...(options.mcpSessionId ? { mcpSessionId: options.mcpSessionId } : {}),
+            ...(options.transport ? { transport: options.transport } : {}),
+            ...(options.agentRunTimeoutMs ? { agentRunTimeoutMs: options.agentRunTimeoutMs } : {}),
+            ...(options.remoteCodeModel ? { remoteCodeModel: options.remoteCodeModel } : {}),
+            ...(options.maxStatusPolls ? { maxStatusPolls: options.maxStatusPolls } : {}),
+            ...(options.statusPollIntervalMs ? { statusPollIntervalMs: options.statusPollIntervalMs } : {}),
+            ...(options.instructions ? { instructions: options.instructions } : {}),
+            ...(options.supportAgentResponse ? { supportAgentResponse: options.supportAgentResponse } : {}),
+            ...(artifactIds.length > 0 ? { artifactIds } : {}),
+            ...(contextFiles.length > 0 ? { contextFiles } : {}),
+            ...(resultFileGlobs.length > 0 ? { resultFileGlobs } : {}),
+            ...(String(options.continuitySummary || '').trim()
+                ? { continuitySummary: String(options.continuitySummary).trim() }
+                : {}),
+            ...(options.adminMode !== undefined ? { adminMode: options.adminMode === true } : {}),
+        }, {
+            executionProfile: 'remote-build',
+            timeout: options.timeout || 900000,
+            metadata: {
+                ...(options.metadata && typeof options.metadata === 'object'
+                    ? options.metadata
+                    : {}),
+                remoteBuildAutonomyApproved: true,
+                remoteCommandSource: 'web-cli',
+            },
+        });
+    }
+
+    async preflightManagedAppArtifact(artifactId, options = {}) {
+        const normalizedArtifactId = String(artifactId || '').trim();
+        if (!normalizedArtifactId) {
+            const error = new Error('Artifact id is required for website preflight.');
+            error.code = 'ARTIFACT_ID_REQUIRED';
+            throw error;
+        }
+
+        await this.ensureSession({ title: 'Voxel Web Deploy' });
+        const response = await this.fetchWithTimeout(
+            `${BASE_URL_WITHOUT_API}/api/artifacts/${encodeURIComponent(normalizedArtifactId)}/managed-app/preflight`,
+            {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    sessionId: this.sessionId,
+                    validateOnly: true,
+                }),
+            },
+            options.timeout || 30000,
+        );
+
+        if (!response.ok) {
+            throw await this.createTypedResponseError(
+                response,
+                `Website preflight failed: HTTP ${response.status}`,
+            );
+        }
+        return response.json();
+    }
+
+    async deployManagedAppArtifact(artifactId, payload = {}, options = {}) {
+        const normalizedArtifactId = String(artifactId || '').trim();
+        if (!normalizedArtifactId) {
+            const error = new Error('Artifact id is required for Push to Web.');
+            error.code = 'ARTIFACT_ID_REQUIRED';
+            throw error;
+        }
+
+        await this.ensureSession({ title: 'Voxel Web Deploy' });
+        const response = await this.fetchWithTimeout(
+            `${BASE_URL_WITHOUT_API}/api/artifacts/${encodeURIComponent(normalizedArtifactId)}/managed-app`,
+            {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    ...(payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {}),
+                    sessionId: this.sessionId,
+                }),
+            },
+            options.timeout || 120000,
+        );
+
+        if (!response.ok) {
+            throw await this.createTypedResponseError(
+                response,
+                `Push to Web failed: HTTP ${response.status}`,
+            );
+        }
+        return response.json();
     }
 
     async createSessionWorkload(payload = {}) {
