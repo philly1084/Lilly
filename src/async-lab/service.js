@@ -3,6 +3,7 @@
 const os = require('os');
 const { createHash, randomUUID } = require('crypto');
 const { config } = require('../config');
+const { getSessionControlState } = require('../runtime-control-state');
 const { AsyncLabStore } = require('./store');
 const { ValkeyLiveBus, normalizeText, sleep } = require('./valkey-live-bus');
 
@@ -32,11 +33,18 @@ const COMMON_SENSITIVE_QUERY_KEYS = new Set([
     'api-key',
     'auth',
     'authorization',
+    'client-secret',
+    'cookie',
     'credential',
     'credentials',
+    'id-token',
     'key',
     'password',
+    'private-key',
+    'refresh-token',
     'secret',
+    'security-token',
+    'session-token',
     'sig',
     'signature',
     'token',
@@ -45,6 +53,15 @@ const COMMON_SENSITIVE_QUERY_KEYS = new Set([
 function createServiceError(message, statusCode = 503) {
     const error = new Error(message);
     error.statusCode = statusCode;
+    return error;
+}
+
+function createRemoteSessionScopeError() {
+    const error = createServiceError(
+        'Async remote-agent session is unavailable or is not owned by the requester',
+        403,
+    );
+    error.code = 'ASYNC_REMOTE_AGENT_SESSION_SCOPE_MISMATCH';
     return error;
 }
 
@@ -89,11 +106,73 @@ function pickText(...values) {
     return '';
 }
 
+function hasSensitiveResultFragment(value = '') {
+    const rawFragment = String(value || '').replace(/^#/, '');
+    if (!rawFragment) {
+        return false;
+    }
+    let decodedFragment = rawFragment;
+    try {
+        decodedFragment = decodeURIComponent(rawFragment.replace(/\+/g, '%20'));
+    } catch (_error) {
+        decodedFragment = rawFragment;
+    }
+    return decodedFragment
+        .split('?')
+        .flatMap((section) => section.split(/[&;]/))
+        .some((entry) => {
+            const delimiterIndex = entry.search(/[=:]/);
+            const rawKey = delimiterIndex >= 0 ? entry.slice(0, delimiterIndex) : entry;
+            return isSensitiveResultQueryParam(rawKey.replace(/^[/#]+/, ''));
+        });
+}
+
+function sanitizeHttpUrlSubstring(value = '') {
+    const original = String(value || '');
+    if (!original) {
+        return '';
+    }
+
+    let candidate = original;
+    let trailing = '';
+    while (/[.,;!?]$/.test(candidate)) {
+        trailing = `${candidate.slice(-1)}${trailing}`;
+        candidate = candidate.slice(0, -1);
+    }
+
+    try {
+        const parsed = new URL(candidate);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return original;
+        }
+        let changed = false;
+        if (parsed.username || parsed.password) {
+            parsed.username = '';
+            parsed.password = '';
+            changed = true;
+        }
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (isSensitiveResultQueryParam(key)) {
+                parsed.searchParams.delete(key);
+                changed = true;
+            }
+        }
+        if (hasSensitiveResultFragment(parsed.hash)) {
+            parsed.hash = '';
+            changed = true;
+        }
+        return changed ? `${parsed.toString()}${trailing}` : original;
+    } catch (_error) {
+        return original;
+    }
+}
+
 function sanitizeResultText(value = '', maxLength = SAFE_RESULT_TEXT_LIMIT) {
     const normalized = normalizeText(value)
+        .replace(/\bhttps?:\/\/[^\s<>"'`]+/gi, (url) => sanitizeHttpUrlSubstring(url))
         .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
         .replace(
-            /(\b(?:api[-_ ]?key|access[-_ ]?token|authorization|password|secret|token)\b\s*[:=]\s*)[^\s,;&#]+/gi,
+            /(\b(?:api[-_ ]?key|access[-_ ]?token|client[-_ ]?secret|private[-_ ]?key|refresh[-_ ]?token|session[-_ ]?token|security[-_ ]?token|id[-_ ]?token|authorization|credentials?|cookie|key|password|secret|signature|sig|token)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&#}\]]+)/gi,
             '$1[redacted]',
         )
         .replace(/\b(?:github_pat|ghp|sk)_[A-Za-z0-9_-]{12,}\b/g, '[redacted]');
@@ -107,7 +186,17 @@ function sanitizeResultText(value = '', maxLength = SAFE_RESULT_TEXT_LIMIT) {
 }
 
 function isSensitiveResultQueryParam(value = '') {
-    const components = String(value || '').trim().toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    let decoded = String(value || '').trim();
+    for (let pass = 0; pass < 3; pass += 1) {
+        try {
+            const next = decodeURIComponent(decoded.replace(/\+/g, '%20'));
+            if (next === decoded) break;
+            decoded = next;
+        } catch (_error) {
+            break;
+        }
+    }
+    const components = decoded.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
     if (components.length === 0) {
         return false;
     }
@@ -144,8 +233,7 @@ function sanitizeResultUrl(value = '') {
                 parsed.searchParams.delete(key);
             }
         }
-        const hashKey = parsed.hash.replace(/^#/, '').split(/[=:]/, 1)[0];
-        if (isSensitiveResultQueryParam(hashKey)) {
+        if (hasSensitiveResultFragment(parsed.hash)) {
             parsed.hash = '';
         }
         return relative
@@ -305,6 +393,15 @@ function buildRemoteAgentResultSummary(result = {}) {
     const providerModel = sanitizeResultText(source.providerModel || source.provider_model, 160);
     const model = sanitizeResultText(source.model, 160);
     const transport = sanitizeResultText(source.transport, 160);
+    const sessionId = sanitizeResultText(source.sessionId || source.session_id, 300);
+    const mcpSessionId = sanitizeResultText(source.mcpSessionId || source.mcp_session_id, 300);
+    const remoteCodeSessionId = sanitizeResultText(
+        source.remoteCodeSessionId || source.remote_code_session_id,
+        300,
+    );
+    const remoteCodeJobId = sanitizeResultText(source.remoteCodeJobId || source.remote_code_job_id, 300);
+    const targetId = sanitizeResultText(source.targetId || source.target_id, 300);
+    const cwd = sanitizeResultText(source.cwd, 1000);
     const publicUrl = sanitizeResultUrl(source.publicUrl);
     const publicHost = sanitizeResultText(source.publicHost, 300);
     const resultFiles = (Array.isArray(source.resultFiles) ? source.resultFiles : [])
@@ -345,6 +442,12 @@ function buildRemoteAgentResultSummary(result = {}) {
         ...(providerModel ? { providerModel } : {}),
         ...(model ? { model } : {}),
         ...(transport ? { transport } : {}),
+        ...(sessionId ? { sessionId } : {}),
+        ...(mcpSessionId ? { mcpSessionId } : {}),
+        ...(remoteCodeSessionId ? { remoteCodeSessionId } : {}),
+        ...(remoteCodeJobId ? { remoteCodeJobId } : {}),
+        ...(targetId ? { targetId } : {}),
+        ...(cwd ? { cwd } : {}),
         ...(publicUrl ? { publicUrl } : {}),
         ...(publicHost ? { publicHost } : {}),
         ...(artifactIds.length > 0 ? { artifactIds } : {}),
@@ -476,6 +579,7 @@ class AsyncLabService {
         });
         this.toolManager = options.toolManager || null;
         this.toolExecutionContext = options.toolExecutionContext || {};
+        this.sessionStore = options.sessionStore || null;
         this.instanceId = options.instanceId || `async-lab-${os.hostname()}-${process.pid}-${randomUUID()}`;
         this.workerTimer = null;
         this.drainPromise = null;
@@ -496,11 +600,13 @@ class AsyncLabService {
     configureExecutionRuntime({
         toolManager = this.toolManager,
         toolExecutionContext = this.toolExecutionContext,
+        sessionStore = this.sessionStore,
     } = {}) {
         this.toolManager = toolManager || null;
         this.toolExecutionContext = toolExecutionContext && typeof toolExecutionContext === 'object'
             ? { ...toolExecutionContext }
             : {};
+        this.sessionStore = sessionStore || null;
         return {
             toolManagerAttached: Boolean(this.toolManager?.executeTool),
         };
@@ -642,6 +748,18 @@ class AsyncLabService {
         const liveRemoteAllowed = liveRemoteRequested && this.config.allowLiveRemote;
         const targetKey = deriveTargetKey(input);
         const idempotencyKey = buildDefaultIdempotencyKey(input);
+        const runOwnerId = normalizeText(ownerId || input.ownerId || input.owner_id);
+        const runSessionId = normalizeText(input.sessionId || input.session_id);
+
+        if (adapter === 'remote-cli-agent' && runSessionId && this.sessionStore) {
+            const ownedSession = await this.resolveRunSession({
+                sessionId: runSessionId,
+                ownerId: runOwnerId,
+            });
+            if (!ownedSession) {
+                throw createRemoteSessionScopeError();
+            }
+        }
 
         if (idempotencyKey) {
             const existing = await this.store.getRunByIdempotency(this.config.surface, idempotencyKey);
@@ -670,8 +788,8 @@ class AsyncLabService {
 
         const runInput = {
             id: runId,
-            ownerId: normalizeText(ownerId || input.ownerId || input.owner_id),
-            sessionId: normalizeText(input.sessionId || input.session_id),
+            ownerId: runOwnerId,
+            sessionId: runSessionId,
             runtimeSurface: this.config.surface,
             mode: this.config.mode,
             adapter,
@@ -1062,8 +1180,9 @@ class AsyncLabService {
 
         const startedAt = Date.now();
         let result;
+        const toolContext = await this.buildToolContext(run);
         try {
-            result = await this.toolManager.executeTool(adapter, params, this.buildToolContext(run));
+            result = await this.toolManager.executeTool(adapter, params, toolContext);
         } catch (error) {
             result = {
                 success: false,
@@ -1073,6 +1192,23 @@ class AsyncLabService {
             };
         }
         const summary = this.summarizeToolResult(adapter, result, startedAt);
+        if (adapter === 'remote-cli-agent') {
+            try {
+                await this.persistRemoteCliAgentContinuity(run, summary, toolContext.session);
+            } catch (error) {
+                await this.appendEvent(run.id, {
+                    type: 'continuity_warning',
+                    source: 'async-lab-worker',
+                    status: 'running',
+                    payload: {
+                        adapter,
+                        targetKey: run.targetKey,
+                        message: 'Remote agent completed, but its continuation state could not be persisted.',
+                        error: sanitizeResultText(error?.message, 500),
+                    },
+                });
+            }
+        }
         const toolFailed = summary.success === false;
         await this.appendEvent(run.id, {
             type: toolFailed ? 'tool_failed' : 'tool_completed',
@@ -1143,18 +1279,84 @@ class AsyncLabService {
         };
     }
 
-    buildToolContext(run = {}) {
+    async resolveRunSession(run = {}) {
+        const sessionId = normalizeText(run.sessionId);
+        const ownerId = normalizeText(run.ownerId);
+        if (!sessionId || !this.sessionStore) {
+            return null;
+        }
+
+        if (typeof this.sessionStore.getOwned === 'function') {
+            return this.sessionStore.getOwned(sessionId, ownerId);
+        }
+        if (typeof this.sessionStore.get === 'function') {
+            const session = await this.sessionStore.get(sessionId);
+            const sessionOwnerId = normalizeText(
+                this.sessionStore.getSessionOwnerId?.(session)
+                || session?.ownerId
+                || session?.owner_id
+                || session?.metadata?.ownerId
+                || session?.metadata?.owner_id,
+            );
+            return session && ownerId && sessionOwnerId === ownerId ? session : null;
+        }
+        return null;
+    }
+
+    async buildToolContext(run = {}) {
+        const session = await this.resolveRunSession(run);
+        const remoteAgentRun = normalizeAdapter(run.adapter) === 'remote-cli-agent';
+        if (remoteAgentRun
+            && normalizeText(run.sessionId)
+            && this.sessionStore
+            && !session) {
+            throw createRemoteSessionScopeError();
+        }
+        const verifiedSessionId = remoteAgentRun
+            ? (session ? normalizeText(run.sessionId) : null)
+            : (run.sessionId || this.toolExecutionContext?.sessionId || null);
         return {
             ...(this.toolExecutionContext && typeof this.toolExecutionContext === 'object'
                 ? this.toolExecutionContext
                 : {}),
-            sessionId: run.sessionId || this.toolExecutionContext?.sessionId || null,
+            sessionId: verifiedSessionId,
             ownerId: run.ownerId || this.toolExecutionContext?.ownerId || null,
+            ...(session ? {
+                session,
+                controlState: getSessionControlState(session),
+            } : {}),
             route: '/api/async-lab',
             transport: 'async-runtime',
             executionProfile: 'async-runtime',
             toolManager: this.toolManager,
         };
+    }
+
+    async persistRemoteCliAgentContinuity(run = {}, summary = {}, resolvedSession = null) {
+        const sessionId = normalizeText(run.sessionId);
+        if (!sessionId || !this.sessionStore?.updateControlState || !resolvedSession) {
+            return false;
+        }
+
+        const remoteCliAgent = {
+            lastTask: normalizeText(run.task) || null,
+            lastTaskAt: new Date().toISOString(),
+            ...(summary.sessionId ? { sessionId: summary.sessionId } : {}),
+            ...(summary.mcpSessionId ? { mcpSessionId: summary.mcpSessionId } : {}),
+            ...(summary.remoteCodeSessionId ? { remoteCodeSessionId: summary.remoteCodeSessionId } : {}),
+            ...(summary.remoteCodeJobId ? { remoteCodeJobId: summary.remoteCodeJobId } : {}),
+            ...(summary.targetId ? { targetId: summary.targetId } : {}),
+            ...(summary.cwd ? { cwd: summary.cwd } : {}),
+            ...(summary.completionStatus ? { completionStatus: summary.completionStatus } : {}),
+            ...(summary.blocker ? { blocker: summary.blocker } : {}),
+            ...(summary.publicHost ? { publicHost: summary.publicHost } : {}),
+            ...(summary.publicUrl ? { publicUrl: summary.publicUrl } : {}),
+        };
+        await this.sessionStore.updateControlState(sessionId, {
+            lastToolIntent: 'remote-cli-agent',
+            remoteCliAgent,
+        });
+        return true;
     }
 
     buildParamsPreview(params = {}) {

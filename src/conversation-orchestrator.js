@@ -12763,6 +12763,9 @@ class ConversationOrchestrator extends EventEmitter {
                 || toolPolicy.preferredRemoteToolId === 'remote-cli-agent'
             )) {
             const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective);
+            const collectResultFiles = authoringIntent
+                || toolContext?.remoteAgentCollectResultFiles === true
+                || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
             const cwd = String(priorAgentState.cwd || '').trim()
                 || resolvePreferredRemoteCliWorkspacePath({
@@ -12790,7 +12793,7 @@ class ConversationOrchestrator extends EventEmitter {
                     ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
                     ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
                     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
-                    ...(authoringIntent ? { collectResultFiles: true } : {}),
+                    ...(collectResultFiles ? { collectResultFiles: true } : {}),
                     ...jobContinuationParams,
                 },
             });

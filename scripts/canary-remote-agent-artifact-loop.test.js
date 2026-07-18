@@ -3,11 +3,19 @@
 const crypto = require('crypto');
 const JSZip = require('jszip');
 const {
+    AUTHORING_CANARY_VERSION,
+    buildAuthoringPlan,
     buildLanePlan,
     createHttpClient,
     createFixtures,
+    runBrowserQa,
     runCanary,
+    validateAuthoredArtifactSet,
+    validateAuthoredPreview,
     validateCompactToolResult,
+    validatePreflight,
+    validateRunExecutionEvidence,
+    validateRunIdentity,
 } = require('./canary-remote-agent-artifact-loop');
 
 function jsonResponse(payload, status = 200) {
@@ -24,7 +32,7 @@ function bufferResponse(buffer, contentType = 'application/octet-stream') {
 function buildCompactResult(plan, prefix) {
     const provider = plan.lane === 'kimi'
         ? 'kimi-code-cli'
-        : (plan.lane === 'grok' ? 'grok-build-cli' : 'codex');
+        : (plan.lane === 'grok' ? 'grok-build-cli' : null);
     const providerModel = plan.lane === 'kimi'
         ? 'k3'
         : (plan.lane === 'grok' ? 'grok-build' : null);
@@ -42,7 +50,7 @@ function buildCompactResult(plan, prefix) {
         adapter: 'remote-cli-agent',
         success: true,
         completionStatus: 'completed',
-        provider,
+        ...(provider ? { provider } : {}),
         ...(providerModel ? { providerModel } : {}),
         model: plan.model,
         transport: plan.transport,
@@ -74,9 +82,129 @@ function buildCompactResult(plan, prefix) {
     };
 }
 
-function managedAppFingerprintFromRequest(body) {
+function createAuthoredFiles(plan) {
+    const contentByPath = {
+        'index.html': [
+            '<!doctype html>',
+            '<html lang="en">',
+            '<head>',
+            '  <meta charset="utf-8">',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+            `  <meta name="remote-agent-authoring-canary" content="${AUTHORING_CANARY_VERSION}">`,
+            `  <title>${plan.lane} Original Authoring Canary</title>`,
+            '  <link rel="stylesheet" href="./styles.css">',
+            '</head>',
+            `<body data-canary-lane="${plan.lane}" data-canary-scenario="authoring">`,
+            '  <main>',
+            `    <h1>${plan.lane} original static site</h1>`,
+            '    <p>A locally authored responsive artifact with XML and SVG design context.</p>',
+            '    <img src="./design/design.svg" alt="Layered geometric authoring illustration">',
+            '    <a href="./design/design.xml">Read the design contract</a>',
+            '  </main>',
+            '</body>',
+            '</html>',
+            '',
+        ].join('\n'),
+        'styles.css': [
+            `/* ${AUTHORING_CANARY_VERSION} */`,
+            `/* canary-lane: ${plan.lane} */`,
+            '/* canary-scenario: authoring */',
+            ':root { --paper: #f8fafc; --ink: #172033; --accent: #1649a5; }',
+            '* { box-sizing: border-box; }',
+            'body { margin: 0; background-color: var(--paper); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }',
+            'main { width: min(100% - 2rem, 58rem); max-width: 58rem; margin: 3rem auto; padding: 2rem; background: #ffffff; }',
+            'img { display: block; width: 100%; height: auto; }',
+            'a { color: var(--accent); }',
+            'a:focus-visible { outline: 3px solid #d97706; outline-offset: 3px; }',
+            '@media (max-width: 600px) { main { margin: 1rem auto; padding: 1rem; } }',
+            '',
+        ].join('\n'),
+        'design/design.xml': [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            `<remote-agent-authoring-canary version="1" lane="${plan.lane}" scenario="authoring">`,
+            `  <contract>${AUTHORING_CANARY_VERSION}</contract>`,
+            '  <design><layout>responsive-card</layout><artwork>layered-geometry</artwork></design>',
+            '</remote-agent-authoring-canary>',
+            '',
+        ].join('\n'),
+        'design/design.svg': [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" role="img" aria-labelledby="title desc" data-canary-version="${AUTHORING_CANARY_VERSION}" data-canary-lane="${plan.lane}" data-canary-scenario="authoring">`,
+            `  <title id="title">${plan.lane} authoring layers</title>`,
+            '  <desc id="desc">Three offset geometric panels connected by a bright path.</desc>',
+            '  <rect width="640" height="320" rx="32" fill="#172033"/>',
+            '  <path d="M80 240L240 80L400 240L560 80" fill="none" stroke="#7dd3fc" stroke-width="18"/>',
+            '</svg>',
+            '',
+        ].join('\n'),
+    };
+    return plan.files.map((definition) => {
+        const buffer = Buffer.from(contentByPath[definition.outputPath], 'utf8');
+        return {
+            definition,
+            buffer,
+            descriptor: {
+                filename: definition.filename,
+                relativePath: `${plan.outputRoot}/${definition.outputPath}`,
+                mimeType: definition.mimeType,
+                role: definition.role,
+                sizeBytes: buffer.length,
+                sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+            },
+        };
+    });
+}
+
+function buildAuthoredCompactResult(plan, prefix, authoredFiles) {
+    const provider = plan.lane === 'kimi'
+        ? 'kimi-code-cli'
+        : (plan.lane === 'grok' ? 'grok-build-cli' : null);
+    const providerModel = plan.lane === 'kimi'
+        ? 'k3'
+        : (plan.lane === 'grok' ? 'grok-build' : null);
+    const resultFiles = authoredFiles.map((file, index) => ({
+        ...file.descriptor,
+        artifactId: `artifact-${prefix}-component-${index + 1}`,
+    }));
+    const siteBundleArtifactId = `artifact-${prefix}-site-bundle`;
     return {
-        artifactId: 'artifact-hop-2-site-bundle',
+        adapter: 'remote-cli-agent',
+        success: true,
+        completionStatus: 'completed',
+        ...(provider ? { provider } : {}),
+        ...(providerModel ? { providerModel } : {}),
+        model: plan.model,
+        transport: plan.transport,
+        artifactIds: [...resultFiles.map((file) => file.artifactId), siteBundleArtifactId],
+        resultFiles,
+        siteBundleArtifactId,
+        artifactQuality: {
+            version: 'ArtifactStructuralQuality/v1',
+            status: 'passed',
+            blockers: [],
+            site: { enabled: true, entries: [`${plan.outputRoot}/index.html`], checkedReferences: 3 },
+        },
+        artifacts: [
+            ...resultFiles.map((file) => ({
+                id: file.artifactId,
+                filename: file.filename,
+                mimeType: file.mimeType,
+                downloadUrl: `/api/artifacts/${file.artifactId}/download`,
+            })),
+            {
+                id: siteBundleArtifactId,
+                filename: 'remote-agent-authored-site.zip',
+                mimeType: 'application/zip',
+                bundleDownloadUrl: `/api/artifacts/${siteBundleArtifactId}/bundle`,
+                previewUrl: `/api/artifacts/${siteBundleArtifactId}/preview`,
+            },
+        ],
+    };
+}
+
+function managedAppFingerprintFromRequest(body, artifactId) {
+    return {
+        artifactId,
         contentEligible: true,
         controlPlaneAvailable: true,
         pushToWebEligible: true,
@@ -90,6 +218,163 @@ function managedAppFingerprintFromRequest(body) {
             sha256: file.sha256,
         })).sort((left, right) => left.path.localeCompare(right.path)),
         blockers: [],
+    };
+}
+
+async function createLiveAuthoringHarness(env) {
+    const firstPlan = buildLanePlan('codex', env, { hop: 1 });
+    const firstResult = buildCompactResult(firstPlan, 'author-hop-1');
+    const secondPlan = buildLanePlan('codex', env, {
+        hop: 2,
+        sourceArtifacts: firstResult.resultFiles,
+    });
+    const secondResult = buildCompactResult(secondPlan, 'author-hop-2');
+    const authoringPlan = buildAuthoringPlan('codex', env);
+    const authoredFiles = createAuthoredFiles(authoringPlan);
+    const authoringResult = buildAuthoredCompactResult(
+        authoringPlan,
+        'authoring',
+        authoredFiles,
+    );
+    const runs = [
+        { id: 'run-author-hop-1', plan: firstPlan, result: firstResult },
+        { id: 'run-author-hop-2', plan: secondPlan, result: secondResult },
+        { id: 'run-authoring', plan: authoringPlan, result: authoringResult },
+    ];
+    const componentById = new Map();
+    runs.slice(0, 2).forEach(({ plan, result }) => {
+        result.resultFiles.forEach((descriptor, index) => componentById.set(descriptor.artifactId, {
+            descriptor,
+            buffer: plan.fixtures[index].buffer,
+        }));
+    });
+    authoringResult.resultFiles.forEach((descriptor, index) => componentById.set(descriptor.artifactId, {
+        descriptor,
+        buffer: authoredFiles[index].buffer,
+    }));
+
+    const transferZip = new JSZip();
+    firstPlan.fixtures.forEach((fixture) => transferZip.file(fixture.outputPath, fixture.buffer));
+    const transferZipBuffer = await transferZip.generateAsync({ type: 'nodebuffer' });
+    const authoringZip = new JSZip();
+    authoredFiles.forEach((file) => authoringZip.file(file.definition.outputPath, file.buffer));
+    const authoringZipBuffer = await authoringZip.generateAsync({ type: 'nodebuffer' });
+    const bundleById = new Map([
+        [firstResult.siteBundleArtifactId, {
+            zipBuffer: transferZipBuffer,
+            preview: firstPlan.fixtures[0].content,
+        }],
+        [secondResult.siteBundleArtifactId, {
+            zipBuffer: transferZipBuffer,
+            preview: secondPlan.fixtures[0].content,
+        }],
+        [authoringResult.siteBundleArtifactId, {
+            zipBuffer: authoringZipBuffer,
+            preview: authoredFiles.find((file) => file.definition.outputPath === 'index.html').buffer.toString('utf8'),
+        }],
+    ]);
+    const calls = [];
+    let runPostCount = 0;
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+        const parsed = new URL(url);
+        const method = options.method || 'GET';
+        const body = options.body ? JSON.parse(options.body) : null;
+        calls.push({ method, path: `${parsed.pathname}${parsed.search}`, body });
+        if (method === 'GET' && parsed.pathname === '/api/auth/protected-check') {
+            return jsonResponse({ success: true });
+        }
+        if (method === 'GET' && parsed.pathname === '/api/async-lab/status') {
+            return jsonResponse({ status: { enabled: true, allowLiveRemote: true } });
+        }
+        if (method === 'POST' && parsed.pathname === '/api/sessions') {
+            return jsonResponse({ id: 'session-authoring-canary' }, 201);
+        }
+        if (method === 'POST' && parsed.pathname === '/api/async-lab/runs') {
+            const run = runs[runPostCount];
+            runPostCount += 1;
+            return jsonResponse({
+                run: {
+                    id: run.id,
+                    sessionId: 'session-authoring-canary',
+                    adapter: 'remote-cli-agent',
+                    status: 'queued',
+                    liveRemoteAllowed: true,
+                    metadata: { remoteAdapter: true, dryRun: false },
+                },
+                events: [],
+            }, 202);
+        }
+        const runRecord = runs.find((run) => parsed.pathname === `/api/async-lab/runs/${run.id}`);
+        if (method === 'GET' && runRecord) {
+            return jsonResponse({
+                run: {
+                    id: runRecord.id,
+                    sessionId: 'session-authoring-canary',
+                    adapter: 'remote-cli-agent',
+                    status: 'completed',
+                    liveRemoteAllowed: true,
+                    metadata: { remoteAdapter: true, dryRun: false, toolResult: runRecord.result },
+                },
+                events: [
+                    { eventId: `${runRecord.id}-started`, cursor: 1, type: 'tool_started' },
+                    { eventId: `${runRecord.id}-tool`, cursor: 2, type: 'tool_completed' },
+                    { eventId: `${runRecord.id}-done`, cursor: 3, type: 'completed' },
+                ],
+            });
+        }
+        const artifactMatch = parsed.pathname.match(/^\/api\/artifacts\/([^/]+)$/);
+        if (method === 'GET' && artifactMatch) {
+            const id = artifactMatch[1];
+            if (!componentById.has(id) && !bundleById.has(id)) {
+                throw new Error(`Unknown artifact lookup: ${id}`);
+            }
+            return jsonResponse({
+                id,
+                sessionId: 'session-authoring-canary',
+                ...(componentById.has(id) ? {
+                    downloadUrl: `/api/artifacts/${id}/download`,
+                } : {
+                    bundleDownloadUrl: `/api/artifacts/${id}/bundle`,
+                    previewUrl: `/api/artifacts/${id}/preview`,
+                }),
+            });
+        }
+        const componentMatch = parsed.pathname.match(/^\/api\/artifacts\/([^/]+)\/download$/);
+        if (method === 'GET' && componentMatch && componentById.has(componentMatch[1])) {
+            const component = componentById.get(componentMatch[1]);
+            return bufferResponse(component.buffer, component.descriptor.mimeType);
+        }
+        const bundleMatch = parsed.pathname.match(/^\/api\/artifacts\/([^/]+)\/bundle$/);
+        if (method === 'GET' && bundleMatch && bundleById.has(bundleMatch[1])) {
+            return bufferResponse(bundleById.get(bundleMatch[1]).zipBuffer, 'application/zip');
+        }
+        const previewMatch = parsed.pathname.match(/^\/api\/artifacts\/([^/]+)\/preview$/);
+        if (method === 'GET' && previewMatch && bundleById.has(previewMatch[1])) {
+            const preview = bundleById.get(previewMatch[1]).preview.replace(
+                '<head>',
+                `<head><base href="/api/artifacts/${previewMatch[1]}/preview/">`,
+            );
+            return bufferResponse(Buffer.from(preview), 'text/html');
+        }
+        if (method === 'POST' && /\/managed-app\/preflight$/.test(parsed.pathname)) {
+            const artifactId = parsed.pathname.split('/').at(-3);
+            return jsonResponse(managedAppFingerprintFromRequest(body, artifactId));
+        }
+        if (method === 'DELETE' && parsed.pathname === '/api/sessions/session-authoring-canary') {
+            return jsonResponse(null, 204);
+        }
+        throw new Error(`Unexpected request: ${method} ${parsed.pathname}`);
+    });
+    return {
+        firstPlan,
+        firstResult,
+        secondPlan,
+        secondResult,
+        authoringPlan,
+        authoredFiles,
+        authoringResult,
+        calls,
+        fetchImpl,
     };
 }
 
@@ -115,6 +400,333 @@ describe('remote agent artifact-loop canary', () => {
         expect(result.lanes[0].hops[1].inputMode).toBe('session-artifacts');
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(JSON.stringify(result)).not.toContain('<!doctype html>');
+    });
+
+    test('plans the explicit output-only authoring and optional browser QA scenario without network access', async () => {
+        const fetchImpl = jest.fn(() => {
+            throw new Error('authoring dry-run must not call fetch');
+        });
+        const result = await runCanary({
+            argv: ['--mode=kimi', '--authoring', '--browser-qa'],
+            env: {},
+            fetchImpl,
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            mode: 'kimi',
+            execution: 'dry-run',
+            networkRequestsMade: 0,
+            authoringScenario: 'planned',
+        }));
+        expect(result.lanes[0].authoring).toEqual(expect.objectContaining({
+            lane: 'kimi',
+            scenario: 'authoring',
+            version: AUTHORING_CANARY_VERSION,
+            inputMode: 'none-output-only',
+            inputArtifactCount: 0,
+            resultFileCount: 4,
+            browserQaPlanned: true,
+            payloadValid: true,
+        }));
+        expect(result.lanes[0].authoring.files.map((file) => file.outputPath)).toEqual([
+            'index.html',
+            'styles.css',
+            'design/design.xml',
+            'design/design.svg',
+        ]);
+        expect(result.lanes[0].authoring.files.map((file) => file.role)).toEqual([
+            'site-entry',
+            'site-file',
+            'site-file',
+            'site-file',
+        ]);
+        expect(fetchImpl).not.toHaveBeenCalled();
+        await expect(runCanary({ argv: ['--browser-qa'], env: {}, fetchImpl })).rejects.toThrow(
+            '--browser-qa requires --authoring.',
+        );
+    });
+
+    test('rejects bad authoring semantics and missing resolved provider-model evidence', () => {
+        const plan = buildAuthoringPlan('kimi', {});
+        const authoredFiles = createAuthoredFiles(plan);
+        const compactResult = buildAuthoredCompactResult(plan, 'authoring-proof', authoredFiles);
+
+        expect(validateCompactToolResult(plan, compactResult)).toEqual(expect.objectContaining({
+            provider: 'kimi-code-cli',
+            providerModel: 'k3',
+            model: 'kimi-k3',
+        }));
+        expect(validateAuthoredArtifactSet(plan, authoredFiles)).toEqual(expect.objectContaining({
+            quality: expect.objectContaining({ status: 'passed' }),
+        }));
+
+        expect(() => validateCompactToolResult(plan, {
+            ...compactResult,
+            provider: 'not-kimi-code-cli',
+        })).toThrow('The Kimi canary did not return exact Kimi provider evidence.');
+        expect(() => validateCompactToolResult(plan, {
+            ...compactResult,
+            adapter: 'remote-command',
+        })).toThrow('The kimi compact result came from an unexpected adapter.');
+
+        const prefixedPathResult = JSON.parse(JSON.stringify(compactResult));
+        prefixedPathResult.resultFiles[0].relativePath = `unexpected-prefix/${prefixedPathResult.resultFiles[0].relativePath}`;
+        expect(() => validateCompactToolResult(plan, prefixedPathResult)).toThrow(
+            'The kimi result descriptor for index.html is outside the expected nested site.',
+        );
+
+        delete compactResult.providerModel;
+        expect(() => validateCompactToolResult(plan, compactResult)).toThrow(
+            'The Kimi canary did not attest the resolved K3 provider model.',
+        );
+
+        const badSemantics = createAuthoredFiles(plan);
+        const css = badSemantics.find((file) => file.definition.outputPath === 'styles.css');
+        css.buffer = Buffer.from(css.buffer.toString('utf8').replace('@media', '@supports'), 'utf8');
+        expect(() => validateAuthoredArtifactSet(plan, badSemantics)).toThrow(
+            'The kimi authored CSS failed marker, responsive, focus, or color semantics.',
+        );
+
+        const badNavigation = createAuthoredFiles(plan);
+        const badNavigationHtml = badNavigation.find((file) => file.definition.outputPath === 'index.html');
+        badNavigationHtml.buffer = Buffer.from(
+            badNavigationHtml.buffer.toString('utf8').replace(
+                '</main>',
+                '<a href="../outside">Leave the verified site</a></main>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badNavigation)).toThrow(
+            'The kimi authored HTML included a reference outside the four-file site.',
+        );
+
+        const badActiveContent = createAuthoredFiles(plan);
+        const badActiveHtml = badActiveContent.find((file) => file.definition.outputPath === 'index.html');
+        badActiveHtml.buffer = Buffer.from(
+            badActiveHtml.buffer.toString('utf8').replace(
+                '</main>',
+                '<iframe srcdoc="&lt;script&gt;alert(1)&lt;/script&gt;"></iframe></main>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badActiveContent)).toThrow(
+            'The kimi authored HTML included an active element, redirect, or unexpected base element.',
+        );
+
+        const badPing = createAuthoredFiles(plan);
+        const badPingHtml = badPing.find((file) => file.definition.outputPath === 'index.html');
+        badPingHtml.buffer = Buffer.from(
+            badPingHtml.buffer.toString('utf8').replace(
+                '</main>',
+                '<a href="#safe" ping="https://outside.example.test/track">Unsafe ping</a></main>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badPing)).toThrow(
+            'The kimi authored HTML included a reference outside the four-file site.',
+        );
+
+        const badAttribution = createAuthoredFiles(plan);
+        const badAttributionHtml = badAttribution.find((file) => file.definition.outputPath === 'index.html');
+        badAttributionHtml.buffer = Buffer.from(
+            badAttributionHtml.buffer.toString('utf8').replace(
+                '<img src="./design/design.svg"',
+                '<img src="./design/design.svg" attributionsrc="https://outside.example.test/attrib"',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badAttribution)).toThrow(
+            'The kimi authored HTML included a reference outside the four-file site.',
+        );
+
+        const badXlink = createAuthoredFiles(plan);
+        const badXlinkHtml = badXlink.find((file) => file.definition.outputPath === 'index.html');
+        badXlinkHtml.buffer = Buffer.from(
+            badXlinkHtml.buffer.toString('utf8').replace(
+                '</main>',
+                '<a href="#safe" xlink:href="https://outside.example.test/image.svg">Unsafe namespaced link</a></main>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXlink)).toThrow(
+            'The kimi authored HTML included a reference outside the four-file site.',
+        );
+
+        const badEscapedCss = createAuthoredFiles(plan);
+        const badEscapedCssFile = badEscapedCss.find((file) => file.definition.outputPath === 'styles.css');
+        badEscapedCssFile.buffer = Buffer.from(
+            `${badEscapedCssFile.buffer.toString('utf8')}body { background-image: u\\72l(https://outside.example.test/leak.png); }\n`,
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badEscapedCss)).toThrow(
+            'The kimi authored CSS included a CSS escape that could conceal a reference.',
+        );
+
+        const badImageSetCss = createAuthoredFiles(plan);
+        const badImageSetCssFile = badImageSetCss.find((file) => file.definition.outputPath === 'styles.css');
+        badImageSetCssFile.buffer = Buffer.from(
+            `${badImageSetCssFile.buffer.toString('utf8')}body { background-image: image-set("https://outside.example.test/leak.png" 1x); }\n`,
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badImageSetCss)).toThrow(
+            'The kimi authored CSS included an image function that could conceal a reference.',
+        );
+
+        const badXmlBase = createAuthoredFiles(plan);
+        const badXmlBaseHtml = badXmlBase.find((file) => file.definition.outputPath === 'index.html');
+        badXmlBaseHtml.buffer = Buffer.from(
+            badXmlBaseHtml.buffer.toString('utf8').replace(
+                '</main>',
+                '<a href="#safe" xml:base="https://outside.example.test/">Unsafe base</a></main>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXmlBase)).toThrow(
+            'The kimi authored HTML included a reference outside the four-file site.',
+        );
+
+        const badXmlStylesheet = createAuthoredFiles(plan);
+        const badXmlStylesheetFile = badXmlStylesheet.find((file) => file.definition.outputPath === 'design/design.xml');
+        badXmlStylesheetFile.buffer = Buffer.from(
+            badXmlStylesheetFile.buffer.toString('utf8').replace(
+                '?>',
+                '?>\n<?xml-stylesheet href="https://outside.example.test/leak.css" type="text/css"?>',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXmlStylesheet)).toThrow(
+            'The kimi authored XML included a processing instruction or document type.',
+        );
+
+        const badXhtmlXml = createAuthoredFiles(plan);
+        const badXhtmlXmlFile = badXhtmlXml.find((file) => file.definition.outputPath === 'design/design.xml');
+        badXhtmlXmlFile.buffer = Buffer.from(
+            badXhtmlXmlFile.buffer.toString('utf8')
+                .replace(
+                    '<remote-agent-authoring-canary ',
+                    '<remote-agent-authoring-canary xmlns="http://www.w3.org/1999/xhtml" ',
+                )
+                .replace(
+                    '<contract>',
+                    '<style>@import url("https://outside.example.test/leak.css");</style>\n  <contract>',
+                ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXhtmlXml)).toThrow(
+            'The kimi authored XML included an unsupported namespace declaration.',
+        );
+
+        const badSvgDoctype = createAuthoredFiles(plan);
+        const badSvgDoctypeFile = badSvgDoctype.find((file) => file.definition.outputPath === 'design/design.svg');
+        badSvgDoctypeFile.buffer = Buffer.from(
+            badSvgDoctypeFile.buffer.toString('utf8').replace(
+                '?>',
+                '?>\n<!DOCTYPE svg SYSTEM "https://outside.example.test/leak.dtd">',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badSvgDoctype)).toThrow(
+            'The kimi authored files failed the local structural gate: REMOTE_AGENT_ARTIFACT_XML_DTD_FORBIDDEN.',
+        );
+    });
+
+    test('binds accepted and completed remote runs to the exact run, session, and adapter identity', () => {
+        const plan = buildLanePlan('codex', {}, { hop: 1 });
+        const run = {
+            id: 'run-identity-1',
+            sessionId: 'session-identity-1',
+            adapter: 'remote-cli-agent',
+            liveRemoteAllowed: true,
+            metadata: { remoteAdapter: true, dryRun: false },
+        };
+        const expectedIdentity = {
+            expectedRunId: 'run-identity-1',
+            expectedSessionId: 'session-identity-1',
+        };
+        const events = [
+            { type: 'tool_started' },
+            { type: 'tool_completed' },
+        ];
+
+        expect(validateRunIdentity(run, plan, {
+            ...expectedIdentity,
+            phase: 'accepted',
+        })).toBe(true);
+        expect(validateRunExecutionEvidence(run, events, plan, expectedIdentity)).toBe(true);
+        expect(() => validateRunIdentity({ ...run, sessionId: 'session-other' }, plan, {
+            ...expectedIdentity,
+            phase: 'accepted',
+        })).toThrow('The codex hop 1 accepted run did not match the expected run, session, and adapter identity.');
+        expect(() => validateRunExecutionEvidence(
+            { ...run, id: 'run-other' },
+            events,
+            plan,
+            expectedIdentity,
+        )).toThrow('The codex hop 1 completed run did not match the expected run, session, and adapter identity.');
+        expect(() => validateRunExecutionEvidence(
+            { ...run, adapter: 'remote-command' },
+            events,
+            plan,
+            expectedIdentity,
+        )).toThrow('The codex hop 1 completed run did not match the expected run, session, and adapter identity.');
+    });
+
+    test('binds authored preview and managed-app preflight to the verified bundle', () => {
+        const plan = buildAuthoringPlan('codex', {});
+        const authoredFiles = createAuthoredFiles(plan);
+        const sourceHtml = authoredFiles.find((file) => file.definition.outputPath === 'index.html').buffer.toString('utf8');
+        const expectedBase = '/api/artifacts/artifact-authoring-site-bundle/preview/';
+        const previewHtml = sourceHtml.replace('<head>', `<head><base href="${expectedBase}">`);
+
+        expect(validateAuthoredPreview(plan, sourceHtml, previewHtml, {
+            expectedPreviewBaseHref: expectedBase,
+        })).toEqual(expect.objectContaining({ sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }));
+        expect(() => validateAuthoredPreview(
+            plan,
+            sourceHtml,
+            previewHtml.replace('original static site', 'stale static site'),
+            { expectedPreviewBaseHref: expectedBase },
+        )).toThrow('The codex authored preview did not render the verified index document.');
+
+        const expectedFingerprint = {
+            sha256: 'a'.repeat(64),
+            sizeBytes: 12,
+            files: [{ path: 'public/index.html', sizeBytes: 12, sha256: 'b'.repeat(64) }],
+        };
+        const preflight = {
+            artifactId: 'artifact-authoring-site-bundle',
+            sourceType: 'native-site-archive',
+            contentEligible: true,
+            controlPlaneAvailable: true,
+            pushToWebEligible: true,
+            fileCount: 1,
+            sizeBytes: 12,
+            sha256: 'a'.repeat(64),
+            files: [{ path: 'public/index.html', sizeBytes: 12, sha256: 'b'.repeat(64) }],
+            blockers: [],
+        };
+        expect(validatePreflight(
+            preflight,
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+        )).toBe(true);
+        expect(() => validatePreflight(
+            { ...preflight, artifactId: 'artifact-stale-site-bundle' },
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+        )).toThrow('The codex managed-app preflight reported a deployment blocker.');
+        expect(() => validatePreflight(
+            {
+                ...preflight,
+                fileCount: 2,
+                files: [...preflight.files, { ...preflight.files[0], path: 'public/extra.html' }],
+            },
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+        )).toThrow('The codex managed-app preflight source fingerprint did not match the verified site ZIP.');
     });
 
     test('requires resolved provider-model evidence for the Kimi K3 lane', () => {
@@ -160,6 +772,35 @@ describe('remote agent artifact-loop canary', () => {
 
         await expect(client.requestJson('/api/auth/protected-check')).rejects.toThrow('body stream aborted');
         expect(bodyAbortObserved).toBe(true);
+    });
+
+    test('passes browser QA credentials only through inherited environment variables', async () => {
+        const apiKey = 'browser-qa-secret-not-for-argv';
+        const execFileImpl = jest.fn((_executable, _args, _options, callback) => {
+            callback(null, [
+                'UI_CHECK_REPORT=C:\\checks\\ui-check-report.json',
+                'KIMIBUILT_UI_CHECK_RESULT={"ok":true,"checkedViewports":2,"issues":[]}',
+                '',
+            ].join('\n'), '');
+        });
+        const result = await runBrowserQa({
+            previewUrl: 'https://kimibuilt.example.test/api/artifacts/site-1/preview',
+            lane: 'codex',
+            env: {
+                KIMIBUILT_FRONTEND_API_KEY: apiKey,
+                KIMIBUILT_CANARY_UI_CHECK_OUT_DIR: 'C:\\tmp\\authoring-ui-check',
+            },
+            execFileImpl,
+        });
+
+        expect(result).toEqual(expect.objectContaining({ ok: true, checkedViewports: 2, issues: [] }));
+        const [, args, options] = execFileImpl.mock.calls[0];
+        expect(args[0]).toMatch(/bin[\\/]kimibuilt-ui-check\.js$/);
+        expect(args[1]).toBe('https://kimibuilt.example.test/api/artifacts/site-1/preview');
+        expect(args).toContain('--same-origin-only');
+        expect(JSON.stringify(args)).not.toContain(apiKey);
+        expect(options.env.KIMIBUILT_FRONTEND_API_KEY).toBe(apiKey);
+        expect(options.env.API_BASE_URL).toBe('https://kimibuilt.example.test');
     });
 
     test('proves an authenticated two-hop live lane, final bytes, preview, preflight, and cleanup', async () => {
@@ -217,6 +858,8 @@ describe('remote agent artifact-loop canary', () => {
                 return jsonResponse({
                     run: {
                         id,
+                        sessionId: 'session-canary-1',
+                        adapter: 'remote-cli-agent',
                         status: 'queued',
                         liveRemoteAllowed: true,
                         metadata: { remoteAdapter: true, dryRun: false },
@@ -230,6 +873,8 @@ describe('remote agent artifact-loop canary', () => {
                 return jsonResponse({
                     run: {
                         id: runMatch[1],
+                        sessionId: 'session-canary-1',
+                        adapter: 'remote-cli-agent',
                         status: 'completed',
                         liveRemoteAllowed: true,
                         metadata: { remoteAdapter: true, dryRun: false, toolResult: record.result },
@@ -271,7 +916,7 @@ describe('remote agent artifact-loop canary', () => {
                 return bufferResponse(Buffer.from(rewrittenPreview), 'text/html');
             }
             if (method === 'POST' && parsed.pathname === '/api/artifacts/artifact-hop-2-site-bundle/managed-app/preflight') {
-                return jsonResponse(managedAppFingerprintFromRequest(body));
+                return jsonResponse(managedAppFingerprintFromRequest(body, 'artifact-hop-2-site-bundle'));
             }
             if (method === 'DELETE' && parsed.pathname === '/api/sessions/session-canary-1') {
                 return jsonResponse(null, 204);
@@ -328,6 +973,102 @@ describe('remote agent artifact-loop canary', () => {
         expect(calls.some((call) => call.path === '/api/artifacts/artifact-hop-2-site-bundle/managed-app')).toBe(false);
     });
 
+    test('proves mocked live authoring, local semantics, exact bundle bytes, browser QA, preflight, and cleanup', async () => {
+        const apiKey = 'authoring-live-api-key';
+        const env = {
+            KIMIBUILT_CANARY_BASE_URL: 'https://kimibuilt.example.test',
+            KIMIBUILT_FRONTEND_API_KEY: apiKey,
+            KIMIBUILT_CANARY_CODEX_MODEL: 'codex-authoring-canary',
+            KIMIBUILT_CANARY_POLL_INTERVAL_MS: '100',
+        };
+        const harness = await createLiveAuthoringHarness(env);
+        const browserQaRunner = jest.fn(async (input) => {
+            harness.calls.push({ method: 'BROWSER_QA', path: new URL(input.previewUrl).pathname });
+            return { ok: true, checkedViewports: 2, issues: [], outDir: 'ui-checks/test-authoring' };
+        });
+
+        const result = await runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            sleep: jest.fn(),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            execution: 'live',
+            passed: true,
+            networkRequestsMade: 45,
+            ephemeralSessionDeleted: true,
+            bidirectionalRoundTrip: true,
+            authoringScenario: 'passed',
+        }));
+        expect(result.lanes[0].authoring).toEqual(expect.objectContaining({
+            scenario: 'authoring',
+            provider: null,
+            model: 'codex-authoring-canary',
+            inputArtifactCount: 0,
+            componentMetadataVerified: 4,
+            componentDownloadsVerified: 4,
+            localStructuralGate: 'passed',
+            semanticBriefVerified: true,
+            siteZipFilesVerified: 4,
+            previewVerified: true,
+            managedAppPreflight: 'passed',
+            browserQa: expect.objectContaining({ status: 'passed', checkedViewports: 2, issues: [] }),
+        }));
+        const runCalls = harness.calls.filter((call) => call.method === 'POST' && call.path === '/api/async-lab/runs');
+        expect(runCalls).toHaveLength(3);
+        const authoringPayload = runCalls[2].body;
+        expect(authoringPayload.metadata).toEqual(expect.objectContaining({
+            scenario: 'authoring',
+            authoringCanaryVersion: AUTHORING_CANARY_VERSION,
+        }));
+        expect(authoringPayload.metadata.toolParams).toEqual(expect.objectContaining({
+            adminMode: false,
+            collectResultFiles: true,
+        }));
+        expect(authoringPayload.metadata.toolParams).not.toHaveProperty('contextFiles');
+        expect(authoringPayload.metadata.toolParams).not.toHaveProperty('artifactIds');
+        expect(authoringPayload.metadata.toolParams).not.toHaveProperty('resultFileGlobs');
+        expect(browserQaRunner).toHaveBeenCalledWith(expect.objectContaining({
+            previewUrl: 'https://kimibuilt.example.test/api/artifacts/artifact-authoring-site-bundle/preview',
+            lane: 'codex',
+            sessionId: 'session-authoring-canary',
+        }));
+        expect(browserQaRunner.mock.calls[0][0].previewUrl).not.toContain(apiKey);
+        const browserIndex = harness.calls.findIndex((call) => call.method === 'BROWSER_QA');
+        const deleteIndex = harness.calls.findIndex((call) => call.method === 'DELETE');
+        expect(browserIndex).toBeGreaterThan(-1);
+        expect(deleteIndex).toBeGreaterThan(browserIndex);
+    });
+
+    test('deletes the ephemeral session when optional authoring browser QA fails after terminal runs', async () => {
+        const env = {
+            KIMIBUILT_CANARY_BASE_URL: 'https://kimibuilt.example.test',
+            KIMIBUILT_FRONTEND_API_KEY: 'authoring-cleanup-key',
+            KIMIBUILT_CANARY_POLL_INTERVAL_MS: '100',
+        };
+        const harness = await createLiveAuthoringHarness(env);
+        const browserQaRunner = jest.fn(async () => {
+            throw new Error('mocked browser QA blocker');
+        });
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('mocked browser QA blocker');
+
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+        expect(harness.calls.some((call) => /\/cancel$/.test(call.path))).toBe(false);
+    });
+
     test('cancels, polls terminal, then deletes the ephemeral session after a run polling error', async () => {
         const apiKey = 'cleanup-api-key-for-test';
         const env = {
@@ -353,6 +1094,8 @@ describe('remote agent artifact-loop canary', () => {
                 return jsonResponse({
                     run: {
                         id: 'run-cleanup-1',
+                        sessionId: 'session-cleanup-1',
+                        adapter: 'remote-cli-agent',
                         status: 'queued',
                         liveRemoteAllowed: true,
                         metadata: { remoteAdapter: true, dryRun: false },
@@ -411,7 +1154,7 @@ describe('remote agent artifact-loop canary', () => {
             if (method === 'POST' && parsed.pathname === '/api/sessions') return jsonResponse({ id: 'session-retain-1' }, 201);
             if (method === 'POST' && parsed.pathname === '/api/async-lab/runs') {
                 return jsonResponse({
-                    run: { id: 'run-retain-1', liveRemoteAllowed: true, metadata: { remoteAdapter: true, dryRun: false } },
+                    run: { id: 'run-retain-1', sessionId: 'session-retain-1', adapter: 'remote-cli-agent', liveRemoteAllowed: true, metadata: { remoteAdapter: true, dryRun: false } },
                     events: [],
                 }, 202);
             }

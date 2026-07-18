@@ -31,6 +31,7 @@
         "demo:smoke": "node scripts/demo-smoke.js",
         "demo:smoke:live": "node scripts/demo-smoke.js --live",
         "canary:remote-agent-artifact-loop": "node scripts/canary-remote-agent-artifact-loop.js",
+        "canary:remote-agent-authoring": "node scripts/canary-remote-agent-artifact-loop.js --authoring",
         "test:watch": "jest --watch",
         "lint": "eslint src/",
         "release:bundle": "node suite/scripts/build-release-bundle.mjs",

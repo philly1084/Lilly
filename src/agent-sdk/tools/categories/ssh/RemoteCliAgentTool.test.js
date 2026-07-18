@@ -549,6 +549,8 @@ describe('RemoteCliAgentTool', () => {
         controlState: {
           remoteCliAgent: {
             sessionId: 'rcli_calan_session',
+            mcpSessionId: 'mcp_calan_session',
+            remoteCodeJobId: 'job_calan_running',
             targetId: 'k3s-prod',
             cwd: '/srv/apps/calan-calendar',
             gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/calan-calendar.git',
@@ -572,6 +574,8 @@ describe('RemoteCliAgentTool', () => {
     expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
       task: 'Continue that deployment and verify it.',
       sessionId: 'rcli_calan_session',
+      mcpSessionId: 'mcp_calan_session',
+      jobId: 'job_calan_running',
       targetId: 'k3s-prod',
       cwd: '/srv/apps/calan-calendar',
       continuitySummary: expect.stringContaining('Current conversation remote-cli-agent state'),
@@ -606,6 +610,29 @@ describe('RemoteCliAgentTool', () => {
     expect(runner.run).toHaveBeenCalledWith(expect.not.objectContaining({
       sessionId: 'rcli_calan_session',
       cwd: '/srv/apps/calan-calendar',
+    }));
+  });
+
+  test('reuses MCP and job continuity even when the prior result has no remote session id', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Continue that running job.',
+    }, {
+      session: {
+        controlState: {
+          remoteCliAgent: {
+            mcpSessionId: 'mcp-only-session',
+            remoteCodeJobId: 'job-only-running',
+          },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      mcpSessionId: 'mcp-only-session',
+      jobId: 'job-only-running',
     }));
   });
 

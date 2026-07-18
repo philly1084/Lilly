@@ -174,7 +174,12 @@ function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
   if (!prior || typeof prior !== 'object') {
     return false;
   }
-  if (!prior.sessionId && !prior.remoteCodeSessionId && !prior.cwd && !prior.targetId) {
+  if (!prior.sessionId
+    && !prior.mcpSessionId
+    && !prior.remoteCodeSessionId
+    && !prior.remoteCodeJobId
+    && !prior.cwd
+    && !prior.targetId) {
     return false;
   }
   if (hasDifferentExplicitProjectAnchor(task, prior)) {
@@ -191,6 +196,7 @@ function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
   }
 
   applyAlias(params, 'sessionId', prior.sessionId, prior.remoteCodeSessionId);
+  applyAlias(params, 'mcpSessionId', prior.mcpSessionId);
   applyAlias(params, 'cwd', prior.cwd);
   applyAlias(params, 'targetId', prior.targetId);
 

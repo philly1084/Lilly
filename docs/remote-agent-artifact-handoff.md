@@ -11,7 +11,7 @@ The primary play is backend artifact orchestration, not frontend tool mirroring.
 | Session artifacts | KimiBuilt | authorize selected inputs, persist returned files, lineage, previews, downloads |
 | Agent execution boundary | `nuts` | isolate and stage inputs, acknowledge the contract, collect and hash safe outputs |
 | Agent implementation | Codex / Kimi CLI / Grok Build | read staged design context, edit/build/test/deploy, copy chosen deliverables into the isolated output area |
-| Product UI | Web Chat / Canvas / Web CLI | show one Build with Agent / Push to Web job, progress, artifacts, deployment proof |
+| Product UI | Web Chat (implemented); Canvas / Web CLI (planned thin mirrors) | Web Chat shows the Build with Agent / Push to Web job, progress, artifacts, and deployment proof; planned mirrors should reuse the same backend contract |
 | Deployment truth | Git + image/build + k3s + HTTPS/browser proof | distinguish local artifact, source commit, image, rollout, and public site states |
 
 The model router should not score or reinterpret artifact bytes. It supplies the secure file bridge next to the existing Codex and provider-agent execution routes. KimiBuilt remains the canonical artifact and workflow system.
@@ -51,16 +51,23 @@ Deployment restoration deliberately differs from browser preview restoration. HT
 
 The Web Chat **Push to Web** control is the thin frontend mirror for this gate: it runs preflight before asking for a hostname, surfaces the first typed blocker without starting a deployment, and submits the returned `sha256` as `expectedSourceSha256` with the mutation. This makes the source-change guard active for the real user path, not only for diagnostics.
 
-## Three-agent transfer canary
+## Three-agent transfer and authoring canaries
 
 `npm run canary:remote-agent-artifact-loop` is a zero-network dry run by default. It validates both hops for Codex, Kimi, and Grok and reports `networkRequestsMade: 0`. A live run requires an explicit `--run`, `KIMIBUILT_CANARY_BASE_URL`, and the existing `KIMIBUILT_FRONTEND_API_KEY`:
 
 ```bash
 npm run canary:remote-agent-artifact-loop -- --mode all
 npm run canary:remote-agent-artifact-loop -- --run --mode all
+npm run canary:remote-agent-authoring -- --mode all
+npm run canary:remote-agent-authoring -- --run --mode all
+npm run canary:remote-agent-authoring -- --run --mode all --browser-qa
 ```
 
 For each lane, hop one sends deterministic HTML, CSS, XML, and SVG fixtures to the selected CLI and verifies persisted component downloads, a role-built site ZIP, and a semantic preview. Hop two sends the four returned artifact IDs back through the same KimiBuilt session and repeats the byte proof, then runs the side-effect-free managed-app preflight against the final site bundle. Live mode requires explicit remote-execution evidence, verifies both the requested label and the resolved provider model (`k3` for Kimi K3), never sends an inner CLI continuation session ID, and deletes the ephemeral session only after every run is terminal. No production live canary has been run yet.
+
+The transfer canary proves that supplied bytes survive both directions; it does not claim that an agent can originate a good design. The explicit `--authoring` scenario runs only after both transfer hops for each selected lane. It supplies no input artifacts or context files and asks the non-admin Codex, Kimi, or Grok CLI lane to author an original four-file static site: `index.html`, `styles.css`, `design/design.xml`, and `design/design.svg`, with one `site-entry` and three `site-file` roles. KimiBuilt then checks exact Codex transport/requested-model identity, exact Kimi/Grok provider and resolved-model identity, descriptor and downloaded-byte SHA/size agreement, the local `validateResultArtifactSet` structural gate, accessible and responsive brief markers, exact ZIP membership and bytes, preview equality, and bundle-bound managed-app preflight. This is still validation only and never calls the managed-app mutation or deploys the result.
+
+`--browser-qa` is optional and valid only with `--authoring`. In a live run it executes `bin/kimibuilt-ui-check.js` against the canonical authenticated artifact preview before the ephemeral session is deleted, requires clean desktop and mobile reports, blocks and reports every outside-origin HTTP request, and passes the existing API credential only through the inherited environment rather than command-line arguments. A dry run with either flag still makes zero HTTP requests, starts no agent, and starts no browser. No live transfer or authoring canary has been run against production yet.
 
 ## Contract limits and security properties
 
@@ -92,4 +99,5 @@ Before production promotion:
 4. Reconcile the checked-in router image pins with the live image rather than applying stale manifests.
 5. Roll out the router first, prove health/auth and handoff capability, then roll out KimiBuilt.
 6. Run `npm run canary:remote-agent-artifact-loop -- --run --mode all` with an authorized frontend API key. Require both byte-identical hops and a passing managed-app preflight for Codex, Kimi K3, and Grok.
-7. Run the existing Push to Web flow from the returned artifact and verify the public URL with desktop/mobile browser evidence.
+7. Run `npm run canary:remote-agent-authoring -- --run --mode all --browser-qa`. Require original output-only HTML/CSS/XML/SVG authoring, exact lane identity, exact returned bytes and paths, a bundle-bound preview/preflight, and two clean browser viewports for all three lanes.
+8. Run the existing Push to Web flow from the returned artifact and verify the public URL with desktop/mobile browser evidence.

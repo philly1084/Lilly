@@ -2,14 +2,145 @@
 'use strict';
 
 const crypto = require('crypto');
+const path = require('path');
+const { execFile } = require('child_process');
 const JSZip = require('jszip');
+const { JSDOM } = require('jsdom');
+const { validateResultArtifactSet } = require('../src/artifacts/artifact-quality-gate');
 
 const CANARY_VERSION = 'RemoteAgentArtifactLoopCanary/v1';
+const AUTHORING_CANARY_VERSION = 'RemoteAgentAuthoringCanary/v1';
 const ALLOWED_MODES = new Set(['codex', 'kimi', 'grok', 'all']);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SUCCESS_COMPLETION_STATUSES = new Set(['complete', 'completed', 'success', 'succeeded']);
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_AUTHORING_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_AUTHORING_TOTAL_BYTES = 6 * 1024 * 1024;
+const ALLOWED_AUTHORED_HTML_ELEMENTS = new Set([
+    'a',
+    'abbr',
+    'address',
+    'article',
+    'aside',
+    'b',
+    'base',
+    'blockquote',
+    'body',
+    'br',
+    'caption',
+    'cite',
+    'code',
+    'col',
+    'colgroup',
+    'dd',
+    'details',
+    'div',
+    'dl',
+    'dt',
+    'em',
+    'figcaption',
+    'figure',
+    'footer',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'head',
+    'header',
+    'hr',
+    'html',
+    'i',
+    'img',
+    'kbd',
+    'li',
+    'link',
+    'main',
+    'mark',
+    'meta',
+    'nav',
+    'ol',
+    'p',
+    'pre',
+    'q',
+    's',
+    'samp',
+    'section',
+    'small',
+    'span',
+    'strong',
+    'style',
+    'sub',
+    'summary',
+    'sup',
+    'table',
+    'tbody',
+    'td',
+    'tfoot',
+    'th',
+    'thead',
+    'time',
+    'title',
+    'tr',
+    'u',
+    'ul',
+    'var',
+]);
+const URL_BEARING_ATTRIBUTE_NAMES = new Set([
+    'action',
+    'archive',
+    'attributionsrc',
+    'background',
+    'cite',
+    'classid',
+    'code',
+    'codebase',
+    'data',
+    'dynsrc',
+    'formaction',
+    'href',
+    'icon',
+    'imagesrcset',
+    'longdesc',
+    'lowsrc',
+    'manifest',
+    'ping',
+    'poster',
+    'profile',
+    'src',
+    'srcset',
+    'usemap',
+    'xml:base',
+]);
+
+const AUTHORING_FILE_DEFINITIONS = Object.freeze([
+    Object.freeze({
+        filename: 'index.html',
+        outputPath: 'index.html',
+        role: 'site-entry',
+        mimeType: 'text/html',
+    }),
+    Object.freeze({
+        filename: 'styles.css',
+        outputPath: 'styles.css',
+        role: 'site-file',
+        mimeType: 'text/css',
+    }),
+    Object.freeze({
+        filename: 'design.xml',
+        outputPath: 'design/design.xml',
+        role: 'site-file',
+        mimeType: 'application/xml',
+    }),
+    Object.freeze({
+        filename: 'design.svg',
+        outputPath: 'design/design.svg',
+        role: 'site-file',
+        mimeType: 'image/svg+xml',
+    }),
+]);
 
 const FIXTURE_DEFINITIONS = Object.freeze([
     Object.freeze({
@@ -147,11 +278,21 @@ function parseArguments(argv = []) {
     let run = false;
     let mode = 'all';
     let help = false;
+    let authoring = false;
+    let browserQa = false;
 
     for (let index = 0; index < argv.length; index += 1) {
         const argument = String(argv[index] || '').trim();
         if (argument === '--run') {
             run = true;
+            continue;
+        }
+        if (argument === '--authoring') {
+            authoring = true;
+            continue;
+        }
+        if (argument === '--browser-qa') {
+            browserQa = true;
             continue;
         }
         if (argument === '--help' || argument === '-h') {
@@ -173,8 +314,11 @@ function parseArguments(argv = []) {
     if (!ALLOWED_MODES.has(mode)) {
         throw new Error('Mode must be one of: codex, kimi, grok, all.');
     }
+    if (browserQa && !authoring) {
+        throw new Error('--browser-qa requires --authoring.');
+    }
 
-    return { run, mode, help };
+    return { run, mode, help, authoring, browserQa };
 }
 
 function selectedLanes(mode = 'all') {
@@ -260,6 +404,125 @@ function buildLanePlan(lane, env = process.env, options = {}) {
         task,
         toolParams,
         fixtures,
+    };
+}
+
+function buildAuthoringTask(lane, outputRoot) {
+    return [
+        `Run the output-only ${AUTHORING_CANARY_VERSION} for the ${lane} CLI lane.`,
+        'No input artifacts or context files are supplied. Author an original, self-contained static site from this semantic brief.',
+        'Read the gateway-provided RemoteAgentHandoff/v1 output contract before doing any file work.',
+        `Inside its output files directory, create the nested directory ${outputRoot}.`,
+        `Write exactly four returned files below ${outputRoot}:`,
+        `- ${outputRoot}/index.html; role=site-entry; MIME=text/html`,
+        `- ${outputRoot}/styles.css; role=site-file; MIME=text/css`,
+        `- ${outputRoot}/design/design.xml; role=site-file; MIME=application/xml`,
+        `- ${outputRoot}/design/design.svg; role=site-file; MIME=image/svg+xml`,
+        `Every file must carry the exact version marker ${AUTHORING_CANARY_VERSION}, lane marker ${lane}, and scenario marker authoring in syntax appropriate to that format.`,
+        'index.html must be valid accessible HTML: lang, UTF-8 charset, viewport, a non-empty title, one main landmark, one h1, a linked styles.css, an image using design/design.svg with useful alt text, and a link to design/design.xml.',
+        'Use body data-canary-lane and data-canary-scenario attributes plus a meta remote-agent-authoring-canary version marker.',
+        'styles.css must include the three markers in comments, explicit readable foreground/background colors, box-sizing, a responsive max-width layout, a focus-visible rule, and at least one @media rule.',
+        'design/design.xml must have a remote-agent-authoring-canary root carrying version, lane, and scenario attributes and a contract element containing the exact version marker.',
+        'design/design.svg must have a viewBox, role=img, title and desc wired through aria-labelledby, plus data-canary-version, data-canary-lane, and data-canary-scenario attributes.',
+        'All HTML references must be local and resolve within these four files. Do not use external URLs, remote fonts, CDNs, data URLs, inline scripts, or inline event handlers.',
+        'Choose original copy, layout, colors, and SVG artwork suitable for the lane while keeping normal text at WCAG AA contrast and the layout usable at 390px and 1440px widths.',
+        'Write the RemoteAgentResultFiles/v1 manifest at the exact handoff result manifest path with one site-entry and three site-file roles. Attest the exact byte size and SHA-256 of each file and include no other returned files.',
+        'Run only local syntax and checksum checks. Do not deploy, publish, install packages, use git, access the network, run kubectl, or mutate an application workspace.',
+        'Do not include file contents, credentials, tokens, cookies, or environment values in the final response.',
+        'Finish only with the required result-manifest marker and a concise pass or blocker summary.',
+    ].join('\n');
+}
+
+function buildAuthoringPlan(lane, env = process.env) {
+    const defaults = LANE_DEFAULTS[lane];
+    if (!defaults) {
+        throw new Error(`Unsupported canary lane: ${lane}`);
+    }
+    const outputRoot = `artifact-loop-canary/${lane}/authoring/site`;
+    const model = String(env[defaults.modelEnv] || defaults.model).trim();
+    const targetId = String(env.KIMIBUILT_CANARY_TARGET_ID || 'k3s-prod').trim();
+    const cwd = String(env.KIMIBUILT_CANARY_CWD || '/opt/kimibuilt').trim();
+    const task = buildAuthoringTask(lane, outputRoot);
+    return {
+        lane,
+        scenario: 'authoring',
+        inputMode: 'none-output-only',
+        model,
+        transport: defaults.transport,
+        targetId,
+        cwd,
+        outputRoot,
+        task,
+        files: AUTHORING_FILE_DEFINITIONS.map((definition) => ({ ...definition })),
+        toolParams: {
+            task,
+            targetId,
+            cwd,
+            model,
+            transport: defaults.transport,
+            adminMode: false,
+            collectResultFiles: true,
+            waitMs: normalizePositiveInteger(env.KIMIBUILT_CANARY_AGENT_WAIT_MS, 120000, {
+                min: 1000,
+                max: 300000,
+            }),
+        },
+    };
+}
+
+function validateAuthoringPlan(plan = {}) {
+    if (!LANE_DEFAULTS[plan.lane] || plan.scenario !== 'authoring') {
+        throw new Error('Authoring canary plan is missing a supported lane or scenario.');
+    }
+    if (!plan.model || !plan.targetId || !plan.cwd || !plan.outputRoot) {
+        throw new Error(`Authoring canary ${plan.lane} is missing model, target, workspace, or output configuration.`);
+    }
+    if (plan.inputMode !== 'none-output-only'
+        || plan.toolParams?.adminMode !== false
+        || plan.toolParams?.collectResultFiles !== true
+        || plan.toolParams?.transport !== plan.transport) {
+        throw new Error(`Authoring canary ${plan.lane} must be output-only, non-admin, and collect result files.`);
+    }
+    for (const forbidden of ['contextFiles', 'artifactIds', 'resultFileGlobs', 'sessionId']) {
+        if (Object.hasOwn(plan.toolParams, forbidden)) {
+            throw new Error(`Authoring canary ${plan.lane} must not supply ${forbidden}.`);
+        }
+    }
+    if (!Array.isArray(plan.files)
+        || plan.files.length !== 4
+        || plan.files.filter((file) => file.role === 'site-entry').length !== 1
+        || plan.files.filter((file) => file.role === 'site-file').length !== 3
+        || new Set(plan.files.map((file) => file.outputPath)).size !== 4) {
+        throw new Error(`Authoring canary ${plan.lane} must request exactly one site entry and three unique site files.`);
+    }
+    if (!plan.task.includes('No input artifacts or context files are supplied')
+        || !plan.task.includes('RemoteAgentHandoff/v1 output contract')
+        || !plan.task.includes(AUTHORING_CANARY_VERSION)
+        || !plan.task.includes(`lane marker ${plan.lane}`)
+        || !plan.task.includes('scenario marker authoring')
+        || !plan.task.includes('Do not deploy, publish, install packages, use git, access the network, run kubectl')) {
+        throw new Error(`Authoring canary ${plan.lane} task is missing its semantic or safety contract.`);
+    }
+    return true;
+}
+
+function describeAuthoringPlan(plan, options = {}) {
+    return {
+        lane: plan.lane,
+        scenario: plan.scenario,
+        version: AUTHORING_CANARY_VERSION,
+        inputMode: plan.inputMode,
+        inputArtifactCount: 0,
+        model: plan.model,
+        transport: plan.transport,
+        targetId: plan.targetId,
+        cwd: plan.cwd,
+        adminMode: false,
+        outputRoot: plan.outputRoot,
+        resultFileCount: plan.files.length,
+        files: plan.files.map((file) => ({ ...file })),
+        browserQaPlanned: options.browserQa === true,
+        payloadValid: true,
     };
 }
 
@@ -549,20 +812,25 @@ function createHttpClient({ baseUrl, apiKey, requestTimeoutMs, fetchImpl = globa
 }
 
 function buildRunPayload(plan, sessionId) {
+    const scenario = plan.scenario === 'authoring' ? 'authoring' : `hop-${plan.hop}`;
+    const planFingerprint = plan.scenario === 'authoring'
+        ? sha256(Buffer.from(`${AUTHORING_CANARY_VERSION}:${plan.lane}:${plan.outputRoot}`, 'utf8'))
+        : sha256(Buffer.from(plan.fixtures.map((fixture) => fixture.sha256).join(':'), 'utf8'));
     return {
         task: plan.task,
         adapter: 'remote-cli-agent',
         targetKey: plan.targetId,
         liveRemote: true,
         sessionId,
-        idempotencyKey: `artifact-loop-canary:${sessionId}:${plan.lane}:hop-${plan.hop}:${sha256(
-            Buffer.from(plan.fixtures.map((fixture) => fixture.sha256).join(':'), 'utf8'),
-        ).slice(0, 20)}`,
+        idempotencyKey: `artifact-loop-canary:${sessionId}:${plan.lane}:${scenario}:${planFingerprint.slice(0, 20)}`,
         metadata: {
             source: 'remote-agent-artifact-loop-canary',
             canaryVersion: CANARY_VERSION,
             lane: plan.lane,
-            hop: plan.hop,
+            scenario,
+            ...(plan.scenario === 'authoring'
+                ? { authoringCanaryVersion: AUTHORING_CANARY_VERSION }
+                : { hop: plan.hop }),
             expectedOutputRoot: plan.outputRoot,
             toolParams: plan.toolParams,
         },
@@ -596,8 +864,9 @@ function assertNoRawResultFields(value, currentPath = 'toolResult') {
 }
 
 function validateCompactToolResult(plan, toolResult) {
+    const runLabel = plan.scenario === 'authoring' ? 'authoring' : `hop ${plan.hop}`;
     if (!toolResult || typeof toolResult !== 'object') {
-        throw new Error(`The ${plan.lane} run completed without a compact tool result.`);
+        throw new Error(`The ${plan.lane} ${runLabel} run completed without a compact tool result.`);
     }
     assertNoRawResultFields(toolResult);
     if (toolResult.success !== true || toolResult.blocker || toolResult.error) {
@@ -606,6 +875,9 @@ function validateCompactToolResult(plan, toolResult) {
     if (!SUCCESS_COMPLETION_STATUSES.has(String(toolResult.completionStatus || '').trim().toLowerCase())) {
         throw new Error(`The ${plan.lane} compact tool result did not attest completion.`);
     }
+    if (String(toolResult.adapter || '').trim() !== 'remote-cli-agent') {
+        throw new Error(`The ${plan.lane} compact result came from an unexpected adapter.`);
+    }
     if (String(toolResult.transport || '').trim() !== plan.transport) {
         throw new Error(`The ${plan.lane} run used an unexpected transport.`);
     }
@@ -613,14 +885,14 @@ function validateCompactToolResult(plan, toolResult) {
         throw new Error(`The ${plan.lane} run did not preserve the requested model in its compact result.`);
     }
     const provider = String(toolResult.provider || '').trim().toLowerCase();
-    if (plan.lane === 'kimi' && !provider.includes('kimi')) {
-        throw new Error('The Kimi canary did not return Kimi provider evidence.');
+    if (plan.lane === 'kimi' && provider !== 'kimi-code-cli') {
+        throw new Error('The Kimi canary did not return exact Kimi provider evidence.');
     }
     if (plan.lane === 'kimi' && String(toolResult.providerModel || '').trim() !== 'k3') {
         throw new Error('The Kimi canary did not attest the resolved K3 provider model.');
     }
-    if (plan.lane === 'grok' && !provider.includes('grok')) {
-        throw new Error('The Grok canary did not return Grok provider evidence.');
+    if (plan.lane === 'grok' && provider !== 'grok-build-cli') {
+        throw new Error('The Grok canary did not return exact Grok provider evidence.');
     }
     if (plan.lane === 'grok' && String(toolResult.providerModel || '').trim() !== 'grok-build') {
         throw new Error('The Grok canary did not attest the resolved Grok Build provider model.');
@@ -629,26 +901,43 @@ function validateCompactToolResult(plan, toolResult) {
         throw new Error(`The ${plan.lane} artifact quality gate did not pass.`);
     }
 
+    const expectedFiles = plan.scenario === 'authoring' ? plan.files : plan.fixtures;
     const resultFiles = Array.isArray(toolResult.resultFiles) ? toolResult.resultFiles : [];
-    if (resultFiles.length !== plan.fixtures.length) {
+    if (resultFiles.length !== expectedFiles.length) {
         throw new Error(`The ${plan.lane} compact result did not contain four component descriptors.`);
     }
     const componentArtifacts = [];
-    for (const fixture of plan.fixtures) {
-        const descriptor = resultFiles.find((file) => file?.filename === fixture.filename);
+    const artifactIds = new Set();
+    let totalSizeBytes = 0;
+    for (const expected of expectedFiles) {
+        const descriptor = resultFiles.find((file) => file?.filename === expected.filename);
+        const validDynamicBytes = plan.scenario === 'authoring'
+            ? Number.isInteger(descriptor?.sizeBytes)
+                && descriptor.sizeBytes > 0
+                && descriptor.sizeBytes <= MAX_AUTHORING_FILE_BYTES
+                && /^[a-f0-9]{64}$/.test(String(descriptor?.sha256 || ''))
+            : descriptor?.sha256 === expected.sha256 && descriptor?.sizeBytes === expected.sizeBytes;
+        const validMimeType = plan.scenario !== 'authoring'
+            || String(descriptor?.mimeType || '').split(';')[0].trim().toLowerCase() === expected.mimeType;
         if (!descriptor
-            || descriptor.role !== fixture.role
-            || descriptor.sha256 !== fixture.sha256
-            || descriptor.sizeBytes !== fixture.sizeBytes
-            || !descriptor.artifactId) {
-            throw new Error(`The ${plan.lane} result descriptor for ${fixture.filename} failed byte or role attestation.`);
+            || descriptor.role !== expected.role
+            || !validMimeType
+            || !validDynamicBytes
+            || !descriptor.artifactId
+            || artifactIds.has(descriptor.artifactId)) {
+            throw new Error(`The ${plan.lane} result descriptor for ${expected.filename} failed byte, MIME, identity, or role attestation.`);
         }
+        artifactIds.add(descriptor.artifactId);
+        totalSizeBytes += descriptor.sizeBytes;
         const relativePath = String(descriptor.relativePath || descriptor.path || '').replace(/\\/g, '/');
-        const expectedSuffix = `${plan.outputRoot}/${fixture.outputPath}`;
-        if (!relativePath.endsWith(expectedSuffix)) {
-            throw new Error(`The ${plan.lane} result descriptor for ${fixture.filename} is outside the expected nested site.`);
+        const expectedPath = `${plan.outputRoot}/${expected.outputPath}`;
+        if (relativePath !== expectedPath) {
+            throw new Error(`The ${plan.lane} result descriptor for ${expected.filename} is outside the expected nested site.`);
         }
-        componentArtifacts.push({ fixture, descriptor });
+        componentArtifacts.push({ fixture: expected, descriptor });
+    }
+    if (plan.scenario === 'authoring' && totalSizeBytes > MAX_AUTHORING_TOTAL_BYTES) {
+        throw new Error(`The ${plan.lane} authored result descriptors exceeded the aggregate byte limit.`);
     }
 
     const siteBundleArtifactId = String(toolResult.siteBundleArtifactId || '').trim();
@@ -670,11 +959,27 @@ function validateCompactToolResult(plan, toolResult) {
     };
 }
 
-function validateRunExecutionEvidence(run, events, plan) {
+function validateRunIdentity(run, plan, options = {}) {
+    const runLabel = plan.scenario === 'authoring' ? 'authoring' : `hop ${plan.hop}`;
+    const phase = options.phase === 'accepted' ? 'accepted' : 'completed';
+    if (String(run?.id || '').trim() !== String(options.expectedRunId || '').trim()
+        || String(run?.sessionId || '').trim() !== String(options.expectedSessionId || '').trim()
+        || String(run?.adapter || '').trim() !== 'remote-cli-agent') {
+        throw new Error(`The ${plan.lane} ${runLabel} ${phase} run did not match the expected run, session, and adapter identity.`);
+    }
+    return true;
+}
+
+function validateRunExecutionEvidence(run, events, plan, options = {}) {
+    const runLabel = plan.scenario === 'authoring' ? 'authoring' : `hop ${plan.hop}`;
+    validateRunIdentity(run, plan, {
+        ...options,
+        phase: 'completed',
+    });
     if (run?.liveRemoteAllowed !== true
         || run?.metadata?.remoteAdapter !== true
         || run?.metadata?.dryRun !== false) {
-        throw new Error(`The ${plan.lane} hop ${plan.hop} run did not attest an allowed non-dry remote adapter execution.`);
+        throw new Error(`The ${plan.lane} ${runLabel} run did not attest an allowed non-dry remote adapter execution.`);
     }
     const eventTypes = new Set((Array.isArray(events) ? events : [])
         .map((event) => String(event?.type || '').trim().toLowerCase())
@@ -682,7 +987,7 @@ function validateRunExecutionEvidence(run, events, plan) {
     if (!eventTypes.has('tool_started')
         || !eventTypes.has('tool_completed')
         || eventTypes.has('tool_skipped')) {
-        throw new Error(`The ${plan.lane} hop ${plan.hop} run lacks required tool execution evidence.`);
+        throw new Error(`The ${plan.lane} ${runLabel} run lacks required tool execution evidence.`);
     }
     return true;
 }
@@ -751,6 +1056,432 @@ async function validateSiteZip(zipBuffer, plan) {
     return archivePaths;
 }
 
+function isAllowedAuthoredReference(element, attributeName, value) {
+    const tagName = String(element?.localName || '').toLowerCase();
+    const normalizedAttributeName = String(attributeName || '').toLowerCase();
+    const normalized = String(value || '').trim();
+    if ((normalizedAttributeName === 'href' || normalizedAttributeName.endsWith(':href'))
+        && normalized.startsWith('#')
+        && normalized.length > 1) {
+        return true;
+    }
+    if (tagName === 'link' && normalizedAttributeName === 'href') {
+        return /^(?:\.\/)?styles\.css$/.test(normalized);
+    }
+    if (tagName === 'img' && normalizedAttributeName === 'src') {
+        return /^(?:\.\/)?design\/design\.svg$/.test(normalized);
+    }
+    if (tagName === 'a' && normalizedAttributeName === 'href') {
+        return /^(?:\.\/)?design\/design\.xml$/.test(normalized);
+    }
+    return false;
+}
+
+function assertAllowedAuthoredCssReferences(plan, css, label = 'CSS') {
+    const text = String(css || '');
+    if (text.includes('\\')) {
+        throw new Error(`The ${plan.lane} authored ${label} included a CSS escape that could conceal a reference.`);
+    }
+    const parsedText = text.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (/@import\b/i.test(parsedText)) {
+        throw new Error(`The ${plan.lane} authored ${label} included an imported stylesheet.`);
+    }
+    if (/(?:^|[^a-z0-9_-])(?:-webkit-)?(?:image-set|image|cross-fade|src)\s*\(/i.test(parsedText)) {
+        throw new Error(`The ${plan.lane} authored ${label} included an image function that could conceal a reference.`);
+    }
+    const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
+    let match;
+    while ((match = urlPattern.exec(parsedText)) !== null) {
+        const reference = String(match[1] ?? match[2] ?? match[3] ?? '').trim();
+        if (!reference
+            || (reference.startsWith('#') && reference.length > 1)
+            || /^(?:\.\/)?design\/design\.svg$/.test(reference)) {
+            continue;
+        }
+        throw new Error(`The ${plan.lane} authored ${label} included a reference outside the four-file site.`);
+    }
+}
+
+function canonicalizeAuthoredHtml(html, options = {}) {
+    const dom = new JSDOM(String(html || ''));
+    const document = dom.window.document;
+    if (options.removePreviewBase === true) {
+        document.querySelector('base')?.remove();
+    }
+    const serialize = (node) => {
+        if (node.nodeType === 1) {
+            const attributes = [...node.attributes]
+                .map((attribute) => [attribute.name.toLowerCase(), attribute.value])
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([name, value]) => `${name}=${JSON.stringify(value)}`)
+                .join(';');
+            return `<${node.localName}|${attributes}>${[...node.childNodes].map(serialize).join('')}</${node.localName}>`;
+        }
+        if (node.nodeType === 3) {
+            return String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+        }
+        if (node.nodeType === 8) {
+            return `<!--${String(node.nodeValue || '').trim()}-->`;
+        }
+        return '';
+    };
+    return serialize(document.documentElement);
+}
+
+function assertAuthoredHtmlSemantics(plan, html, options = {}) {
+    if (String(html || '').includes('\ufffd')) {
+        throw new Error(`The ${plan.lane} authored HTML contains an invalid UTF-8 replacement character.`);
+    }
+    const dom = new JSDOM(String(html || ''));
+    const document = dom.window.document;
+    const root = document.documentElement;
+    const body = document.body;
+    const title = document.querySelector('title')?.textContent?.trim() || '';
+    const charset = document.querySelector('meta[charset]')?.getAttribute('charset')?.trim().toLowerCase() || '';
+    const viewport = document.querySelector('meta[name="viewport"]')?.getAttribute('content') || '';
+    const version = document.querySelector('meta[name="remote-agent-authoring-canary"]')?.getAttribute('content') || '';
+    const stylesheet = [...document.querySelectorAll('link[rel]')]
+        .find((element) => element.relList?.contains('stylesheet'));
+    const image = [...document.querySelectorAll('img[src]')]
+        .find((element) => /^(?:\.\/)?design\/design\.svg$/.test(element.getAttribute('src') || ''));
+    const xmlLink = [...document.querySelectorAll('a[href]')]
+        .find((element) => /^(?:\.\/)?design\/design\.xml$/.test(element.getAttribute('href') || ''));
+
+    if (root?.getAttribute('lang')?.trim().toLowerCase() !== 'en'
+        || charset !== 'utf-8'
+        || !/\bwidth\s*=\s*device-width\b/i.test(viewport)
+        || !title
+        || version !== AUTHORING_CANARY_VERSION
+        || body?.dataset?.canaryLane !== plan.lane
+        || body?.dataset?.canaryScenario !== 'authoring'
+        || document.querySelectorAll('main').length !== 1
+        || document.querySelectorAll('h1').length !== 1
+        || !stylesheet
+        || !/^(?:\.\/)?styles\.css$/.test(stylesheet.getAttribute('href') || '')
+        || !image
+        || !(image.getAttribute('alt') || '').trim()
+        || !xmlLink) {
+        throw new Error(`The ${plan.lane} authored HTML failed required accessible, linked, or canary semantics.`);
+    }
+
+    const previewBase = document.querySelectorAll('base');
+    const expectedPreviewBaseHref = String(options.expectedPreviewBaseHref || '').trim();
+    if (document.querySelector('script, iframe, frame, frameset, object, embed, form')
+        || document.querySelector('meta[http-equiv="refresh" i]')
+        || (!options.preview && previewBase.length > 0)
+        || (options.preview && (previewBase.length !== 1
+            || previewBase[0].getAttribute('href') !== expectedPreviewBaseHref))) {
+        throw new Error(`The ${plan.lane} authored HTML included an active element, redirect, or unexpected base element.`);
+    }
+    for (const element of document.querySelectorAll('*')) {
+        if (!ALLOWED_AUTHORED_HTML_ELEMENTS.has(String(element.localName || '').toLowerCase())) {
+            throw new Error(`The ${plan.lane} authored HTML included an unsupported or active element.`);
+        }
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim();
+            if (name.startsWith('on') || name === 'srcdoc') {
+                throw new Error(`The ${plan.lane} authored HTML included an inline event handler.`);
+            }
+            if (name === 'http-equiv') {
+                throw new Error(`The ${plan.lane} authored HTML included an unsupported HTTP-equivalent directive.`);
+            }
+            if (element.localName === 'base' && name === 'href' && options.preview) {
+                continue;
+            }
+            if ((URL_BEARING_ATTRIBUTE_NAMES.has(name)
+                || name.endsWith(':href')
+                || name.endsWith(':base'))
+                && !isAllowedAuthoredReference(element, name, value)) {
+                throw new Error(`The ${plan.lane} authored HTML included a reference outside the four-file site.`);
+            }
+        }
+    }
+    for (const inlineCss of [
+        ...[...document.querySelectorAll('[style]')].map((element) => element.getAttribute('style') || ''),
+        ...[...document.querySelectorAll('style')].map((element) => element.textContent || ''),
+    ]) {
+        assertAllowedAuthoredCssReferences(plan, inlineCss, 'inline CSS');
+    }
+    return {
+        title,
+        mainLandmarks: 1,
+        headings: 1,
+        localSvg: true,
+        localXml: true,
+    };
+}
+
+function assertAuthoredCssSemantics(plan, css) {
+    const text = String(css || '');
+    const rules = text.replace(/\/\*[\s\S]*?\*\//g, '');
+    const requiredMarkers = [
+        AUTHORING_CANARY_VERSION,
+        `canary-lane: ${plan.lane}`,
+        'canary-scenario: authoring',
+    ];
+    if (requiredMarkers.some((marker) => !text.includes(marker))
+        || !/\bbox-sizing\s*:/i.test(rules)
+        || !/\bmax-width\s*:/i.test(rules)
+        || !/:focus-visible\b/i.test(rules)
+        || !/@media\b/i.test(rules)
+        || !/(?:^|[;{])\s*color\s*:/im.test(rules)
+        || !/(?:background|background-color)\s*:/i.test(rules)) {
+        throw new Error(`The ${plan.lane} authored CSS failed marker, responsive, focus, or color semantics.`);
+    }
+    assertAllowedAuthoredCssReferences(plan, rules);
+    return { responsive: true, focusVisible: true, explicitColors: true };
+}
+
+function validateAuthoredPreview(plan, sourceHtml, previewHtml, options = {}) {
+    assertAuthoredHtmlSemantics(plan, sourceHtml);
+    assertAuthoredHtmlSemantics(plan, previewHtml, {
+        preview: true,
+        expectedPreviewBaseHref: options.expectedPreviewBaseHref,
+    });
+    const sourceCanonical = canonicalizeAuthoredHtml(sourceHtml);
+    const previewCanonical = canonicalizeAuthoredHtml(previewHtml, { removePreviewBase: true });
+    if (sourceCanonical !== previewCanonical) {
+        throw new Error(`The ${plan.lane} authored preview did not render the verified index document.`);
+    }
+    return { sourceSha256: sha256(Buffer.from(sourceCanonical, 'utf8')) };
+}
+
+function parseXmlForCanary(plan, text, contentType, expectedRoot) {
+    let document;
+    try {
+        document = new JSDOM(String(text || ''), { contentType }).window.document;
+    } catch (_error) {
+        throw new Error(`The ${plan.lane} authored ${expectedRoot} could not be parsed.`);
+    }
+    const root = document.documentElement;
+    if (!root || root.localName.toLowerCase() !== expectedRoot) {
+        throw new Error(`The ${plan.lane} authored ${expectedRoot} used an unexpected root element.`);
+    }
+    return { document, root };
+}
+
+function assertAuthoredXmlSafety(plan, source, label) {
+    const text = String(source || '');
+    const lexicalBody = text
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/^\uFEFF?\s*<\?xml(?:\s+[^?]*)?\?>/i, '');
+    if (/<!DOCTYPE\b/i.test(lexicalBody) || /<\?/.test(lexicalBody)) {
+        throw new Error(`The ${plan.lane} authored ${label} included a processing instruction or document type.`);
+    }
+
+    const { document } = parseXmlForCanary(
+        plan,
+        text,
+        label === 'SVG' ? 'image/svg+xml' : 'text/xml',
+        label === 'SVG' ? 'svg' : 'remote-agent-authoring-canary',
+    );
+    for (const element of document.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = String(attribute.name || '').toLowerCase();
+            if (name === 'xmlns' || name.startsWith('xmlns:')) {
+                if (label === 'SVG'
+                    && name === 'xmlns'
+                    && attribute.value === 'http://www.w3.org/2000/svg') {
+                    continue;
+                }
+                throw new Error(`The ${plan.lane} authored ${label} included an unsupported namespace declaration.`);
+            }
+            if (URL_BEARING_ATTRIBUTE_NAMES.has(name)
+                || name.endsWith(':href')
+                || name.endsWith(':base')
+                || name.endsWith('schemalocation')) {
+                throw new Error(`The ${plan.lane} authored ${label} included an external-reference attribute.`);
+            }
+        }
+    }
+    return document;
+}
+
+function assertAuthoredXmlSemantics(plan, xml) {
+    const document = assertAuthoredXmlSafety(plan, xml, 'XML');
+    const root = document.documentElement;
+    const contract = [...root.getElementsByTagName('contract')][0]?.textContent?.trim() || '';
+    if (root.namespaceURI
+        || document.querySelector('style, [style]')
+        || root.getAttribute('version') !== '1'
+        || root.getAttribute('lane') !== plan.lane
+        || root.getAttribute('scenario') !== 'authoring'
+        || contract !== AUTHORING_CANARY_VERSION) {
+        throw new Error(`The ${plan.lane} authored XML failed version, lane, scenario, or contract semantics.`);
+    }
+    return { root: 'remote-agent-authoring-canary', contract };
+}
+
+function assertAuthoredSvgSemantics(plan, svg) {
+    const document = assertAuthoredXmlSafety(plan, svg, 'SVG');
+    const root = document.documentElement;
+    if (document.querySelector('script, foreignObject, animate, animateMotion, animateTransform, set, discard')) {
+        throw new Error(`The ${plan.lane} authored SVG included an active element.`);
+    }
+    for (const inlineCss of [
+        ...[...document.querySelectorAll('[style]')].map((element) => element.getAttribute('style') || ''),
+        ...[...document.querySelectorAll('style')].map((element) => element.textContent || ''),
+    ]) {
+        assertAllowedAuthoredCssReferences(plan, inlineCss, 'SVG CSS');
+    }
+    const labelledBy = new Set(String(root.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean));
+    const title = [...root.getElementsByTagName('title')][0];
+    const description = [...root.getElementsByTagName('desc')][0];
+    if (root.namespaceURI !== 'http://www.w3.org/2000/svg'
+        || !root.getAttribute('viewBox')
+        || root.getAttribute('role') !== 'img'
+        || root.getAttribute('data-canary-version') !== AUTHORING_CANARY_VERSION
+        || root.getAttribute('data-canary-lane') !== plan.lane
+        || root.getAttribute('data-canary-scenario') !== 'authoring'
+        || !title?.id
+        || !description?.id
+        || !(title.textContent || '').trim()
+        || !(description.textContent || '').trim()
+        || !labelledBy.has(title.id)
+        || !labelledBy.has(description.id)) {
+        throw new Error(`The ${plan.lane} authored SVG failed accessible image or canary semantics.`);
+    }
+    return { accessibleImage: true, viewBox: root.getAttribute('viewBox') };
+}
+
+function validateAuthoredArtifactSet(plan, authoredFiles = []) {
+    if (plan.scenario !== 'authoring'
+        || authoredFiles.length !== plan.files.length
+        || new Set(authoredFiles.map((file) => file.definition?.outputPath)).size !== plan.files.length) {
+        throw new Error(`The ${plan.lane} authored result set did not contain exactly four unique expected files.`);
+    }
+    const quality = validateResultArtifactSet({
+        files: authoredFiles.map(({ definition, buffer }) => ({
+            relativePath: definition.outputPath,
+            filename: definition.filename,
+            role: definition.role,
+            mimeType: definition.mimeType,
+            buffer,
+        })),
+    });
+    if (quality.status !== 'passed'
+        || quality.blockers.length > 0
+        || quality.site?.enabled !== true
+        || quality.site.entries.length !== 1
+        || !quality.site.entries[0].endsWith('index.html')) {
+        const blocker = quality.blockers[0]?.code || 'unknown-structural-blocker';
+        throw new Error(`The ${plan.lane} authored files failed the local structural gate: ${blocker}.`);
+    }
+
+    const byPath = new Map(authoredFiles.map((file) => [file.definition.outputPath, file]));
+    const texts = Object.fromEntries([...byPath].map(([filePath, file]) => [filePath, file.buffer.toString('utf8')]));
+    if (Object.values(texts).some((text) => text.includes('artifact-loop-canary-v1'))) {
+        throw new Error(`The ${plan.lane} authoring scenario copied the deterministic transfer fixture marker.`);
+    }
+    const semantics = {
+        html: assertAuthoredHtmlSemantics(plan, texts['index.html']),
+        css: assertAuthoredCssSemantics(plan, texts['styles.css']),
+        xml: assertAuthoredXmlSemantics(plan, texts['design/design.xml']),
+        svg: assertAuthoredSvgSemantics(plan, texts['design/design.svg']),
+    };
+    return { quality, semantics };
+}
+
+async function validateAuthoredSiteZip(zipBuffer, plan, authoredFiles) {
+    let zip;
+    try {
+        zip = await JSZip.loadAsync(zipBuffer, { checkCRC32: true });
+    } catch (_error) {
+        throw new Error(`The ${plan.lane} authored site bundle is not a valid ZIP archive.`);
+    }
+    const archivePaths = Object.values(zip.files)
+        .filter((entry) => !entry.dir)
+        .map((entry) => entry.name)
+        .sort();
+    const expectedPaths = authoredFiles.map((file) => file.definition.outputPath).sort();
+    if (JSON.stringify(archivePaths) !== JSON.stringify(expectedPaths)) {
+        throw new Error(`The ${plan.lane} authored site ZIP did not contain exactly the four expected paths.`);
+    }
+    for (const file of authoredFiles) {
+        const entry = zip.file(file.definition.outputPath);
+        const buffer = entry ? await entry.async('nodebuffer') : null;
+        if (!buffer || buffer.length !== file.buffer.length || sha256(buffer) !== sha256(file.buffer)) {
+            throw new Error(`The ${plan.lane} authored site ZIP changed ${file.definition.outputPath}.`);
+        }
+    }
+    return archivePaths;
+}
+
+function execFileAsync(execFileImpl, executable, args, options) {
+    return new Promise((resolve, reject) => {
+        execFileImpl(executable, args, options, (error, stdout = '', stderr = '') => {
+            if (error) {
+                error.message = `${error.message}${stderr ? `: ${String(stderr).slice(0, 800)}` : ''}`;
+                reject(error);
+                return;
+            }
+            resolve({ stdout: String(stdout), stderr: String(stderr) });
+        });
+    });
+}
+
+async function runBrowserQa(options = {}) {
+    const previewUrl = new URL(String(options.previewUrl || ''));
+    if (!['http:', 'https:'].includes(previewUrl.protocol)
+        || previewUrl.username
+        || previewUrl.password
+        || previewUrl.search
+        || !/^\/api\/artifacts\/[^/]+\/preview\/?$/.test(previewUrl.pathname)) {
+        throw new Error('Browser QA requires a credential-free canonical artifact preview URL.');
+    }
+    const lane = String(options.lane || '').trim().toLowerCase();
+    if (!LANE_DEFAULTS[lane]) {
+        throw new Error('Browser QA requires a supported canary lane.');
+    }
+    const inheritedEnv = { ...process.env, ...(options.env || {}) };
+    inheritedEnv.API_BASE_URL = previewUrl.origin;
+    const outDir = path.resolve(
+        String(inheritedEnv.KIMIBUILT_CANARY_UI_CHECK_OUT_DIR || path.join(
+            process.cwd(),
+            'ui-checks',
+            'remote-agent-authoring',
+            `${lane}-${Date.now()}`,
+        )),
+    );
+    const scriptPath = path.resolve(__dirname, '..', 'bin', 'kimibuilt-ui-check.js');
+    const args = [scriptPath, previewUrl.toString(), '--out', outDir, '--same-origin-only'];
+    const { stdout } = await execFileAsync(
+        options.execFileImpl || execFile,
+        process.execPath,
+        args,
+        {
+            cwd: process.cwd(),
+            env: inheritedEnv,
+            windowsHide: true,
+            maxBuffer: 2 * 1024 * 1024,
+        },
+    );
+    const resultLine = stdout.split(/\r?\n/)
+        .find((line) => line.startsWith('KIMIBUILT_UI_CHECK_RESULT='));
+    if (!resultLine) {
+        throw new Error(`The ${lane} browser QA did not return a UI-check summary.`);
+    }
+    let summary;
+    try {
+        summary = JSON.parse(resultLine.slice('KIMIBUILT_UI_CHECK_RESULT='.length));
+    } catch (_error) {
+        throw new Error(`The ${lane} browser QA returned an invalid UI-check summary.`);
+    }
+    if (summary?.ok !== true
+        || Number(summary?.checkedViewports || 0) < 2
+        || !Array.isArray(summary?.issues)
+        || summary.issues.length > 0) {
+        throw new Error(`The ${lane} browser QA reported a visual release blocker.`);
+    }
+    return {
+        ok: true,
+        checkedViewports: summary.checkedViewports,
+        issues: [],
+        outDir,
+    };
+}
+
 function buildExpectedManagedAppFingerprint(fixtures = []) {
     const files = fixtures.map((fixture) => ({
         path: `public/${fixture.outputPath}`,
@@ -766,6 +1497,7 @@ function buildExpectedManagedAppFingerprint(fixtures = []) {
     });
     return {
         sha256: aggregateHash.digest('hex'),
+        sizeBytes: files.reduce((total, file) => total + file.buffer.length, 0),
         files: files.map((file) => ({
             path: file.path,
             sizeBytes: file.buffer.length,
@@ -774,7 +1506,7 @@ function buildExpectedManagedAppFingerprint(fixtures = []) {
     };
 }
 
-function validatePreflight(payload, plan, expectedFingerprint) {
+function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactId) {
     const status = String(payload?.status || payload?.preflight?.status || '').trim().toLowerCase();
     const blockers = payload?.blockers || payload?.preflight?.blockers || [];
     if (payload?.ok === false
@@ -783,15 +1515,25 @@ function validatePreflight(payload, plan, expectedFingerprint) {
         || payload?.contentEligible !== true
         || payload?.controlPlaneAvailable !== true
         || payload?.pushToWebEligible !== true
+        || String(payload?.artifactId || '').trim() !== expectedArtifactId
+        || String(payload?.sourceType || '').trim() !== 'native-site-archive'
         || ['blocked', 'failed', 'error'].includes(status)
         || (Array.isArray(blockers) && blockers.length > 0)) {
         throw new Error(`The ${plan.lane} managed-app preflight reported a deployment blocker.`);
     }
     if (payload?.sha256 !== expectedFingerprint.sha256
+        || payload?.sizeBytes !== expectedFingerprint.sizeBytes
         || payload?.fileCount !== expectedFingerprint.files.length) {
         throw new Error(`The ${plan.lane} managed-app preflight source fingerprint did not match the verified site ZIP.`);
     }
     const returnedFiles = Array.isArray(payload?.files) ? payload.files : [];
+    const expectedPaths = expectedFingerprint.files.map((file) => file.path).sort();
+    const returnedPaths = returnedFiles.map((file) => String(file?.path || '')).sort();
+    if (returnedFiles.length !== expectedFingerprint.files.length
+        || new Set(returnedPaths).size !== returnedPaths.length
+        || JSON.stringify(returnedPaths) !== JSON.stringify(expectedPaths)) {
+        throw new Error(`The ${plan.lane} managed-app preflight returned an unexpected file set.`);
+    }
     for (const expected of expectedFingerprint.files) {
         const returned = returnedFiles.find((file) => file?.path === expected.path);
         if (!returned || returned.sizeBytes !== expected.sizeBytes || returned.sha256 !== expected.sha256) {
@@ -811,19 +1553,32 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
         throw new Error(`The ${plan.lane} hop ${plan.hop} async response did not include a run ID.`);
     }
     runtimeOptions.activeRunIds.add(runId);
+    validateRunIdentity(created.run, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+        phase: 'accepted',
+    });
     if (created.run?.liveRemoteAllowed !== true
         || created.run?.metadata?.remoteAdapter !== true
         || created.run?.metadata?.dryRun !== false) {
         throw new Error(`The ${plan.lane} hop ${plan.hop} was not accepted as an allowed live remote run.`);
     }
     const completed = await pollRun(client, runId, runtimeOptions);
+    validateRunIdentity(completed.run, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+        phase: 'completed',
+    });
     if (TERMINAL_RUN_STATUSES.has(completed.status)) {
         runtimeOptions.activeRunIds.delete(runId);
     }
     if (completed.status !== 'completed') {
         throw new Error(`The ${plan.lane} hop ${plan.hop} run ended with status ${completed.status || 'unknown'}.`);
     }
-    validateRunExecutionEvidence(completed.run, completed.events, plan);
+    validateRunExecutionEvidence(completed.run, completed.events, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+    });
 
     const toolResult = findCompactToolResult(completed.run, completed.events);
     const inspected = validateCompactToolResult(plan, toolResult);
@@ -832,7 +1587,7 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
             .find((candidate) => candidate?.id === descriptor.artifactId);
         const artifact = await client.requestJson(`/api/artifacts/${encodeURIComponent(descriptor.artifactId)}`);
         if (artifact?.id !== descriptor.artifactId
-            || (artifact?.sessionId && artifact.sessionId !== sessionId)) {
+            || artifact?.sessionId !== sessionId) {
             throw new Error(`The ${plan.lane} artifact lookup for ${fixture.filename} failed session ownership proof.`);
         }
         const downloadPath = artifactApiPath(
@@ -852,7 +1607,7 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
         `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}`,
     );
     if (siteArtifact?.id !== inspected.siteBundleArtifactId
-        || (siteArtifact?.sessionId && siteArtifact.sessionId !== sessionId)) {
+        || siteArtifact?.sessionId !== sessionId) {
         throw new Error(`The ${plan.lane} site bundle lookup failed session ownership proof.`);
     }
     const bundlePath = artifactApiPath(
@@ -901,7 +1656,7 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
                 },
             },
         );
-        validatePreflight(preflight, plan, expectedFingerprint);
+        validatePreflight(preflight, plan, expectedFingerprint, inspected.siteBundleArtifactId);
     }
 
     return {
@@ -928,6 +1683,170 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
             previewVerified: true,
             ...(runtimeOptions.preflight === true ? { managedAppPreflight: 'passed' } : {}),
         },
+    };
+}
+
+async function executeAuthoringScenario(plan, sessionId, client, runtimeOptions) {
+    const created = await client.requestJson('/api/async-lab/runs', {
+        method: 'POST',
+        body: buildRunPayload(plan, sessionId),
+    });
+    const runId = String(created?.run?.id || '').trim();
+    if (!runId) {
+        throw new Error(`The ${plan.lane} authoring response did not include a run ID.`);
+    }
+    runtimeOptions.activeRunIds.add(runId);
+    validateRunIdentity(created.run, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+        phase: 'accepted',
+    });
+    if (created.run?.liveRemoteAllowed !== true
+        || created.run?.metadata?.remoteAdapter !== true
+        || created.run?.metadata?.dryRun !== false) {
+        throw new Error(`The ${plan.lane} authoring scenario was not accepted as an allowed live remote run.`);
+    }
+    const completed = await pollRun(client, runId, runtimeOptions);
+    validateRunIdentity(completed.run, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+        phase: 'completed',
+    });
+    if (TERMINAL_RUN_STATUSES.has(completed.status)) {
+        runtimeOptions.activeRunIds.delete(runId);
+    }
+    if (completed.status !== 'completed') {
+        throw new Error(`The ${plan.lane} authoring run ended with status ${completed.status || 'unknown'}.`);
+    }
+    validateRunExecutionEvidence(completed.run, completed.events, plan, {
+        expectedRunId: runId,
+        expectedSessionId: sessionId,
+    });
+
+    const toolResult = findCompactToolResult(completed.run, completed.events);
+    const inspected = validateCompactToolResult(plan, toolResult);
+    const authoredFiles = [];
+    for (const { fixture: definition, descriptor } of inspected.componentArtifacts) {
+        const compactArtifact = (Array.isArray(toolResult.artifacts) ? toolResult.artifacts : [])
+            .find((candidate) => candidate?.id === descriptor.artifactId);
+        const artifact = await client.requestJson(`/api/artifacts/${encodeURIComponent(descriptor.artifactId)}`);
+        if (artifact?.id !== descriptor.artifactId
+            || artifact?.sessionId !== sessionId) {
+            throw new Error(`The ${plan.lane} authored artifact lookup for ${definition.filename} failed session ownership proof.`);
+        }
+        const downloadPath = artifactApiPath(
+            artifact?.downloadUrl || compactArtifact?.downloadUrl,
+            `/api/artifacts/${encodeURIComponent(descriptor.artifactId)}/download`,
+            runtimeOptions.baseUrl,
+        );
+        const buffer = await client.requestBuffer(downloadPath, {
+            maxBytes: Math.min(MAX_DOWNLOAD_BYTES, descriptor.sizeBytes + 1),
+        });
+        if (buffer.length !== descriptor.sizeBytes || sha256(buffer) !== descriptor.sha256) {
+            throw new Error(`The ${plan.lane} authored component download changed ${definition.filename}.`);
+        }
+        authoredFiles.push({ definition, descriptor, buffer });
+    }
+
+    const localValidation = validateAuthoredArtifactSet(plan, authoredFiles);
+    const siteArtifact = await client.requestJson(
+        `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}`,
+    );
+    if (siteArtifact?.id !== inspected.siteBundleArtifactId
+        || siteArtifact?.sessionId !== sessionId) {
+        throw new Error(`The ${plan.lane} authored site bundle lookup failed session ownership proof.`);
+    }
+    const bundlePath = artifactApiPath(
+        siteArtifact?.bundleDownloadUrl || inspected.siteBundleArtifact.bundleDownloadUrl,
+        `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}/bundle`,
+        runtimeOptions.baseUrl,
+    );
+    const zipBuffer = await client.requestBuffer(bundlePath, { maxBytes: MAX_DOWNLOAD_BYTES });
+    const archivePaths = await validateAuthoredSiteZip(zipBuffer, plan, authoredFiles);
+
+    const previewPath = artifactApiPath(
+        siteArtifact?.previewUrl || inspected.siteBundleArtifact.previewUrl,
+        `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}/preview`,
+        runtimeOptions.baseUrl,
+    );
+    const preview = await client.requestBuffer(previewPath, { maxBytes: MAX_DOWNLOAD_BYTES });
+    const sourceHtml = authoredFiles
+        .find((file) => file.definition.outputPath === 'index.html')
+        ?.buffer.toString('utf8') || '';
+    validateAuthoredPreview(plan, sourceHtml, preview.toString('utf8'), {
+        expectedPreviewBaseHref: `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}/preview/`,
+    });
+
+    const expectedFingerprint = buildExpectedManagedAppFingerprint(authoredFiles.map(({ definition, buffer }) => ({
+        ...definition,
+        buffer,
+    })));
+    const preflight = await client.requestJson(
+        `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}/managed-app/preflight`,
+        {
+            method: 'POST',
+            body: {
+                source: 'remote-agent-authoring-canary',
+                canaryVersion: AUTHORING_CANARY_VERSION,
+                validateOnly: true,
+                expectedSourceSha256: expectedFingerprint.sha256,
+                expectedEntry: 'index.html',
+                expectedFiles: authoredFiles.map(({ definition, descriptor }) => ({
+                    path: definition.outputPath,
+                    role: definition.role,
+                    sizeBytes: descriptor.sizeBytes,
+                    sha256: descriptor.sha256,
+                })),
+            },
+        },
+    );
+    validatePreflight(preflight, plan, expectedFingerprint, inspected.siteBundleArtifactId);
+
+    let browserQa = null;
+    if (runtimeOptions.browserQa === true) {
+        const previewUrl = new URL(
+            `/api/artifacts/${encodeURIComponent(inspected.siteBundleArtifactId)}/preview`,
+            runtimeOptions.baseUrl,
+        ).toString();
+        const browserQaRunner = runtimeOptions.browserQaRunner || runBrowserQa;
+        browserQa = await browserQaRunner({
+            previewUrl,
+            lane: plan.lane,
+            sessionId,
+            siteBundleArtifactId: inspected.siteBundleArtifactId,
+            env: runtimeOptions.env,
+        });
+        if (browserQa?.ok !== true
+            || Number(browserQa?.checkedViewports || 0) < 2
+            || !Array.isArray(browserQa?.issues)
+            || browserQa.issues.length > 0) {
+            throw new Error(`The ${plan.lane} browser QA did not attest two clean viewports.`);
+        }
+    }
+
+    return {
+        scenario: 'authoring',
+        runId,
+        provider: inspected.provider,
+        providerModel: inspected.providerModel,
+        model: inspected.model,
+        transport: plan.transport,
+        liveRemoteExecutionProved: true,
+        inputArtifactCount: 0,
+        componentMetadataVerified: inspected.componentArtifacts.length,
+        componentDownloadsVerified: authoredFiles.length,
+        localStructuralGate: localValidation.quality.status,
+        semanticBriefVerified: true,
+        siteBundleArtifactId: inspected.siteBundleArtifactId,
+        siteZipFilesVerified: archivePaths.length,
+        previewVerified: true,
+        managedAppPreflight: 'passed',
+        browserQa: browserQa ? {
+            status: 'passed',
+            checkedViewports: browserQa.checkedViewports,
+            issues: [],
+            ...(browserQa.outDir ? { outDir: browserQa.outDir } : {}),
+        } : { status: 'not-requested' },
     };
 }
 
@@ -982,6 +1901,7 @@ async function runLive(plans, options = {}) {
                     ephemeral: true,
                     canaryVersion: CANARY_VERSION,
                     lanes: plans.map((plan) => plan.lane),
+                    scenarios: options.authoring === true ? ['transfer', 'authoring'] : ['transfer'],
                 },
             },
         });
@@ -1010,12 +1930,27 @@ async function runLive(plans, options = {}) {
                 activeRunIds,
                 preflight: true,
             });
+            let authoring = null;
+            if (options.authoring === true) {
+                const authoringPlan = buildAuthoringPlan(firstHopPlan.lane, options.env);
+                validateAuthoringPlan(authoringPlan);
+                authoring = await executeAuthoringScenario(authoringPlan, sessionId, client, {
+                    ...configuration,
+                    sleep,
+                    now,
+                    activeRunIds,
+                    browserQa: options.browserQa === true,
+                    browserQaRunner: options.browserQaRunner,
+                    env: options.env,
+                });
+            }
             laneResults.push({
                 lane: firstHopPlan.lane,
                 bidirectionalRoundTrip: true,
                 fixtureCount: firstHopPlan.fixtures.length,
                 hops: [firstHop.summary, secondHop.summary],
                 managedAppPreflight: 'passed',
+                ...(authoring ? { authoring } : {}),
             });
         }
     } catch (error) {
@@ -1067,6 +2002,7 @@ async function runLive(plans, options = {}) {
         networkRequestsMade: client.networkRequestsMade,
         ephemeralSessionDeleted: true,
         bidirectionalRoundTrip: true,
+        authoringScenario: options.authoring === true ? 'passed' : 'not-requested',
         lanes: laneResults,
     };
 }
@@ -1075,7 +2011,7 @@ async function runCanary(options = {}) {
     const parsed = parseArguments(options.argv || []);
     if (parsed.help) {
         return {
-            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|grok|all] [--run]',
+            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|grok|all] [--authoring [--browser-qa]] [--run]',
         };
     }
     const env = options.env || process.env;
@@ -1094,10 +2030,17 @@ async function runCanary(options = {}) {
                 sourceArtifacts: placeholderArtifacts,
             });
             validateLanePlan(secondHopPlan);
+            let authoring = null;
+            if (parsed.authoring) {
+                const authoringPlan = buildAuthoringPlan(firstHopPlan.lane, env);
+                validateAuthoringPlan(authoringPlan);
+                authoring = describeAuthoringPlan(authoringPlan, { browserQa: parsed.browserQa });
+            }
             return {
                 lane: firstHopPlan.lane,
                 bidirectionalRoundTripPlanned: true,
                 hops: [describePlan(firstHopPlan), describePlan(secondHopPlan)],
+                ...(authoring ? { authoring } : {}),
             };
         });
         return {
@@ -1106,12 +2049,17 @@ async function runCanary(options = {}) {
             execution: 'dry-run',
             passed: true,
             networkRequestsMade: 0,
-            note: 'Payloads were validated locally. No HTTP request or remote agent run was attempted.',
+            authoringScenario: parsed.authoring ? 'planned' : 'not-requested',
+            note: 'Transfer and optional authoring payloads were validated locally. No HTTP request, remote agent run, or browser QA was attempted.',
             lanes,
         };
     }
 
-    return runLive(plans, options);
+    return runLive(plans, {
+        ...options,
+        authoring: parsed.authoring,
+        browserQa: parsed.browserQa,
+    });
 }
 
 async function main() {
@@ -1133,14 +2081,23 @@ if (require.main === module) {
 }
 
 module.exports = {
+    AUTHORING_CANARY_VERSION,
     CANARY_VERSION,
+    buildAuthoringPlan,
     buildLanePlan,
     buildRunPayload,
     createFixtures,
     createHttpClient,
     parseArguments,
+    runBrowserQa,
     runCanary,
+    validateAuthoredArtifactSet,
+    validateAuthoredPreview,
+    validateAuthoringPlan,
     validateCompactToolResult,
     validateLanePlan,
+    validatePreflight,
+    validateRunExecutionEvidence,
+    validateRunIdentity,
     validateSiteZip,
 };

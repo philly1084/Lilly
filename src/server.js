@@ -700,6 +700,7 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
         app.locals.asyncLabService = asyncLabService;
         asyncLabService.configureExecutionRuntime?.({
             toolManager,
+            sessionStore,
             toolExecutionContext: {
                 memoryService,
                 documentService: app.locals.documentService,

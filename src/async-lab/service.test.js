@@ -3,6 +3,43 @@
 const { AsyncLabService } = require('./service');
 const { AsyncLabStore } = require('./store');
 const { ValkeyLiveBus } = require('./valkey-live-bus');
+const { RemoteCliAgentTool } = require('../agent-sdk/tools/categories/ssh/RemoteCliAgentTool');
+const { mergeControlState } = require('../runtime-control-state');
+
+function createSessionStore(sessions = []) {
+    const byId = new Map(sessions.map((session) => [session.id, {
+        ...session,
+        controlState: session.controlState || {},
+        metadata: session.metadata || {},
+    }]));
+    return {
+        getOwned: jest.fn(async (id, ownerId) => {
+            const session = byId.get(id) || null;
+            if (!session || (ownerId && session.ownerId && session.ownerId !== ownerId)) {
+                return null;
+            }
+            return session;
+        }),
+        updateControlState: jest.fn(async (id, patch) => {
+            const session = byId.get(id);
+            if (!session) {
+                return null;
+            }
+            session.controlState = mergeControlState(session.controlState, patch);
+            session.metadata = {
+                ...session.metadata,
+                controlState: session.controlState,
+                ...(session.controlState.remoteCliAgent
+                    ? { remoteCliAgent: session.controlState.remoteCliAgent }
+                    : {}),
+            };
+            return session.controlState;
+        }),
+        getSession(id) {
+            return byId.get(id) || null;
+        },
+    };
+}
 
 function createService(overrides = {}) {
     const store = overrides.store || new AsyncLabStore({ persistToPostgres: false });
@@ -10,11 +47,13 @@ function createService(overrides = {}) {
     const instanceId = overrides.instanceId || 'test-async-lab';
     const toolManager = overrides.toolManager || null;
     const toolExecutionContext = overrides.toolExecutionContext || {};
+    const sessionStore = overrides.sessionStore || null;
     delete overrides.store;
     delete overrides.bus;
     delete overrides.instanceId;
     delete overrides.toolManager;
     delete overrides.toolExecutionContext;
+    delete overrides.sessionStore;
 
     return new AsyncLabService({
         config: {
@@ -36,6 +75,7 @@ function createService(overrides = {}) {
         instanceId,
         toolManager,
         toolExecutionContext,
+        sessionStore,
     });
 }
 
@@ -187,12 +227,13 @@ describe('AsyncLabService', () => {
             duration: 44,
             toolId: 'remote-cli-agent',
             data: {
+                message: `key=${secretToken} credentials=${secretToken} client_secret=${secretToken} keyboard=compact monkey=capuchin`,
                 completionStatus: 'completed',
                 providerId: 'kimi',
                 providerModel: 'k3',
                 model: 'kimi-k3',
                 transport: 'provider-agent',
-                publicUrl: `https://demo.example.test/?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&X-Amz-Security-Token=${secretToken}&keyboard=compact&monkey=capuchin&view=1`,
+                publicUrl: `https://demo.example.test/?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&X-Amz-Security-Token=${secretToken}&client_secret=${secretToken}&keyboard=compact&monkey=capuchin&view=1#view=1&key=${secretToken}`,
                 publicHost: 'demo.example.test',
                 artifactIds: ['artifact-html'],
                 resultFiles: [{
@@ -294,6 +335,7 @@ describe('AsyncLabService', () => {
         ]);
         expect(toolResult.resultFiles[0]).not.toHaveProperty('contentBase64');
         expect(toolResult.resultFiles[0]).not.toHaveProperty('metadata');
+        expect(toolResult.data.message).toBe('key=[redacted] credentials=[redacted] client_secret=[redacted] keyboard=compact monkey=capuchin');
         expect(toolResult.artifacts).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 id: 'artifact-html',
@@ -318,6 +360,312 @@ describe('AsyncLabService', () => {
         expect(toolResult.artifactQuality.warnings[0]).not.toHaveProperty('secret');
         expect(JSON.stringify(toolResult)).not.toContain(rawBase64);
         expect(JSON.stringify(toolResult)).not.toContain(secretToken);
+    });
+
+    test('scrubs userinfo and encoded sensitive URL parameters from persisted free-form text', async () => {
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            toolId: 'remote-cli-agent',
+            data: {
+                message: 'Deploy proof: https://deploy-user:SYNTHETIC@demo.example.test/?%2574oken=SYNTHETIC&client%255Fsecret=SYNTHETIC&X%252DAmz%252DSignature=SYNTHETIC&view=1#view=1&%2574oken=SYNTHETIC JSON={"token":"SYNTHETIC"} {\'client_secret\':\'SYNTHETIC\'}',
+                completionStatus: 'completed',
+            },
+        }));
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+        });
+        const created = await service.createRun({
+            task: 'Record the remote deployment proof.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        expect(run.status).toBe('completed');
+        expect(run.metadata.toolResult.data.message).toBe(
+            'Deploy proof: https://demo.example.test/?view=1 JSON={"token":[redacted]} {\'client_secret\':[redacted]}',
+        );
+        expect(JSON.stringify(run.metadata.toolResult)).not.toContain('deploy-user');
+        expect(JSON.stringify(run.metadata.toolResult)).not.toContain('SYNTHETIC');
+        expect(JSON.stringify(run.metadata.toolResult)).not.toContain('%74oken');
+        expect(JSON.stringify(run.metadata.toolResult)).not.toContain('client%5Fsecret');
+        expect(JSON.stringify(run.metadata.toolResult)).not.toContain('X%2DAmz%2DSignature');
+    });
+
+    test('persists async remote-agent continuity and supplies it to the next run in the same chat session', async () => {
+        const sessionStore = createSessionStore([
+            { id: 'chat-session-1', ownerId: 'tester' },
+            { id: 'chat-session-2', ownerId: 'tester' },
+        ]);
+        const runner = {
+            run: jest.fn()
+                .mockResolvedValueOnce({
+                    completionStatus: 'running',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    remoteCodeSessionId: 'remote-code-session-1',
+                    remoteCodeJobId: 'remote-job-1',
+                    targetId: 'k3s-prod',
+                    cwd: '/opt/kimibuilt',
+                })
+                .mockResolvedValueOnce({ completionStatus: 'completed' })
+                .mockResolvedValueOnce({ completionStatus: 'completed' }),
+        };
+        const remoteTool = new RemoteCliAgentTool({ runner });
+        const executeTool = jest.fn((adapter, params, context) => {
+            expect(adapter).toBe('remote-cli-agent');
+            return remoteTool.execute(params, context);
+        });
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            sessionStore,
+        });
+
+        const first = await service.createRun({
+            task: 'Start the remote build.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+        }, 'tester');
+        await service.drainQueue();
+
+        const firstRun = await service.getRun(first.run.id, 'tester');
+        expect(firstRun.metadata.toolResult).toEqual(expect.objectContaining({
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+            remoteCodeSessionId: 'remote-code-session-1',
+            remoteCodeJobId: 'remote-job-1',
+            targetId: 'k3s-prod',
+            cwd: '/opt/kimibuilt',
+        }));
+        expect(sessionStore.getSession('chat-session-1').controlState).toEqual(expect.objectContaining({
+            lastToolIntent: 'remote-cli-agent',
+            remoteCliAgent: expect.objectContaining({
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
+                remoteCodeSessionId: 'remote-code-session-1',
+                remoteCodeJobId: 'remote-job-1',
+                targetId: 'k3s-prod',
+                cwd: '/opt/kimibuilt',
+            }),
+        }));
+
+        const second = await service.createRun({
+            task: 'Continue that running job and finish it.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+        }, 'tester');
+        await service.drainQueue();
+
+        expect((await service.getRun(second.run.id, 'tester')).status).toBe('completed');
+        expect(runner.run).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+            jobId: 'remote-job-1',
+            targetId: 'k3s-prod',
+            cwd: '/opt/kimibuilt',
+        }));
+        expect(executeTool.mock.calls[1][2]).toEqual(expect.objectContaining({
+            sessionId: 'chat-session-1',
+            session: expect.objectContaining({ id: 'chat-session-1' }),
+            controlState: expect.objectContaining({
+                remoteCliAgent: expect.objectContaining({ sessionId: 'remote-session-1' }),
+            }),
+        }));
+        expect(sessionStore.getSession('chat-session-1').controlState.remoteCliAgent).toEqual(expect.objectContaining({
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+            remoteCodeSessionId: 'remote-code-session-1',
+            remoteCodeJobId: 'remote-job-1',
+        }));
+
+        await service.createRun({
+            task: 'Continue that running job and finish it.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-2',
+            liveRemote: true,
+        }, 'tester');
+        await service.drainQueue();
+
+        expect(runner.run).toHaveBeenNthCalledWith(3, expect.not.objectContaining({
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+            jobId: 'remote-job-1',
+            cwd: '/opt/kimibuilt',
+        }));
+    });
+
+    test('rejects a remote-agent run whose chat session is not owned by the requester', async () => {
+        const sessionStore = createSessionStore([{ id: 'chat-session-1', ownerId: 'owner-a' }]);
+        const executeTool = jest.fn();
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            sessionStore,
+        });
+
+        await expect(service.createRun({
+            task: 'Use the selected artifact to continue the remote build.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+            metadata: {
+                toolParams: {
+                    task: 'Use the selected artifact to continue the remote build.',
+                    artifactIds: ['artifact-private'],
+                    collectResultFiles: true,
+                },
+            },
+        }, 'owner-b')).rejects.toMatchObject({
+            code: 'ASYNC_REMOTE_AGENT_SESSION_SCOPE_MISMATCH',
+            statusCode: 403,
+        });
+        expect(executeTool).not.toHaveBeenCalled();
+        expect(sessionStore.updateControlState).not.toHaveBeenCalled();
+    });
+
+    test('fails closed when a fallback session store cannot prove remote-agent ownership', async () => {
+        const sessionStore = {
+            get: jest.fn(async () => ({
+                id: 'chat-session-1',
+                metadata: { ownerId: 'owner-a' },
+            })),
+            updateControlState: jest.fn(),
+        };
+        const executeTool = jest.fn();
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            sessionStore,
+        });
+
+        await expect(service.createRun({
+            task: 'Continue another session.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+        }, 'owner-b')).rejects.toMatchObject({
+            code: 'ASYNC_REMOTE_AGENT_SESSION_SCOPE_MISMATCH',
+            statusCode: 403,
+        });
+        expect(executeTool).not.toHaveBeenCalled();
+        expect(sessionStore.updateControlState).not.toHaveBeenCalled();
+    });
+
+    test('does not pass an unverified remote session id when no session store is configured', async () => {
+        const executeTool = jest.fn(async (_adapter, _params, context) => {
+            expect(context.sessionId).toBeNull();
+            expect(context).not.toHaveProperty('session');
+            return {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: { completionStatus: 'completed' },
+            };
+        });
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+        });
+        const created = await service.createRun({
+            task: 'Run without attaching artifacts to an unverified session.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'unverified-session',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        expect((await service.getRun(created.run.id, 'tester')).status).toBe('completed');
+        expect(executeTool).toHaveBeenCalledTimes(1);
+    });
+
+    test('keeps a successful remote result when continuity persistence fails', async () => {
+        const sessionStore = createSessionStore([{ id: 'chat-session-1', ownerId: 'tester' }]);
+        sessionStore.updateControlState.mockRejectedValueOnce(new Error('key=continuity-secret database unavailable'));
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            duration: 12,
+            toolId: 'remote-cli-agent',
+            data: {
+                completionStatus: 'completed',
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
+            },
+        }));
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            sessionStore,
+        });
+        const created = await service.createRun({
+            task: 'Finish the remote build.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const events = await service.listEvents(created.run.id, 0);
+        expect(run.status).toBe('completed');
+        expect(run.metadata.toolResult).toEqual(expect.objectContaining({
+            success: true,
+            completionStatus: 'completed',
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+        }));
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'continuity_warning',
+                payload: expect.objectContaining({
+                    error: 'key=[redacted] database unavailable',
+                }),
+            }),
+            expect.objectContaining({ type: 'tool_completed' }),
+            expect.objectContaining({ type: 'completed' }),
+        ]));
+    });
+
+    test('does not persist remote-agent continuity for unrelated async tools', async () => {
+        const sessionStore = createSessionStore([{ id: 'chat-session-1', ownerId: 'tester' }]);
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            data: { message: 'remote command observed' },
+            toolId: 'remote-command',
+        }));
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            sessionStore,
+        });
+        const created = await service.createRun({
+            task: 'hostname',
+            adapter: 'remote-command',
+            targetKey: 'k3s-prod',
+            sessionId: 'chat-session-1',
+            liveRemote: true,
+            metadata: { toolParams: { command: 'hostname', targetId: 'k3s-prod' } },
+        }, 'tester');
+
+        await service.drainQueue();
+
+        expect((await service.getRun(created.run.id, 'tester')).status).toBe('completed');
+        expect(sessionStore.updateControlState).not.toHaveBeenCalled();
+        expect(sessionStore.getSession('chat-session-1').controlState).toEqual({});
     });
 
     test('records a skipped live adapter when no tool manager is attached', async () => {
