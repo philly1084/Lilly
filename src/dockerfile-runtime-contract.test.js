@@ -29,4 +29,13 @@ describe('Docker runtime contract', () => {
     expect(dockerignore).toContain('!data/skills/*/');
     expect(dockerignore).toContain('!data/skills/*/*');
   });
+
+  it('ships the remote-agent operational canaries in the runtime image', () => {
+    expect(dockerfile).toContain(
+      'COPY scripts/canary-remote-agent-artifact-loop.js ./scripts/canary-remote-agent-artifact-loop.js',
+    );
+    expect(dockerfile).toContain(
+      'COPY scripts/canary-sandbox-agent-attach.js ./scripts/canary-sandbox-agent-attach.js',
+    );
+  });
 });

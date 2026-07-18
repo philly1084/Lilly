@@ -434,8 +434,11 @@ function buildAuthoringTask(lane, outputRoot) {
         `Every file must carry the exact version marker ${AUTHORING_CANARY_VERSION}, lane marker ${lane}, and scenario marker authoring in syntax appropriate to that format.`,
         'index.html must be valid accessible HTML: lang, UTF-8 charset, viewport, a non-empty title, one main landmark, one h1, a linked styles.css, an image using design/design.svg with useful alt text, and a link to design/design.xml.',
         'Use body data-canary-lane and data-canary-scenario attributes plus a meta remote-agent-authoring-canary version marker.',
-        'styles.css must include the three markers in comments, explicit readable foreground/background colors, box-sizing, a responsive max-width layout, a focus-visible rule, and at least one @media rule.',
-        'design/design.xml must have a remote-agent-authoring-canary root carrying version, lane, and scenario attributes and a contract element containing the exact version marker.',
+        `styles.css must begin with these exact standalone comments: /* ${AUTHORING_CANARY_VERSION} */, /* canary-lane: ${lane} */, and /* canary-scenario: authoring */.`,
+        'After those comments, include real parsed CSS rules (not descriptions in comments) for all of these gates: *, *::before, *::after with box-sizing: border-box; body with both color and background-color; a content wrapper with max-width; an interactive element with :focus-visible; and at least one @media (max-width: ...) responsive rule.',
+        'The CSS validator removes comments before checking declarations, so mentioning box-sizing, max-width, color, background-color, :focus-visible, or @media only in prose/comments does not satisfy the contract.',
+        `design/design.xml must use this exact root start tag: <remote-agent-authoring-canary version="1" lane="${lane}" scenario="authoring">. Its contract element text must be exactly ${AUTHORING_CANARY_VERSION}.`,
+        'Every XML descendant must use elements and text only: add no descendant attributes, namespace declarations, xml:base, href/src/data/action fields, schema-location fields, processing instructions, or document type.',
         'design/design.svg must have a viewBox, role=img, title and desc wired through aria-labelledby, plus data-canary-version, data-canary-lane, and data-canary-scenario attributes.',
         'All HTML references must be local and resolve within these four files. Do not use external URLs, remote fonts, CDNs, data URLs, inline scripts, or inline event handlers.',
         'Choose original copy, layout, colors, and SVG artwork suitable for the lane while keeping normal text at WCAG AA contrast and the layout usable at 390px and 1440px widths.',
@@ -1315,19 +1318,22 @@ function assertAuthoredHtmlSemantics(plan, html, options = {}) {
 function assertAuthoredCssSemantics(plan, css) {
     const text = String(css || '');
     const rules = text.replace(/\/\*[\s\S]*?\*\//g, '');
-    const requiredMarkers = [
-        AUTHORING_CANARY_VERSION,
-        `canary-lane: ${plan.lane}`,
-        'canary-scenario: authoring',
+    const requiredChecks = [
+        [AUTHORING_CANARY_VERSION, text.includes(AUTHORING_CANARY_VERSION)],
+        [`canary-lane: ${plan.lane}`, text.includes(`canary-lane: ${plan.lane}`)],
+        ['canary-scenario: authoring', text.includes('canary-scenario: authoring')],
+        ['box-sizing declaration', /\bbox-sizing\s*:/i.test(rules)],
+        ['max-width declaration', /\bmax-width\s*:/i.test(rules)],
+        [':focus-visible rule', /:focus-visible\b/i.test(rules)],
+        ['@media rule', /@media\b/i.test(rules)],
+        ['foreground color declaration', /(?:^|[;{])\s*color\s*:/im.test(rules)],
+        ['background color declaration', /(?:background|background-color)\s*:/i.test(rules)],
     ];
-    if (requiredMarkers.some((marker) => !text.includes(marker))
-        || !/\bbox-sizing\s*:/i.test(rules)
-        || !/\bmax-width\s*:/i.test(rules)
-        || !/:focus-visible\b/i.test(rules)
-        || !/@media\b/i.test(rules)
-        || !/(?:^|[;{])\s*color\s*:/im.test(rules)
-        || !/(?:background|background-color)\s*:/i.test(rules)) {
-        throw new Error(`The ${plan.lane} authored CSS failed marker, responsive, focus, or color semantics.`);
+    const missing = requiredChecks
+        .filter(([, passed]) => !passed)
+        .map(([label]) => label);
+    if (missing.length > 0) {
+        throw new Error(`The ${plan.lane} authored CSS failed required semantics: missing ${missing.join(', ')}.`);
     }
     assertAllowedAuthoredCssReferences(plan, rules);
     return { responsive: true, focusVisible: true, explicitColors: true };
@@ -1391,7 +1397,7 @@ function assertAuthoredXmlSafety(plan, source, label) {
                 || name.endsWith(':href')
                 || name.endsWith(':base')
                 || name.endsWith('schemalocation')) {
-                throw new Error(`The ${plan.lane} authored ${label} included an external-reference attribute.`);
+                throw new Error(`The ${plan.lane} authored ${label} included external-reference attribute ${name}.`);
             }
         }
     }
@@ -1402,13 +1408,19 @@ function assertAuthoredXmlSemantics(plan, xml) {
     const document = assertAuthoredXmlSafety(plan, xml, 'XML');
     const root = document.documentElement;
     const contract = [...root.getElementsByTagName('contract')][0]?.textContent?.trim() || '';
-    if (root.namespaceURI
-        || document.querySelector('style, [style]')
-        || root.getAttribute('version') !== '1'
-        || root.getAttribute('lane') !== plan.lane
-        || root.getAttribute('scenario') !== 'authoring'
-        || contract !== AUTHORING_CANARY_VERSION) {
-        throw new Error(`The ${plan.lane} authored XML failed version, lane, scenario, or contract semantics.`);
+    const requiredChecks = [
+        ['no namespace', !root.namespaceURI],
+        ['no style content', !document.querySelector('style, [style]')],
+        ['version="1"', root.getAttribute('version') === '1'],
+        [`lane="${plan.lane}"`, root.getAttribute('lane') === plan.lane],
+        ['scenario="authoring"', root.getAttribute('scenario') === 'authoring'],
+        [`contract text ${AUTHORING_CANARY_VERSION}`, contract === AUTHORING_CANARY_VERSION],
+    ];
+    const missing = requiredChecks
+        .filter(([, passed]) => !passed)
+        .map(([label]) => label);
+    if (missing.length > 0) {
+        throw new Error(`The ${plan.lane} authored XML failed required semantics: missing ${missing.join(', ')}.`);
     }
     return { root: 'remote-agent-authoring-canary', contract };
 }
