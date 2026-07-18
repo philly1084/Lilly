@@ -451,6 +451,81 @@ describe('web-chat reasoning metadata normalization', () => {
     });
 });
 
+describe('web-chat async runtime status', () => {
+    test('normalizes the capability flags used by selected remote agent routing', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                status: {
+                    requestedEnabled: true,
+                    enabled: true,
+                    webChatParallelEnabled: true,
+                    allowLiveRemote: true,
+                    workerEnabled: true,
+                    workerRunning: false,
+                },
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).resolves.toEqual({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: true,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: false,
+        });
+        expect(fetchMock).toHaveBeenCalledWith(
+            'http://localhost:3000/api/async-lab/status',
+            {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            },
+        );
+    });
+
+    test('fails closed when status fields are absent or serialized truthy values', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                status: {
+                    enabled: 'true',
+                    webChatParallelEnabled: 1,
+                    allowLiveRemote: null,
+                },
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).resolves.toEqual({
+            requestedEnabled: false,
+            enabled: false,
+            webChatParallelEnabled: false,
+            allowLiveRemote: false,
+            workerEnabled: false,
+            workerRunning: false,
+        });
+    });
+
+    test('preserves authentication failures for the caller to distinguish from a disabled runtime', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: false,
+            status: 401,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ error: { message: 'Authentication required' } }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).rejects.toMatchObject({
+            message: 'Authentication required',
+            status: 401,
+        });
+    });
+});
+
 describe('web-chat remote build metadata', () => {
     test('sends plugin menu execution profile and planned tools in chat requests', async () => {
         const fetchMock = jest.fn(async () => ({

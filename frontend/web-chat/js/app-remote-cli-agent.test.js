@@ -140,6 +140,14 @@ function buildAppHarness() {
     };
     context.apiClient = {
         getRemoteToolCatalog: jest.fn(async () => buildRemoteCatalog()),
+        getAsyncRuntimeStatus: jest.fn(async () => ({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: true,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: true,
+        })),
         createAsyncRun: jest.fn(async () => ({
             run: {
                 id: 'async-run-1',
@@ -371,6 +379,113 @@ describe('web-chat remote CLI agent routing', () => {
             }),
         }));
         expect(renderedMessages.some((message) => message.metadata?.asyncRuntimeJobCard === true)).toBe(true);
+    });
+
+    test('keeps explicit selected agent jobs async when only automatic Web Chat shadowing is disabled', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.messageInput.value = 'build the selected site';
+        context.apiClient.getAsyncRuntimeStatus.mockResolvedValueOnce({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: false,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: false,
+        });
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).toHaveBeenCalledWith(expect.objectContaining({
+            adapter: 'remote-cli-agent',
+            task: 'build the selected site',
+        }));
+        expect(app.sendPreparedMessage).not.toHaveBeenCalled();
+        expect(renderedMessages.some((message) => message.metadata?.asyncRuntimeJobCard === true)).toBe(true);
+    });
+
+    test('falls back to the direct remote agent lane before rendering when async jobs are disabled', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.pendingArtifactLineage = {
+            artifactId: 'artifact-direct',
+            parentArtifactId: 'artifact-parent',
+            missionId: 'mission-direct',
+            revision: '2',
+            action: 'build-agent',
+        };
+        app.messageInput.value = 'refine the selected site';
+        context.window.artifactManager.getSelectedIds.mockReturnValueOnce(['artifact-manager-only']);
+        context.apiClient.getAsyncRuntimeStatus.mockResolvedValueOnce({
+            requestedEnabled: false,
+            enabled: false,
+            webChatParallelEnabled: false,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: true,
+        });
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).not.toHaveBeenCalled();
+        expect(app.sendPreparedMessage).toHaveBeenCalledWith(
+            'refine the selected site',
+            expect.objectContaining({
+                artifactIds: ['artifact-direct', 'artifact-manager-only'],
+                metadata: expect.objectContaining({
+                    directToolId: 'remote-cli-agent',
+                    preferredTool: 'remote-cli-agent',
+                    selectedToolSource: 'web-chat-tool-chip',
+                    asyncRuntimePreferred: true,
+                    artifactLineage: expect.objectContaining({
+                        artifactId: 'artifact-direct',
+                        parentArtifactId: 'artifact-parent',
+                    }),
+                }),
+            }),
+        );
+        expect(renderedMessages).toHaveLength(0);
+        expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('direct remote agent lane'),
+            'info',
+        );
+    });
+
+    test('falls back to the direct remote agent lane when async status is unavailable', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.messageInput.value = 'inspect the build';
+        context.apiClient.getAsyncRuntimeStatus.mockRejectedValueOnce(new Error('status unavailable'));
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).not.toHaveBeenCalled();
+        expect(app.sendPreparedMessage).toHaveBeenCalledWith(
+            'inspect the build',
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    directToolId: 'remote-cli-agent',
+                    preferredTool: 'remote-cli-agent',
+                }),
+            }),
+        );
+        expect(renderedMessages).toHaveLength(0);
+        expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('could not be confirmed'),
+            'warning',
+        );
     });
 
     test('stages artifact lineage as a truthful remote agent build handoff', async () => {

@@ -7257,9 +7257,15 @@ class ChatApp {
         const selectedToolChip = this.normalizeDirectToolSelection(
             requestMetadata.selectedToolChip || requestMetadata.selectedDirectTool || null,
         );
+        const artifactLineage = requestMetadata.artifactLineage
+            && typeof requestMetadata.artifactLineage === 'object'
+            ? { ...requestMetadata.artifactLineage }
+            : null;
         const userMessageMetadata = {
             ...(inferredBuildRunBrief ? { buildRunBrief: inferredBuildRunBrief } : {}),
             ...(selectedToolChip ? { selectedToolChip } : {}),
+            ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+            ...(artifactLineage ? { artifactLineage } : {}),
             ...(requestMetadata.missionMode ? {
                 missionId: requestMetadata.missionId,
                 missionTemplateId: requestMetadata.missionTemplateId,
@@ -9286,6 +9292,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return this.createAsyncRemoteJobCard(resolved, sessionManager.currentSessionId);
     }
 
+    collectRemoteAgentArtifactIds(options = {}) {
+        const metadata = options?.metadata && typeof options.metadata === 'object'
+            ? options.metadata
+            : {};
+        const artifactLineage = metadata.artifactLineage && typeof metadata.artifactLineage === 'object'
+            ? metadata.artifactLineage
+            : null;
+        return Array.from(new Set([
+            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
+            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
+                ? window.fileManager.getSelectedArtifactIds()
+                : []),
+            ...(typeof window.artifactManager?.getSelectedIds === 'function'
+                ? window.artifactManager.getSelectedIds()
+                : []),
+            ...(artifactLineage?.artifactId ? [artifactLineage.artifactId] : []),
+        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
+    }
+
     shouldRouteSelectedToolMessageToAsync(content = '', options = {}) {
         const normalizedContent = String(content || '').trim();
         const metadata = options?.metadata && typeof options.metadata === 'object' ? options.metadata : {};
@@ -9303,6 +9328,33 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (!normalizedContent) {
             return false;
         }
+
+        const selectedArtifactIds = this.collectRemoteAgentArtifactIds(options);
+        let asyncRuntimeStatus = null;
+        let statusLookupFailed = false;
+        try {
+            asyncRuntimeStatus = await apiClient.getAsyncRuntimeStatus();
+        } catch (_error) {
+            statusLookupFailed = true;
+            asyncRuntimeStatus = null;
+        }
+        const canQueueLiveRemoteRun = Boolean(
+            asyncRuntimeStatus?.enabled === true
+            && asyncRuntimeStatus?.allowLiveRemote === true
+        );
+        if (!canQueueLiveRemoteRun) {
+            uiHelpers.showToast?.(
+                statusLookupFailed
+                    ? 'Async job availability could not be confirmed. Continuing through the direct remote agent lane.'
+                    : 'Async job mode is unavailable, so this build is using the direct remote agent lane.',
+                statusLookupFailed ? 'warning' : 'info',
+            );
+            return this.sendPreparedMessage(normalizedContent, {
+                ...options,
+                ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+            });
+        }
+
         if (!sessionManager.currentSessionId) {
             await this.createNewSession();
         }
@@ -9330,16 +9382,6 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 || '',
             ).trim(),
         } : null;
-        const selectedArtifactIds = Array.from(new Set([
-            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
-            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
-                ? window.fileManager.getSelectedArtifactIds()
-                : []),
-            ...(typeof window.artifactManager?.getSelectedIds === 'function'
-                ? window.artifactManager.getSelectedIds()
-                : []),
-            ...(artifactLineage?.artifactId ? [artifactLineage.artifactId] : []),
-        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
         const userMessageMetadata = {
             ...(selectedToolChip ? { selectedToolChip } : {}),
             ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),

@@ -39,6 +39,8 @@ flowchart LR
 7. KimiBuilt verifies the envelope, stores the files as `remote-cli-agent` artifacts, reloads the persisted bytes after privacy restoration, and runs the structural gate again before exposing an artifact or assembling a site. Invalid rewritten JSON/XML/SVG/HTML rolls back the entire result set. No base64 is returned to the browser. When the manifest explicitly marks one `index.html` as `site-entry` and its sibling site members as `site-file`, KimiBuilt assembles exactly those final validated bytes into one native ZIP `siteBundle` artifact.
 8. The existing artifact-to-managed-app / Push to Web path promotes the chosen source bundle. The native bundle uses the entry directory as its archive root, so preview, Bundle Zip, and Push to Web all start at `index.html`. A public deployment is complete only after source/build/image, rollout, HTTPS, and visual proof are distinct and present.
 
+The Web Chat **Build with Agent** action probes the authenticated async runtime before rendering a queued job. Explicit selected-agent jobs require the runtime and live-remote adapter to be enabled; the separate `webChatParallelEnabled` control only governs automatic shadow runs and is not an explicit-job prerequisite. When async execution is disabled or its status cannot be confirmed, the action preserves the selected artifact IDs and lineage and continues through the existing direct `remote-cli-agent` chat lane without first rendering a duplicate user message or failed async card. The explicit `/remote async ...` command remains an async-only diagnostic and does not silently change lanes.
+
 ## Contract limits and security properties
 
 - Versions: `RemoteAgentHandoff/v1` and `RemoteAgentResultFiles/v1`.

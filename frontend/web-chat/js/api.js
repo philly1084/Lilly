@@ -3056,6 +3056,36 @@ class OpenAIAPIClient extends EventTarget {
         });
     }
 
+    async getAsyncRuntimeStatus() {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/status`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+
+        if (!response.ok) {
+            const details = await this.parseErrorPayload(response);
+            const error = new Error(details?.error?.message || details?.message || `Async runtime status failed: HTTP ${response.status}`);
+            error.status = response.status;
+            error.details = details;
+            throw error;
+        }
+
+        const payload = await response.json();
+        const status = payload?.status && typeof payload.status === 'object'
+            ? payload.status
+            : {};
+        return {
+            requestedEnabled: status.requestedEnabled === true,
+            enabled: status.enabled === true,
+            webChatParallelEnabled: status.webChatParallelEnabled === true,
+            allowLiveRemote: status.allowLiveRemote === true,
+            workerEnabled: status.workerEnabled === true,
+            workerRunning: status.workerRunning === true,
+        };
+    }
+
     async createAsyncRun(payload = {}) {
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/runs`, {
             method: 'POST',
