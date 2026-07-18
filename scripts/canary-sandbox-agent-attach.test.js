@@ -32,6 +32,13 @@ function bufferResponse(buffer, contentType = 'application/octet-stream') {
     });
 }
 
+function textResponse(text, contentType = 'text/html; charset=utf-8') {
+    return new Response(text, {
+        status: 200,
+        headers: { 'Content-Type': contentType },
+    });
+}
+
 function sha256(buffer) {
     return require('crypto').createHash('sha256').update(buffer).digest('hex');
 }
@@ -97,6 +104,8 @@ async function createLiveHarness(options = {}) {
         sessions: new Map(),
         artifacts: new Map(),
         runs: new Map(),
+        workspaces: new Set(),
+        deletedWorkspaces: [],
         deletedSessions: [],
         runRequests: [],
         attachRequests: [],
@@ -198,6 +207,14 @@ async function createLiveHarness(options = {}) {
                 throw new Error('test detected session cleanup before all runs were terminal');
             }
             const id = decodeURIComponent(pathname.split('/').pop());
+            for (const artifact of state.artifacts.values()) {
+                const workspaceId = artifact.sessionId === id
+                    ? String(artifact.metadata?.sandboxWorkspaceId || '').trim()
+                    : '';
+                if (workspaceId && options.retainSandboxWorkspace !== true && state.workspaces.delete(workspaceId)) {
+                    state.deletedWorkspaces.push(workspaceId);
+                }
+            }
             state.deletedSessions.push(id);
             state.sessions.delete(id);
             return jsonResponse(null, 204);
@@ -212,6 +229,24 @@ async function createLiveHarness(options = {}) {
                 network: false,
             });
             expect(body.files).toHaveLength(4);
+            const workspaceId = 'sandbox-agent-attach-canary-workspace';
+            const record = {
+                id: 'artifact-sandbox-source',
+                sessionId: 'session-source',
+                parentArtifactId: null,
+                filename: 'sandbox-agent-attach-canary.zip',
+                buffer: bundle,
+                sourceMode: 'sandbox',
+                bundle: true,
+                metadata: {
+                    createdByAgentTool: true,
+                    projectMode: 'frontend',
+                    toolId: 'code-sandbox',
+                    sandboxWorkspaceId: workspaceId,
+                },
+            };
+            state.artifacts.set(record.id, record);
+            state.workspaces.add(workspaceId);
             if (options.sandboxToolFailure === true) {
                 return jsonResponse({
                     success: true,
@@ -224,17 +259,6 @@ async function createLiveHarness(options = {}) {
                     },
                 });
             }
-            const record = {
-                id: 'artifact-sandbox-source',
-                sessionId: 'session-source',
-                parentArtifactId: null,
-                filename: 'sandbox-agent-attach-canary.zip',
-                buffer: bundle,
-                sourceMode: 'sandbox',
-                bundle: true,
-                metadata: { projectMode: 'frontend', toolId: 'code-sandbox' },
-            };
-            state.artifacts.set(record.id, record);
             return jsonResponse({
                 success: true,
                 sessionId: 'session-source',
@@ -243,12 +267,22 @@ async function createLiveHarness(options = {}) {
                     data: {
                         mode: 'project',
                         exitCode: 0,
+                        workspaceId,
+                        workspacePreviewUrl: `/api/sandbox-workspaces/${workspaceId}/preview/`,
+                        workspaceSandboxUrl: `/api/sandbox-workspaces/${workspaceId}/sandbox`,
                         artifact: serializeArtifact(record),
                         artifactError: null,
                     },
                     toolId: 'code-sandbox',
                 },
             });
+        }
+        const workspacePreviewMatch = pathname.match(/^\/api\/sandbox-workspaces\/([^/]+)\/preview\/?$/);
+        if (method === 'GET' && workspacePreviewMatch) {
+            const workspaceId = decodeURIComponent(workspacePreviewMatch[1]);
+            return state.workspaces.has(workspaceId)
+                ? textResponse(`<!doctype html><html><head><meta name="sandbox-agent-attach-canary" content="${CANARY_VERSION}"></head><body>ready</body></html>`)
+                : jsonResponse({ error: { message: 'Preview file not found' } }, 404);
         }
         if (method === 'POST' && pathname === '/api/async-lab/runs') {
             state.runRequests.push(body);
@@ -611,6 +645,8 @@ describe('sandbox-origin remote agent attach canary', () => {
             asyncRunsTerminal: true,
             ephemeralSessionsDeleted: 3,
             retainedSessionIds: [],
+            ephemeralWorkspacesDeleted: 1,
+            retainedWorkspaceIds: [],
             negativeAttachGates: {
                 canaryOwnedForeignSession: {
                     status: 409,
@@ -624,6 +660,8 @@ describe('sandbox-origin remote agent attach canary', () => {
         });
         expect(result.sandboxSource).toMatchObject({
             artifactId: 'artifact-sandbox-source',
+            workspaceId: 'sandbox-agent-attach-canary-workspace',
+            workspacePreviewVerified: true,
             sha256: sha256(harness.state.bundle),
             sizeBytes: harness.state.bundle.length,
         });
@@ -667,6 +705,8 @@ describe('sandbox-origin remote agent attach canary', () => {
             }),
         ]);
         expect(harness.state.deletedSessions).toEqual(['session-notes', 'session-canvas', 'session-source']);
+        expect(harness.state.deletedWorkspaces).toEqual(['sandbox-agent-attach-canary-workspace']);
+        expect(harness.state.workspaces.size).toBe(0);
         expect(harness.state.cancelRequests).toEqual([]);
     });
 
@@ -683,6 +723,25 @@ describe('sandbox-origin remote agent attach canary', () => {
 
         expect(harness.state.runRequests).toEqual([]);
         expect(harness.state.deletedSessions).toEqual(['session-source']);
+        expect(harness.state.workspaces.size).toBe(0);
+    });
+
+    test('fails cleanup when a proven sandbox workspace remains after its session is deleted', async () => {
+        const harness = await createLiveHarness({ retainSandboxWorkspace: true });
+
+        await expect(runCanary({
+            argv: ['--run', '--mode', 'codex'],
+            env: LIVE_ENV,
+            fetchImpl: harness.fetchImpl,
+            sleep: jest.fn(async () => {}),
+            now: (() => {
+                let value = 0;
+                return () => ++value;
+            })(),
+        })).rejects.toThrow(/workspace .* preview remained available with HTTP 200/i);
+
+        expect(harness.state.deletedSessions).toEqual(['session-notes', 'session-canvas', 'session-source']);
+        expect(harness.state.workspaces).toEqual(new Set(['sandbox-agent-attach-canary-workspace']));
     });
 
     test('cancels and proves an active run terminal before deleting any canary session', async () => {

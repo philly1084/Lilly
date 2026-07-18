@@ -6,9 +6,12 @@ const {
   resolveFrontendBundleContentType,
   rewriteRootRelativeFrontendPaths,
 } = require('../frontend-bundles');
+const {
+  normalizeSandboxWorkspaceId,
+  resolveSandboxWorkspacePath,
+} = require('../sandbox-workspace-storage');
 
 const router = Router();
-const SANDBOX_ROOT = path.resolve(process.cwd(), 'output', 'sandboxes');
 
 function escapeHtmlAttribute(value = '') {
   return String(value || '')
@@ -76,17 +79,12 @@ function removeFrameBlockingHeaders(res) {
   res.removeHeader('X-Frame-Options');
 }
 
-function normalizeWorkspaceId(value = '') {
-  return String(value || '').trim().match(/^[a-z0-9._-]{1,140}$/i)?.[0] || '';
-}
-
 function resolveWorkspaceFile(workspaceId = '', requestedPath = '') {
-  const safeWorkspaceId = normalizeWorkspaceId(workspaceId);
-  if (!safeWorkspaceId) {
+  const workspacePath = resolveSandboxWorkspacePath(workspaceId);
+  if (!workspacePath) {
     return null;
   }
 
-  const workspacePath = path.resolve(SANDBOX_ROOT, safeWorkspaceId);
   const normalizedRequest = String(requestedPath || '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '')
@@ -212,12 +210,12 @@ router.get('/:workspaceId/sandbox-access/:previewAccessToken', async (req, res, 
 
 async function serveSandboxShell(req, res, next, previewAccessToken = '') {
   try {
-    const workspaceId = normalizeWorkspaceId(req.params.workspaceId);
+    const workspaceId = normalizeSandboxWorkspaceId(req.params.workspaceId);
     if (!workspaceId) {
       return res.status(404).json({ error: { message: 'Sandbox workspace not found' } });
     }
 
-    const workspacePath = path.resolve(SANDBOX_ROOT, workspaceId);
+    const workspacePath = resolveSandboxWorkspacePath(workspaceId);
     await fs.access(workspacePath);
     applyShellHeaders(res);
     res.send(buildSandboxShell(workspaceId, previewAccessToken));

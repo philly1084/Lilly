@@ -75,6 +75,13 @@ jest.mock('../generated-file-artifacts', () => ({
     persistGeneratedArtifactLocally: jest.fn(),
 }));
 
+jest.mock('../sandbox-workspace-storage', () => ({
+    deleteSandboxWorkspacesForArtifacts: jest.fn().mockResolvedValue({
+        deletedWorkspaceIds: [],
+        missingWorkspaceIds: [],
+    }),
+}));
+
 const { artifactService, extractResponseText, resolveCompletedResponseText } = require('./artifact-service');
 const { artifactStore } = require('./artifact-store');
 const { assetManager } = require('../asset-manager');
@@ -84,7 +91,12 @@ const { renderArtifact } = require('./artifact-renderer');
 const { createResponse } = require('../openai-client');
 const { sanitizeRuntimePayload, rehydrateText, resolvePiiPolicy } = require('../pii');
 const { searchImages, isConfigured } = require('../unsplash-client');
-const { persistGeneratedArtifactLocally } = require('../generated-file-artifacts');
+const {
+    deleteLocalGeneratedArtifact,
+    listLocalGeneratedArtifactsBySession,
+    persistGeneratedArtifactLocally,
+} = require('../generated-file-artifacts');
+const { deleteSandboxWorkspacesForArtifacts } = require('../sandbox-workspace-storage');
 const { readFrontendBundleArchive } = require('../frontend-bundles');
 
 describe('ArtifactService', () => {
@@ -106,6 +118,12 @@ describe('ArtifactService', () => {
         resolvePiiPolicy.mockReturnValue({ enabled: false });
         postgres.enabled = true;
         isConfigured.mockReturnValue(false);
+        deleteLocalGeneratedArtifact.mockResolvedValue(true);
+        listLocalGeneratedArtifactsBySession.mockResolvedValue([]);
+        deleteSandboxWorkspacesForArtifacts.mockResolvedValue({
+            deletedWorkspaceIds: [],
+            missingWorkspaceIds: [],
+        });
         persistGeneratedArtifactLocally.mockResolvedValue({
             id: 'artifact-local-1',
             sessionId: 'session-1',
@@ -254,6 +272,52 @@ describe('ArtifactService', () => {
 
         expect(visible.map((artifact) => artifact.id)).toEqual(['new-sandbox']);
         expect(all.map((artifact) => artifact.id)).toEqual(['old-sandbox', 'new-sandbox']);
+    });
+
+    test('deletes the exact workspace linked to a deleted sandbox artifact', async () => {
+        const artifact = {
+            id: 'sandbox-artifact',
+            sessionId: 'session-1',
+            sourceMode: 'sandbox',
+            metadata: {
+                createdByAgentTool: true,
+                toolId: 'code-sandbox',
+                projectMode: 'frontend',
+                sandboxWorkspaceId: 'sandbox-project-123',
+            },
+        };
+        artifactStore.get.mockResolvedValue(artifact);
+        artifactStore.delete.mockResolvedValue(true);
+
+        await expect(artifactService.deleteArtifact(artifact.id)).resolves.toBe(true);
+
+        expect(deleteSandboxWorkspacesForArtifacts).toHaveBeenCalledWith([artifact]);
+    });
+
+    test('deletes Postgres and local sandbox workspaces after session artifact cleanup', async () => {
+        const postgresArtifact = {
+            id: 'sandbox-postgres',
+            sessionId: 'session-1',
+            sourceMode: 'sandbox',
+            metadata: { sandboxWorkspaceId: 'sandbox-postgres-123' },
+        };
+        const localArtifact = {
+            id: 'artifact-local-sandbox',
+            sessionId: 'session-1',
+            sourceMode: 'sandbox',
+            metadata: { sandboxWorkspaceId: 'sandbox-local-456' },
+        };
+        artifactStore.listBySession.mockResolvedValue([postgresArtifact]);
+        listLocalGeneratedArtifactsBySession.mockResolvedValue([localArtifact]);
+
+        await artifactService.deleteArtifactsForSession('session-1');
+
+        expect(artifactStore.deleteBySession).toHaveBeenCalledWith('session-1');
+        expect(deleteLocalGeneratedArtifact).toHaveBeenCalledWith(localArtifact.id);
+        expect(deleteSandboxWorkspacesForArtifacts).toHaveBeenCalledWith([
+            postgresArtifact,
+            localArtifact,
+        ]);
     });
 
     test('falls back to local artifacts when Postgres storage is not configured', async () => {
