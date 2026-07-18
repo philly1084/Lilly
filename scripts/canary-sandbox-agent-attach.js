@@ -414,6 +414,13 @@ function sanitizeErrorMessage(value = '', secrets = []) {
     return normalized;
 }
 
+function normalizeDiagnosticCode(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/[^a-z0-9_.-]+/gi, '')
+        .slice(0, 96) || 'unknown';
+}
+
 async function readBoundedBuffer(response, maxBytes) {
     const declared = Number.parseInt(response.headers.get('content-length') || '0', 10);
     if (Number.isFinite(declared) && declared > maxBytes) {
@@ -908,15 +915,22 @@ async function createSandboxSource(client, sourceSession, runtime) {
         ? toolEnvelope.data
         : toolEnvelope;
     const artifactId = String(result?.artifact?.id || '').trim();
-    if (response?.success !== true
-        || toolEnvelope?.success === false
-        || response?.sessionId !== sourceSession.id
-        || result?.mode !== 'project'
-        || result?.exitCode !== 0
-        || result?.artifactError
-        || !artifactId
-        || result?.artifact?.sessionId !== sourceSession.id) {
-        throw new Error('code-sandbox did not persist a successful session-bound project artifact.');
+    const failureReasons = [
+        ...(response?.success !== true ? ['route-not-successful'] : []),
+        ...(toolEnvelope?.success === false
+            ? [`tool-failed:${normalizeDiagnosticCode(toolEnvelope.errorCode || toolEnvelope.errorType)}`]
+            : []),
+        ...(response?.sessionId !== sourceSession.id ? ['route-session-mismatch'] : []),
+        ...(result?.mode !== 'project' ? ['project-mode-missing'] : []),
+        ...(result?.exitCode !== 0 ? ['project-exit-not-zero'] : []),
+        ...(result?.artifactError ? ['artifact-persistence-error'] : []),
+        ...(!artifactId ? ['artifact-id-missing'] : []),
+        ...(artifactId && result?.artifact?.sessionId !== sourceSession.id ? ['artifact-session-mismatch'] : []),
+    ];
+    if (failureReasons.length > 0) {
+        throw new Error(
+            `code-sandbox did not persist a successful session-bound project artifact (${failureReasons.join(', ')}).`,
+        );
     }
     const artifact = await client.requestJson(`/api/artifacts/${encodeURIComponent(artifactId)}`);
     if (artifact?.id !== artifactId
