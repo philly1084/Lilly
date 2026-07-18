@@ -805,6 +805,18 @@ describe('/api/artifacts route', () => {
                         purpose: 'Vite handoff',
                         content: 'console.log("handoff");',
                     },
+                    {
+                        path: 'assets/logo.svg',
+                        language: 'svg',
+                        purpose: 'Portable logo',
+                        content: '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z"/></svg>',
+                    },
+                    {
+                        path: 'data/config.xml',
+                        language: 'xml',
+                        purpose: 'Site configuration',
+                        content: '<config><theme>newsroom</theme></config>',
+                    },
                 ],
             }),
             metadata: {
@@ -812,11 +824,13 @@ describe('/api/artifacts route', () => {
                 sourcePrompt: 'Build a newsroom website.',
                 siteBundle: {
                     entry: 'index.html',
-                    fileCount: 3,
+                    fileCount: 5,
                     files: [
                         { path: 'index.html' },
                         { path: 'styles.css' },
                         { path: 'src/main.jsx' },
+                        { path: 'assets/logo.svg', mimeType: 'image/svg+xml' },
+                        { path: 'data/config.xml', mimeType: 'application/xml' },
                     ],
                 },
             },
@@ -832,8 +846,14 @@ describe('/api/artifacts route', () => {
             .send({ requestedAction: 'deploy', deployRequested: true });
 
         expect(response.status).toBe(202);
-        expect(response.body.fileCount).toBe(3);
-        expect(response.body.files).toEqual(['public/index.html', 'public/styles.css', 'src/main.jsx']);
+        expect(response.body.fileCount).toBe(5);
+        expect(response.body.files).toEqual([
+            'public/assets/logo.svg',
+            'public/data/config.xml',
+            'public/index.html',
+            'public/styles.css',
+            'src/main.jsx',
+        ]);
         expect(app.locals.managedAppService.createApp).toHaveBeenCalledWith(
             expect.objectContaining({
                 appName: 'Newsroom Preview',
@@ -842,12 +862,233 @@ describe('/api/artifacts route', () => {
                 files: expect.arrayContaining([
                     expect.objectContaining({ path: 'public/index.html' }),
                     expect.objectContaining({ path: 'public/styles.css' }),
+                    expect.objectContaining({ path: 'public/assets/logo.svg' }),
+                    expect.objectContaining({ path: 'public/data/config.xml' }),
                     expect.objectContaining({ path: 'src/main.jsx' }),
                 ]),
             }),
             'phill',
             expect.objectContaining({ sessionId: 'session-1' }),
         );
+    });
+
+    test('preserves every safe UTF-8 native archive member regardless of file extension', async () => {
+        const archiveIndex = '<!doctype html><html><body><h1>Archive source</h1></body></html>';
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-text-extensions-1',
+            sessionId: 'session-1',
+            filename: 'portable-text-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            previewHtml: '<!doctype html><html><body><h1>Stale preview fallback</h1></body></html>',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: archiveIndex },
+                    { path: 'config/site.yaml', content: 'theme: midnight\nlocale: en-CA\n' },
+                    { path: 'shaders/hero.glsl', content: 'void main() { gl_FragColor = vec4(1.0); }\n' },
+                    { path: 'manifest.webmanifest', content: '{"name":"Portable Site"}\n' },
+                    { path: 'CNAME', content: 'portable.example.test\n' },
+                ],
+            }),
+            metadata: {
+                title: 'Portable Text Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 5,
+                    files: [
+                        { path: 'index.html' },
+                        { path: 'config/site.yaml' },
+                        { path: 'shaders/hero.glsl' },
+                        { path: 'manifest.webmanifest', mimeType: 'application/manifest+json' },
+                        { path: 'CNAME' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-text-extensions-1/managed-app')
+            .send({ requestedAction: 'build' });
+
+        expect(response.status).toBe(202);
+        expect(response.body.files).toEqual([
+            'public/CNAME',
+            'public/config/site.yaml',
+            'public/index.html',
+            'public/manifest.webmanifest',
+            'public/shaders/hero.glsl',
+        ]);
+        const createInput = app.locals.managedAppService.createApp.mock.calls[0][0];
+        expect(createInput.files).toEqual(expect.arrayContaining([
+            { path: 'public/CNAME', content: 'portable.example.test\n' },
+            { path: 'public/config/site.yaml', content: 'theme: midnight\nlocale: en-CA\n' },
+            { path: 'public/index.html', content: archiveIndex },
+            { path: 'public/manifest.webmanifest', content: '{"name":"Portable Site"}\n' },
+            { path: 'public/shaders/hero.glsl', content: 'void main() { gl_FragColor = vec4(1.0); }\n' },
+        ]));
+        expect(createInput.files.find((file) => file.path === 'public/index.html').content)
+            .not.toContain('Stale preview fallback');
+    });
+
+    test('typed-blocks a malformed explicit native site ZIP instead of deploying preview HTML', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-malformed-1',
+            sessionId: 'session-1',
+            filename: 'malformed-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: Buffer.from('this is not a ZIP archive', 'utf8'),
+            previewHtml: '<!doctype html><html><body><h1>Must not deploy</h1></body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{ path: 'index.html' }],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-malformed-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({
+                    reason: 'archive_parse_failed',
+                    remediation: expect.stringContaining('Regenerate the site ZIP'),
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('typed-blocks a native site ZIP that omits a declared member', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-incomplete-1',
+            sessionId: 'session-1',
+            filename: 'incomplete-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Incomplete</body></html>' },
+                ],
+            }),
+            previewHtml: '<!doctype html><html><body>Fallback must not deploy</body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html' },
+                        { path: 'config/site.yaml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-incomplete-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({
+                    reason: 'declared_members_missing_from_archive',
+                    affectedMembers: ['config/site.yaml'],
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('rejects Push to Web when a native site bundle contains unsupported binary assets', async () => {
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const opaqueBinary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x10]);
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-binary-1',
+            sessionId: 'session-1',
+            filename: 'binary-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    {
+                        path: 'index.html',
+                        language: 'html',
+                        content: '<!doctype html><html><body><img src="assets/hero.png"></body></html>',
+                    },
+                    {
+                        path: 'assets/hero.png',
+                        language: 'binary',
+                        contentBuffer: png,
+                    },
+                    {
+                        path: 'assets/texture.asset',
+                        contentBuffer: opaqueBinary,
+                    },
+                ],
+            }),
+            metadata: {
+                title: 'Binary Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 3,
+                    files: [
+                        { path: 'index.html', language: 'html', mimeType: 'text/html' },
+                        { path: 'assets/hero.png', language: 'binary', mimeType: 'image/png' },
+                        { path: 'assets/texture.asset' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-binary-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+                blocker: 'unsupported_binary_assets',
+                details: expect.objectContaining({
+                    unsupportedAssets: ['assets/hero.png', 'assets/texture.asset'],
+                    remediation: expect.stringContaining('SVG/XML/text'),
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
     });
 
     test('exports a previewable single HTML artifact with requested DNS host', async () => {

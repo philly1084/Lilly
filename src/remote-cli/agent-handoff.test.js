@@ -81,6 +81,8 @@ describe('RemoteAgentHandoff', () => {
     expect(prompt).toContain('.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/input/manifest.json');
     expect(prompt).toContain('brief.xml (application/xml');
     expect(prompt).toContain('diagram.svg (image/svg+xml');
+    expect(prompt).toContain('name its entry index.html with role "site-entry"');
+    expect(prompt).toContain('mark every other website member "site-file"');
     expect(prompt).toContain('RESULT_FILES_MANIFEST=.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json');
   });
 

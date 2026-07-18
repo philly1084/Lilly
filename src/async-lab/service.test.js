@@ -179,6 +179,145 @@ describe('AsyncLabService', () => {
         expect(events.find((event) => event.type === 'completed').payload.toolExecuted).toBe(true);
     });
 
+    test('retains only safe compact remote-agent result fields in the async run', async () => {
+        const rawBase64 = Buffer.from('<html>raw result content</html>').toString('base64');
+        const secretToken = 'super-secret-token-value';
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            duration: 44,
+            toolId: 'remote-cli-agent',
+            data: {
+                completionStatus: 'completed',
+                providerId: 'kimi',
+                model: 'kimi-k3',
+                transport: 'provider-agent',
+                publicUrl: `https://demo.example.test/?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&X-Amz-Security-Token=${secretToken}&keyboard=compact&monkey=capuchin&view=1`,
+                publicHost: 'demo.example.test',
+                artifactIds: ['artifact-html'],
+                resultFiles: [{
+                    filename: 'index.html',
+                    relativePath: 'site/index.html',
+                    artifactId: 'artifact-html',
+                    mimeType: 'text/html',
+                    role: 'site-entry',
+                    sizeBytes: 128,
+                    sha256: 'a'.repeat(64),
+                    gatewayVerified: true,
+                    contentBase64: rawBase64,
+                    secret: secretToken,
+                    metadata: { apiKey: secretToken },
+                }],
+                artifacts: [{
+                    id: 'artifact-html',
+                    filename: 'index.html',
+                    mimeType: 'text/html',
+                    sizeBytes: 128,
+                    downloadUrl: `/api/artifacts/artifact-html/download?X-Goog-Signature=${secretToken}&sig=${secretToken}&keynote=opening&view=1`,
+                    metadata: { secret: secretToken },
+                    contentBase64: rawBase64,
+                }],
+                siteBundleArtifact: {
+                    id: 'artifact-bundle',
+                    filename: 'demo-site.zip',
+                    mimeType: 'application/zip',
+                    downloadUrl: '/api/artifacts/artifact-bundle/download',
+                    bundleDownloadUrl: `/api/artifacts/artifact-bundle/bundle?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&keyboard=compact`,
+                    contentBase64: rawBase64,
+                },
+                siteBundleArtifactId: 'artifact-bundle',
+                artifactQuality: {
+                    version: 'ArtifactStructuralQuality/v1',
+                    status: 'passed',
+                    files: [{
+                        path: 'site/index.html',
+                        filename: 'index.html',
+                        role: 'site-entry',
+                        mimeType: 'text/html',
+                        format: 'html',
+                        sizeBytes: 128,
+                        text: '<html>must not escape</html>',
+                        contentBase64: rawBase64,
+                    }],
+                    site: {
+                        enabled: true,
+                        entries: ['site/index.html'],
+                        checkedReferences: 3,
+                    },
+                    warnings: [{
+                        code: 'EXAMPLE_WARNING',
+                        path: 'site/index.html',
+                        message: `Reference token=${secretToken} was ignored.`,
+                        secret: secretToken,
+                    }],
+                    secret: secretToken,
+                },
+                apiKey: secretToken,
+                contentBase64: rawBase64,
+            },
+        }));
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+        });
+        const created = await service.createRun({
+            task: 'Build from the selected artifact.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'primary/main-server',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const toolResult = run.metadata.toolResult;
+        expect(run.status).toBe('completed');
+        expect(toolResult).toEqual(expect.objectContaining({
+            success: true,
+            completionStatus: 'completed',
+            provider: 'kimi',
+            model: 'kimi-k3',
+            transport: 'provider-agent',
+            publicUrl: 'https://demo.example.test/?keyboard=compact&monkey=capuchin&view=1',
+            publicHost: 'demo.example.test',
+            artifactIds: ['artifact-html', 'artifact-bundle'],
+            siteBundleArtifactId: 'artifact-bundle',
+        }));
+        expect(toolResult.resultFiles).toEqual([
+            expect.objectContaining({
+                filename: 'index.html',
+                relativePath: 'site/index.html',
+                artifactId: 'artifact-html',
+                gatewayVerified: true,
+            }),
+        ]);
+        expect(toolResult.resultFiles[0]).not.toHaveProperty('contentBase64');
+        expect(toolResult.resultFiles[0]).not.toHaveProperty('metadata');
+        expect(toolResult.artifacts).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'artifact-html',
+                downloadUrl: '/api/artifacts/artifact-html/download?keynote=opening&view=1',
+            }),
+            expect.objectContaining({
+                id: 'artifact-bundle',
+                bundleDownloadUrl: '/api/artifacts/artifact-bundle/bundle?keyboard=compact',
+            }),
+        ]));
+        expect(toolResult.artifactQuality).toEqual(expect.objectContaining({
+            version: 'ArtifactStructuralQuality/v1',
+            status: 'passed',
+            site: {
+                enabled: true,
+                entries: ['site/index.html'],
+                checkedReferences: 3,
+            },
+        }));
+        expect(toolResult.artifactQuality.files[0]).not.toHaveProperty('text');
+        expect(toolResult.artifactQuality.files[0]).not.toHaveProperty('contentBase64');
+        expect(toolResult.artifactQuality.warnings[0]).not.toHaveProperty('secret');
+        expect(JSON.stringify(toolResult)).not.toContain(rawBase64);
+        expect(JSON.stringify(toolResult)).not.toContain(secretToken);
+    });
+
     test('records a skipped live adapter when no tool manager is attached', async () => {
         const service = createService({ allowLiveRemote: true });
         const created = await service.createRun({
@@ -282,12 +421,82 @@ describe('AsyncLabService', () => {
         const events = await service.listEvents(run.id, 0);
         expect(run.status).toBe('failed');
         expect(run.metadata.failure).toBe('remote failed');
+        expect(run.metadata.toolResult).toEqual(expect.objectContaining({
+            adapter: 'remote-command',
+            success: false,
+            error: 'remote failed',
+        }));
         expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
             'tool_started',
             'tool_failed',
             'failed',
         ]));
     });
+
+    test.each(['blocked', 'failed'])(
+        'marks remote-agent completionStatus=%s as failed without losing its result',
+        async (completionStatus) => {
+            const executeTool = jest.fn(async () => ({
+                success: true,
+                duration: 18,
+                toolId: 'remote-cli-agent',
+                data: {
+                    completionStatus,
+                    blocker: `Artifact quality gate reported ${completionStatus}.`,
+                    providerId: 'codex',
+                    model: 'gpt-5.6-codex',
+                    transport: 'codex-agent',
+                    artifactIds: ['artifact-partial'],
+                    artifacts: [{
+                        id: 'artifact-partial',
+                        filename: 'partial.html',
+                        mimeType: 'text/html',
+                    }],
+                },
+            }));
+            const service = createService({
+                allowLiveRemote: true,
+                toolManager: { executeTool },
+            });
+            const created = await service.createRun({
+                task: 'Finish the artifact build.',
+                adapter: 'remote-cli-agent',
+                targetKey: 'primary/main-server',
+                liveRemote: true,
+            }, 'tester');
+
+            await service.drainQueue();
+
+            const run = await service.getRun(created.run.id, 'tester');
+            const events = await service.listEvents(run.id, 0);
+            const toolFailedEvent = events.find((event) => event.type === 'tool_failed');
+            const failedEvent = events.find((event) => event.type === 'failed');
+            expect(run.status).toBe('failed');
+            expect(run.metadata.failure).toBe(`Artifact quality gate reported ${completionStatus}.`);
+            expect(run.metadata.toolResult).toEqual(expect.objectContaining({
+                success: false,
+                completionStatus,
+                blocker: `Artifact quality gate reported ${completionStatus}.`,
+                provider: 'codex',
+                artifactIds: ['artifact-partial'],
+                artifacts: [expect.objectContaining({ id: 'artifact-partial' })],
+            }));
+            expect(toolFailedEvent).toEqual(expect.objectContaining({
+                status: 'failed',
+                payload: expect.objectContaining({
+                    result: expect.objectContaining({
+                        completionStatus,
+                        artifactIds: ['artifact-partial'],
+                    }),
+                }),
+            }));
+            expect(failedEvent.payload).toEqual(expect.objectContaining({
+                completionStatus,
+                toolExecuted: true,
+            }));
+            expect(events.map((event) => event.type)).not.toContain('completed');
+        },
+    );
 
     test('returns the existing run for duplicate idempotency keys', async () => {
         const service = createService();

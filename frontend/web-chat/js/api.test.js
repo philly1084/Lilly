@@ -582,6 +582,71 @@ describe('web-chat remote build metadata', () => {
         }));
     });
 
+    test('forwards remote CLI artifact handoff and continuation fields', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                success: true,
+                data: { ok: true },
+                sessionId: 'session-1',
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+        const contextFiles = [{
+            filename: 'design-brief.xml',
+            content: '<brief><goal>Refine the landing page</goal></brief>',
+            mimeType: 'application/xml',
+        }];
+
+        await apiClient.invokeRemoteCliAgent('Refine the selected artifact.', {
+            transport: 'provider-agent',
+            cwd: '/srv/apps/demo',
+            workspacePath: '/srv/apps/demo',
+            targetId: 'k3s-prod',
+            sessionId: 'remote-session-1',
+            threadId: 'thread-1',
+            jobId: 'job-1',
+            mcpSessionId: 'mcp-session-1',
+            agentRunTimeoutMs: 180000,
+            remoteCodeModel: 'kimi-k3',
+            maxStatusPolls: 24,
+            statusPollIntervalMs: 2500,
+            instructions: 'Preserve the design system.',
+            supportAgentResponse: 'Use the existing layout tokens.',
+            artifactIds: ['artifact-1', 'artifact-1', 'artifact-2'],
+            contextFiles,
+            resultFileGlobs: ['dist/*.html', 'dist/*.html', 'assets/*.svg'],
+            collectResultFiles: true,
+            continuitySummary: 'Continue artifact-1 from revision 3.',
+            adminMode: true,
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual(expect.objectContaining({
+            task: 'Refine the selected artifact.',
+            transport: 'provider-agent',
+            cwd: '/srv/apps/demo',
+            workspacePath: '/srv/apps/demo',
+            targetId: 'k3s-prod',
+            sessionId: 'remote-session-1',
+            threadId: 'thread-1',
+            jobId: 'job-1',
+            mcpSessionId: 'mcp-session-1',
+            agentRunTimeoutMs: 180000,
+            remoteCodeModel: 'kimi-k3',
+            maxStatusPolls: 24,
+            statusPollIntervalMs: 2500,
+            instructions: 'Preserve the design system.',
+            supportAgentResponse: 'Use the existing layout tokens.',
+            artifactIds: ['artifact-1', 'artifact-2'],
+            contextFiles,
+            resultFileGlobs: ['dist/*.html', 'assets/*.svg'],
+            collectResultFiles: true,
+            continuitySummary: 'Continue artifact-1 from revision 3.',
+            adminMode: true,
+        }));
+    });
+
     test('prefers managed-app only for explicit managed-app chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,

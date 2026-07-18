@@ -36,8 +36,8 @@ flowchart LR
 4. `nuts` validates bytes, size, checksum, exact paths, and reserved filenames. It stages locally for Codex or over strict host-key-checked SSH for Kimi/Grok's configured target, then returns an acknowledgment.
 5. The selected CLI agent works normally. Files that should return must be copied to the run's `output/files/` directory and listed in `output/manifest.json`.
 6. Once the run is terminal, KimiBuilt pulls the authenticated result endpoint. `nuts` rejects traversal, pre-existing paths outside the isolated directory, symlinks, non-regular files, invalid manifests, oversize files, and checksum failures.
-7. KimiBuilt verifies the envelope again and stores the files as `remote-cli-agent` artifacts with input artifact IDs plus transport/workspace/run lineage. No base64 is returned to the browser.
-8. The existing artifact-to-managed-app / Push to Web path promotes the chosen source bundle. A public deployment is complete only after source/build/image, rollout, HTTPS, and visual proof are distinct and present.
+7. KimiBuilt verifies the envelope, stores the files as `remote-cli-agent` artifacts, reloads the persisted bytes after privacy restoration, and runs the structural gate again before exposing an artifact or assembling a site. Invalid rewritten JSON/XML/SVG/HTML rolls back the entire result set. No base64 is returned to the browser. When the manifest explicitly marks one `index.html` as `site-entry` and its sibling site members as `site-file`, KimiBuilt assembles exactly those final validated bytes into one native ZIP `siteBundle` artifact.
+8. The existing artifact-to-managed-app / Push to Web path promotes the chosen source bundle. The native bundle uses the entry directory as its archive root, so preview, Bundle Zip, and Push to Web all start at `index.html`. A public deployment is complete only after source/build/image, rollout, HTTPS, and visual proof are distinct and present.
 
 ## Contract limits and security properties
 
@@ -53,7 +53,9 @@ flowchart LR
 - The router start response, not the request, proves acceptance.
 - Result paths are authoritative only after the authenticated router endpoint verifies them.
 - The v1 JSON/base64 envelope is intentionally small. Larger design bundles should move to short-lived, checksum-bound object-store URLs in a later version.
-- Nested returned paths are retained as lineage metadata and converted to deterministic collision-free artifact filenames, so duplicate basenames can safely make a second handoff. Reconstructing several returned website files into one native KimiBuilt `siteBundle` remains a follow-up; v1 callers should return an explicit ZIP when directory-level preview or promotion is required.
+- Nested returned paths are retained as lineage metadata and converted to deterministic collision-free artifact filenames, so duplicate basenames can safely make a second handoff. For a complete website, all site members must share the `site-entry` directory; exactly one `index.html` uses `site-entry`, every bundled sibling uses `site-file`, and QA or unrelated deliverables use other roles. Ambiguous site roles fail before writes, while a later storage or serialization failure rolls back the entire result envelope.
+- Native role-marked site assembly remains within the v1 byte/file limits and does not change the router contract because `role` is already gateway-preserved metadata. Larger bundles still require the future checksum-bound object-store lane.
+- The current managed-app repository writer is text-only. Push to Web preserves every safe valid UTF-8 archive member regardless of extension, but returns HTTP 422 with `ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS` when a native bundle contains PNG/JPEG/WebP, fonts, media, opaque binary files, or another binary payload. Malformed ZIPs, unsafe paths, and entry/count/member declaration mismatches return `ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE`; `previewHtml` never replaces or rescues an explicit archive. The route must never silently omit files and deploy a broken site; replace binary assets with text-safe assets or add binary repository support first.
 
 ## Release gate
 

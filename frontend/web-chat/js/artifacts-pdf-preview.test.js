@@ -128,6 +128,27 @@ describe('web-chat artifact PDF previews', () => {
         expect(markup).not.toContain('undefined');
     });
 
+    test('renders Push to Web for a hydrated aggregate site bundle', () => {
+        const artifactManager = loadArtifactManager();
+
+        const markup = artifactManager.buildGalleryMarkup([{
+            id: 'artifact-site-bundle',
+            filename: 'website.zip',
+            format: 'zip',
+            mimeType: 'application/zip',
+            sizeBytes: 8192,
+            downloadUrl: '/api/artifacts/artifact-site-bundle/download',
+            previewUrl: '/api/artifacts/artifact-site-bundle/preview',
+            sandboxUrl: '/api/artifacts/artifact-site-bundle/sandbox',
+            bundleDownloadUrl: '/api/artifacts/artifact-site-bundle/bundle',
+        }]);
+
+        expect(markup).toContain('Open Site');
+        expect(markup).toContain('Bundle Zip');
+        expect(markup).toContain('Push to Web');
+        expect(markup).toContain("artifactManager.exportSiteToManagedApp('artifact-site-bundle')");
+    });
+
     test('hides uploaded artifact previews when PII preview suppression is flagged', () => {
         const artifactManager = loadArtifactManager();
 

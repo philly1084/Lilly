@@ -462,6 +462,7 @@ function buildRemoteAgentHandoffPrompt(handoff = null) {
       ? `- Put only files that should return to KimiBuilt under ${handoff.output.filesDirectory}. Before finishing, write ${handoff.output.manifestPath} using contract ${REMOTE_AGENT_RESULT_FILES_VERSION}.`
       : '- No result-file collection was requested for this run.',
     handoff.output?.enabled ? '- The result manifest must be JSON with a files array. Each entry uses workspace-relative path, role, mimeType, and description. Never include paths outside the isolated output/files directory or symlinks.' : '',
+    handoff.output?.enabled ? '- To return one complete previewable website, put the whole static site under one directory, name its entry index.html with role "site-entry", and mark every other website member "site-file". Use other roles for QA reports, editable source, or unrelated XML/SVG deliverables so they are not packed into the site.' : '',
     handoff.output?.enabled && requestedGlobs ? `- Requested output patterns: ${requestedGlobs}.` : '',
     handoff.output?.enabled && !requestedGlobs ? '- Include the source, preview, document, SVG/image, and QA files that should return to KimiBuilt.' : '',
     handoff.output?.enabled ? `- Finish with RESULT_FILES_MANIFEST=${handoff.output.manifestPath}.` : '',

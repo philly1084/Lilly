@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const path = require('path').posix;
+const { TextDecoder } = require('util');
 const { sessionStore } = require('../session-store');
 const { artifactService } = require('../artifacts/artifact-service');
 const { parseMultipartRequest } = require('../utils/multipart');
@@ -35,21 +36,30 @@ const {
 const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
 
 const router = Router();
-const DEPLOYABLE_TEXT_EXTENSIONS = new Set([
-    '.css',
-    '.csv',
-    '.html',
-    '.htm',
-    '.js',
-    '.jsx',
-    '.json',
-    '.md',
-    '.mjs',
-    '.svg',
-    '.txt',
-    '.ts',
-    '.tsx',
-    '.xml',
+const UNSUPPORTED_MANAGED_APP_BINARY_ASSET_EXTENSIONS = new Set([
+    '.avif',
+    '.bin',
+    '.bmp',
+    '.eot',
+    '.gif',
+    '.glb',
+    '.ico',
+    '.jpeg',
+    '.jpg',
+    '.mp3',
+    '.mp4',
+    '.ogg',
+    '.otf',
+    '.pdf',
+    '.png',
+    '.ttf',
+    '.wasm',
+    '.wav',
+    '.webm',
+    '.webp',
+    '.woff',
+    '.woff2',
+    '.zip',
 ]);
 
 function applyPreviewResponseHeaders(res) {
@@ -510,59 +520,334 @@ function normalizeManagedAppPublicPath(filePath = '') {
     return `public/${normalized}`;
 }
 
-function isDeployableTextFile(filePath = '') {
+function normalizeSafeManagedAppSourcePath(filePath = '') {
+    const rawPath = String(filePath || '').trim().replace(/\\/g, '/');
+    if (
+        !rawPath
+        || /[\u0000-\u001f\u007f\ufffd]/.test(rawPath)
+        || rawPath.startsWith('/')
+        || /^[a-z]:\//i.test(rawPath)
+    ) {
+        return '';
+    }
+
+    const relativePath = rawPath.replace(/^(?:\.\/)+/, '');
+    if (!relativePath || relativePath.split('/').some((segment) => segment === '..')) {
+        return '';
+    }
+
+    return normalizeBundlePath(relativePath);
+}
+
+function getDeclaredSiteBundleFiles(artifact = {}) {
+    const bundle = artifact?.metadata?.siteBundle || artifact?.metadata?.bundle || null;
+    const rawFiles = Array.isArray(bundle?.files)
+        ? bundle.files.map((file) => ({
+            filePath: typeof file === 'string' ? file : (file?.path || file?.name || ''),
+            metadata: file && typeof file === 'object' ? file : {},
+        }))
+        : (bundle?.files && typeof bundle.files === 'object'
+            ? Object.entries(bundle.files).map(([filePath, file]) => ({
+                filePath,
+                metadata: file && typeof file === 'object' ? file : {},
+            }))
+            : []);
+    const files = new Map();
+    const invalidMembers = new Set();
+    const duplicateMembers = new Set();
+
+    rawFiles.forEach(({ filePath, metadata }) => {
+        const sourcePath = normalizeSafeManagedAppSourcePath(filePath);
+        if (!sourcePath || String(filePath || '').replace(/\\/g, '/').endsWith('/')) {
+            invalidMembers.add(String(filePath || '').trim() || '(empty path)');
+            return;
+        }
+        if (files.has(sourcePath)) {
+            duplicateMembers.add(sourcePath);
+            return;
+        }
+        files.set(sourcePath, metadata);
+    });
+
+    return {
+        bundle,
+        files,
+        invalidMembers: Array.from(invalidMembers).sort((left, right) => left.localeCompare(right)),
+        duplicateMembers: Array.from(duplicateMembers).sort((left, right) => left.localeCompare(right)),
+    };
+}
+
+function isLikelyBinaryAssetBuffer(buffer = null) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return false;
+    }
+    if (buffer.includes(0)) {
+        return true;
+    }
+    try {
+        new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch (_error) {
+        return true;
+    }
+    let controlBytes = 0;
+    for (const byte of buffer) {
+        if (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+            controlBytes += 1;
+        }
+    }
+    return controlBytes / buffer.length > 0.02;
+}
+
+function isExplicitManagedAppSiteArchive(artifact = {}) {
+    const extension = String(artifact?.extension || '').trim().toLowerCase().replace(/^\./, '');
+    const mimeType = String(artifact?.mimeType || '').split(';')[0].trim().toLowerCase();
+    return Boolean(artifact?.metadata?.siteBundle)
+        || extension === 'zip'
+        || mimeType === 'application/zip'
+        || mimeType === 'application/x-zip-compressed';
+}
+
+function buildInvalidManagedAppSiteBundle(reason, affectedMembers = []) {
+    return {
+        reason,
+        affectedMembers: Array.from(new Set(affectedMembers.filter(Boolean)))
+            .sort((left, right) => left.localeCompare(right)),
+    };
+}
+
+function isUnsupportedManagedAppBinaryAsset(filePath = '', metadata = {}, buffer = null) {
     const extension = path.extname(String(filePath || '').toLowerCase());
-    return DEPLOYABLE_TEXT_EXTENSIONS.has(extension)
-        || String(filePath || '').startsWith('.gitea/workflows/')
-        || String(filePath || '') === '.gitlab-ci.yml';
+    if (UNSUPPORTED_MANAGED_APP_BINARY_ASSET_EXTENSIONS.has(extension)) {
+        return true;
+    }
+
+    const language = String(metadata?.language || '').trim().toLowerCase();
+    const mimeType = String(metadata?.mimeType || metadata?.contentType || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+    if (language === 'binary') {
+        return true;
+    }
+    if (isLikelyBinaryAssetBuffer(buffer)) {
+        return true;
+    }
+    if (mimeType === 'image/svg+xml' || mimeType === 'application/xml' || mimeType === 'text/xml') {
+        return false;
+    }
+    return /^(?:audio|font|image|video)\//.test(mimeType)
+        || /^(?:application\/(?:octet-stream|pdf|wasm|zip)|model\/)/.test(mimeType);
 }
 
 function extractArtifactSiteFilesForManagedApp(artifact = {}) {
     const files = new Map();
+    const unsupportedBinaryAssets = new Set();
+    const declaredBundle = getDeclaredSiteBundleFiles(artifact);
+    const declaredFileMetadata = declaredBundle.files;
+    const enforceBinaryAssetGate = Boolean(artifact?.metadata?.siteBundle || artifact?.metadata?.bundle);
+    const explicitSiteArchive = isExplicitManagedAppSiteArchive(artifact);
+    let invalidSiteBundle = null;
 
-    try {
-        const entries = readFrontendBundleArchive(artifact.contentBuffer || Buffer.alloc(0));
+    if (explicitSiteArchive) {
+        let entries;
+        try {
+            entries = readFrontendBundleArchive(artifact.contentBuffer || Buffer.alloc(0));
+        } catch (_error) {
+            return {
+                files: [],
+                unsupportedBinaryAssets: [],
+                invalidSiteBundle: buildInvalidManagedAppSiteBundle('archive_parse_failed'),
+            };
+        }
+
+        if (declaredBundle.invalidMembers.length > 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'invalid_declared_member_paths',
+                declaredBundle.invalidMembers,
+            );
+        } else if (declaredBundle.duplicateMembers.length > 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'duplicate_declared_members',
+                declaredBundle.duplicateMembers,
+            );
+        }
+
+        const archivedSourcePaths = new Set();
+        const targetSourcePaths = new Map();
+        const invalidArchiveMembers = new Set();
+        const duplicateArchiveMembers = new Set();
         entries.forEach((buffer, filePath) => {
-            const sourcePath = normalizeBundlePath(filePath);
-            const targetPath = normalizeManagedAppPublicPath(sourcePath);
-            if (!sourcePath || !targetPath || !isDeployableTextFile(sourcePath)) {
+            const rawPath = String(filePath || '').replace(/\\/g, '/');
+            const isDirectory = rawPath.endsWith('/');
+            const sourcePath = normalizeSafeManagedAppSourcePath(isDirectory ? rawPath.slice(0, -1) : rawPath);
+            if (!sourcePath) {
+                invalidArchiveMembers.add(rawPath || '(empty path)');
                 return;
             }
+            if (isDirectory) {
+                if (buffer.length > 0) {
+                    invalidArchiveMembers.add(rawPath);
+                }
+                return;
+            }
+            const targetPath = normalizeManagedAppPublicPath(sourcePath);
+            if (!targetPath) {
+                invalidArchiveMembers.add(rawPath);
+                return;
+            }
+            if (archivedSourcePaths.has(sourcePath) || targetSourcePaths.has(targetPath)) {
+                duplicateArchiveMembers.add(sourcePath);
+                return;
+            }
+
+            archivedSourcePaths.add(sourcePath);
+            targetSourcePaths.set(targetPath, sourcePath);
+            if (isUnsupportedManagedAppBinaryAsset(
+                sourcePath,
+                declaredFileMetadata.get(sourcePath) || {},
+                buffer,
+            )) {
+                unsupportedBinaryAssets.add(sourcePath);
+                return;
+            }
+
             files.set(targetPath, {
                 path: targetPath,
                 content: buffer.toString('utf8'),
             });
         });
-    } catch (_error) {
-        // Non-zip HTML artifacts are handled from metadata or previewHtml below.
+
+        if (!invalidSiteBundle && invalidArchiveMembers.size > 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'unsafe_archive_member_paths',
+                Array.from(invalidArchiveMembers),
+            );
+        }
+        if (!invalidSiteBundle && duplicateArchiveMembers.size > 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'duplicate_archive_members',
+                Array.from(duplicateArchiveMembers),
+            );
+        }
+
+        const omittedDeclaredMembers = Array.from(declaredFileMetadata.keys())
+            .filter((filePath) => !archivedSourcePaths.has(filePath));
+        if (!invalidSiteBundle && omittedDeclaredMembers.length > 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'declared_members_missing_from_archive',
+                omittedDeclaredMembers,
+            );
+        }
+
+        const rawDeclaredEntry = String(
+            declaredBundle.bundle?.entry || declaredBundle.bundle?.entryFile || '',
+        ).trim();
+        const declaredEntry = normalizeSafeManagedAppSourcePath(rawDeclaredEntry);
+        if (!invalidSiteBundle && rawDeclaredEntry && !declaredEntry) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'invalid_declared_entry_path',
+                [rawDeclaredEntry],
+            );
+        }
+        if (!invalidSiteBundle && declaredEntry && !archivedSourcePaths.has(declaredEntry)) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+                'declared_entry_missing_from_archive',
+                [declaredEntry],
+            );
+        }
+
+        const rawDeclaredFileCount = declaredBundle.bundle?.fileCount;
+        if (!invalidSiteBundle && rawDeclaredFileCount !== undefined && rawDeclaredFileCount !== null) {
+            const declaredFileCount = Number(rawDeclaredFileCount);
+            if (!Number.isInteger(declaredFileCount) || declaredFileCount < 0) {
+                invalidSiteBundle = buildInvalidManagedAppSiteBundle('invalid_declared_file_count');
+            } else if (declaredFileCount !== archivedSourcePaths.size) {
+                invalidSiteBundle = buildInvalidManagedAppSiteBundle('declared_file_count_mismatch');
+            }
+        }
+
+        if (!invalidSiteBundle && archivedSourcePaths.size === 0) {
+            invalidSiteBundle = buildInvalidManagedAppSiteBundle('empty_archive');
+        }
+
+        return {
+            files: Array.from(files.values()).sort((left, right) => left.path.localeCompare(right.path)),
+            unsupportedBinaryAssets: Array.from(unsupportedBinaryAssets).sort((left, right) => left.localeCompare(right)),
+            invalidSiteBundle,
+        };
     }
 
     const bundle = getArtifactFrontendBundle(artifact);
+    if (declaredBundle.invalidMembers.length > 0) {
+        invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+            'invalid_declared_member_paths',
+            declaredBundle.invalidMembers,
+        );
+    } else if (declaredBundle.duplicateMembers.length > 0) {
+        invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+            'duplicate_declared_members',
+            declaredBundle.duplicateMembers,
+        );
+    }
+    const extractedSourcePaths = new Set();
+    const targetSourcePaths = new Map();
     if (Array.isArray(bundle?.files)) {
         bundle.files.forEach((file) => {
-            const sourcePath = normalizeBundlePath(file?.path || '');
+            const sourcePath = normalizeSafeManagedAppSourcePath(file?.path || '');
             const targetPath = normalizeManagedAppPublicPath(sourcePath);
-            if (!sourcePath || !targetPath || !isDeployableTextFile(sourcePath)) {
+            if (!sourcePath || !targetPath) {
+                invalidSiteBundle = invalidSiteBundle || buildInvalidManagedAppSiteBundle(
+                    'invalid_declared_member_paths',
+                    [String(file?.path || '').trim() || '(empty path)'],
+                );
+                return;
+            }
+            if (extractedSourcePaths.has(sourcePath) || targetSourcePaths.has(targetPath)) {
+                invalidSiteBundle = invalidSiteBundle || buildInvalidManagedAppSiteBundle(
+                    'duplicate_declared_members',
+                    [sourcePath],
+                );
+                return;
+            }
+            extractedSourcePaths.add(sourcePath);
+            targetSourcePaths.set(targetPath, sourcePath);
+            const contentBuffer = Buffer.isBuffer(file?.contentBuffer)
+                ? file.contentBuffer
+                : Buffer.from(typeof file.content === 'string' ? file.content : '', 'utf8');
+            if (enforceBinaryAssetGate && isUnsupportedManagedAppBinaryAsset(
+                sourcePath,
+                file,
+                contentBuffer,
+            )) {
+                unsupportedBinaryAssets.add(sourcePath);
                 return;
             }
 
-            const content = typeof file.content === 'string'
-                ? file.content
-                : (Buffer.isBuffer(file.contentBuffer) ? file.contentBuffer.toString('utf8') : '');
-            if (content.trim()) {
-                files.set(targetPath, { path: targetPath, content });
-            }
+            files.set(targetPath, { path: targetPath, content: contentBuffer.toString('utf8') });
         });
     }
 
-    if (files.size === 0 && String(artifact.previewHtml || '').trim()) {
+    const omittedDeclaredMembers = Array.from(declaredFileMetadata.keys())
+        .filter((filePath) => !extractedSourcePaths.has(filePath));
+    if (!invalidSiteBundle && omittedDeclaredMembers.length > 0) {
+        invalidSiteBundle = buildInvalidManagedAppSiteBundle(
+            'declared_members_missing_from_bundle',
+            omittedDeclaredMembers,
+        );
+    }
+
+    if (!declaredBundle.bundle && files.size === 0 && String(artifact.previewHtml || '').trim()) {
         files.set('public/index.html', {
             path: 'public/index.html',
             content: artifact.previewHtml,
         });
     }
 
-    return Array.from(files.values()).sort((left, right) => left.path.localeCompare(right.path));
+    return {
+        files: Array.from(files.values()).sort((left, right) => left.path.localeCompare(right.path)),
+        unsupportedBinaryAssets: Array.from(unsupportedBinaryAssets).sort((left, right) => left.localeCompare(right)),
+        invalidSiteBundle,
+    };
 }
 
 function buildManagedAppNameFromArtifact(artifact = {}, fallback = 'Website Artifact') {
@@ -1084,7 +1369,37 @@ router.post('/:id/managed-app', async (req, res, next) => {
             });
         }
 
-        const files = await Promise.all(extractArtifactSiteFilesForManagedApp(artifact).map(async (file) => ({
+        const extractedSite = extractArtifactSiteFilesForManagedApp(artifact);
+        if (extractedSite.invalidSiteBundle) {
+            return res.status(422).json({
+                error: {
+                    code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                    message: 'Push to Web cannot safely promote this site because its declared native bundle could not be preserved exactly.',
+                    blocker: 'invalid_site_bundle',
+                    details: {
+                        reason: extractedSite.invalidSiteBundle.reason,
+                        ...(extractedSite.invalidSiteBundle.affectedMembers.length > 0
+                            ? { affectedMembers: extractedSite.invalidSiteBundle.affectedMembers }
+                            : {}),
+                        remediation: 'Regenerate the site ZIP so every declared file is present at a safe relative path, then retry Push to Web.',
+                    },
+                },
+            });
+        }
+        if (extractedSite.unsupportedBinaryAssets.length > 0) {
+            return res.status(422).json({
+                error: {
+                    code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+                    message: 'Push to Web cannot safely promote this site because the managed-app repository lane cannot preserve one or more binary assets.',
+                    blocker: 'unsupported_binary_assets',
+                    details: {
+                        unsupportedAssets: extractedSite.unsupportedBinaryAssets,
+                        remediation: 'Replace these assets with SVG/XML/text equivalents or add binary repository-file support before deploying this bundle.',
+                    },
+                },
+            });
+        }
+        const files = await Promise.all(extractedSite.files.map(async (file) => ({
             ...file,
             content: (await rehydratePreviewBuffer(Buffer.from(file.content || '', 'utf8'), artifact, req, {
                 contentType: resolveFrontendBundleContentType(file.path),

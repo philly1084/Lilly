@@ -581,6 +581,7 @@ class RemoteCliAgentTool extends ToolBase {
           blocker: { type: 'string' },
           completionStatus: { type: 'string' },
           agentQuality: { type: 'object' },
+          artifactQuality: { type: 'object' },
           model: { type: 'string' },
           apiMode: { type: 'string' },
           providerId: { type: 'string' },
@@ -592,6 +593,8 @@ class RemoteCliAgentTool extends ToolBase {
           resultFilesError: { type: 'string' },
           artifacts: { type: 'array' },
           artifactIds: { type: 'array' },
+          siteBundleArtifact: { type: 'object' },
+          siteBundleArtifactId: { type: 'string' },
         },
       },
       hooks: {
@@ -636,6 +639,9 @@ class RemoteCliAgentTool extends ToolBase {
       } catch (error) {
         const resultFilesError = `Remote agent output files could not be persisted: ${error.message}`;
         safeResult.resultFilesError = resultFilesError;
+        if (error?.artifactQuality) {
+          safeResult.artifactQuality = error.artifactQuality;
+        }
         safeResult.blocker = safeResult.blocker || resultFilesError;
         safeResult.completionStatus = 'blocked';
         safeResult.verifyResults = [

@@ -166,12 +166,20 @@ describe('RemoteCliAgentTool', () => {
 
   test('persists verified return files as session artifacts without exposing base64', async () => {
     const content = Buffer.from('<document><title>Remote draft</title></document>');
+    let storedArtifact = null;
     const artifactService = {
-      createStoredArtifact: jest.fn(async (input) => ({
-        ...input,
-        id: 'artifact-returned-1',
-        sizeBytes: input.buffer.length,
-      })),
+      createStoredArtifact: jest.fn(async (input) => {
+        storedArtifact = {
+          ...input,
+          id: 'artifact-returned-1',
+          sizeBytes: input.buffer.length,
+          contentBuffer: input.buffer,
+        };
+        return storedArtifact;
+      }),
+      getArtifact: jest.fn(async (id) => (
+        id === storedArtifact?.id ? storedArtifact : null
+      )),
       serializeArtifact: jest.fn((artifact) => ({
         id: artifact.id,
         sessionId: artifact.sessionId,
@@ -223,6 +231,11 @@ describe('RemoteCliAgentTool', () => {
       handoffVersion: 'RemoteAgentHandoff/v1',
       requestedHandoffVersion: 'RemoteAgentHandoff/v1',
       artifactIds: ['artifact-returned-1'],
+      artifactQuality: {
+        version: 'ArtifactStructuralQuality/v1',
+        status: 'passed',
+        blockers: [],
+      },
       artifacts: [expect.objectContaining({
         id: 'artifact-returned-1',
         filename: 'draft.xml',
@@ -230,15 +243,173 @@ describe('RemoteCliAgentTool', () => {
       resultFiles: [expect.objectContaining({
         filename: 'draft.xml',
         role: 'document',
+        artifactQuality: expect.objectContaining({ status: 'passed', scope: 'file' }),
       })],
     });
+    expect(tool.outputSchema.properties.artifactQuality).toEqual({ type: 'object' });
     expect(result.data.resultFiles[0]).not.toHaveProperty('contentBase64');
     expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-1',
       sourceMode: 'remote-cli-agent',
       filename: 'draft.xml',
       buffer: content,
+      metadata: expect.objectContaining({
+        artifactQuality: expect.objectContaining({
+          status: 'passed',
+          scope: 'file',
+          basis: 'normalized-result-set',
+        }),
+      }),
     }));
+  });
+
+  test('returns blocked completion and structural quality details without writing failed outputs', async () => {
+    const content = Buffer.from('{"ready":}');
+    const artifactService = { createStoredArtifact: jest.fn() };
+    const runner = {
+      run: jest.fn(async (params) => ({
+        finalOutput: `RESULT_FILES_MANIFEST=${params.handoff.output.manifestPath}`,
+        resultFiles: {
+          version: 'RemoteAgentResultFiles/v1',
+          gatewayVerified: true,
+          operationId: params.handoff.operationId,
+          manifestPath: params.handoff.output.manifestPath,
+          files: [{
+            path: `${params.handoff.output.filesDirectory}/broken.json`,
+            filename: 'broken.json',
+            role: 'data',
+            mimeType: 'application/json',
+            description: 'Invalid returned data',
+            sizeBytes: content.length,
+            sha256: crypto.createHash('sha256').update(content).digest('hex'),
+            contentBase64: content.toString('base64'),
+          }],
+        },
+        transport: 'codex-agent',
+        completionStatus: 'complete',
+        verifyResults: ['remote generation completed'],
+      })),
+    };
+    const tool = new RemoteCliAgentTool({ runner, artifactService });
+
+    const result = await tool.execute({
+      task: 'Return validated JSON.',
+      collectResultFiles: true,
+    }, {
+      sessionId: 'session-1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      completionStatus: 'blocked',
+      artifactQuality: {
+        version: 'ArtifactStructuralQuality/v1',
+        status: 'blocked',
+        blockers: [expect.objectContaining({
+          code: 'REMOTE_AGENT_ARTIFACT_JSON_INVALID',
+          path: 'broken.json',
+        })],
+      },
+      resultFilesError: expect.stringContaining('structural quality validation blocked 1 issue'),
+      blocker: expect.stringContaining('structural quality validation blocked 1 issue'),
+    });
+    expect(result.data).not.toHaveProperty('artifacts');
+    expect(result.data).not.toHaveProperty('artifactIds');
+    expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+  });
+
+  test('returns an explicit native site bundle artifact for role-marked website files', async () => {
+    const html = Buffer.from('<!doctype html><title>Remote Site</title><link rel="stylesheet" href="styles.css"><main>Ready</main>');
+    const css = Buffer.from('body { color: navy; }');
+    const records = new Map();
+    let counter = 0;
+    const artifactService = {
+      createStoredArtifact: jest.fn(async (input) => {
+        const stored = {
+          ...input,
+          id: `artifact-site-${++counter}`,
+          contentBuffer: input.buffer,
+          sizeBytes: input.buffer.length,
+        };
+        records.set(stored.id, stored);
+        return stored;
+      }),
+      getArtifact: jest.fn(async (id) => records.get(id) || null),
+      serializeArtifact: jest.fn((artifact) => ({
+        id: artifact.id,
+        filename: artifact.filename,
+        extension: artifact.extension,
+        metadata: artifact.metadata,
+      })),
+      deleteArtifact: jest.fn(),
+    };
+    const runner = {
+      run: jest.fn(async (params) => ({
+        finalOutput: `RESULT_FILES_MANIFEST=${params.handoff.output.manifestPath}`,
+        resultFiles: {
+          version: 'RemoteAgentResultFiles/v1',
+          gatewayVerified: true,
+          operationId: params.handoff.operationId,
+          manifestPath: params.handoff.output.manifestPath,
+          files: [
+            {
+              path: `${params.handoff.output.filesDirectory}/dist/index.html`,
+              filename: 'index.html',
+              role: 'site-entry',
+              mimeType: 'text/html',
+              description: 'Website entry',
+              sizeBytes: html.length,
+              sha256: crypto.createHash('sha256').update(html).digest('hex'),
+              contentBase64: html.toString('base64'),
+            },
+            {
+              path: `${params.handoff.output.filesDirectory}/dist/styles.css`,
+              filename: 'styles.css',
+              role: 'site-file',
+              mimeType: 'text/css',
+              description: 'Website styles',
+              sizeBytes: css.length,
+              sha256: crypto.createHash('sha256').update(css).digest('hex'),
+              contentBase64: css.toString('base64'),
+            },
+          ],
+        },
+        transport: 'provider-agent',
+        providerId: 'kimi-code-cli',
+        completionStatus: 'complete',
+      })),
+    };
+    const tool = new RemoteCliAgentTool({ runner, artifactService });
+
+    const result = await tool.execute({
+      task: 'Build and return a complete website.',
+      collectResultFiles: true,
+    }, {
+      sessionId: 'session-1',
+      ownerId: 'owner-1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining({
+      siteBundleArtifactId: 'artifact-site-3',
+      siteBundleArtifact: expect.objectContaining({
+        id: 'artifact-site-3',
+        extension: 'zip',
+        metadata: expect.objectContaining({
+          artifactQuality: expect.objectContaining({
+            status: 'passed',
+            scope: 'site-bundle',
+            basis: 'persisted-result-set',
+          }),
+          siteBundle: expect.objectContaining({ entry: 'index.html', fileCount: 2 }),
+        }),
+      }),
+    }));
+    expect(result.data.resultFiles).toEqual([
+      expect.objectContaining({ role: 'site-entry', artifactId: 'artifact-site-1' }),
+      expect.objectContaining({ role: 'site-file', artifactId: 'artifact-site-2' }),
+    ]);
+    expect(result.data.resultFiles.every((file) => !Object.hasOwn(file, 'contentBase64'))).toBe(true);
   });
 
   test('omits absent provider proof fields before validating the tool output schema', async () => {
