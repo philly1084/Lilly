@@ -54,7 +54,25 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(resolveProviderAgentSelection('kimi-k2.7-code')).toMatchObject({
       providerId: 'kimi-code-cli',
       providerLabel: 'Kimi CLI',
-      providerModel: '',
+      providerModel: 'kimi-for-coding',
+    });
+    expect(resolveProviderAgentSelection('kimi-k3')).toMatchObject({
+      providerId: 'kimi-code-cli',
+      providerLabel: 'Kimi CLI',
+      requestedModel: 'kimi-k3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('Kimi K3')).toMatchObject({
+      requestedModel: 'Kimi K3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('Kimi 3')).toMatchObject({
+      requestedModel: 'Kimi 3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('k3')).toMatchObject({
+      requestedModel: 'k3',
+      providerModel: 'k3',
     });
     expect(resolveProviderAgentSelection('gpt-5.6-sol')).toBeNull();
   });
@@ -732,7 +750,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
   test.each([
     ['grok-build', 'grok-build-cli', 'grok-build', 'Grok Build'],
-    ['kimi-k2.7-code', 'kimi-code-cli', undefined, 'Kimi CLI'],
+    ['kimi-k3', 'kimi-code-cli', 'k3', 'Kimi CLI'],
+    ['kimi-k2.7-code', 'kimi-code-cli', 'kimi-for-coding', 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
     const progress = [];
     const continuationSessionId = providerId === 'grok-build-cli'
@@ -878,6 +897,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(result).toMatchObject({
       transport: 'provider-agent',
       providerId,
+      providerModel,
       model: selectedModel,
       apiMode: 'provider-agent',
       whatChanged: `Finished with ${providerLabel}.`,

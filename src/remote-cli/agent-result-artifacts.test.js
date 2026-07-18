@@ -436,7 +436,7 @@ describe('remote agent result artifacts', () => {
     const fixture = buildFixture();
     fixture.resultFiles.files[0].role = 'site-entry';
     fixture.resultFiles.files[1].role = 'site-file';
-    const restoredHtml = Buffer.from('<!doctype html><title>Restored Site</title><main>Private value restored</main>');
+    const restoredHtml = Buffer.from('<!doctype html><title>Restored Site</title><main><script>document.body.dataset.pwned="1"</script></main>');
     const records = new Map();
     let counter = 0;
     const artifactService = {
@@ -446,6 +446,14 @@ describe('remote agent result artifacts', () => {
           ...input,
           id,
           contentBuffer: counter === 1 ? restoredHtml : input.buffer,
+          metadata: counter === 1 ? {
+            ...input.metadata,
+            piiCleansing: {
+              enabled: true,
+              restoredCount: 1,
+              restoredInGeneratedArtifact: true,
+            },
+          } : input.metadata,
         };
         records.set(id, stored);
         return stored;
@@ -467,6 +475,11 @@ describe('remote agent result artifacts', () => {
     expect(persisted.siteBundleArtifact.metadata.siteBundle.files[0]).toEqual(expect.objectContaining({
       gatewaySha256: fixture.resultFiles.files[0].sha256,
       sha256: crypto.createHash('sha256').update(restoredHtml).digest('hex'),
+    }));
+    expect(persisted.siteBundleArtifact.metadata.piiCleansing).toEqual(expect.objectContaining({
+      restoredCount: 1,
+      restoredInGeneratedArtifact: true,
+      affectedSiteMembers: ['index.html'],
     }));
   });
 

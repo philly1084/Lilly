@@ -404,6 +404,13 @@ async function createRemoteAgentSiteBundleArtifact({
   const previewHtml = entry.buffer.toString('utf8');
   const title = inferFrontendTitle(previewHtml) || 'Remote Agent Site';
   const componentArtifactIds = members.map((member) => member.stored.id).filter(Boolean);
+  const restoredPiiMembers = members.filter((member) => (
+    member?.stored?.metadata?.piiCleansing?.restoredInGeneratedArtifact === true
+    || Number(member?.stored?.metadata?.piiCleansing?.restoredCount || 0) > 0
+  ));
+  const restoredPiiCount = restoredPiiMembers.reduce((total, member) => (
+    total + Math.max(1, Number(member?.stored?.metadata?.piiCleansing?.restoredCount || 0))
+  ), 0);
   const files = members.map((member) => ({
     path: member.path,
     language: inferSiteBundleLanguage(member.path, member.file.mimeType),
@@ -441,6 +448,14 @@ async function createRemoteAgentSiteBundleArtifact({
       previewMode: 'site',
       frameworkTarget: 'static',
       generationStrategy: 'remote-agent-result-site-bundle',
+      ...(restoredPiiMembers.length > 0 ? {
+        piiCleansing: {
+          enabled: true,
+          restoredCount: restoredPiiCount,
+          restoredInGeneratedArtifact: true,
+          affectedSiteMembers: restoredPiiMembers.map((member) => member.path),
+        },
+      } : {}),
       artifactQuality: buildSiteArtifactQualityMetadata(artifactQuality, siteBundlePlan),
       siteBundle: {
         entry: siteBundlePlan.entry,

@@ -1270,14 +1270,15 @@ function resolveProviderAgentSelection(model = '') {
       providerModel: 'grok-build',
     };
   }
-  if (/(?:^|[\/_-])kimi(?:[\/_-]|$)|moonshot/.test(normalized)) {
+  const hasKimiMarker = /(?:^|[\s\/_-])kimi(?:[\s\/_-]|$)|moonshot/.test(normalized);
+  const isKimiK3 = /^k3(?:[\s\/_-]|$)/.test(normalized)
+    || (hasKimiMarker && /(?:^|[\s\/_-])k?3(?:[\s\/_-]|$)/.test(normalized));
+  if (hasKimiMarker || isKimiK3) {
     return {
       providerId: 'kimi-code-cli',
       providerLabel: 'Kimi CLI',
       requestedModel,
-      // The current Kimi session command does not expose a safe model flag.
-      // Omitting model lets the authenticated Kimi CLI use its configured coding model.
-      providerModel: '',
+      providerModel: isKimiK3 ? 'k3' : 'kimi-for-coding',
     };
   }
   return null;
@@ -2592,6 +2593,7 @@ class RemoteCliAgentsSdkRunner {
         transport: 'provider-agent',
         handoffVersion: handoffAcknowledgement?.version || null,
         providerId: selection.providerId,
+        providerModel: selection.providerModel,
         targetId,
         cwd: runMetadata.workspace || cwd,
         sessionId: runMetadata.sessionId || providerSessionId || null,

@@ -302,6 +302,7 @@ function buildRemoteAgentResultSummary(result = {}) {
     const completionStatus = sanitizeResultText(source.completionStatus, 80).toLowerCase();
     const blocker = sanitizeResultText(source.blocker || source.resultFilesError, SAFE_RESULT_TEXT_LIMIT);
     const provider = sanitizeResultText(source.provider || source.providerId, 160);
+    const providerModel = sanitizeResultText(source.providerModel || source.provider_model, 160);
     const model = sanitizeResultText(source.model, 160);
     const transport = sanitizeResultText(source.transport, 160);
     const publicUrl = sanitizeResultUrl(source.publicUrl);
@@ -341,6 +342,7 @@ function buildRemoteAgentResultSummary(result = {}) {
         ...(completionStatus ? { completionStatus } : {}),
         ...(blocker ? { blocker } : {}),
         ...(provider ? { provider } : {}),
+        ...(providerModel ? { providerModel } : {}),
         ...(model ? { model } : {}),
         ...(transport ? { transport } : {}),
         ...(publicUrl ? { publicUrl } : {}),

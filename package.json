@@ -30,6 +30,7 @@
         "demo:preflight:offline": "node scripts/demo-preflight.js --offline",
         "demo:smoke": "node scripts/demo-smoke.js",
         "demo:smoke:live": "node scripts/demo-smoke.js --live",
+        "canary:remote-agent-artifact-loop": "node scripts/canary-remote-agent-artifact-loop.js",
         "test:watch": "jest --watch",
         "lint": "eslint src/",
         "release:bundle": "node suite/scripts/build-release-bundle.mjs",

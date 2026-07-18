@@ -41,6 +41,27 @@ flowchart LR
 
 The Web Chat **Build with Agent** action probes the authenticated async runtime before rendering a queued job. Explicit selected-agent jobs require the runtime and live-remote adapter to be enabled; the separate `webChatParallelEnabled` control only governs automatic shadow runs and is not an explicit-job prerequisite. When async execution is disabled or its status cannot be confirmed, the action preserves the selected artifact IDs and lineage and continues through the existing direct `remote-cli-agent` chat lane without first rendering a duplicate user message or failed async card. The explicit `/remote async ...` command remains an async-only diagnostic and does not silently change lanes.
 
+Kimi K3 selection is explicit across the boundary. KimiBuilt maps `kimi-k3`, `Kimi K3`, `Kimi 3`, and bare `k3` selections to the router's authenticated `kimi-code-cli` provider with model `k3`; generic Kimi selections continue to use `kimi-for-coding`. The router exposes K3 without fallbacks and passes it to the installed CLI as the separate argv pair `--model k3`, while preserving the user's original model label in result metadata. The router must therefore be promoted before KimiBuilt.
+
+## Deployment eligibility preflight
+
+`POST /api/artifacts/:id/managed-app/preflight` runs the same ownership, archive, path, member, binary-asset, privacy-restoration, and final-byte preparation used by Push to Web without calling `createApp` or mutating a repository. Its response contains only deployment eligibility, typed blockers, target paths, byte counts, per-file SHA-256 values, and one aggregate source SHA-256; it never returns source content.
+
+Deployment restoration deliberately differs from browser preview restoration. HTML text-node values are HTML-escaped and emitted without preview `<mark>` wrappers. Any unresolved reserved placeholder fails closed even when the global PII policy is disabled, and protected values are not restored into non-HTML structured or executable members such as CSS, XML, SVG, JSON, or JavaScript because their exact grammar context is ambiguous. Artifacts or site components that were already raw-restored before that context was known are also blocked from public promotion. A later `POST /api/artifacts/:id/managed-app` may include `expectedSourceSha256`; a malformed value returns HTTP 400 and a changed final-byte fingerprint returns HTTP 412 before any app is created or changed. Successful mutations attest the accepted source hash and byte count.
+
+The Web Chat **Push to Web** control is the thin frontend mirror for this gate: it runs preflight before asking for a hostname, surfaces the first typed blocker without starting a deployment, and submits the returned `sha256` as `expectedSourceSha256` with the mutation. This makes the source-change guard active for the real user path, not only for diagnostics.
+
+## Three-agent transfer canary
+
+`npm run canary:remote-agent-artifact-loop` is a zero-network dry run by default. It validates both hops for Codex, Kimi, and Grok and reports `networkRequestsMade: 0`. A live run requires an explicit `--run`, `KIMIBUILT_CANARY_BASE_URL`, and the existing `KIMIBUILT_FRONTEND_API_KEY`:
+
+```bash
+npm run canary:remote-agent-artifact-loop -- --mode all
+npm run canary:remote-agent-artifact-loop -- --run --mode all
+```
+
+For each lane, hop one sends deterministic HTML, CSS, XML, and SVG fixtures to the selected CLI and verifies persisted component downloads, a role-built site ZIP, and a semantic preview. Hop two sends the four returned artifact IDs back through the same KimiBuilt session and repeats the byte proof, then runs the side-effect-free managed-app preflight against the final site bundle. Live mode requires explicit remote-execution evidence, verifies both the requested label and the resolved provider model (`k3` for Kimi K3), never sends an inner CLI continuation session ID, and deletes the ephemeral session only after every run is terminal. No production live canary has been run yet.
+
 ## Contract limits and security properties
 
 - Versions: `RemoteAgentHandoff/v1` and `RemoteAgentResultFiles/v1`.
@@ -70,5 +91,5 @@ Before production promotion:
 3. Audit the live `remote-cli-tail-hotfix` ConfigMap, which currently shadows `/app/dist/jobs/remote-cli-tool-manager.js`; remove or update it so the image remains the source of truth.
 4. Reconcile the checked-in router image pins with the live image rather than applying stale manifests.
 5. Roll out the router first, prove health/auth and handoff capability, then roll out KimiBuilt.
-6. Run a live canary for each lane: Codex on the primary workspace, Kimi on the secondary target, and Grok on the secondary target. Use a harmless XML/SVG input and require a byte-identical returned artifact.
+6. Run `npm run canary:remote-agent-artifact-loop -- --run --mode all` with an authorized frontend API key. Require both byte-identical hops and a passing managed-app preflight for Codex, Kimi K3, and Grok.
 7. Run the existing Push to Web flow from the returned artifact and verify the public URL with desktop/mobile browser evidence.

@@ -1,4 +1,5 @@
 const express = require('express');
+const { createHash } = require('crypto');
 const request = require('supertest');
 const { createFrontendBundleArchive } = require('../frontend-bundles');
 
@@ -32,6 +33,20 @@ jest.mock('../runtime-tool-manager', () => ({
     ensureRuntimeToolManager: jest.fn(),
 }));
 
+jest.mock('../pii', () => ({
+    rehydrateHtml: jest.fn(async (html) => ({
+        html: String(html || ''),
+        restorations: [],
+        enabled: false,
+    })),
+    rehydrateText: jest.fn(async (text) => ({
+        text: String(text || ''),
+        restorations: [],
+        enabled: false,
+    })),
+    resolvePiiPolicy: jest.fn(() => ({ enabled: false })),
+}));
+
 jest.mock('../generated-audio-artifacts', () => ({
     getLocalGeneratedAudioArtifact: jest.fn(),
     isLocalGeneratedAudioArtifactId: jest.fn(() => false),
@@ -43,13 +58,14 @@ const {
     getLocalGeneratedAudioArtifact,
     isLocalGeneratedAudioArtifactId,
 } = require('../generated-audio-artifacts');
+const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
 const artifactsRouter = require('./artifacts');
 
 describe('/api/artifacts route', () => {
     function buildApp(options = {}) {
         const app = express();
         app.use(express.json());
-        app.locals.managedAppService = {
+        app.locals.managedAppService = options.managedAppService || {
             isAvailable: jest.fn(() => true),
             createApp: jest.fn(async (input) => ({
                 app: {
@@ -84,6 +100,17 @@ describe('/api/artifacts route', () => {
         jest.clearAllMocks();
         isLocalGeneratedAudioArtifactId.mockReturnValue(false);
         getLocalGeneratedAudioArtifact.mockResolvedValue(null);
+        rehydrateHtml.mockImplementation(async (html) => ({
+            html: String(html || ''),
+            restorations: [],
+            enabled: false,
+        }));
+        rehydrateText.mockImplementation(async (text) => ({
+            text: String(text || ''),
+            restorations: [],
+            enabled: false,
+        }));
+        resolvePiiPolicy.mockReturnValue({ enabled: false });
     });
 
     test('blocks artifact fetch when the artifact session is not owned by the user', async () => {
@@ -247,6 +274,14 @@ describe('/api/artifacts route', () => {
         expect(response.text).toContain('<pre>Preview me</pre>');
         expect(response.headers['content-type']).toContain('text/html');
         expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
+        expect(rehydrateHtml).toHaveBeenCalledWith(
+            '<pre>Preview me</pre>',
+            expect.objectContaining({
+                clientSurface: 'artifact-preview',
+                route: '/api/artifacts/:id/preview',
+                highlight: true,
+            }),
+        );
     });
 
     test('hides uploaded-file previews when PII protection is enabled', async () => {
@@ -775,6 +810,650 @@ describe('/api/artifacts route', () => {
                 runId: 'run-1',
             }),
         }));
+    });
+
+    test('preflights the exact final managed-app paths, byte sizes, and hashes without creating an app', async () => {
+        const indexHtml = '<!doctype html><html><body><h1>Crème launch 🚀</h1></body></html>';
+        const styles = 'body { color: #123; }\n';
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-preflight-parity',
+            sessionId: 'session-1',
+            filename: 'launch-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: indexHtml },
+                    { path: 'styles.css', content: styles },
+                ],
+            }),
+            metadata: {
+                title: 'Launch Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-preflight-parity/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            artifactId: 'artifact-site-preflight-parity',
+            contentEligible: true,
+            controlPlaneAvailable: true,
+            pushToWebEligible: true,
+            sourceType: 'native-site-archive',
+            targetPaths: ['public/index.html', 'public/styles.css'],
+            fileCount: 2,
+            sizeBytes: Buffer.byteLength(indexHtml, 'utf8') + Buffer.byteLength(styles, 'utf8'),
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            blockers: [],
+        }));
+        expect(preflight.body.files).toEqual([
+            {
+                path: 'public/index.html',
+                sizeBytes: Buffer.byteLength(indexHtml, 'utf8'),
+                sha256: createHash('sha256').update(Buffer.from(indexHtml, 'utf8')).digest('hex'),
+            },
+            {
+                path: 'public/styles.css',
+                sizeBytes: Buffer.byteLength(styles, 'utf8'),
+                sha256: createHash('sha256').update(Buffer.from(styles, 'utf8')).digest('hex'),
+            },
+        ]);
+        expect(preflight.body.files.every((file) => !Object.prototype.hasOwnProperty.call(file, 'content'))).toBe(true);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-preflight-parity/managed-app')
+            .send({
+                requestedAction: 'build',
+                expectedSourceSha256: preflight.body.sha256,
+            });
+
+        expect(mutation.status).toBe(202);
+        expect(mutation.body).toEqual(expect.objectContaining({
+            sourceSha256: preflight.body.sha256,
+            sourceSizeBytes: preflight.body.sizeBytes,
+        }));
+        const createdFiles = app.locals.managedAppService.createApp.mock.calls[0][0].files;
+        expect(createdFiles.map((file) => ({
+            path: file.path,
+            sizeBytes: Buffer.byteLength(file.content, 'utf8'),
+            sha256: createHash('sha256').update(Buffer.from(file.content, 'utf8')).digest('hex'),
+        }))).toEqual(preflight.body.files);
+        expect(app.locals.managedAppService.createApp.mock.calls[0][0].metadata.sourceArtifact).toEqual(
+            expect.objectContaining({
+                id: 'artifact-site-preflight-parity',
+                sha256: preflight.body.sha256,
+                sizeBytes: preflight.body.sizeBytes,
+                fileCount: preflight.body.fileCount,
+            }),
+        );
+    });
+
+    test('restores protected HTML as escaped text without preview markup or executable injection', async () => {
+        const placeholder = '[[PII:NAME:canary]]';
+        const restoredName = '<img src=x onerror="alert(1)">';
+        const escapedRestoredName = '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;';
+        const sourceFiles = [
+            {
+                path: 'index.html',
+                content: `<!doctype html><html><body><h1>${placeholder}</h1></body></html>`,
+            },
+            {
+                path: 'styles.css',
+                content: ':root { --owner: "canary"; }\n',
+            },
+            {
+                path: 'data.xml',
+                content: '<site><owner>canary</owner></site>',
+            },
+        ];
+        rehydrateHtml.mockImplementation(async (html, options) => ({
+            html: String(html || '').replaceAll(
+                placeholder,
+                options.escapeValues ? escapedRestoredName : restoredName,
+            ),
+            restorations: [{ placeholder }],
+            enabled: true,
+            options,
+        }));
+        rehydrateText.mockImplementation(async (text, options) => ({
+            text: String(text || ''),
+            restorations: [],
+            enabled: true,
+            options,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-pii-final-bytes',
+            sessionId: 'session-1',
+            filename: 'protected-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: sourceFiles,
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: sourceFiles.length,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                        { path: 'data.xml', mimeType: 'application/xml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-pii-final-bytes/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-pii-final-bytes/managed-app')
+            .send({ expectedSourceSha256: preflight.body.sha256 });
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(true);
+        expect(mutation.status).toBe(202);
+        expect(mutation.body.sourceSha256).toBe(preflight.body.sha256);
+        const createdFiles = app.locals.managedAppService.createApp.mock.calls[0][0].files;
+        expect(createdFiles.map((file) => file.path)).toEqual([
+            'public/data.xml',
+            'public/index.html',
+            'public/styles.css',
+        ]);
+        const createdIndex = createdFiles.find((file) => file.path === 'public/index.html');
+        expect(createdIndex.content).toContain(escapedRestoredName);
+        expect(createdIndex.content).not.toContain(restoredName);
+        expect(createdIndex.content).not.toContain('<img');
+        expect(createdFiles.every((file) => (
+            !file.content.includes(placeholder)
+            && !file.content.includes('<mark')
+            && !file.content.includes('kb-pii-restored')
+        ))).toBe(true);
+        expect(createdFiles.map((file) => ({
+            path: file.path,
+            sizeBytes: Buffer.byteLength(file.content, 'utf8'),
+            sha256: createHash('sha256').update(Buffer.from(file.content, 'utf8')).digest('hex'),
+        }))).toEqual(preflight.body.files);
+        expect(rehydrateHtml.mock.calls).toHaveLength(2);
+        expect(rehydrateText.mock.calls).toHaveLength(4);
+        expect([...rehydrateHtml.mock.calls, ...rehydrateText.mock.calls]
+            .every(([, options]) => options.highlight === false)).toBe(true);
+        expect(rehydrateHtml.mock.calls.every(([, options]) => options.escapeValues === true)).toBe(true);
+    });
+
+    test('fails closed when protected values would be restored into a non-HTML deployment file', async () => {
+        const placeholder = '[[PII:NAME:structured]]';
+        rehydrateText.mockImplementation(async (text) => ({
+            text: String(text || '').replaceAll(placeholder, '"; background: url(javascript:alert(1)); /*'),
+            restorations: String(text || '').includes(placeholder) ? [{ placeholder }] : [],
+            enabled: true,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-pii-structured-restoration',
+            sessionId: 'session-1',
+            filename: 'protected-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Safe</body></html>' },
+                    { path: 'styles.css', content: `:root { --owner: "${placeholder}"; }` },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pii-structured-restoration/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pii-structured-restoration/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(false);
+        expect(preflight.body.blockers).toEqual([expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+            blocker: 'pii_restoration_failed',
+        })]);
+        expect(mutation.status).toBe(503);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+        expect(JSON.stringify(preflight.body)).not.toContain('javascript:alert');
+        warn.mockRestore();
+    });
+
+    test('blocks a site bundle whose persisted component was already raw-restored before deployment context was known', async () => {
+        const siteArtifact = {
+            id: 'artifact-pre-restored-site',
+            sessionId: 'session-1',
+            filename: 'pre-restored-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [{ path: 'index.html', content: '<!doctype html><html><body><script>alert(1)</script></body></html>' }],
+            }),
+            metadata: {
+                generationStrategy: 'remote-agent-result-site-bundle',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{
+                        path: 'index.html',
+                        mimeType: 'text/html',
+                        artifactId: 'artifact-pre-restored-component',
+                    }],
+                },
+            },
+        };
+        const componentArtifact = {
+            id: 'artifact-pre-restored-component',
+            sessionId: 'session-1',
+            filename: 'index.html',
+            metadata: {
+                piiCleansing: {
+                    enabled: true,
+                    restoredCount: 1,
+                    restoredInGeneratedArtifact: true,
+                },
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === siteArtifact.id ? siteArtifact : componentArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pre-restored-site/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pre-restored-site/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            files: [],
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_PRE_RESTORED_PII_UNSAFE',
+                blocker: 'pre_restored_pii_context_unsafe',
+                details: expect.objectContaining({ affectedPaths: ['index.html'] }),
+            })],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PRE_RESTORED_PII_UNSAFE',
+            blocker: 'pre_restored_pii_context_unsafe',
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test.each([true, false])('fails preflight and mutation closed when reserved placeholders remain with PII enabled=%s', async (enabled) => {
+        rehydrateHtml.mockImplementation(async (html) => ({
+            html,
+            restorations: [],
+            enabled,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-pii-restoration-failure',
+            sessionId: 'session-1',
+            filename: 'protected.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!doctype html><html><body>[[PII:NAME:failure]]</body></html>',
+            contentBuffer: Buffer.from('<!doctype html><html><body>redacted</body></html>', 'utf8'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pii-restoration-failure/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pii-restoration-failure/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            targetPaths: [],
+            fileCount: 0,
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+                blocker: 'pii_restoration_failed',
+            })],
+        }));
+        expect(mutation.status).toBe(503);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+            blocker: 'pii_restoration_failed',
+        }));
+        expect(JSON.stringify(preflight.body)).not.toContain('Protected placeholders remain');
+        expect(JSON.stringify(mutation.body)).not.toContain('Protected placeholders remain');
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    test('rejects a stale preflight fingerprint before creating or changing a managed app', async () => {
+        const buildArtifact = (content) => ({
+            id: 'artifact-site-source-changed',
+            sessionId: 'session-1',
+            filename: 'source.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: content,
+            contentBuffer: Buffer.from(content, 'utf8'),
+            metadata: {},
+        });
+        artifactService.getArtifact
+            .mockResolvedValueOnce(buildArtifact('<!doctype html><html><body>Version one</body></html>'))
+            .mockResolvedValueOnce(buildArtifact('<!doctype html><html><body>Version two</body></html>'));
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-source-changed/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-source-changed/managed-app')
+            .send({ expectedSourceSha256: preflight.body.sha256 });
+
+        expect(preflight.status).toBe(200);
+        expect(mutation.status).toBe(412);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_SOURCE_CHANGED',
+            blocker: 'managed_app_source_changed',
+            details: expect.objectContaining({
+                expectedSha256: preflight.body.sha256,
+                actualSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            }),
+        }));
+        expect(mutation.body.error.details.actualSha256).not.toBe(preflight.body.sha256);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('uses typed blockers with control-plane-first priority for an empty source', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-empty-source',
+            sessionId: 'session-1',
+            filename: 'empty.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.alloc(0),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const managedAppService = {
+            isAvailable: jest.fn(() => false),
+            createApp: jest.fn(),
+        };
+        const app = buildApp({ managedAppService });
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app/preflight')
+            .send({});
+        const unavailableMutation = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app')
+            .send({});
+        managedAppService.isAvailable.mockReturnValue(true);
+        const emptyMutation = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.blockers.map((blocker) => blocker.code)).toEqual([
+            'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+            'ARTIFACT_MANAGED_APP_NO_DEPLOYABLE_FILES',
+        ]);
+        expect(unavailableMutation.status).toBe(503);
+        expect(unavailableMutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+            blocker: 'managed_app_control_plane_unavailable',
+        }));
+        expect(emptyMutation.status).toBe(400);
+        expect(emptyMutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_NO_DEPLOYABLE_FILES',
+            blocker: 'no_deployable_website_files',
+        }));
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('applies the same session-ownership boundary to managed-app preflight', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-not-owned',
+            sessionId: 'session-other',
+            filename: 'private.html',
+            previewHtml: '<!doctype html><html><body>Private</body></html>',
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-not-owned/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(404);
+        expect(preflight.body).toEqual({ error: { message: 'Artifact not found' } });
+        expect(sessionStore.getOwned).toHaveBeenCalledWith('session-other', 'phill');
+        expect(app.locals.managedAppService.isAvailable).not.toHaveBeenCalled();
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('reports a valid source but blocks Push to Web when the managed-app control plane is unavailable', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-control-plane',
+            sessionId: 'session-1',
+            filename: 'landing.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!doctype html><html><body>Ready</body></html>',
+            contentBuffer: Buffer.from('<!doctype html><html><body>Raw</body></html>', 'utf8'),
+            metadata: { title: 'Ready Landing' },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const managedAppService = {
+            isAvailable: jest.fn(() => false),
+            createApp: jest.fn(),
+        };
+        const app = buildApp({ managedAppService });
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-control-plane/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: true,
+            controlPlaneAvailable: false,
+            pushToWebEligible: false,
+            sourceType: 'preview-html',
+            targetPaths: ['public/index.html'],
+            sizeBytes: Buffer.byteLength('<!doctype html><html><body>Ready</body></html>', 'utf8'),
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+                blocker: 'managed_app_control_plane_unavailable',
+            })],
+        }));
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-preflight-control-plane/managed-app')
+            .send({});
+
+        expect(mutation.status).toBe(503);
+        expect(mutation.body).toEqual({
+            error: {
+                code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+                message: 'Managed app export requires the managed app control plane to be available.',
+                blocker: 'managed_app_control_plane_unavailable',
+            },
+        });
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('fails preflight closed with a typed blocker for an invalid native site archive', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-invalid-site',
+            sessionId: 'session-1',
+            filename: 'invalid-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: Buffer.from('not a zip archive', 'utf8'),
+            previewHtml: '<!doctype html><html><body>Unsafe fallback</body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{ path: 'index.html' }],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-invalid-site/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            controlPlaneAvailable: true,
+            pushToWebEligible: false,
+            sourceType: 'native-site-archive',
+            targetPaths: [],
+            fileCount: 0,
+            sizeBytes: 0,
+            sha256: null,
+            files: [],
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({ reason: 'archive_parse_failed' }),
+            })],
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('fails preflight closed with a typed blocker for unsupported binary site members', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-binary-site',
+            sessionId: 'session-1',
+            filename: 'binary-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Binary</body></html>' },
+                    { path: 'assets/logo.png', language: 'binary', contentBuffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'assets/logo.png', language: 'binary', mimeType: 'image/png' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-binary-site/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            controlPlaneAvailable: true,
+            pushToWebEligible: false,
+            sourceType: 'native-site-archive',
+            targetPaths: [],
+            sizeBytes: 0,
+            sha256: null,
+            files: [],
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+                blocker: 'unsupported_binary_assets',
+                details: expect.objectContaining({ unsupportedAssets: ['assets/logo.png'] }),
+            })],
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
     });
 
     test('exports a site bundle artifact to the managed app build lane', async () => {

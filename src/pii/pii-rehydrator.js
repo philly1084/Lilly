@@ -26,7 +26,10 @@ function buildEntryMap(entries = []) {
   return map;
 }
 
-function rehydrateWithMap(text = '', entryMap = new Map(), { highlight = false } = {}) {
+function rehydrateWithMap(text = '', entryMap = new Map(), {
+  highlight = false,
+  escapeValues = false,
+} = {}) {
   const source = String(text || '');
   const restorations = [];
   if (!source || entryMap.size === 0) {
@@ -40,7 +43,7 @@ function rehydrateWithMap(text = '', entryMap = new Map(), { highlight = false }
     output = output.replace(regex, () => {
       const replacement = highlight
         ? `<mark class="kb-pii-restored" title="Restored locally; model saw a placeholder." data-pii-type="${escapeHtml(entry.type)}">${escapeHtml(entry.value)}</mark>`
-        : entry.value;
+        : (escapeValues ? escapeHtml(entry.value) : entry.value);
       restorations.push({
         placeholder,
         type: entry.type,
@@ -153,6 +156,7 @@ async function rehydrateHtml(html = '', options = {}) {
   [...segments].reverse().forEach(([start, end]) => {
     const result = rehydrateWithMap(source.slice(start, end), entryMap, {
       highlight: options.highlight !== false,
+      escapeValues: options.escapeValues === true,
     });
     restorations.push(...result.restorations);
     output = `${output.slice(0, start)}${result.text}${output.slice(end)}`;

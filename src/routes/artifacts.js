@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { createHash } = require('crypto');
 const path = require('path').posix;
 const { TextDecoder } = require('util');
 const { sessionStore } = require('../session-store');
@@ -325,6 +326,74 @@ async function rehydratePreviewBuffer(buffer, artifact, req, {
         console.warn(`[Artifacts] Failed to rehydrate preview for ${artifact?.id || 'artifact'}: ${error.message}`);
         return source;
     }
+}
+
+function isManagedAppTextSource(contentType = '', sourcePath = '') {
+    const type = String(contentType || '').split(';')[0].trim().toLowerCase();
+    const filename = String(sourcePath || '').trim().toLowerCase();
+    return type.startsWith('text/')
+        || /(?:json|javascript|xml|svg\+xml|yaml)/i.test(type)
+        || /\.(?:css|csv|html?|js|json|jsx|md|markdown|mjs|svg|ts|tsx|txt|xml|yaml|yml)$/i.test(filename);
+}
+
+function hasManagedAppPiiPlaceholder(value = '') {
+    return /\[\[PII:[^\]\r\n]+\]\]/i.test(String(value || ''));
+}
+
+function assertManagedAppPiiRestorationComplete(outputText = '') {
+    if (hasManagedAppPiiPlaceholder(outputText)) {
+        throw new Error('Protected placeholders remain after final-byte restoration.');
+    }
+}
+
+async function rehydrateManagedAppSourceBuffer(buffer, artifact, req, {
+    contentType = '',
+    path: sourcePath = '',
+    metadata = {},
+} = {}) {
+    const source = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || '');
+    const type = String(contentType || '').toLowerCase();
+    const filename = String(sourcePath || artifact?.filename || '').toLowerCase();
+    const looksHtml = type.includes('text/html') || /\.(?:html?)$/i.test(filename);
+    if (!looksHtml && !isManagedAppTextSource(type, filename)) {
+        return source;
+    }
+
+    const options = {
+        sessionId: artifact?.sessionId || artifact?.session_id || '',
+        ownerId: getRequestOwnerId(req),
+        metadata: {
+            ...(artifact?.metadata || {}),
+            ...(metadata || {}),
+        },
+        clientSurface: 'managed-app-promotion',
+        route: '/api/artifacts/:id/managed-app',
+        highlight: false,
+        escapeValues: true,
+    };
+    if (looksHtml) {
+        const sourceText = source.toString('utf8');
+        const result = await rehydrateHtml(sourceText, options);
+        if (!result || typeof result.html !== 'string') {
+            throw new Error('PII HTML restoration returned invalid content.');
+        }
+        assertManagedAppPiiRestorationComplete(result.html);
+        return Buffer.from(result.html, 'utf8');
+    }
+
+    const sourceText = source.toString('utf8');
+    if (hasManagedAppPiiPlaceholder(sourceText)) {
+        throw new Error('Protected placeholders cannot be restored safely into a non-HTML deployment file.');
+    }
+    const result = await rehydrateText(sourceText, options);
+    if (!result || typeof result.text !== 'string') {
+        throw new Error('PII text restoration returned invalid content.');
+    }
+    if (Array.isArray(result.restorations) && result.restorations.length > 0) {
+        throw new Error('Protected values cannot be restored safely into a non-HTML deployment file.');
+    }
+    assertManagedAppPiiRestorationComplete(result.text);
+    return Buffer.from(result.text, 'utf8');
 }
 
 async function getOwnedArtifact(req, artifactId, options = {}) {
@@ -850,6 +919,312 @@ function extractArtifactSiteFilesForManagedApp(artifact = {}) {
     };
 }
 
+function resolveManagedAppSourceType(artifact = {}) {
+    if (isExplicitManagedAppSiteArchive(artifact)) {
+        return 'native-site-archive';
+    }
+    if (hasExplicitFrontendBundle(artifact?.metadata || {})) {
+        return 'frontend-bundle';
+    }
+    if (String(artifact?.previewHtml || '').trim()) {
+        return 'preview-html';
+    }
+    return 'none';
+}
+
+function buildInvalidManagedAppSiteBundleError(invalidSiteBundle = {}) {
+    return {
+        statusCode: 422,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+            message: 'Push to Web cannot safely promote this site because its declared native bundle could not be preserved exactly.',
+            blocker: 'invalid_site_bundle',
+            details: {
+                reason: invalidSiteBundle.reason,
+                ...(Array.isArray(invalidSiteBundle.affectedMembers) && invalidSiteBundle.affectedMembers.length > 0
+                    ? { affectedMembers: invalidSiteBundle.affectedMembers }
+                    : {}),
+                remediation: 'Regenerate the site ZIP so every declared file is present at a safe relative path, then retry Push to Web.',
+            },
+        },
+    };
+}
+
+function buildUnsupportedManagedAppBinaryAssetsError(unsupportedBinaryAssets = []) {
+    return {
+        statusCode: 422,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+            message: 'Push to Web cannot safely promote this site because the managed-app repository lane cannot preserve one or more binary assets.',
+            blocker: 'unsupported_binary_assets',
+            details: {
+                unsupportedAssets: unsupportedBinaryAssets,
+                remediation: 'Replace these assets with SVG/XML/text equivalents or add binary repository-file support before deploying this bundle.',
+            },
+        },
+    };
+}
+
+function buildEmptyManagedAppSourceError() {
+    const message = 'This artifact does not contain deployable website files.';
+    return {
+        statusCode: 400,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_NO_DEPLOYABLE_FILES',
+            message,
+            blocker: 'no_deployable_website_files',
+        },
+    };
+}
+
+function buildManagedAppPiiRestorationError(sourcePath = '') {
+    return {
+        statusCode: 503,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+            message: 'Push to Web could not safely restore protected content into the final website files.',
+            blocker: 'pii_restoration_failed',
+            details: {
+                ...(sourcePath ? { affectedPath: sourcePath } : {}),
+                remediation: 'Retry after the protected-content vault is available. The website was not created or changed.',
+            },
+        },
+    };
+}
+
+function hasPreRestoredManagedAppPii(metadata = {}) {
+    const pii = metadata?.piiCleansing && typeof metadata.piiCleansing === 'object'
+        ? metadata.piiCleansing
+        : null;
+    return Boolean(
+        pii?.restoredInGeneratedArtifact === true
+        || Number(pii?.restoredCount || 0) > 0,
+    );
+}
+
+function buildManagedAppPreRestoredPiiError(affectedPaths = []) {
+    return {
+        statusCode: 422,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_PRE_RESTORED_PII_UNSAFE',
+            message: 'Push to Web cannot safely publish protected values that were restored before their HTML, XML, CSS, or script context was known.',
+            blocker: 'pre_restored_pii_context_unsafe',
+            details: {
+                affectedPaths: Array.from(new Set(affectedPaths.filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+                remediation: 'Regenerate the site with protected placeholders preserved until deployment, or remove protected values from executable and structured site files.',
+            },
+        },
+    };
+}
+
+async function findManagedAppPreRestoredPiiPaths(artifact = {}, req) {
+    const affectedPaths = [];
+    if (hasPreRestoredManagedAppPii(artifact?.metadata || {})) {
+        affectedPaths.push(String(artifact?.filename || 'artifact'));
+    }
+
+    const declaredFiles = Array.isArray(artifact?.metadata?.siteBundle?.files)
+        ? artifact.metadata.siteBundle.files
+        : (Array.isArray(artifact?.metadata?.bundle?.files) ? artifact.metadata.bundle.files : []);
+    const seenArtifactIds = new Set();
+    for (const file of declaredFiles) {
+        const componentArtifactId = String(file?.artifactId || file?.artifact_id || '').trim();
+        if (!componentArtifactId
+            || componentArtifactId === artifact?.id
+            || seenArtifactIds.has(componentArtifactId)) {
+            continue;
+        }
+        seenArtifactIds.add(componentArtifactId);
+        const component = await getOwnedArtifact(req, componentArtifactId, { includeContent: false });
+        if (component && hasPreRestoredManagedAppPii(component.metadata || {})) {
+            affectedPaths.push(String(file?.path || file?.filename || component?.filename || componentArtifactId));
+        }
+    }
+    return affectedPaths;
+}
+
+function buildManagedAppSourceHashInvalidError() {
+    return {
+        statusCode: 400,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_SOURCE_HASH_INVALID',
+            message: 'expectedSourceSha256 must be a 64-character SHA-256 value.',
+            blocker: 'invalid_expected_source_hash',
+        },
+    };
+}
+
+function buildManagedAppSourceHashMismatchError(expectedSha256 = '', actualSha256 = '') {
+    return {
+        statusCode: 412,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_SOURCE_CHANGED',
+            message: 'Push to Web stopped because the prepared website bytes changed after preflight.',
+            blocker: 'managed_app_source_changed',
+            details: {
+                expectedSha256,
+                actualSha256,
+                remediation: 'Run preflight again, review the new source fingerprint, and retry with that fingerprint.',
+            },
+        },
+    };
+}
+
+function buildManagedAppFileFingerprint(files = []) {
+    const descriptors = files.map((file) => {
+        const contentBuffer = Buffer.from(file.content || '', 'utf8');
+        return {
+            path: file.path,
+            sizeBytes: contentBuffer.length,
+            sha256: createHash('sha256').update(contentBuffer).digest('hex'),
+        };
+    });
+    const aggregateHash = createHash('sha256');
+    files.forEach((file) => {
+        const pathBuffer = Buffer.from(file.path || '', 'utf8');
+        const contentBuffer = Buffer.from(file.content || '', 'utf8');
+        aggregateHash.update(Buffer.from(`${pathBuffer.length}:`, 'utf8'));
+        aggregateHash.update(pathBuffer);
+        aggregateHash.update(Buffer.from(`:${contentBuffer.length}:`, 'utf8'));
+        aggregateHash.update(contentBuffer);
+    });
+
+    return {
+        descriptors,
+        sizeBytes: descriptors.reduce((total, file) => total + file.sizeBytes, 0),
+        sha256: files.length > 0 ? aggregateHash.digest('hex') : null,
+    };
+}
+
+async function prepareArtifactManagedAppSource(artifact = {}, req) {
+    const sourceType = resolveManagedAppSourceType(artifact);
+    const preRestoredPiiPaths = await findManagedAppPreRestoredPiiPaths(artifact, req);
+    if (preRestoredPiiPaths.length > 0) {
+        return {
+            sourceType,
+            contentEligible: false,
+            files: [],
+            descriptors: [],
+            sizeBytes: 0,
+            sha256: null,
+            failure: buildManagedAppPreRestoredPiiError(preRestoredPiiPaths),
+        };
+    }
+    const extractedSite = extractArtifactSiteFilesForManagedApp(artifact);
+    let failure = null;
+
+    if (extractedSite.invalidSiteBundle) {
+        failure = buildInvalidManagedAppSiteBundleError(extractedSite.invalidSiteBundle);
+    } else if (extractedSite.unsupportedBinaryAssets.length > 0) {
+        failure = buildUnsupportedManagedAppBinaryAssetsError(extractedSite.unsupportedBinaryAssets);
+    }
+
+    if (failure) {
+        return {
+            sourceType,
+            contentEligible: false,
+            files: [],
+            descriptors: [],
+            sizeBytes: 0,
+            sha256: null,
+            failure,
+        };
+    }
+
+    let files;
+    try {
+        files = await Promise.all(extractedSite.files.map(async (file) => {
+            try {
+                return {
+                    ...file,
+                    content: (await rehydrateManagedAppSourceBuffer(
+                        Buffer.from(file.content || '', 'utf8'),
+                        artifact,
+                        req,
+                        {
+                            contentType: resolveFrontendBundleContentType(file.path),
+                            path: file.path,
+                        },
+                    )).toString('utf8'),
+                };
+            } catch (error) {
+                error.managedAppSourcePath = file.path;
+                throw error;
+            }
+        }));
+    } catch (error) {
+        const affectedPath = String(error?.managedAppSourcePath || '').trim();
+        console.warn(
+            `[Artifacts] Failed to restore managed-app source${affectedPath ? ` ${affectedPath}` : ''} for ${artifact?.id || 'artifact'}: ${error.message}`,
+        );
+        return {
+            sourceType,
+            contentEligible: false,
+            files: [],
+            descriptors: [],
+            sizeBytes: 0,
+            sha256: null,
+            failure: buildManagedAppPiiRestorationError(affectedPath),
+        };
+    }
+    if (files.length === 0) {
+        return {
+            sourceType,
+            contentEligible: false,
+            files: [],
+            descriptors: [],
+            sizeBytes: 0,
+            sha256: null,
+            failure: buildEmptyManagedAppSourceError(),
+        };
+    }
+
+    const fingerprint = buildManagedAppFileFingerprint(files);
+    return {
+        sourceType,
+        contentEligible: true,
+        files,
+        descriptors: fingerprint.descriptors,
+        sizeBytes: fingerprint.sizeBytes,
+        sha256: fingerprint.sha256,
+        failure: null,
+    };
+}
+
+function buildManagedAppControlPlaneError() {
+    return {
+        statusCode: 503,
+        error: {
+            code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+            message: 'Managed app export requires the managed app control plane to be available.',
+            blocker: 'managed_app_control_plane_unavailable',
+        },
+    };
+}
+
+function getExpectedManagedAppSourceSha256(body = {}) {
+    const rawValue = body?.expectedSourceSha256 ?? body?.expected_source_sha256;
+    if (rawValue === undefined || rawValue === null || String(rawValue).trim() === '') {
+        return { value: '', failure: null };
+    }
+    const value = String(rawValue).trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(value)) {
+        return { value: '', failure: buildManagedAppSourceHashInvalidError() };
+    }
+    return { value, failure: null };
+}
+
+function collectManagedAppPreflightBlockers({ controlPlaneAvailable = false, preparedSource = null } = {}) {
+    const blockers = [];
+    if (!controlPlaneAvailable) {
+        blockers.push(buildManagedAppControlPlaneError().error);
+    }
+    if (preparedSource?.failure) {
+        blockers.push(preparedSource.failure.error);
+    }
+    return blockers;
+}
+
 function buildManagedAppNameFromArtifact(artifact = {}, fallback = 'Website Artifact') {
     return String(
         artifact?.metadata?.title
@@ -1353,6 +1728,39 @@ router.get('/:id/bundle', async (req, res, next) => {
     }
 });
 
+router.post('/:id/managed-app/preflight', async (req, res, next) => {
+    try {
+        const artifact = await getOwnedArtifact(req, req.params.id, { includeContent: true });
+        if (!artifact) {
+            return res.status(404).json({ error: { message: 'Artifact not found' } });
+        }
+
+        const service = req.app.locals.managedAppService;
+        const controlPlaneAvailable = Boolean(service?.isAvailable && service.isAvailable());
+        const preparedSource = await prepareArtifactManagedAppSource(artifact, req);
+        const blockers = collectManagedAppPreflightBlockers({
+            controlPlaneAvailable,
+            preparedSource,
+        });
+
+        res.json({
+            artifactId: artifact.id,
+            contentEligible: preparedSource.contentEligible,
+            controlPlaneAvailable,
+            pushToWebEligible: preparedSource.contentEligible && controlPlaneAvailable,
+            sourceType: preparedSource.sourceType,
+            targetPaths: preparedSource.descriptors.map((file) => file.path),
+            fileCount: preparedSource.descriptors.length,
+            sizeBytes: preparedSource.sizeBytes,
+            sha256: preparedSource.sha256,
+            files: preparedSource.descriptors,
+            blockers,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
 router.post('/:id/managed-app', async (req, res, next) => {
     try {
         const artifact = await getOwnedArtifact(req, req.params.id, { includeContent: true });
@@ -1362,55 +1770,32 @@ router.post('/:id/managed-app', async (req, res, next) => {
 
         const service = req.app.locals.managedAppService;
         if (!service?.isAvailable || !service.isAvailable()) {
-            return res.status(503).json({
-                error: {
-                    message: 'Managed app export requires the managed app control plane to be available.',
-                },
+            const failure = buildManagedAppControlPlaneError();
+            return res.status(failure.statusCode).json({
+                error: failure.error,
             });
         }
 
-        const extractedSite = extractArtifactSiteFilesForManagedApp(artifact);
-        if (extractedSite.invalidSiteBundle) {
-            return res.status(422).json({
-                error: {
-                    code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
-                    message: 'Push to Web cannot safely promote this site because its declared native bundle could not be preserved exactly.',
-                    blocker: 'invalid_site_bundle',
-                    details: {
-                        reason: extractedSite.invalidSiteBundle.reason,
-                        ...(extractedSite.invalidSiteBundle.affectedMembers.length > 0
-                            ? { affectedMembers: extractedSite.invalidSiteBundle.affectedMembers }
-                            : {}),
-                        remediation: 'Regenerate the site ZIP so every declared file is present at a safe relative path, then retry Push to Web.',
-                    },
-                },
+        const preparedSource = await prepareArtifactManagedAppSource(artifact, req);
+        if (preparedSource.failure) {
+            return res.status(preparedSource.failure.statusCode).json({
+                error: preparedSource.failure.error,
             });
         }
-        if (extractedSite.unsupportedBinaryAssets.length > 0) {
-            return res.status(422).json({
-                error: {
-                    code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
-                    message: 'Push to Web cannot safely promote this site because the managed-app repository lane cannot preserve one or more binary assets.',
-                    blocker: 'unsupported_binary_assets',
-                    details: {
-                        unsupportedAssets: extractedSite.unsupportedBinaryAssets,
-                        remediation: 'Replace these assets with SVG/XML/text equivalents or add binary repository-file support before deploying this bundle.',
-                    },
-                },
+        const files = preparedSource.files;
+        const expectedSource = getExpectedManagedAppSourceSha256(req.body || {});
+        if (expectedSource.failure) {
+            return res.status(expectedSource.failure.statusCode).json({
+                error: expectedSource.failure.error,
             });
         }
-        const files = await Promise.all(extractedSite.files.map(async (file) => ({
-            ...file,
-            content: (await rehydratePreviewBuffer(Buffer.from(file.content || '', 'utf8'), artifact, req, {
-                contentType: resolveFrontendBundleContentType(file.path),
-                path: file.path,
-            })).toString('utf8'),
-        })));
-        if (files.length === 0) {
-            return res.status(400).json({
-                error: {
-                    message: 'This artifact does not contain deployable website files.',
-                },
+        if (expectedSource.value && expectedSource.value !== preparedSource.sha256) {
+            const failure = buildManagedAppSourceHashMismatchError(
+                expectedSource.value,
+                preparedSource.sha256,
+            );
+            return res.status(failure.statusCode).json({
+                error: failure.error,
             });
         }
 
@@ -1437,6 +1822,9 @@ router.post('/:id/managed-app', async (req, res, next) => {
                     id: artifact.id,
                     filename: artifact.filename,
                     format: artifact.extension || artifact.format,
+                    sha256: preparedSource.sha256,
+                    sizeBytes: preparedSource.sizeBytes,
+                    fileCount: preparedSource.descriptors.length,
                 },
                 ...(publicHost ? {
                     requestedPublicHost: publicHost,
@@ -1459,6 +1847,8 @@ router.post('/:id/managed-app', async (req, res, next) => {
             fileCount: files.length,
             files: files.map((file) => file.path),
             ...result,
+            sourceSha256: preparedSource.sha256,
+            sourceSizeBytes: preparedSource.sizeBytes,
             publicHost: publicHost || result?.publicHost || result?.app?.publicHost || null,
             ...(asyncRuntime ? {
                 asyncRuntime: {

@@ -583,6 +583,7 @@ class RemoteCliAgentTool extends ToolBase {
           agentQuality: { type: 'object' },
           artifactQuality: { type: 'object' },
           model: { type: 'string' },
+          providerModel: { type: 'string' },
           apiMode: { type: 'string' },
           providerId: { type: 'string' },
           handoffVersion: { type: 'string' },

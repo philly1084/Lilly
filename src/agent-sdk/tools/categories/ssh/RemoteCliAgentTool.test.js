@@ -247,6 +247,7 @@ describe('RemoteCliAgentTool', () => {
       })],
     });
     expect(tool.outputSchema.properties.artifactQuality).toEqual({ type: 'object' });
+    expect(tool.outputSchema.properties.providerModel).toEqual({ type: 'string' });
     expect(result.data.resultFiles[0]).not.toHaveProperty('contentBase64');
     expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-1',

@@ -15,6 +15,21 @@ describe('PII rehydrator', () => {
     expect(result.restorations).toHaveLength(1);
   });
 
+  test('escapes restored values when markup-free HTML output is requested', () => {
+    const entryMap = new Map([
+      ['[[PII:NAME:unsafe]]', { value: '<img src=x onerror="alert(1)">', type: 'person' }],
+    ]);
+
+    const result = rehydrateWithMap('Hello [[PII:NAME:unsafe]].', entryMap, {
+      highlight: false,
+      escapeValues: true,
+    });
+
+    expect(result.text).toBe('Hello &lt;img src=x onerror=&quot;alert(1)&quot;&gt;.');
+    expect(result.text).not.toContain('<img');
+    expect(result.restorations).toHaveLength(1);
+  });
+
   test('splits HTML text nodes without scripts, styles, or attributes', () => {
     const html = '<div data-email="[[PII:EMAIL:abc]]">Hello [[PII:EMAIL:abc]]</div><script>[[PII:EMAIL:abc]]</script><style>[[PII:EMAIL:abc]]</style>';
     const segments = splitHtmlTextSegments(html).map(([start, end]) => html.slice(start, end));

@@ -189,6 +189,7 @@ describe('AsyncLabService', () => {
             data: {
                 completionStatus: 'completed',
                 providerId: 'kimi',
+                providerModel: 'k3',
                 model: 'kimi-k3',
                 transport: 'provider-agent',
                 publicUrl: `https://demo.example.test/?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&X-Amz-Security-Token=${secretToken}&keyboard=compact&monkey=capuchin&view=1`,
@@ -275,6 +276,7 @@ describe('AsyncLabService', () => {
             success: true,
             completionStatus: 'completed',
             provider: 'kimi',
+            providerModel: 'k3',
             model: 'kimi-k3',
             transport: 'provider-agent',
             publicUrl: 'https://demo.example.test/?keyboard=compact&monkey=capuchin&view=1',

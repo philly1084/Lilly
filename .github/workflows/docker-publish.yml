@@ -41,6 +41,11 @@ jobs:
           node --check src/remote-cli/agents-sdk-runner.js
           node --check src/conversation-orchestrator.js
           node --check src/artifacts/artifact-quality-gate.js
+          node --check src/pii/pii-rehydrator.js
+          node --check src/routes/artifacts.js
+          node --check src/async-lab/service.js
+          node --check scripts/canary-remote-agent-artifact-loop.js
+          node --check frontend/web-chat/js/artifacts.js
           node --check frontend/web-chat/js/api.js
           node --check frontend/web-chat/js/app.js
           npm test -- --runInBand --coverage=false --runTestsByPath \
@@ -49,11 +54,15 @@ jobs:
             src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.test.js \
             src/remote-cli/agents-sdk-runner.test.js \
             src/artifacts/artifact-quality-gate.test.js \
+            src/pii/__tests__/pii-rehydrator.test.js \
             src/routes/artifacts.test.js \
             src/async-lab/service.test.js \
             src/routes/async-lab.test.js \
+            scripts/canary-remote-agent-artifact-loop.test.js \
+            frontend/web-chat/js/artifacts-pdf-preview.test.js \
             frontend/web-chat/js/api.test.js \
             frontend/web-chat/js/app-remote-cli-agent.test.js
+          node scripts/canary-remote-agent-artifact-loop.js --mode all
           npm test -- --runInBand --coverage=false --runTestsByPath \
             src/conversation-orchestrator.test.js \
             --testNamePattern='routes explicit assisted remote CLI authoring requests to remote-cli-agent instead of the end-to-end workflow'
