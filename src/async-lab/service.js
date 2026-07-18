@@ -3,6 +3,7 @@
 const os = require('os');
 const { createHash, randomUUID } = require('crypto');
 const { config } = require('../config');
+const { getSessionControlState } = require('../runtime-control-state');
 const { AsyncLabStore } = require('./store');
 const { ValkeyLiveBus, normalizeText, sleep } = require('./valkey-live-bus');
 
@@ -24,10 +25,43 @@ const REMOTE_ADAPTER_PATTERNS = [
     /managed-app/i,
     /build-webhook/i,
 ];
+const FAILED_TOOL_COMPLETION_STATUSES = new Set(['blocked', 'failed']);
+const SAFE_RESULT_ITEM_LIMIT = 40;
+const SAFE_RESULT_TEXT_LIMIT = 1200;
+const COMMON_SENSITIVE_QUERY_KEYS = new Set([
+    'access-token',
+    'api-key',
+    'auth',
+    'authorization',
+    'client-secret',
+    'cookie',
+    'credential',
+    'credentials',
+    'id-token',
+    'key',
+    'password',
+    'private-key',
+    'refresh-token',
+    'secret',
+    'security-token',
+    'session-token',
+    'sig',
+    'signature',
+    'token',
+]);
 
 function createServiceError(message, statusCode = 503) {
     const error = new Error(message);
     error.statusCode = statusCode;
+    return error;
+}
+
+function createRemoteSessionScopeError() {
+    const error = createServiceError(
+        'Async remote-agent session is unavailable or is not owned by the requester',
+        403,
+    );
+    error.code = 'ASYNC_REMOTE_AGENT_SESSION_SCOPE_MISMATCH';
     return error;
 }
 
@@ -70,6 +104,358 @@ function pickText(...values) {
         }
     }
     return '';
+}
+
+function hasSensitiveResultFragment(value = '') {
+    const rawFragment = String(value || '').replace(/^#/, '');
+    if (!rawFragment) {
+        return false;
+    }
+    let decodedFragment = rawFragment;
+    try {
+        decodedFragment = decodeURIComponent(rawFragment.replace(/\+/g, '%20'));
+    } catch (_error) {
+        decodedFragment = rawFragment;
+    }
+    return decodedFragment
+        .split('?')
+        .flatMap((section) => section.split(/[&;]/))
+        .some((entry) => {
+            const delimiterIndex = entry.search(/[=:]/);
+            const rawKey = delimiterIndex >= 0 ? entry.slice(0, delimiterIndex) : entry;
+            return isSensitiveResultQueryParam(rawKey.replace(/^[/#]+/, ''));
+        });
+}
+
+function sanitizeHttpUrlSubstring(value = '') {
+    const original = String(value || '');
+    if (!original) {
+        return '';
+    }
+
+    let candidate = original;
+    let trailing = '';
+    while (/[.,;!?]$/.test(candidate)) {
+        trailing = `${candidate.slice(-1)}${trailing}`;
+        candidate = candidate.slice(0, -1);
+    }
+
+    try {
+        const parsed = new URL(candidate);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return original;
+        }
+        let changed = false;
+        if (parsed.username || parsed.password) {
+            parsed.username = '';
+            parsed.password = '';
+            changed = true;
+        }
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (isSensitiveResultQueryParam(key)) {
+                parsed.searchParams.delete(key);
+                changed = true;
+            }
+        }
+        if (hasSensitiveResultFragment(parsed.hash)) {
+            parsed.hash = '';
+            changed = true;
+        }
+        return changed ? `${parsed.toString()}${trailing}` : original;
+    } catch (_error) {
+        return original;
+    }
+}
+
+function sanitizeResultText(value = '', maxLength = SAFE_RESULT_TEXT_LIMIT) {
+    const normalized = normalizeText(value)
+        .replace(/\bhttps?:\/\/[^\s<>"'`]+/gi, (url) => sanitizeHttpUrlSubstring(url))
+        .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+        .replace(
+            /(\b(?:api[-_ ]?key|access[-_ ]?token|client[-_ ]?secret|private[-_ ]?key|refresh[-_ ]?token|session[-_ ]?token|security[-_ ]?token|id[-_ ]?token|authorization|credentials?|cookie|key|password|secret|signature|sig|token)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&#}\]]+)/gi,
+            '$1[redacted]',
+        )
+        .replace(/\b(?:github_pat|ghp|sk)_[A-Za-z0-9_-]{12,}\b/g, '[redacted]');
+    if (!normalized) {
+        return '';
+    }
+    const limit = Math.max(1, Number(maxLength) || SAFE_RESULT_TEXT_LIMIT);
+    return normalized.length > limit
+        ? `${normalized.slice(0, Math.max(1, limit - 3))}...`
+        : normalized;
+}
+
+function isSensitiveResultQueryParam(value = '') {
+    let decoded = String(value || '').trim();
+    for (let pass = 0; pass < 3; pass += 1) {
+        try {
+            const next = decodeURIComponent(decoded.replace(/\+/g, '%20'));
+            if (next === decoded) break;
+            decoded = next;
+        } catch (_error) {
+            break;
+        }
+    }
+    const components = decoded.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (components.length === 0) {
+        return false;
+    }
+    const normalized = components.join('-');
+    if (COMMON_SENSITIVE_QUERY_KEYS.has(normalized)) {
+        return true;
+    }
+    const suffix = components.slice(-2).join('-');
+    if (['access-token', 'api-key', 'security-token'].includes(suffix)) {
+        return true;
+    }
+    if (components[0] === 'x' && ['amz', 'goog'].includes(components[1])) {
+        const providerField = components.slice(2).join('-');
+        return ['credential', 'security-token', 'signature'].includes(providerField);
+    }
+    return false;
+}
+
+function sanitizeResultUrl(value = '') {
+    const normalized = sanitizeResultText(value, 2048);
+    if (!normalized) {
+        return '';
+    }
+    try {
+        const relative = /^[/?#]/.test(normalized);
+        const parsed = new URL(normalized, 'https://kimibuilt.invalid');
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return '';
+        }
+        parsed.username = '';
+        parsed.password = '';
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (isSensitiveResultQueryParam(key)) {
+                parsed.searchParams.delete(key);
+            }
+        }
+        if (hasSensitiveResultFragment(parsed.hash)) {
+            parsed.hash = '';
+        }
+        return relative
+            ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+            : parsed.toString();
+    } catch (_error) {
+        return '';
+    }
+}
+
+function compactStringList(values = [], maxItems = SAFE_RESULT_ITEM_LIMIT, maxLength = 240) {
+    return Array.from(new Set((Array.isArray(values) ? values : [])
+        .map((value) => sanitizeResultText(value, maxLength))
+        .filter(Boolean)))
+        .slice(0, Math.max(1, Number(maxItems) || SAFE_RESULT_ITEM_LIMIT));
+}
+
+function compactResultFileDescriptor(file = {}) {
+    if (!file || typeof file !== 'object') {
+        return null;
+    }
+    const descriptor = {};
+    const textFields = [
+        'artifactId',
+        'filename',
+        'storedFilename',
+        'path',
+        'relativePath',
+        'mimeType',
+        'extension',
+        'format',
+        'role',
+    ];
+    for (const field of textFields) {
+        const value = sanitizeResultText(file[field], 500);
+        if (value) {
+            descriptor[field] = value;
+        }
+    }
+    const sizeBytes = Number(file.sizeBytes);
+    if (Number.isFinite(sizeBytes) && sizeBytes >= 0) {
+        descriptor.sizeBytes = sizeBytes;
+    }
+    const sha256 = sanitizeResultText(file.sha256, 64);
+    if (/^[a-f0-9]{64}$/i.test(sha256)) {
+        descriptor.sha256 = sha256.toLowerCase();
+    }
+    if (typeof file.gatewayVerified === 'boolean') {
+        descriptor.gatewayVerified = file.gatewayVerified;
+    }
+    return Object.keys(descriptor).length > 0 ? descriptor : null;
+}
+
+function compactArtifactDescriptor(artifact = {}) {
+    if (!artifact || typeof artifact !== 'object') {
+        return null;
+    }
+    const descriptor = {};
+    const textFieldAliases = {
+        id: [artifact.id, artifact.artifactId],
+        filename: [artifact.filename, artifact.fileName],
+        title: [artifact.title, artifact.name],
+        mimeType: [artifact.mimeType, artifact.contentType],
+        format: [artifact.format],
+        role: [artifact.role],
+        relativePath: [artifact.relativePath, artifact.path],
+        parentArtifactId: [artifact.parentArtifactId, artifact.parent_artifact_id],
+        revision: [artifact.revision, artifact.artifactRevision],
+        createdAt: [artifact.createdAt, artifact.created_at],
+    };
+    for (const [field, values] of Object.entries(textFieldAliases)) {
+        const candidate = values.find((entry) => entry !== undefined && entry !== null);
+        const value = sanitizeResultText(candidate ?? '', 500);
+        if (value) {
+            descriptor[field] = value;
+        }
+    }
+    const urlFieldAliases = {
+        downloadUrl: [artifact.downloadUrl, artifact.download_url],
+        previewUrl: [artifact.previewUrl, artifact.preview_url],
+        sandboxUrl: [artifact.sandboxUrl, artifact.sandbox_url],
+        bundleDownloadUrl: [artifact.bundleDownloadUrl, artifact.bundle_download_url],
+    };
+    for (const [field, values] of Object.entries(urlFieldAliases)) {
+        const candidate = values.find((entry) => entry !== undefined && entry !== null);
+        const value = sanitizeResultUrl(candidate ?? '');
+        if (value) {
+            descriptor[field] = value;
+        }
+    }
+    const sizeBytes = Number(artifact.sizeBytes ?? artifact.size_bytes);
+    if (Number.isFinite(sizeBytes) && sizeBytes >= 0) {
+        descriptor.sizeBytes = sizeBytes;
+    }
+    return Object.keys(descriptor).length > 0 ? descriptor : null;
+}
+
+function compactQualityIssue(issue = {}) {
+    if (!issue || typeof issue !== 'object') {
+        return null;
+    }
+    const compact = {};
+    for (const field of ['code', 'path', 'message']) {
+        const value = sanitizeResultText(issue[field], field === 'message' ? 800 : 300);
+        if (value) {
+            compact[field] = value;
+        }
+    }
+    return Object.keys(compact).length > 0 ? compact : null;
+}
+
+function compactArtifactQuality(quality = null) {
+    if (!quality || typeof quality !== 'object') {
+        return null;
+    }
+    const compact = {};
+    for (const field of ['version', 'status']) {
+        const value = sanitizeResultText(quality[field], 160);
+        if (value) {
+            compact[field] = value;
+        }
+    }
+    for (const field of ['blockers', 'warnings']) {
+        const entries = (Array.isArray(quality[field]) ? quality[field] : [])
+            .slice(0, SAFE_RESULT_ITEM_LIMIT)
+            .map((issue) => compactQualityIssue(issue))
+            .filter(Boolean);
+        if (entries.length > 0) {
+            compact[field] = entries;
+        }
+    }
+    const files = (Array.isArray(quality.files) ? quality.files : [])
+        .slice(0, SAFE_RESULT_ITEM_LIMIT)
+        .map((file) => compactResultFileDescriptor(file))
+        .filter(Boolean);
+    if (files.length > 0) {
+        compact.files = files;
+    }
+    if (quality.site && typeof quality.site === 'object') {
+        compact.site = {
+            enabled: quality.site.enabled === true,
+            entries: compactStringList(quality.site.entries, SAFE_RESULT_ITEM_LIMIT, 500),
+            checkedReferences: Math.max(0, Number(quality.site.checkedReferences) || 0),
+        };
+    }
+    return Object.keys(compact).length > 0 ? compact : null;
+}
+
+function buildRemoteAgentResultSummary(result = {}) {
+    const data = result?.data && typeof result.data === 'object' && !Array.isArray(result.data)
+        ? result.data
+        : {};
+    const source = { ...result, ...data };
+    const completionStatus = sanitizeResultText(source.completionStatus, 80).toLowerCase();
+    const blocker = sanitizeResultText(source.blocker || source.resultFilesError, SAFE_RESULT_TEXT_LIMIT);
+    const provider = sanitizeResultText(source.provider || source.providerId, 160);
+    const providerModel = sanitizeResultText(source.providerModel || source.provider_model, 160);
+    const model = sanitizeResultText(source.model, 160);
+    const transport = sanitizeResultText(source.transport, 160);
+    const sessionId = sanitizeResultText(source.sessionId || source.session_id, 300);
+    const mcpSessionId = sanitizeResultText(source.mcpSessionId || source.mcp_session_id, 300);
+    const remoteCodeSessionId = sanitizeResultText(
+        source.remoteCodeSessionId || source.remote_code_session_id,
+        300,
+    );
+    const remoteCodeJobId = sanitizeResultText(source.remoteCodeJobId || source.remote_code_job_id, 300);
+    const targetId = sanitizeResultText(source.targetId || source.target_id, 300);
+    const cwd = sanitizeResultText(source.cwd, 1000);
+    const publicUrl = sanitizeResultUrl(source.publicUrl);
+    const publicHost = sanitizeResultText(source.publicHost, 300);
+    const resultFiles = (Array.isArray(source.resultFiles) ? source.resultFiles : [])
+        .slice(0, SAFE_RESULT_ITEM_LIMIT)
+        .map((file) => compactResultFileDescriptor(file))
+        .filter(Boolean);
+    const artifactCandidates = [
+        ...(Array.isArray(source.artifacts) ? source.artifacts : []),
+        ...(source.siteBundleArtifact && typeof source.siteBundleArtifact === 'object'
+            ? [source.siteBundleArtifact]
+            : []),
+    ].slice(0, SAFE_RESULT_ITEM_LIMIT * 2)
+        .map((artifact) => compactArtifactDescriptor(artifact))
+        .filter(Boolean);
+    const artifactKeys = new Set();
+    const artifacts = artifactCandidates.filter((artifact) => {
+        const key = artifact.id
+            || [artifact.filename, artifact.relativePath, artifact.downloadUrl].filter(Boolean).join('|');
+        if (!key || artifactKeys.has(key)) {
+            return false;
+        }
+        artifactKeys.add(key);
+        return true;
+    }).slice(0, SAFE_RESULT_ITEM_LIMIT);
+    const siteBundleArtifactId = sanitizeResultText(source.siteBundleArtifactId, 300);
+    const artifactIds = compactStringList([
+        ...(Array.isArray(source.artifactIds) ? source.artifactIds : []),
+        ...resultFiles.map((file) => file.artifactId),
+        ...artifacts.map((artifact) => artifact.id),
+        siteBundleArtifactId,
+    ], SAFE_RESULT_ITEM_LIMIT, 300);
+    const artifactQuality = compactArtifactQuality(source.artifactQuality);
+
+    return {
+        ...(completionStatus ? { completionStatus } : {}),
+        ...(blocker ? { blocker } : {}),
+        ...(provider ? { provider } : {}),
+        ...(providerModel ? { providerModel } : {}),
+        ...(model ? { model } : {}),
+        ...(transport ? { transport } : {}),
+        ...(sessionId ? { sessionId } : {}),
+        ...(mcpSessionId ? { mcpSessionId } : {}),
+        ...(remoteCodeSessionId ? { remoteCodeSessionId } : {}),
+        ...(remoteCodeJobId ? { remoteCodeJobId } : {}),
+        ...(targetId ? { targetId } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(publicUrl ? { publicUrl } : {}),
+        ...(publicHost ? { publicHost } : {}),
+        ...(artifactIds.length > 0 ? { artifactIds } : {}),
+        ...(resultFiles.length > 0 ? { resultFiles } : {}),
+        ...(siteBundleArtifactId ? { siteBundleArtifactId } : {}),
+        ...(artifactQuality ? { artifactQuality } : {}),
+        ...(artifacts.length > 0 ? { artifacts } : {}),
+    };
 }
 
 function normalizeBuildWebhookStatus(value = '') {
@@ -193,6 +579,7 @@ class AsyncLabService {
         });
         this.toolManager = options.toolManager || null;
         this.toolExecutionContext = options.toolExecutionContext || {};
+        this.sessionStore = options.sessionStore || null;
         this.instanceId = options.instanceId || `async-lab-${os.hostname()}-${process.pid}-${randomUUID()}`;
         this.workerTimer = null;
         this.drainPromise = null;
@@ -213,11 +600,13 @@ class AsyncLabService {
     configureExecutionRuntime({
         toolManager = this.toolManager,
         toolExecutionContext = this.toolExecutionContext,
+        sessionStore = this.sessionStore,
     } = {}) {
         this.toolManager = toolManager || null;
         this.toolExecutionContext = toolExecutionContext && typeof toolExecutionContext === 'object'
             ? { ...toolExecutionContext }
             : {};
+        this.sessionStore = sessionStore || null;
         return {
             toolManagerAttached: Boolean(this.toolManager?.executeTool),
         };
@@ -359,6 +748,18 @@ class AsyncLabService {
         const liveRemoteAllowed = liveRemoteRequested && this.config.allowLiveRemote;
         const targetKey = deriveTargetKey(input);
         const idempotencyKey = buildDefaultIdempotencyKey(input);
+        const runOwnerId = normalizeText(ownerId || input.ownerId || input.owner_id);
+        const runSessionId = normalizeText(input.sessionId || input.session_id);
+
+        if (adapter === 'remote-cli-agent' && runSessionId && this.sessionStore) {
+            const ownedSession = await this.resolveRunSession({
+                sessionId: runSessionId,
+                ownerId: runOwnerId,
+            });
+            if (!ownedSession) {
+                throw createRemoteSessionScopeError();
+            }
+        }
 
         if (idempotencyKey) {
             const existing = await this.store.getRunByIdempotency(this.config.surface, idempotencyKey);
@@ -387,8 +788,8 @@ class AsyncLabService {
 
         const runInput = {
             id: runId,
-            ownerId: normalizeText(ownerId || input.ownerId || input.owner_id),
-            sessionId: normalizeText(input.sessionId || input.session_id),
+            ownerId: runOwnerId,
+            sessionId: runSessionId,
             runtimeSurface: this.config.surface,
             mode: this.config.mode,
             adapter,
@@ -711,6 +1112,19 @@ class AsyncLabService {
             toolResult = await this.maybeExecuteAdapter(latest);
         }
 
+        if (toolResult?.success === false) {
+            const failureMessage = pickText(
+                toolResult.blocker,
+                toolResult.error,
+                toolResult.completionStatus
+                    ? `${toolResult.adapter || run.adapter} reported ${toolResult.completionStatus}.`
+                    : '',
+                `${toolResult.adapter || run.adapter} failed.`,
+            );
+            await this.markFailed(latest || run, failureMessage, { toolResult });
+            return;
+        }
+
         const completed = await this.store.updateRun(run.id, {
             status: 'completed',
             completedAt: new Date().toISOString(),
@@ -766,8 +1180,9 @@ class AsyncLabService {
 
         const startedAt = Date.now();
         let result;
+        const toolContext = await this.buildToolContext(run);
         try {
-            result = await this.toolManager.executeTool(adapter, params, this.buildToolContext(run));
+            result = await this.toolManager.executeTool(adapter, params, toolContext);
         } catch (error) {
             result = {
                 success: false,
@@ -777,23 +1192,37 @@ class AsyncLabService {
             };
         }
         const summary = this.summarizeToolResult(adapter, result, startedAt);
+        if (adapter === 'remote-cli-agent') {
+            try {
+                await this.persistRemoteCliAgentContinuity(run, summary, toolContext.session);
+            } catch (error) {
+                await this.appendEvent(run.id, {
+                    type: 'continuity_warning',
+                    source: 'async-lab-worker',
+                    status: 'running',
+                    payload: {
+                        adapter,
+                        targetKey: run.targetKey,
+                        message: 'Remote agent completed, but its continuation state could not be persisted.',
+                        error: sanitizeResultText(error?.message, 500),
+                    },
+                });
+            }
+        }
+        const toolFailed = summary.success === false;
         await this.appendEvent(run.id, {
-            type: result?.success === false ? 'tool_failed' : 'tool_completed',
+            type: toolFailed ? 'tool_failed' : 'tool_completed',
             source: 'async-lab-worker',
-            status: result?.success === false ? 'failed' : 'running',
+            status: toolFailed ? 'failed' : 'running',
             payload: {
                 adapter,
                 targetKey: run.targetKey,
-                message: result?.success === false
-                    ? `${adapter} returned an error result.`
+                message: toolFailed
+                    ? `${adapter} reported a blocked or failed result.`
                     : `${adapter} returned a structured result.`,
                 result: summary,
             },
         });
-
-        if (result?.success === false) {
-            throw createServiceError(result.error || `${adapter} failed.`, 502);
-        }
 
         return summary;
     }
@@ -850,18 +1279,84 @@ class AsyncLabService {
         };
     }
 
-    buildToolContext(run = {}) {
+    async resolveRunSession(run = {}) {
+        const sessionId = normalizeText(run.sessionId);
+        const ownerId = normalizeText(run.ownerId);
+        if (!sessionId || !this.sessionStore) {
+            return null;
+        }
+
+        if (typeof this.sessionStore.getOwned === 'function') {
+            return this.sessionStore.getOwned(sessionId, ownerId);
+        }
+        if (typeof this.sessionStore.get === 'function') {
+            const session = await this.sessionStore.get(sessionId);
+            const sessionOwnerId = normalizeText(
+                this.sessionStore.getSessionOwnerId?.(session)
+                || session?.ownerId
+                || session?.owner_id
+                || session?.metadata?.ownerId
+                || session?.metadata?.owner_id,
+            );
+            return session && ownerId && sessionOwnerId === ownerId ? session : null;
+        }
+        return null;
+    }
+
+    async buildToolContext(run = {}) {
+        const session = await this.resolveRunSession(run);
+        const remoteAgentRun = normalizeAdapter(run.adapter) === 'remote-cli-agent';
+        if (remoteAgentRun
+            && normalizeText(run.sessionId)
+            && this.sessionStore
+            && !session) {
+            throw createRemoteSessionScopeError();
+        }
+        const verifiedSessionId = remoteAgentRun
+            ? (session ? normalizeText(run.sessionId) : null)
+            : (run.sessionId || this.toolExecutionContext?.sessionId || null);
         return {
             ...(this.toolExecutionContext && typeof this.toolExecutionContext === 'object'
                 ? this.toolExecutionContext
                 : {}),
-            sessionId: run.sessionId || this.toolExecutionContext?.sessionId || null,
+            sessionId: verifiedSessionId,
             ownerId: run.ownerId || this.toolExecutionContext?.ownerId || null,
+            ...(session ? {
+                session,
+                controlState: getSessionControlState(session),
+            } : {}),
             route: '/api/async-lab',
             transport: 'async-runtime',
             executionProfile: 'async-runtime',
             toolManager: this.toolManager,
         };
+    }
+
+    async persistRemoteCliAgentContinuity(run = {}, summary = {}, resolvedSession = null) {
+        const sessionId = normalizeText(run.sessionId);
+        if (!sessionId || !this.sessionStore?.updateControlState || !resolvedSession) {
+            return false;
+        }
+
+        const remoteCliAgent = {
+            lastTask: normalizeText(run.task) || null,
+            lastTaskAt: new Date().toISOString(),
+            ...(summary.sessionId ? { sessionId: summary.sessionId } : {}),
+            ...(summary.mcpSessionId ? { mcpSessionId: summary.mcpSessionId } : {}),
+            ...(summary.remoteCodeSessionId ? { remoteCodeSessionId: summary.remoteCodeSessionId } : {}),
+            ...(summary.remoteCodeJobId ? { remoteCodeJobId: summary.remoteCodeJobId } : {}),
+            ...(summary.targetId ? { targetId: summary.targetId } : {}),
+            ...(summary.cwd ? { cwd: summary.cwd } : {}),
+            ...(summary.completionStatus ? { completionStatus: summary.completionStatus } : {}),
+            ...(summary.blocker ? { blocker: summary.blocker } : {}),
+            ...(summary.publicHost ? { publicHost: summary.publicHost } : {}),
+            ...(summary.publicUrl ? { publicUrl: summary.publicUrl } : {}),
+        };
+        await this.sessionStore.updateControlState(sessionId, {
+            lastToolIntent: 'remote-cli-agent',
+            remoteCliAgent,
+        });
+        return true;
     }
 
     buildParamsPreview(params = {}) {
@@ -881,21 +1376,46 @@ class AsyncLabService {
     }
 
     summarizeToolResult(adapter = '', result = {}, startedAt = Date.now()) {
+        const normalizedAdapter = normalizeAdapter(adapter);
+        const remoteAgentSummary = normalizedAdapter === 'remote-cli-agent'
+            ? buildRemoteAgentResultSummary(result)
+            : {};
+        const completionFailed = FAILED_TOOL_COMPLETION_STATUSES.has(
+            normalizeText(remoteAgentSummary.completionStatus).toLowerCase(),
+        );
         const durationMs = Number(result?.duration) || Math.max(0, Date.now() - startedAt);
+        const data = result?.data && typeof result.data === 'object' && !Array.isArray(result.data)
+            ? result.data
+            : null;
+        const verificationEvidence = normalizedAdapter === 'remote-cli-agent'
+            ? sanitizeResultText(
+                typeof result?.verification?.evidence === 'string'
+                    ? result.verification.evidence
+                    : '',
+                SAFE_RESULT_TEXT_LIMIT,
+            ) || null
+            : result?.verification?.evidence || null;
         return {
-            adapter: normalizeAdapter(adapter),
-            success: result?.success !== false,
-            toolId: result?.toolId || normalizeAdapter(adapter),
+            adapter: normalizedAdapter,
+            success: result?.success !== false && !completionFailed,
+            toolId: result?.toolId || normalizedAdapter,
             durationMs,
-            error: normalizeText(result?.error),
+            error: normalizedAdapter === 'remote-cli-agent'
+                ? sanitizeResultText(result?.error, SAFE_RESULT_TEXT_LIMIT)
+                : normalizeText(result?.error),
             status: result?.verification?.status || null,
-            evidence: result?.verification?.evidence || null,
-            data: result?.data && typeof result.data === 'object'
+            evidence: verificationEvidence,
+            data: data
                 ? {
-                    keys: Object.keys(result.data).slice(0, 12),
-                    message: normalizeText(result.data.message || result.data.summary || result.data.output || ''),
+                    keys: Object.keys(data)
+                        .filter((key) => !/(?:base64|buffer|content|password|secret|token|key)/i.test(key))
+                        .slice(0, 12),
+                    message: normalizedAdapter === 'remote-cli-agent'
+                        ? sanitizeResultText(data.message || data.summary || '', SAFE_RESULT_TEXT_LIMIT)
+                        : normalizeText(data.message || data.summary || data.output || ''),
                 }
                 : null,
+            ...remoteAgentSummary,
         };
     }
 
@@ -995,11 +1515,13 @@ class AsyncLabService {
         return updated;
     }
 
-    async markFailed(run = {}, message = 'Run failed.') {
+    async markFailed(run = {}, message = 'Run failed.', metadata = {}) {
+        const retainedMetadata = metadata && typeof metadata === 'object' ? metadata : {};
         const updated = await this.store.updateRun(run.id, {
             status: 'failed',
             completedAt: new Date().toISOString(),
             metadata: {
+                ...retainedMetadata,
                 failure: message,
             },
         });
@@ -1009,6 +1531,10 @@ class AsyncLabService {
             status: 'failed',
             payload: {
                 message,
+                ...(retainedMetadata.toolResult ? {
+                    toolExecuted: true,
+                    completionStatus: retainedMetadata.toolResult.completionStatus || null,
+                } : {}),
             },
         });
         return updated;

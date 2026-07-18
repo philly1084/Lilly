@@ -965,18 +965,38 @@ class OpenAIClient {
   }
 
   async runRemoteCliAgent(task, options = {}) {
+    const artifactIds = Array.from(new Set(
+      (Array.isArray(options.artifactIds) ? options.artifactIds : [])
+        .map((artifactId) => String(artifactId || '').trim())
+        .filter(Boolean)
+    ));
+    const contextFiles = Array.isArray(options.contextFiles)
+      ? options.contextFiles.filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+      : [];
+    const resultFileGlobs = Array.from(new Set(
+      (Array.isArray(options.resultFileGlobs) ? options.resultFileGlobs : [])
+        .map((glob) => String(glob || '').trim())
+        .filter(Boolean)
+    ));
+
     return this.invokeTool('remote-cli-agent', {
       task,
       waitMs: options.waitMs || 30000,
       maxTurns: options.maxTurns || 30,
       ...(options.cwd || options.workingDirectory ? { cwd: options.cwd || options.workingDirectory } : {}),
-        ...(options.targetId ? { targetId: options.targetId } : {}),
-        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-        ...(options.mcpSessionId ? { mcpSessionId: options.mcpSessionId } : {}),
-        ...(options.adminMode !== undefined ? { adminMode: options.adminMode === true } : {}),
-        ...(options.model ? { model: options.model } : {}),
-        ...(options.instructions ? { instructions: options.instructions } : {}),
-      }, {
+      ...(options.targetId ? { targetId: options.targetId } : {}),
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      ...(options.mcpSessionId ? { mcpSessionId: options.mcpSessionId } : {}),
+      ...(options.adminMode !== undefined ? { adminMode: options.adminMode === true } : {}),
+      ...(options.model ? { model: options.model } : {}),
+      ...(options.instructions ? { instructions: options.instructions } : {}),
+      ...(artifactIds.length > 0 ? { artifactIds } : {}),
+      ...(contextFiles.length > 0 ? { contextFiles } : {}),
+      ...(resultFileGlobs.length > 0 ? { resultFileGlobs } : {}),
+      ...(options.collectResultFiles !== undefined
+        ? { collectResultFiles: options.collectResultFiles === true }
+        : {}),
+    }, {
       sessionId: options.backendSessionId,
       taskType: options.taskType || CLI_TASK_TYPE,
       clientSurface: options.clientSurface || CLI_CLIENT_SURFACE,

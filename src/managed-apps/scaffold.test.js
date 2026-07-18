@@ -26,11 +26,13 @@ describe('managed app scaffold', () => {
         expect(workflow.content).toContain('build-and-publish:');
         expect(workflow.content).toContain('image: alpine:3.20');
         expect(workflow.content).toContain('tags:\n    - kimibuilt');
-        expect(workflow.content).toContain('apk add --no-cache bash curl wget tar git ca-certificates coreutils');
+        expect(workflow.content).toContain("if: '$CI_COMMIT_BRANCH == \"main\"'");
+        expect(workflow.content).not.toContain("if: '$CI_PIPELINE_SOURCE == \"web\"'");
+        expect(workflow.content).toContain('apk add --no-cache bash curl wget tar git ca-certificates coreutils jq');
         expect(workflow.content).toContain('test -f Dockerfile');
         expect(workflow.content).toContain('BUILDKIT_ADDR="${BUILDKIT_HOST:-tcp://buildkitd.agent-platform.svc.cluster.local:1234}"');
-        expect(workflow.content).toContain('DEFAULT_TARGET_PLATFORMS: linux/amd64,linux/arm64');
-        expect(workflow.content).toContain('linux/amd64,linux/arm64');
+        expect(workflow.content).toContain('DEFAULT_TARGET_PLATFORMS: linux/arm64');
+        expect(workflow.content).not.toContain('linux/amd64,linux/arm64');
         expect(workflow.content).toContain('TARGET_PLATFORMS="${TARGET_PLATFORMS:-$DEFAULT_TARGET_PLATFORMS}"');
         expect(workflow.content).toContain('download() {');
         expect(workflow.content).toContain('curl or wget is required on the runner image');
@@ -38,6 +40,10 @@ describe('managed app scaffold', () => {
         expect(workflow.content).toContain('--opt platform="$TARGET_PLATFORMS"');
         expect(workflow.content).toContain('--output "type=image,name=$IMAGE_REPO:$IMAGE_TAG,push=true"');
         expect(workflow.content).toContain('--import-cache "type=registry,ref=$IMAGE_REPO:latest"');
+        expect(workflow.content).toContain('--metadata-file "$build_metadata_file"');
+        expect(workflow.content).toContain('."containerimage.digest" | select(type == "string")');
+        expect(workflow.content).toContain("grep -Eq '^sha256:[a-f0-9]{64}$'");
+        expect(workflow.content).toContain('BuildKit did not report a canonical pushed OCI image digest.');
         expect(workflow.content).toContain('BUILD_EVENTS_URL: https://kimibuilt.demoserver2.buzz/api/integrations/gitlab/build-events');
         expect(workflow.content).toContain('notify_kimibuilt() {');
         expect(workflow.content).toContain("trap 'rc=$?; notify_kimibuilt \"$rc\"; exit $?' EXIT");
@@ -45,6 +51,7 @@ describe('managed app scaffold', () => {
         expect(workflow.content).toContain('X-KimiBuilt-Webhook-Secret');
         expect(workflow.content).toContain('KIMIBUILT_BUILD_EVENTS_INSECURE');
         expect(workflow.content).toContain('"buildStatus":"$build_status"');
+        expect(workflow.content).toContain('"imageDigest":"${IMAGE_DIGEST:-}"');
         expect(workflow.content).toContain('\n      {"repoOwner":"$GIT_PROVIDER_ORG"');
         expect(workflow.content).toContain('\n      EOF\n\n        header_secret=');
         expect(workflow.content).toContain('\n      {"auths":{"$target_registry_host"');

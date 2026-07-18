@@ -6,7 +6,7 @@ Use this first when a task mentions remote servers, remote CLI, remote agents, k
 
 ## Remote Tool Decision Map
 
-Think of KimiBuilt remote access as one tool family with five lanes: `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`. The planner should choose the lane by intent, while `remote-cli-agent` itself chooses the transport: Codex-agent `/run` + `/events` whenever configured, MCP `remote_code_*` only for explicit legacy transport requests.
+Think of KimiBuilt remote access as one tool family with five lanes: `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`. The planner chooses the lane by intent, while `remote-cli-agent` uses the authenticated provider-task stream for Codex, Kimi, and Grok by default. Direct Codex `/run` + `/events` and MCP `remote_code_*` remain explicit compatibility transports.
 
 | User intent | Use | Do not use |
 |-------------|-----|------------|
@@ -58,10 +58,10 @@ Outer KimiBuilt tool call for the remote coding agent:
     "targetId": "prod",
     "cwd": "/srv/apps/my-app",
     "workspacePath": "/srv/apps/my-app",
-    "transport": "codex-agent",
+    "transport": "provider-agent",
     "waitMs": 30000,
     "sessionId": "optional prior remote coding session",
-    "threadId": "optional prior Codex thread",
+    "threadId": "optional prior direct-Codex compatibility thread",
     "mcpSessionId": "optional prior MCP session"
   }
 }
@@ -82,17 +82,27 @@ Outer KimiBuilt tool call for direct remote inspection:
 Preferred gateway transport used by `remote-cli-agent`:
 
 ```text
-POST /api/codex-agent/run
-GET /api/codex-agent/runs/:runId/events
+POST /admin/remote-agent-tasks
+GET /admin/remote-agent-tasks/:taskId/stream?token=<scoped-stream-token>
+GET /admin/remote-agent-tasks/:taskId/result-files
 ```
 
 Router implementation shape, as used by the `nuts` gateway:
-- `/api/codex-agent/run` validates bearer or API-key auth, validates `workspacePath` against `CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS`, starts `codex app-server --listen stdio://`, and starts a turn in that workspace.
-- `/api/codex-agent/runs/:runId/events` is the live communication channel. It streams `session_started`, `output`, and exactly one terminal event: `turn_completed`, `turn_failed`, `turn_cancelled`, or `turn_input_required`.
-- The returned `threadId` is the durable continuation handle for future Codex-agent turns. Preserve it as `threadId`/`REMOTE_CLI_SESSION_ID` instead of inventing a separate polling session.
-- If the CLI agent returns `SUPPORT_AGENT_REQUIRED` plus `SUPPORT_AGENT_CONTEXT`, run or ask a support agent for that bounded help request, then continue `remote-cli-agent` with the same `threadId` and `supportAgentResponse`. Do not turn support-agent requests into user questions unless the support request itself needs user-only information.
+- `/admin/remote-agent-tasks` validates API-key or bearer auth, target/cwd roots, provider/model selection, and the optional `RemoteAgentHandoff/v1` contract before starting a provider session.
+- OpenAI/Codex models map to `codex-cli`, Kimi models map to `kimi-code-cli`, and Grok models map to `grok-build-cli`. The router owns target SSH, isolated file staging, progress events, and verified result collection.
+- The returned same-origin stream URL carries a task-scoped token. Do not expose the privileged `/admin/remote-agent-tasks` mutation route through public ingress.
+- Preserve a returned provider `sessionId` for supported Codex or Grok continuation. Kimi starts a fresh bounded CLI session.
+- `RemoteAgentResultFiles/v1` returns only gateway-verified regular files with computed byte counts and SHA-256 hashes; KimiBuilt persists them into the active session with lineage.
+- If the CLI agent returns `SUPPORT_AGENT_REQUIRED` plus `SUPPORT_AGENT_CONTEXT`, run or ask a support agent for that bounded help request, then continue `remote-cli-agent` with the same provider `sessionId` (or direct-Codex `threadId`) and `supportAgentResponse`. Do not turn support-agent requests into user questions unless the support request itself needs user-only information.
 - In this lane, `localhost` and `127.0.0.1` are loopback inside the remote gateway runner, not the user's desktop and not the public app. Verify live remote work through the named public host, Kubernetes service DNS, or `kubectl` in the target namespace unless the task explicitly asks for a local dev-server check.
-- Approval and user-input prompts are denied and converted into `turn_input_required`, so the outer KimiBuilt agent can ask the user once and continue the same run/thread.
+- Approval and user-input prompts become controlled terminal markers so the outer KimiBuilt agent can ask the user once and continue the same provider session when supported.
+
+Explicit direct Codex compatibility transport:
+
+```text
+POST /api/codex-agent/run
+GET /api/codex-agent/runs/:runId/events
+```
 
 Legacy MCP calls used by `remote-cli-agent` only:
 
@@ -104,7 +114,8 @@ remote_code_status({ "jobId": "returned job id only" })
 Important boundary:
 - `remote-cli-agent` is the default owner for GitLab-backed source/build/deploy loops. Managed-app owns only explicit managed-app catalog/control-plane actions; do not route to managed-app merely because the user said GitLab, pipeline, registry, or runner.
 - The planner calls `remote-cli-agent`; it does not call transport internals directly.
-- The default runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
+- The default runner transport calls `/admin/remote-agent-tasks`, streams its scoped task URL, and collects verified result files.
+- Direct `/api/codex-agent/run` plus `/events` SSE is available only when `transport: "codex-agent"` is explicitly selected.
 - The MCP compatibility transport calls `remote_code_run` through MCP and then `remote_code_status`.
 - Never put `command`, `args`, `executable`, or `shell` in `remote-cli-agent` params.
 - Never put `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts `jobId` only.

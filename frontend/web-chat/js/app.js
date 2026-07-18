@@ -83,6 +83,246 @@ const WEB_CHAT_ASYNC_REMOTE_EVENT_TYPES = [
     'cancelled',
     'cancel_requested',
 ];
+const WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT = 40;
+const WEB_CHAT_ASYNC_RESULT_TEXT_LIMIT = 1200;
+const WEB_CHAT_ASYNC_COMMON_SENSITIVE_QUERY_KEYS = new Set([
+    'access-token',
+    'api-key',
+    'auth',
+    'authorization',
+    'client-secret',
+    'cookie',
+    'credential',
+    'credentials',
+    'id-token',
+    'key',
+    'password',
+    'private-key',
+    'refresh-token',
+    'secret',
+    'security-token',
+    'session-token',
+    'sig',
+    'signature',
+    'token',
+]);
+
+function sanitizeAsyncResultUrlSubstring(value = '') {
+    const raw = String(value || '');
+    const trailing = raw.match(/[),.;!?]+$/)?.[0] || '';
+    const candidate = trailing ? raw.slice(0, -trailing.length) : raw;
+    try {
+        const parsed = new URL(candidate);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return `[redacted-url]${trailing}`;
+        }
+        parsed.username = '';
+        parsed.password = '';
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (isSensitiveAsyncResultQueryParam(key)) {
+                parsed.searchParams.delete(key);
+            }
+        }
+        parsed.hash = '';
+        return `${parsed.toString()}${trailing}`;
+    } catch (_error) {
+        return `[redacted-url]${trailing}`;
+    }
+}
+
+function normalizeAsyncResultText(value = '', maxLength = WEB_CHAT_ASYNC_RESULT_TEXT_LIMIT) {
+    const normalized = String(value ?? '').trim()
+        .replace(/\bhttps?:\/\/[^\s<>"'`]+/gi, sanitizeAsyncResultUrlSubstring)
+        .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+        .replace(
+            /(\b(?:api[-_ ]?key|access[-_ ]?token|client[-_ ]?secret|private[-_ ]?key|refresh[-_ ]?token|session[-_ ]?token|security[-_ ]?token|id[-_ ]?token|authorization|credentials?|cookie|key|password|secret|signature|sig|token)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&#}\]]+)/gi,
+            '$1[redacted]',
+        );
+    if (!normalized) {
+        return '';
+    }
+    const limit = Math.max(1, Number(maxLength) || WEB_CHAT_ASYNC_RESULT_TEXT_LIMIT);
+    return normalized.length > limit
+        ? `${normalized.slice(0, Math.max(1, limit - 3))}...`
+        : normalized;
+}
+
+function isSensitiveAsyncResultQueryParam(value = '') {
+    let decoded = String(value || '').trim();
+    for (let pass = 0; pass < 3; pass += 1) {
+        try {
+            const next = decodeURIComponent(decoded.replace(/\+/g, '%20'));
+            if (next === decoded) break;
+            decoded = next;
+        } catch (_error) {
+            break;
+        }
+    }
+    const components = decoded.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (components.length === 0) {
+        return false;
+    }
+    const normalized = components.join('-');
+    if (WEB_CHAT_ASYNC_COMMON_SENSITIVE_QUERY_KEYS.has(normalized)) {
+        return true;
+    }
+    const suffix = components.slice(-2).join('-');
+    if (['access-token', 'api-key', 'security-token'].includes(suffix)) {
+        return true;
+    }
+    if (components[0] === 'x' && ['amz', 'goog'].includes(components[1])) {
+        const providerField = components.slice(2).join('-');
+        return ['credential', 'security-token', 'signature'].includes(providerField);
+    }
+    return false;
+}
+
+function normalizeAsyncResultUrl(value = '', options = {}) {
+    const normalized = normalizeAsyncResultText(value, 2048);
+    if (!normalized) {
+        return '';
+    }
+    try {
+        const baseOrigin = String(window.location?.origin || 'http://localhost');
+        const base = new URL(baseOrigin);
+        const parsed = new URL(normalized, base);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return '';
+        }
+        parsed.username = '';
+        parsed.password = '';
+        for (const key of Array.from(parsed.searchParams.keys())) {
+            if (isSensitiveAsyncResultQueryParam(key)) {
+                parsed.searchParams.delete(key);
+            }
+        }
+        // Fragments are client-visible but are not sent to the server. Remote-agent
+        // artifact actions do not require them, and dropping them prevents a later
+        // fragment field (for example #view=1&key=...) from carrying credentials.
+        parsed.hash = '';
+        const artifactId = normalizeAsyncResultText(options.artifactId, 300);
+        if (artifactId) {
+            const artifactRoot = `/api/artifacts/${encodeURIComponent(artifactId)}/`;
+            const expectedAction = normalizeAsyncResultText(options.action, 80);
+            const expectedPath = expectedAction ? `${artifactRoot}${expectedAction}` : '';
+            if (parsed.origin !== base.origin
+                || (expectedPath ? parsed.pathname !== expectedPath : !parsed.pathname.startsWith(artifactRoot))) {
+                return '';
+            }
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+        return parsed.origin === base.origin && /^[/?#]/.test(normalized)
+            ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+            : parsed.toString();
+    } catch (_error) {
+        return '';
+    }
+}
+
+function cloneSafeAsyncResultValue(value, depth = 0) {
+    if (value === null || value === undefined || depth > 5) {
+        return null;
+    }
+    if (typeof value === 'string') {
+        return normalizeAsyncResultText(value);
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return value.slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT)
+            .map((entry) => cloneSafeAsyncResultValue(entry, depth + 1))
+            .filter((entry) => entry !== null && entry !== undefined);
+    }
+    if (typeof value !== 'object') {
+        return null;
+    }
+    const safe = {};
+    Object.entries(value).slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT).forEach(([key, entry]) => {
+        const normalizedKey = String(key || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (!normalizedKey
+            || normalizedKey === 'metadata'
+            || ['auth', 'authorization', 'cookie', 'credential', 'credentials', 'key', 'password', 'secret', 'sig', 'signature', 'token'].includes(normalizedKey)
+            || /(?:content|base64|buffer|password|secret|token|apikey|privatekey|clientsecret|credential|authorization|signature|cookie)/.test(normalizedKey)) {
+            return;
+        }
+        const normalizedValue = cloneSafeAsyncResultValue(entry, depth + 1);
+        if (normalizedValue !== null && normalizedValue !== undefined) {
+            safe[key] = normalizedValue;
+        }
+    });
+    return safe;
+}
+
+function normalizeAsyncResultFileDescriptor(file = {}) {
+    if (!file || typeof file !== 'object') {
+        return null;
+    }
+    const descriptor = {};
+    [
+        'artifactId',
+        'filename',
+        'storedFilename',
+        'path',
+        'relativePath',
+        'mimeType',
+        'extension',
+        'format',
+        'role',
+    ].forEach((field) => {
+        const value = normalizeAsyncResultText(file[field], 500);
+        if (value) descriptor[field] = value;
+    });
+    const sizeBytes = Number(file.sizeBytes);
+    if (Number.isFinite(sizeBytes) && sizeBytes >= 0) descriptor.sizeBytes = sizeBytes;
+    const sha256 = normalizeAsyncResultText(file.sha256, 64);
+    if (/^[a-f0-9]{64}$/i.test(sha256)) descriptor.sha256 = sha256.toLowerCase();
+    if (typeof file.gatewayVerified === 'boolean') descriptor.gatewayVerified = file.gatewayVerified;
+    return Object.keys(descriptor).length > 0 ? descriptor : null;
+}
+
+function normalizeAsyncArtifactDescriptor(artifact = {}) {
+    if (!artifact || typeof artifact !== 'object') {
+        return null;
+    }
+    const id = normalizeAsyncResultText(artifact.id || artifact.artifactId, 300);
+    if (!id) {
+        return null;
+    }
+    const descriptor = { id };
+    const aliases = {
+        filename: [artifact.filename, artifact.fileName],
+        title: [artifact.title, artifact.name],
+        mimeType: [artifact.mimeType, artifact.contentType],
+        format: [artifact.format, artifact.extension],
+        status: [artifact.status],
+        role: [artifact.role],
+        relativePath: [artifact.relativePath, artifact.path],
+        parentArtifactId: [artifact.parentArtifactId, artifact.parent_artifact_id],
+        missionId: [artifact.missionId, artifact.mission_id],
+        revision: [artifact.revision, artifact.artifactRevision],
+        createdAt: [artifact.createdAt, artifact.created_at],
+    };
+    Object.entries(aliases).forEach(([field, values]) => {
+        const candidate = values.find((entry) => entry !== undefined && entry !== null);
+        const value = normalizeAsyncResultText(candidate, 500);
+        if (value) descriptor[field] = value;
+    });
+    const sizeBytes = Number(artifact.sizeBytes ?? artifact.size_bytes);
+    if (Number.isFinite(sizeBytes) && sizeBytes >= 0) descriptor.sizeBytes = sizeBytes;
+    const urlFields = {
+        downloadUrl: 'download',
+        previewUrl: 'preview',
+        sandboxUrl: 'sandbox',
+        bundleDownloadUrl: 'bundle',
+    };
+    Object.entries(urlFields).forEach(([field, action]) => {
+        const value = normalizeAsyncResultUrl(artifact[field], { artifactId: id, action });
+        if (value) descriptor[field] = value;
+    });
+    descriptor.downloadUrl = descriptor.downloadUrl || `/api/artifacts/${encodeURIComponent(id)}/download`;
+    return descriptor;
+}
 const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
     {
         id: 'research',
@@ -1206,7 +1446,7 @@ class ChatApp {
 
     handleArtifactLineageAction(event, control) {
         const action = String(control?.dataset?.artifactLineageAction || '').trim();
-        if (!['iterate', 'deploy'].includes(action)) {
+        if (!['iterate', 'build-agent'].includes(action)) {
             return false;
         }
         event?.preventDefault?.();
@@ -1224,13 +1464,16 @@ class ChatApp {
         };
         this.pendingArtifactLineage = lineage;
         window.artifactManager?.prepareArtifactUpdate?.(artifactId);
-        const draft = action === 'deploy'
-            ? 'Deploy this artifact through the verified remote build lane. Show the live URL and deployment checks before calling it complete.'
+        if (action === 'build-agent') {
+            this.selectToolForNextMessage('remote-cli-agent');
+        }
+        const draft = action === 'build-agent'
+            ? 'Build on this artifact with the remote CLI agent. Return the updated files and verification for review; do not deploy or publish unless I explicitly ask.'
             : 'Refine this artifact while preserving its working content: ';
         this.setInput?.(draft);
         uiHelpers.showToast?.(
-            action === 'deploy'
-                ? 'Deployment request staged. Review it, then send when ready.'
+            action === 'build-agent'
+                ? 'Remote CLI Agent selected with this artifact. Review the build request, then send when ready.'
                 : 'Artifact pinned with its mission and revision. Add the change you want.',
             'info',
         );
@@ -7064,9 +7307,15 @@ class ChatApp {
         const selectedToolChip = this.normalizeDirectToolSelection(
             requestMetadata.selectedToolChip || requestMetadata.selectedDirectTool || null,
         );
+        const artifactLineage = requestMetadata.artifactLineage
+            && typeof requestMetadata.artifactLineage === 'object'
+            ? { ...requestMetadata.artifactLineage }
+            : null;
         const userMessageMetadata = {
             ...(inferredBuildRunBrief ? { buildRunBrief: inferredBuildRunBrief } : {}),
             ...(selectedToolChip ? { selectedToolChip } : {}),
+            ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+            ...(artifactLineage ? { artifactLineage } : {}),
             ...(requestMetadata.missionMode ? {
                 missionId: requestMetadata.missionId,
                 missionTemplateId: requestMetadata.missionTemplateId,
@@ -7856,6 +8105,7 @@ class ChatApp {
         try {
             let assistantContent = '';
             let assistantMetadata = {};
+            let assistantArtifacts = [];
 
             if (isListCommand) {
                 const category = trimmed.startsWith('/tools ') ? trimmed.slice('/tools '.length).trim() : null;
@@ -7930,6 +8180,14 @@ class ChatApp {
                     },
                     directToolId: toolId,
                 };
+                if (toolId === 'remote-cli-agent') {
+                    const remoteResult = this.unwrapRemoteResult(invocation);
+                    const normalizedRemoteResult = this.normalizeAsyncRemoteToolResult(remoteResult);
+                    assistantArtifacts = this.buildAsyncRemoteMessageArtifacts(normalizedRemoteResult);
+                    if (normalizedRemoteResult) {
+                        assistantMetadata.remoteAgentResult = normalizedRemoteResult;
+                    }
+                }
             }
 
             const assistantMessage = {
@@ -7939,6 +8197,7 @@ class ChatApp {
                 ...(Object.keys(assistantMetadata).length > 0
                     ? { metadata: assistantMetadata }
                     : {}),
+                ...(assistantArtifacts.length > 0 ? { artifacts: assistantArtifacts } : {}),
             };
             const savedAssistantMessage = sessionManager.addMessage(sessionId, assistantMessage);
             this.messagesContainer.appendChild(uiHelpers.renderMessage(savedAssistantMessage));
@@ -8407,13 +8666,16 @@ curl -fsSIL --max-time 20 "https://$host"`;
             || remoteCatalog.tools?.find((tool) => tool.id === 'remote-cli-agent')
             || null;
         const selectedModel = String(uiHelpers.getCurrentModel?.() || '').trim();
+        const artifactIds = this.collectRemoteAgentArtifactIds();
 
         return {
             cwd: remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
             waitMs: 30000,
             maxTurns: 30,
             adminMode: true,
+            collectResultFiles: true,
             ...(selectedModel ? { model: selectedModel } : {}),
+            ...(artifactIds.length > 0 ? { artifactIds } : {}),
         };
     }
 
@@ -8503,19 +8765,31 @@ curl -fsSIL --max-time 20 "https://$host"`;
     }
 
     formatRemoteAgentResult(result = {}) {
-        const output = String(result.finalOutput || result.output || '').trim();
-        const completionStatus = String(result.completionStatus || '').trim();
-        const blocker = String(result.blocker || '').trim();
-        const verifyCommands = Array.isArray(result.verifyCommands) ? result.verifyCommands.filter(Boolean) : [];
-        const verifyResults = Array.isArray(result.verifyResults) ? result.verifyResults.filter(Boolean) : [];
+        const output = normalizeAsyncResultText(result.finalOutput || result.output, 12000);
+        const completionStatus = normalizeAsyncResultText(result.completionStatus, 120);
+        const blocker = normalizeAsyncResultText(result.blocker, 1200);
+        const resultFilesError = normalizeAsyncResultText(result.resultFilesError, 1200);
+        const verifyCommands = (Array.isArray(result.verifyCommands) ? result.verifyCommands : [])
+            .map((item) => normalizeAsyncResultText(item, 1200))
+            .filter(Boolean);
+        const verifyResults = (Array.isArray(result.verifyResults) ? result.verifyResults : [])
+            .map((item) => normalizeAsyncResultText(item, 1200))
+            .filter(Boolean);
         const agentQuality = result.agentQuality && typeof result.agentQuality === 'object' && !Array.isArray(result.agentQuality)
             ? result.agentQuality
             : null;
-        const qualityStatus = String(agentQuality?.status || '').trim();
+        const qualityStatus = normalizeAsyncResultText(agentQuality?.status, 120);
         const qualityScore = Number(agentQuality?.score);
         const missingQualityGates = Array.isArray(agentQuality?.requiredMissing)
-            ? agentQuality.requiredMissing.map((item) => String(item || '').trim()).filter(Boolean)
+            ? agentQuality.requiredMissing.map((item) => normalizeAsyncResultText(item, 300)).filter(Boolean)
             : [];
+        const normalizedToolResult = this.normalizeAsyncRemoteToolResult(result) || {};
+        const returnedArtifacts = this.buildAsyncRemoteMessageArtifacts(normalizedToolResult);
+        const returnedArtifactIds = Array.from(new Set([
+            ...(Array.isArray(normalizedToolResult.artifactIds) ? normalizedToolResult.artifactIds : []),
+            ...returnedArtifacts.map((artifact) => artifact.id),
+        ].map((artifactId) => normalizeAsyncResultText(artifactId, 300)).filter(Boolean)));
+        const safePublicUrl = normalizeAsyncResultUrl(result.publicUrl);
         const metadata = [];
         if (completionStatus) {
             metadata.push(`Status: \`${completionStatus}\``);
@@ -8527,34 +8801,49 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (missingQualityGates.length > 0) {
             metadata.push(`Missing quality gates: ${missingQualityGates.slice(0, 6).map((item) => `\`${item}\``).join(', ')}`);
         }
-        if (result.targetId) {
-            metadata.push(`Target: \`${result.targetId}\``);
+        const targetId = normalizeAsyncResultText(result.targetId, 300);
+        if (targetId) {
+            metadata.push(`Target: \`${targetId}\``);
         }
-        if (result.cwd) {
-            metadata.push(`Workspace: \`${result.cwd}\``);
+        const cwd = normalizeAsyncResultText(result.cwd, 800);
+        if (cwd) {
+            metadata.push(`Workspace: \`${cwd}\``);
         }
-        if (result.sessionId) {
-            metadata.push(`Remote session: \`${result.sessionId}\``);
+        const remoteSessionId = normalizeAsyncResultText(result.sessionId, 300);
+        if (remoteSessionId) {
+            metadata.push(`Remote session: \`${remoteSessionId}\``);
         }
-        if (result.remoteCodeJobId) {
-            metadata.push(`Remote job: \`${result.remoteCodeJobId}\``);
+        const remoteCodeJobId = normalizeAsyncResultText(result.remoteCodeJobId, 300);
+        if (remoteCodeJobId) {
+            metadata.push(`Remote job: \`${remoteCodeJobId}\``);
         }
-        if (result.mcpSessionId) {
-            metadata.push(`MCP session: \`${result.mcpSessionId}\``);
+        const mcpSessionId = normalizeAsyncResultText(result.mcpSessionId, 300);
+        if (mcpSessionId) {
+            metadata.push(`MCP session: \`${mcpSessionId}\``);
         }
-        if (result.model) {
-            metadata.push(`Model: \`${result.model}\``);
+        const provider = normalizeAsyncResultText(result.provider || result.providerId, 300);
+        const providerModel = normalizeAsyncResultText(result.providerModel, 300);
+        const model = normalizeAsyncResultText(result.model, 300);
+        if (provider) {
+            metadata.push(`Provider: \`${provider}\``);
         }
-        if (result.publicUrl) {
-            metadata.push(`Public URL: ${result.publicUrl}`);
+        if (providerModel || model) {
+            metadata.push(`Model: \`${providerModel || model}\``);
+        }
+        if (safePublicUrl) {
+            metadata.push(`Public URL: ${safePublicUrl}`);
         }
         if (blocker) {
             metadata.push(`Blocker: ${blocker}`);
         }
+        if (resultFilesError) {
+            metadata.push(`Returned-file error: ${resultFilesError}`);
+        }
 
         const proofSections = [];
-        if (result.whatChanged) {
-            proofSections.push('', '### What Changed', '', String(result.whatChanged).trim());
+        const whatChanged = normalizeAsyncResultText(result.whatChanged, 5000);
+        if (whatChanged) {
+            proofSections.push('', '### What Changed', '', whatChanged);
         }
         if (verifyCommands.length > 0 || verifyResults.length > 0) {
             proofSections.push('', '### Verification', '');
@@ -8566,14 +8855,32 @@ curl -fsSIL --max-time 20 "https://$host"`;
             }
         }
 
+        const artifactSections = [];
+        if (returnedArtifactIds.length > 0) {
+            const artifactsById = new Map(returnedArtifacts.map((artifact) => [artifact.id, artifact]));
+            artifactSections.push('', '### Returned artifacts', '');
+            returnedArtifactIds.forEach((artifactId) => {
+                const artifact = artifactsById.get(artifactId) || normalizeAsyncArtifactDescriptor({ id: artifactId });
+                const filename = normalizeAsyncResultText(artifact?.filename || artifact?.title || 'Returned artifact', 300);
+                const links = [
+                    ['Download', artifact?.downloadUrl],
+                    ['Preview', artifact?.previewUrl],
+                    ['Sandbox', artifact?.sandboxUrl],
+                    ['Bundle', artifact?.bundleDownloadUrl],
+                ].filter(([, url]) => Boolean(url)).map(([label, url]) => `[${label}](${url})`);
+                artifactSections.push(`- ${filename} — ID: \`${artifactId}\`${links.length > 0 ? ` — ${links.join(' · ')}` : ''}`);
+            });
+        }
+
         return [
             '## Remote CLI Agent Result',
             '',
             ...metadata.map((line) => `- ${line}`),
             ...proofSections,
+            ...artifactSections,
             ...(output
                 ? ['', output]
-            : ['', '```json', JSON.stringify(result, null, 2), '```']),
+                : ['', 'No textual output was returned by the remote agent.']),
         ].join('\n');
     }
 
@@ -8633,11 +8940,153 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 waitMs: 120000,
                 maxTurns: 30,
                 adminMode: true,
+                collectResultFiles: true,
                 ...(String(uiHelpers.getCurrentModel?.() || '').trim()
                     ? { model: String(uiHelpers.getCurrentModel() || '').trim() }
                     : {}),
             },
         };
+    }
+
+    normalizeAsyncRemoteToolResult(candidate = null) {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+            return null;
+        }
+        const normalized = {};
+        if (typeof candidate.success === 'boolean') normalized.success = candidate.success;
+        const durationMs = Number(candidate.durationMs ?? candidate.duration);
+        if (Number.isFinite(durationMs) && durationMs >= 0) normalized.durationMs = durationMs;
+        const textFields = [
+            'adapter',
+            'toolId',
+            'error',
+            'status',
+            'completionStatus',
+            'blocker',
+            'model',
+            'transport',
+            'publicHost',
+            'siteBundleArtifactId',
+            'providerModel',
+            'resultFilesError',
+        ];
+        textFields.forEach((field) => {
+            const value = normalizeAsyncResultText(
+                candidate[field],
+                ['blocker', 'error', 'resultFilesError'].includes(field) ? 1200 : 300,
+            );
+            if (value) normalized[field] = value;
+        });
+        const provider = normalizeAsyncResultText(candidate.provider || candidate.providerId, 300);
+        if (provider) normalized.provider = provider;
+        const publicUrl = normalizeAsyncResultUrl(candidate.publicUrl);
+        if (publicUrl) normalized.publicUrl = publicUrl;
+        const artifactIds = Array.from(new Set(
+            (Array.isArray(candidate.artifactIds) ? candidate.artifactIds : [])
+                .map((artifactId) => normalizeAsyncResultText(artifactId, 300))
+                .filter(Boolean),
+        )).slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT);
+        if (artifactIds.length > 0) normalized.artifactIds = artifactIds;
+        const resultFiles = (Array.isArray(candidate.resultFiles) ? candidate.resultFiles : [])
+            .slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT)
+            .map((file) => normalizeAsyncResultFileDescriptor(file))
+            .filter(Boolean);
+        if (resultFiles.length > 0) normalized.resultFiles = resultFiles;
+        const artifacts = (Array.isArray(candidate.artifacts) ? candidate.artifacts : [])
+            .slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT)
+            .map((artifact) => normalizeAsyncArtifactDescriptor(artifact))
+            .filter(Boolean);
+        if (artifacts.length > 0) normalized.artifacts = artifacts;
+        const artifactQuality = cloneSafeAsyncResultValue(candidate.artifactQuality);
+        if (artifactQuality && typeof artifactQuality === 'object' && Object.keys(artifactQuality).length > 0) {
+            normalized.artifactQuality = artifactQuality;
+        }
+        return Object.keys(normalized).length > 0 ? normalized : null;
+    }
+
+    extractAsyncRemoteToolResult(run = null, events = []) {
+        const runResult = this.normalizeAsyncRemoteToolResult(run?.metadata?.toolResult);
+        if (runResult) {
+            return runResult;
+        }
+        const normalizedEvents = Array.isArray(events) ? events : [];
+        for (let index = normalizedEvents.length - 1; index >= 0; index -= 1) {
+            const event = normalizedEvents[index];
+            if (!String(event?.type || '').startsWith('tool_')) {
+                continue;
+            }
+            const eventResult = this.normalizeAsyncRemoteToolResult(event?.payload?.result);
+            if (eventResult) {
+                return eventResult;
+            }
+        }
+        return null;
+    }
+
+    buildAsyncRemoteMessageArtifacts(toolResult = null) {
+        if (!toolResult || typeof toolResult !== 'object') {
+            return [];
+        }
+        const artifactsById = new Map();
+        (Array.isArray(toolResult.artifacts) ? toolResult.artifacts : [])
+            .map((artifact) => normalizeAsyncArtifactDescriptor(artifact))
+            .filter(Boolean)
+            .forEach((artifact) => {
+                if (!artifactsById.has(artifact.id)) artifactsById.set(artifact.id, artifact);
+            });
+        const resultFiles = (Array.isArray(toolResult.resultFiles) ? toolResult.resultFiles : [])
+            .map((file) => normalizeAsyncResultFileDescriptor(file))
+            .filter(Boolean);
+        resultFiles.forEach((file) => {
+            if (!file.artifactId || artifactsById.has(file.artifactId)) {
+                return;
+            }
+            const artifact = normalizeAsyncArtifactDescriptor({
+                id: file.artifactId,
+                filename: file.storedFilename || file.filename || 'Returned artifact',
+                mimeType: file.mimeType,
+                format: file.format || file.extension,
+                role: file.role,
+                relativePath: file.relativePath || file.path,
+                sizeBytes: file.sizeBytes,
+            });
+            if (artifact) artifactsById.set(artifact.id, artifact);
+        });
+
+        const siteBundleArtifactId = normalizeAsyncResultText(toolResult.siteBundleArtifactId, 300);
+        if (!siteBundleArtifactId) {
+            return Array.from(artifactsById.values()).slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT);
+        }
+
+        const siteBundleArtifact = artifactsById.get(siteBundleArtifactId)
+            || normalizeAsyncArtifactDescriptor({
+                id: siteBundleArtifactId,
+                filename: 'Website bundle.zip',
+                title: 'Website bundle',
+                mimeType: 'application/zip',
+                format: 'zip',
+            });
+        const componentRoles = new Set(['site-entry', 'site-file']);
+        const componentArtifactIds = new Set();
+        const explicitNonComponentArtifactIds = new Set();
+        resultFiles.forEach((file) => {
+            const artifactId = normalizeAsyncResultText(file.artifactId, 300);
+            const role = normalizeAsyncResultText(file.role, 120).toLowerCase();
+            if (!artifactId) return;
+            if (componentRoles.has(role)) {
+                componentArtifactIds.add(artifactId);
+            } else if (role) {
+                explicitNonComponentArtifactIds.add(artifactId);
+            }
+        });
+        const nonComponentArtifacts = Array.from(artifactsById.values()).filter((artifact) => (
+            artifact.id !== siteBundleArtifactId
+            && !componentArtifactIds.has(artifact.id)
+            && explicitNonComponentArtifactIds.has(artifact.id)
+        ));
+        return [siteBundleArtifact, ...nonComponentArtifacts]
+            .filter(Boolean)
+            .slice(0, WEB_CHAT_ASYNC_RESULT_ITEM_LIMIT);
     }
 
     buildAsyncRemoteProgressState(run = null, events = []) {
@@ -8646,16 +9095,30 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const payload = latestEvent.payload && typeof latestEvent.payload === 'object' ? latestEvent.payload : {};
         const runStatus = String(latestEvent.status || run?.status || 'queued').trim().toLowerCase();
         const terminal = ['completed', 'cancelled', 'failed'].includes(runStatus);
-        const failed = runStatus === 'failed' || latestEvent.type === 'tool_failed';
+        const toolResult = this.extractAsyncRemoteToolResult(run, normalizedEvents);
+        const resultCompletionStatus = String(toolResult?.completionStatus || '').trim().toLowerCase();
+        const failed = runStatus === 'failed'
+            || latestEvent.type === 'tool_failed'
+            || ['blocked', 'failed', 'error'].includes(resultCompletionStatus)
+            || Boolean(toolResult?.resultFilesError);
         const phase = failed
             ? 'failed'
             : (terminal ? runStatus : (latestEvent.type || runStatus || 'queued'));
-        const detail = String(
-            payload.message
-            || payload.result?.error
-            || run?.metadata?.toolResult?.error
-            || (terminal ? 'Async remote job finished.' : 'Async remote job is running.'),
-        ).trim();
+        const detail = String(failed
+            ? (
+                toolResult?.blocker
+                || toolResult?.error
+                || toolResult?.resultFilesError
+                || payload.message
+                || (terminal ? 'Async remote job failed.' : 'Async remote job needs attention.')
+            )
+            : (
+                payload.message
+                || toolResult?.blocker
+                || toolResult?.error
+                || toolResult?.resultFilesError
+                || (terminal ? 'Async remote job finished.' : 'Async remote job is running.')
+            )).trim();
         const eventTypes = new Set(normalizedEvents.map((event) => String(event?.type || '').trim()));
         const hasLease = eventTypes.has('started') || eventTypes.has('lease_recovered');
         const hasToolStarted = eventTypes.has('tool_started') || eventTypes.has('tool_message');
@@ -8733,9 +9196,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
             seen.add(key);
             return true;
         });
+        const asyncToolResult = this.extractAsyncRemoteToolResult(run, dedupedEvents)
+            || this.normalizeAsyncRemoteToolResult(current.metadata?.asyncRuntimeToolResult);
+        const returnedArtifacts = this.buildAsyncRemoteMessageArtifacts(asyncToolResult);
         const progressState = this.buildAsyncRemoteProgressState(run, dedupedEvents);
         const nextMessage = {
             ...current,
+            ...(returnedArtifacts.length > 0 ? { artifacts: returnedArtifacts } : {}),
             content: '',
             isStreaming: progressState.terminal !== true,
             progressState,
@@ -8743,6 +9210,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 ...(current.metadata || {}),
                 asyncRuntimeRun: run || current.metadata?.asyncRuntimeRun || null,
                 asyncRuntimeEvents: dedupedEvents.slice(-80),
+                ...(asyncToolResult ? { asyncRuntimeToolResult: asyncToolResult } : {}),
                 progressState,
                 toolResultChip: {
                     id: run?.adapter || current.metadata?.asyncRuntimeRun?.adapter || 'async-runtime',
@@ -8842,18 +9310,47 @@ curl -fsSIL --max-time 20 "https://$host"`;
         uiHelpers.scrollToBottom();
         this.persistSessionMessageIfNeeded(normalizedSessionId, savedMessage);
 
-        const payload = await apiClient.createAsyncRun({
-            task: resolved.task,
-            adapter: resolved.adapter,
-            targetKey: resolved.targetKey,
-            liveRemote: true,
-            sessionId: normalizedSessionId,
-            idempotencyKey: `web-chat:${normalizedSessionId}:${savedMessage.id}`,
-            metadata: {
-                source: 'web-chat',
-                toolParams: resolved.toolParams,
-            },
-        });
+        const resolvedMetadata = resolved.metadata && typeof resolved.metadata === 'object'
+            ? resolved.metadata
+            : {};
+        let payload;
+        try {
+            payload = await apiClient.createAsyncRun({
+                task: resolved.task,
+                adapter: resolved.adapter,
+                targetKey: resolved.targetKey,
+                liveRemote: true,
+                sessionId: normalizedSessionId,
+                idempotencyKey: `web-chat:${normalizedSessionId}:${savedMessage.id}`,
+                metadata: {
+                    ...resolvedMetadata,
+                    source: 'web-chat',
+                    toolParams: resolved.toolParams,
+                },
+            });
+        } catch (error) {
+            const detail = String(error?.message || 'The async run could not be queued.').trim();
+            const blocker = `Unable to queue the remote agent run: ${detail}`;
+            this.updateAsyncRemoteJobMessage(normalizedSessionId, savedMessage.id, {
+                adapter: resolved.adapter,
+                targetKey: resolved.targetKey,
+                status: 'failed',
+            }, [{
+                eventId: `queue-failed:${savedMessage.id}`,
+                cursor: 0,
+                type: 'tool_failed',
+                status: 'failed',
+                payload: {
+                    message: blocker,
+                    result: {
+                        success: false,
+                        completionStatus: 'failed',
+                        blocker,
+                    },
+                },
+            }]);
+            throw error;
+        }
         const run = payload.run || null;
         const events = payload.events || [];
         this.updateAsyncRemoteJobMessage(normalizedSessionId, savedMessage.id, run, events);
@@ -8874,6 +9371,8 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const events = Array.isArray(payload?.events)
             ? payload.events
             : (Array.isArray(payload?.asyncRuntime?.events) ? payload.asyncRuntime.events : []);
+        const asyncToolResult = this.extractAsyncRemoteToolResult(run, events);
+        const returnedArtifacts = this.buildAsyncRemoteMessageArtifacts(asyncToolResult);
         const progressState = this.buildAsyncRemoteProgressState(run, events);
         const message = {
             id: uiHelpers.generateMessageId ? uiHelpers.generateMessageId() : `async-remote-${Date.now().toString(36)}`,
@@ -8882,10 +9381,12 @@ curl -fsSIL --max-time 20 "https://$host"`;
             timestamp: new Date().toISOString(),
             isStreaming: progressState.terminal !== true,
             progressState,
+            ...(returnedArtifacts.length > 0 ? { artifacts: returnedArtifacts } : {}),
             metadata: {
                 asyncRuntimeJobCard: true,
                 asyncRuntimeRun: run,
                 asyncRuntimeEvents: events.slice(-80),
+                ...(asyncToolResult ? { asyncRuntimeToolResult: asyncToolResult } : {}),
                 progressState,
                 toolResultChip: {
                     id: run.adapter || 'async-runtime',
@@ -8911,6 +9412,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return this.createAsyncRemoteJobCard(resolved, sessionManager.currentSessionId);
     }
 
+    collectRemoteAgentArtifactIds(options = {}) {
+        const metadata = options?.metadata && typeof options.metadata === 'object'
+            ? options.metadata
+            : {};
+        const artifactLineage = metadata.artifactLineage && typeof metadata.artifactLineage === 'object'
+            ? metadata.artifactLineage
+            : null;
+        return Array.from(new Set([
+            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
+            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
+                ? window.fileManager.getSelectedArtifactIds()
+                : []),
+            ...(typeof window.artifactManager?.getSelectedIds === 'function'
+                ? window.artifactManager.getSelectedIds()
+                : []),
+            ...(artifactLineage?.artifactId ? [artifactLineage.artifactId] : []),
+        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
+    }
+
     shouldRouteSelectedToolMessageToAsync(content = '', options = {}) {
         const normalizedContent = String(content || '').trim();
         const metadata = options?.metadata && typeof options.metadata === 'object' ? options.metadata : {};
@@ -8928,6 +9448,37 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (!normalizedContent) {
             return false;
         }
+
+        const selectedArtifactIds = this.collectRemoteAgentArtifactIds(options);
+        let asyncRuntimeStatus = null;
+        let statusLookupFailed = false;
+        try {
+            asyncRuntimeStatus = await apiClient.getAsyncRuntimeStatus();
+        } catch (_error) {
+            statusLookupFailed = true;
+            asyncRuntimeStatus = null;
+        }
+        const canQueueLiveRemoteRun = Boolean(
+            asyncRuntimeStatus?.enabled === true
+            && asyncRuntimeStatus?.allowLiveRemote === true
+        );
+        if (!canQueueLiveRemoteRun) {
+            uiHelpers.showToast?.(
+                statusLookupFailed
+                    ? 'Async job availability could not be confirmed. Continuing through the direct remote agent lane.'
+                    : 'Async job mode is unavailable, so this build is using the direct remote agent lane.',
+                statusLookupFailed ? 'warning' : 'info',
+            );
+            return this.sendPreparedMessage(normalizedContent, {
+                ...options,
+                ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+                metadata: {
+                    ...(options?.metadata && typeof options.metadata === 'object' ? options.metadata : {}),
+                    remoteAgentCollectResultFiles: true,
+                },
+            });
+        }
+
         if (!sessionManager.currentSessionId) {
             await this.createNewSession();
         }
@@ -8937,12 +9488,35 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const selectedToolChip = this.normalizeDirectToolSelection(
             metadata.selectedToolChip || metadata.selectedDirectTool || null,
         );
+        const rawArtifactLineage = metadata.artifactLineage && typeof metadata.artifactLineage === 'object'
+            ? metadata.artifactLineage
+            : null;
+        const artifactLineage = rawArtifactLineage ? {
+            artifactId: String(rawArtifactLineage.artifactId || '').trim(),
+            parentArtifactId: String(
+                rawArtifactLineage.parentArtifactId
+                || rawArtifactLineage.artifactId
+                || '',
+            ).trim(),
+            missionId: String(rawArtifactLineage.missionId || metadata.missionId || '').trim(),
+            revision: String(rawArtifactLineage.revision ?? metadata.revision ?? '').trim(),
+            action: String(
+                rawArtifactLineage.action
+                || metadata.requestedArtifactAction
+                || '',
+            ).trim(),
+        } : null;
+        const userMessageMetadata = {
+            ...(selectedToolChip ? { selectedToolChip } : {}),
+            ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+            ...(artifactLineage ? { artifactLineage } : {}),
+        };
         uiHelpers.hideWelcomeMessage();
         const userMessage = {
             role: 'user',
             content: normalizedContent,
             timestamp: new Date().toISOString(),
-            ...(selectedToolChip ? { metadata: { selectedToolChip } } : {}),
+            ...(Object.keys(userMessageMetadata).length > 0 ? { metadata: userMessageMetadata } : {}),
         };
         const savedUserMessage = sessionManager.addMessage(sessionId, userMessage);
         this.messagesContainer.appendChild(uiHelpers.renderMessage(savedUserMessage));
@@ -8951,7 +9525,64 @@ curl -fsSIL --max-time 20 "https://$host"`;
         this.persistSessionMessageIfNeeded(sessionId, savedUserMessage);
 
         const resolved = this.resolveAsyncRemoteCommand(`agent ${normalizedContent}`);
-        await this.createAsyncRemoteJobCard(resolved, sessionId);
+        const continuitySummary = artifactLineage
+            ? [
+                'Continue the selected KimiBuilt artifact lineage.',
+                artifactLineage.artifactId ? `Artifact ID: ${artifactLineage.artifactId}.` : '',
+                artifactLineage.parentArtifactId ? `Parent artifact ID: ${artifactLineage.parentArtifactId}.` : '',
+                artifactLineage.missionId ? `Mission ID: ${artifactLineage.missionId}.` : '',
+                artifactLineage.revision ? `Revision: ${artifactLineage.revision}.` : '',
+                artifactLineage.action ? `Requested action: ${artifactLineage.action}.` : '',
+                'Preserve working content and return changed files plus verification for review.',
+            ].filter(Boolean).join(' ')
+            : '';
+        const toolParams = {
+            ...resolved.toolParams,
+            collectResultFiles: true,
+            ...(selectedArtifactIds.length > 0 ? {
+                artifactIds: selectedArtifactIds,
+            } : {}),
+            ...(artifactLineage ? { artifactLineage } : {}),
+            ...(continuitySummary ? { continuitySummary } : {}),
+        };
+        const resolvedLineageMetadata = artifactLineage ? {
+            artifactLineage,
+            missionId: String(metadata.missionId || artifactLineage.missionId || '').trim(),
+            parentArtifactId: String(
+                metadata.parentArtifactId
+                || artifactLineage.parentArtifactId
+                || artifactLineage.artifactId
+                || '',
+            ).trim(),
+            revision: metadata.revision ?? artifactLineage.revision,
+            requestedArtifactAction: String(
+                metadata.requestedArtifactAction
+                || artifactLineage.action
+                || '',
+            ).trim(),
+        } : {};
+        try {
+            await this.createAsyncRemoteJobCard({
+                ...resolved,
+                toolParams,
+                metadata: {
+                    ...resolvedLineageMetadata,
+                    ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+                },
+            }, sessionId);
+        } catch (error) {
+            if (artifactLineage) {
+                this.pendingArtifactLineage = { ...artifactLineage };
+            }
+            this.setInput(normalizedContent);
+            this.selectToolForNextMessage('remote-cli-agent');
+            uiHelpers.showToast?.(
+                'The remote agent run was not queued. Your build request and artifact selection are ready to retry.',
+                'error',
+            );
+            this.updateSessionInfo();
+            return false;
+        }
         this.updateSessionInfo();
         return true;
     }
@@ -8979,6 +9610,8 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
         try {
             let assistantContent = '';
+            let assistantArtifacts = [];
+            let remoteAgentToolResult = null;
 
             if (subcommand === 'plan' || subcommand === 'help' || subcommand === '?') {
                 assistantContent = this.buildRemotePlanContent();
@@ -9014,7 +9647,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     if (invocation?.sessionId) {
                         this.syncBackendSession(invocation.sessionId);
                     }
-                    assistantContent = this.formatRemoteAgentResult(this.unwrapRemoteResult(invocation));
+                    const remoteResult = this.unwrapRemoteResult(invocation);
+                    remoteAgentToolResult = this.normalizeAsyncRemoteToolResult(remoteResult);
+                    assistantArtifacts = this.buildAsyncRemoteMessageArtifacts(remoteAgentToolResult);
+                    assistantContent = this.formatRemoteAgentResult(remoteResult);
                 } else if (subcommand === 'verify') {
                     const command = this.buildRemoteHttpsVerifyCommand(rest);
                     const invocation = await apiClient.invokeRemoteCommand(command, {
@@ -9032,7 +9668,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
                         if (invocation?.sessionId) {
                             this.syncBackendSession(invocation.sessionId);
                         }
-                        assistantContent = this.formatRemoteAgentResult(this.unwrapRemoteResult(invocation));
+                        const remoteResult = this.unwrapRemoteResult(invocation);
+                        remoteAgentToolResult = this.normalizeAsyncRemoteToolResult(remoteResult);
+                        assistantArtifacts = this.buildAsyncRemoteMessageArtifacts(remoteAgentToolResult);
+                        assistantContent = this.formatRemoteAgentResult(remoteResult);
                     } else {
                         const catalogEntry = this.resolveRemoteCatalogEntry(remoteCatalog.catalog, subcommand);
                         if (!catalogEntry) {
@@ -9062,6 +9701,18 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 role: 'assistant',
                 content: assistantContent,
                 timestamp: new Date().toISOString(),
+                ...(assistantArtifacts.length > 0 ? { artifacts: assistantArtifacts } : {}),
+                ...(remoteAgentToolResult ? {
+                    metadata: {
+                        remoteAgentResult: remoteAgentToolResult,
+                        toolResultChip: {
+                            id: 'remote-cli-agent',
+                            name: 'Remote CLI Agent',
+                            icon: 'terminal',
+                            status: remoteAgentToolResult.completionStatus || remoteAgentToolResult.status || 'completed',
+                        },
+                    },
+                } : {}),
             };
             sessionManager.addMessage(sessionId, assistantMessage);
             this.messagesContainer.appendChild(uiHelpers.renderMessage(assistantMessage));

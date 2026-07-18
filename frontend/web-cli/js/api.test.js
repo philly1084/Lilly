@@ -174,6 +174,194 @@ describe('web-cli API artifact metadata normalization', () => {
     });
 });
 
+describe('web-cli remote agent and managed-app API contracts', () => {
+    test('invokes the remote CLI agent with full de-duplicated artifact ids, selected model, and result collection', async () => {
+        const fetchMock = jest.fn().mockResolvedValue(createJsonResponse({
+            sessionId: 'session-remote-1',
+            data: {
+                completionStatus: 'complete',
+                artifactIds: ['artifact-result-1'],
+            },
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.setSessionId('session-remote-1');
+        api.setModel('kimi-k3');
+
+        const result = await api.invokeRemoteCliAgent('  improve the selected design  ', {
+            artifactIds: [
+                ' artifact-full-123456789 ',
+                'artifact-full-123456789',
+                '',
+                '7',
+                'artifact-svg-987654321',
+            ],
+            cwd: '/srv/apps/design',
+            adminMode: true,
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            sessionId: 'session-remote-1',
+            result: expect.objectContaining({
+                artifactIds: ['artifact-result-1'],
+            }),
+        }));
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, options] = fetchMock.mock.calls[0];
+        expect(url).toBe('http://localhost:3000/api/tools/invoke');
+        expect(options.credentials).toBe('same-origin');
+        const body = JSON.parse(options.body);
+        expect(body).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            sessionId: 'session-remote-1',
+            model: 'kimi-k3',
+            executionProfile: 'remote-build',
+            clientSurface: 'web-cli',
+        }));
+        expect(body.params).toEqual(expect.objectContaining({
+            task: 'improve the selected design',
+            model: 'kimi-k3',
+            cwd: '/srv/apps/design',
+            adminMode: true,
+            collectResultFiles: true,
+            artifactIds: [
+                'artifact-full-123456789',
+                'artifact-svg-987654321',
+            ],
+        }));
+        expect(body.metadata).toEqual(expect.objectContaining({
+            clientSurface: 'web-cli',
+            remoteBuildAutonomyApproved: true,
+            remoteCommandSource: 'web-cli',
+        }));
+    });
+
+    test('does not pass auto as an explicit remote provider model and honors an explicit collection opt-out', async () => {
+        const fetchMock = jest.fn().mockResolvedValue(createJsonResponse({ data: {} }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.setSessionId('session-remote-auto');
+        api.setModel('auto');
+
+        await api.invokeRemoteCliAgent('inspect the build', {
+            collectResultFiles: false,
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).not.toHaveProperty('model');
+        expect(body.params.collectResultFiles).toBe(false);
+    });
+
+    test('preflights final managed-app bytes with the active session and no mutation fields', async () => {
+        const sourceSha256 = 'a'.repeat(64);
+        const fetchMock = jest.fn().mockResolvedValue(createJsonResponse({
+            pushToWebEligible: true,
+            sha256: sourceSha256,
+            blockers: [],
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.setSessionId('session-deploy-1');
+
+        const result = await api.preflightManagedAppArtifact('artifact/site bundle');
+
+        expect(result).toEqual(expect.objectContaining({
+            pushToWebEligible: true,
+            sha256: sourceSha256,
+        }));
+        const [url, options] = fetchMock.mock.calls[0];
+        expect(url).toBe('http://localhost:3000/api/artifacts/artifact%2Fsite%20bundle/managed-app/preflight');
+        expect(options).toEqual(expect.objectContaining({
+            method: 'POST',
+            credentials: 'same-origin',
+        }));
+        expect(JSON.parse(options.body)).toEqual({
+            sessionId: 'session-deploy-1',
+            validateOnly: true,
+        });
+    });
+
+    test('deploys with the active session and preserves the exact accepted source hash', async () => {
+        const expectedSourceSha256 = 'b'.repeat(64);
+        const fetchMock = jest.fn().mockResolvedValue(createJsonResponse({
+            publicHost: 'design.demoserver2.buzz',
+            asyncRuntime: { run: { id: 'run-deploy-1' } },
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.setSessionId('session-deploy-2');
+
+        await api.deployManagedAppArtifact('artifact-site-bundle', {
+            sessionId: 'untrusted-session-override',
+            requestedAction: 'deploy',
+            deployRequested: true,
+            dnsName: 'design',
+            publicHost: 'design.demoserver2.buzz',
+            expectedSourceSha256,
+        });
+
+        const [url, options] = fetchMock.mock.calls[0];
+        expect(url).toBe('http://localhost:3000/api/artifacts/artifact-site-bundle/managed-app');
+        expect(options.credentials).toBe('same-origin');
+        expect(JSON.parse(options.body)).toEqual(expect.objectContaining({
+            sessionId: 'session-deploy-2',
+            requestedAction: 'deploy',
+            deployRequested: true,
+            publicHost: 'design.demoserver2.buzz',
+            expectedSourceSha256,
+        }));
+    });
+
+    test('surfaces typed preflight blockers and source-hash mismatch errors', async () => {
+        const blocker = {
+            code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+            message: 'Binary assets cannot be preserved by this deployment lane.',
+        };
+        const fetchMock = jest.fn()
+            .mockResolvedValueOnce(createJsonResponse({
+                error: {
+                    code: blocker.code,
+                    message: blocker.message,
+                },
+                blockers: [blocker],
+            }, { ok: false, status: 422 }))
+            .mockResolvedValueOnce(createJsonResponse({
+                error: {
+                    code: 'ARTIFACT_MANAGED_APP_SOURCE_HASH_MISMATCH',
+                    message: 'Push to Web stopped because the prepared website bytes changed after preflight.',
+                },
+            }, { ok: false, status: 412 }));
+        const { api } = loadWebCliApi(fetchMock);
+        api.setSessionId('session-deploy-errors');
+
+        await expect(api.preflightManagedAppArtifact('artifact-binary')).rejects.toMatchObject({
+            status: 422,
+            code: blocker.code,
+            blocker,
+            blockers: [blocker],
+            details: expect.objectContaining({ blockers: [blocker] }),
+        });
+        await expect(api.deployManagedAppArtifact('artifact-changed', {
+            expectedSourceSha256: 'c'.repeat(64),
+        })).rejects.toMatchObject({
+            status: 412,
+            code: 'ARTIFACT_MANAGED_APP_SOURCE_HASH_MISMATCH',
+            message: 'Push to Web stopped because the prepared website bytes changed after preflight.',
+        });
+    });
+
+    test('rejects missing task and artifact ids before making a request', async () => {
+        const { api, fetchMock } = loadWebCliApi();
+
+        await expect(api.invokeRemoteCliAgent('   ')).rejects.toMatchObject({
+            code: 'REMOTE_AGENT_TASK_REQUIRED',
+        });
+        await expect(api.preflightManagedAppArtifact('')).rejects.toMatchObject({
+            code: 'ARTIFACT_ID_REQUIRED',
+        });
+        await expect(api.deployManagedAppArtifact('')).rejects.toMatchObject({
+            code: 'ARTIFACT_ID_REQUIRED',
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
 describe('web-cli API request cancellation', () => {
     test('honors caller cancellation without retrying or reporting a timeout', async () => {
         const fetchMock = jest.fn((_url, options) => new Promise((_resolve, reject) => {

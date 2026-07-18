@@ -1,7 +1,13 @@
 'use strict';
 
 const { ToolBase } = require('../../ToolBase');
-const { remoteCliAgentsSdkRunner } = require('../../../../remote-cli/agents-sdk-runner');
+const {
+  buildRemoteCliStructuredResult,
+  remoteCliAgentsSdkRunner,
+} = require('../../../../remote-cli/agents-sdk-runner');
+const { createRemoteAgentHandoff } = require('../../../../remote-cli/agent-handoff');
+const { persistRemoteAgentResultArtifacts } = require('../../../../remote-cli/agent-result-artifacts');
+const { artifactService } = require('../../../../artifacts/artifact-service');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
 const { getSessionControlState } = require('../../../../runtime-control-state');
 
@@ -168,7 +174,12 @@ function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
   if (!prior || typeof prior !== 'object') {
     return false;
   }
-  if (!prior.sessionId && !prior.remoteCodeSessionId && !prior.cwd && !prior.targetId) {
+  if (!prior.sessionId
+    && !prior.mcpSessionId
+    && !prior.remoteCodeSessionId
+    && !prior.remoteCodeJobId
+    && !prior.cwd
+    && !prior.targetId) {
     return false;
   }
   if (hasDifferentExplicitProjectAnchor(task, prior)) {
@@ -185,6 +196,7 @@ function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
   }
 
   applyAlias(params, 'sessionId', prior.sessionId, prior.remoteCodeSessionId);
+  applyAlias(params, 'mcpSessionId', prior.mcpSessionId);
   applyAlias(params, 'cwd', prior.cwd);
   applyAlias(params, 'targetId', prior.targetId);
 
@@ -342,6 +354,19 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
     supportedHeaderModel,
   );
   applyAlias(params, 'supportAgentResponse', params.support_agent_response, params.supportAgentNotes, params.support_agent_notes, argumentObject?.supportAgentResponse, argumentObject?.support_agent_response, argumentObject?.supportAgentNotes, argumentObject?.support_agent_notes);
+  applyAlias(params, 'contextFiles', params.context_files, argumentObject?.contextFiles, argumentObject?.context_files);
+  applyAlias(params, 'resultFileGlobs', params.result_file_globs, argumentObject?.resultFileGlobs, argumentObject?.result_file_globs);
+  applyAlias(params, 'collectResultFiles', params.collect_result_files, argumentObject?.collectResultFiles, argumentObject?.collect_result_files);
+  if (!Array.isArray(params.artifactIds)) {
+    const artifactIds = [
+      ...(Array.isArray(params.artifact_ids) ? params.artifact_ids : []),
+      ...(Array.isArray(argumentObject?.artifactIds) ? argumentObject.artifactIds : []),
+      ...(Array.isArray(argumentObject?.artifact_ids) ? argumentObject.artifact_ids : []),
+    ].map((value) => String(value || '').trim()).filter(Boolean);
+    if (artifactIds.length > 0) {
+      params.artifactIds = Array.from(new Set(artifactIds));
+    }
+  }
 
   const priorRemoteCliAgent = applyPriorRemoteCliAgentDefaults(params, context);
   applyAlias(params, 'continuitySummary', params.remoteProjectContext, params.remote_project_context, buildRemoteCliContinuitySummary(
@@ -495,7 +520,7 @@ class RemoteCliAgentTool extends ToolBase {
           },
           model: {
             type: 'string',
-            description: 'Selected chat model. Kimi and Grok families choose their matching gateway CLI provider; OpenAI models use the Codex agent lane.',
+            description: 'Selected chat model. Kimi, Grok, and OpenAI families choose their matching gateway CLI provider on the shared task lane.',
           },
           instructions: {
             type: 'string',
@@ -504,6 +529,25 @@ class RemoteCliAgentTool extends ToolBase {
           supportAgentResponse: {
             type: 'string',
             description: 'Answer or analysis from a support agent to feed into a resumed Codex-agent thread after SUPPORT_AGENT_REQUIRED.',
+          },
+          artifactIds: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Session-owned artifact IDs to stage as files for the selected Codex, Kimi, or Grok CLI agent.',
+          },
+          contextFiles: {
+            type: 'array',
+            items: { type: 'object' },
+            description: 'Bounded inline files to stage for the remote agent. Each item supports filename, content or contentBase64, mimeType, sha256, and description.',
+          },
+          resultFileGlobs: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional workspace-relative output patterns the gateway may collect after the CLI agent finishes.',
+          },
+          collectResultFiles: {
+            type: 'boolean',
+            description: 'Create an isolated return-files area and collect gateway-verified outputs. Automatically enabled when artifactIds, contextFiles, or resultFileGlobs are supplied.',
           },
           continuitySummary: {
             type: 'string',
@@ -543,9 +587,21 @@ class RemoteCliAgentTool extends ToolBase {
           blocker: { type: 'string' },
           completionStatus: { type: 'string' },
           agentQuality: { type: 'object' },
+          artifactQuality: { type: 'object' },
           model: { type: 'string' },
+          providerModel: { type: 'string' },
           apiMode: { type: 'string' },
           providerId: { type: 'string' },
+          handoffVersion: { type: 'string' },
+          requestedHandoffVersion: { type: 'string' },
+          inputArtifactIds: { type: 'array' },
+          resultFilesManifest: { type: 'string' },
+          resultFiles: { type: 'array' },
+          resultFilesError: { type: 'string' },
+          artifacts: { type: 'array' },
+          artifactIds: { type: 'array' },
+          siteBundleArtifact: { type: 'object' },
+          siteBundleArtifactId: { type: 'string' },
         },
       },
       hooks: {
@@ -554,6 +610,7 @@ class RemoteCliAgentTool extends ToolBase {
     });
 
     this.runner = options.runner || remoteCliAgentsSdkRunner;
+    this.artifactService = options.artifactService || artifactService;
   }
 
   async handler(params, _context, tracker) {
@@ -565,12 +622,56 @@ class RemoteCliAgentTool extends ToolBase {
       task: String(params.task || '').slice(0, 200),
     });
 
-    const runParams = typeof _context?.onProgress === 'function'
-      ? { ...params, onProgress: _context.onProgress }
-      : params;
+    const handoff = await createRemoteAgentHandoff(params, _context, {
+      artifactService: this.artifactService,
+    });
+    const runParams = {
+      ...params,
+      handoff,
+      ...(typeof _context?.onProgress === 'function' ? { onProgress: _context.onProgress } : {}),
+    };
 
     const result = await this.runner.run(runParams);
-    return omitNullishRemoteCliResultFields(result);
+    const { resultFiles: rawResultFiles, ...safeResult } = result || {};
+    let persistedResultArtifacts = {};
+    if (rawResultFiles) {
+      try {
+        persistedResultArtifacts = await persistRemoteAgentResultArtifacts({
+          resultFiles: rawResultFiles,
+          handoff,
+          artifactService: this.artifactService,
+          context: _context,
+          runResult: result,
+        });
+      } catch (error) {
+        const resultFilesError = `Remote agent output files could not be persisted: ${error.message}`;
+        safeResult.resultFilesError = resultFilesError;
+        if (error?.artifactQuality) {
+          safeResult.artifactQuality = error.artifactQuality;
+        }
+        safeResult.blocker = safeResult.blocker || resultFilesError;
+        safeResult.completionStatus = 'blocked';
+        safeResult.verifyResults = [
+          ...(Array.isArray(safeResult.verifyResults) ? safeResult.verifyResults : []),
+          resultFilesError,
+        ];
+        safeResult.structuredResult = buildRemoteCliStructuredResult({
+          task: params.task,
+          metadata: safeResult,
+          agentQuality: safeResult.agentQuality || null,
+        });
+        safeResult.humanSummary = safeResult.structuredResult.humanSummary;
+      }
+    }
+
+    return omitNullishRemoteCliResultFields({
+      ...safeResult,
+      ...persistedResultArtifacts,
+      ...(handoff ? {
+        requestedHandoffVersion: handoff.version,
+        inputArtifactIds: handoff.sourceArtifactIds,
+      } : {}),
+    });
   }
 }
 

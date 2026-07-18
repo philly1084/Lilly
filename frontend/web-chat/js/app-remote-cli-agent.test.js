@@ -129,9 +129,25 @@ function buildAppHarness() {
         updateMessageContent: jest.fn(),
         updateCharCounter: jest.fn(),
         playAcknowledgementCue: jest.fn(),
+        showToast: jest.fn(),
+    };
+    context.window.artifactManager = {
+        prepareArtifactUpdate: jest.fn(),
+        getSelectedIds: jest.fn(() => []),
+    };
+    context.window.fileManager = {
+        getSelectedArtifactIds: jest.fn(() => []),
     };
     context.apiClient = {
         getRemoteToolCatalog: jest.fn(async () => buildRemoteCatalog()),
+        getAsyncRuntimeStatus: jest.fn(async () => ({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: true,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: true,
+        })),
         createAsyncRun: jest.fn(async () => ({
             run: {
                 id: 'async-run-1',
@@ -185,6 +201,11 @@ function buildAppHarness() {
     app.syncBackendSession = jest.fn();
     app.updateSessionInfo = jest.fn();
     app.updateSendButton = jest.fn();
+    app.setInput = jest.fn((value) => {
+        app.messageInput.value = value;
+    });
+    app.closeToolMenu = jest.fn();
+    app.renderSelectedDirectToolChip = jest.fn();
     app.tryHandleToolCommand = jest.fn(async () => false);
     app.isCurrentSessionProcessing = jest.fn(() => false);
     app.getQueuedMessageCount = jest.fn(() => 0);
@@ -258,10 +279,37 @@ describe('web-chat remote CLI agent routing', () => {
                 adminMode: true,
                 cwd: '/srv/apps/example',
                 model: 'gpt-5.4-mini',
+                collectResultFiles: true,
             }),
         );
         expect(context.apiClient.invokeRemoteCommand).not.toHaveBeenCalled();
         expect(renderedMessages.at(-1).content).toContain('Remote CLI Agent Result');
+    });
+
+    test('forwards selected artifacts through the /remote agent lane', async () => {
+        const { app, context } = buildAppHarness();
+        context.window.fileManager.getSelectedArtifactIds.mockReturnValue([
+            'artifact-file-1',
+            'artifact-shared',
+        ]);
+        context.window.artifactManager.getSelectedIds.mockReturnValue([
+            'artifact-shared',
+            'artifact-gallery-2',
+        ]);
+
+        await app.handleRemoteCommand('agent improve the selected design');
+
+        expect(context.apiClient.invokeRemoteCliAgent).toHaveBeenCalledWith(
+            'improve the selected design',
+            expect.objectContaining({
+                artifactIds: [
+                    'artifact-file-1',
+                    'artifact-shared',
+                    'artifact-gallery-2',
+                ],
+                collectResultFiles: true,
+            }),
+        );
     });
 
     test('formats remote agent quality status and missing gates', () => {
@@ -283,6 +331,90 @@ describe('web-chat remote CLI agent routing', () => {
         expect(content).toContain('Quality: `blocked` (42%)');
         expect(content).toContain('Missing quality gates: `public_or_preview_url`, `browser_proof`');
         expect(content).toContain('Blocker: Missing browser proof.');
+    });
+
+    test('shows direct returned artifacts with full IDs and strips signed URL credentials', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        context.apiClient.invokeRemoteCliAgent.mockResolvedValueOnce({
+            sessionId: 'session-1',
+            result: {
+                data: {
+                    finalOutput: 'Created the requested site. X-Amz-Signature=do-not-store key=do-not-store keyboard=compact https://deploy-user:do-not-store@demo.example.test/result https://demo.example.test/?%2574oken=do-not-store&client%255Fsecret=do-not-store&X%252DAmz%252DSignature=do-not-store&keynote=deck#view=1&%2574oken=do-not-store JSON={"token":"do-not-store"} {\'client_secret\':\'do-not-store\'}',
+                    completionStatus: 'blocked',
+                    blocker: 'One returned file failed validation. credentials=do-not-store keynote=deck',
+                    resultFilesError: 'token=do-not-store client_secret=do-not-store invalid SVG',
+                    provider: 'kimi',
+                    providerModel: 'k3',
+                    publicUrl: 'https://demo.example.test/?X-Amz-Security-Token=do-not-store&keyboard=compact#view=1&key=do-not-store',
+                    artifactIds: ['artifact-full-123456789'],
+                    artifacts: [{
+                        id: 'artifact-full-123456789',
+                        filename: 'index.html',
+                        mimeType: 'text/html',
+                        downloadUrl: 'https://chat.example.test/api/artifacts/artifact-full-123456789/download?X-Amz-Credential=do-not-store&view=1#view=1&credentials=do-not-store',
+                        previewUrl: 'https://chat.example.test/api/artifacts/artifact-full-123456789/download?view=1',
+                        sandboxUrl: 'javascript:alert(1)',
+                    }],
+                },
+            },
+        });
+
+        await app.handleRemoteCommand('agent build the site from scratch');
+
+        const assistant = renderedMessages.at(-1);
+        expect(assistant.content).toContain('Provider: `kimi`');
+        expect(assistant.content).toContain('Model: `k3`');
+        expect(assistant.content).toContain('ID: `artifact-full-123456789`');
+        expect(assistant.content).toContain('/api/artifacts/artifact-full-123456789/download?view=1');
+        expect(assistant.content).toContain('https://demo.example.test/?keyboard=compact');
+        expect(assistant.content).toContain('key=[redacted] keyboard=compact');
+        expect(assistant.content).toContain('https://demo.example.test/result');
+        expect(assistant.content).toContain('https://demo.example.test/?keynote=deck');
+        expect(assistant.content).toContain('JSON={"token":[redacted]}');
+        expect(assistant.content).toContain("{'client_secret':[redacted]}");
+        expect(assistant.content).toContain('credentials=[redacted] keynote=deck');
+        expect(assistant.content).toContain('Returned-file error: token=[redacted] client_secret=[redacted] invalid SVG');
+        expect(assistant.content).not.toContain('do-not-store');
+        expect(assistant.content).not.toContain('javascript:');
+        expect(assistant.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-full-123456789',
+                downloadUrl: '/api/artifacts/artifact-full-123456789/download?view=1',
+            }),
+        ]);
+        expect(assistant.artifacts[0]).not.toHaveProperty('previewUrl');
+        expect(assistant.artifacts[0]).not.toHaveProperty('sandboxUrl');
+        expect(assistant.metadata.remoteAgentResult).toEqual(expect.objectContaining({
+            completionStatus: 'blocked',
+            provider: 'kimi',
+            providerModel: 'k3',
+        }));
+    });
+
+    test('marks an otherwise completed async result-file collection error as failed and visible', () => {
+        const { app } = buildAppHarness();
+        const progress = app.buildAsyncRemoteProgressState({
+            status: 'completed',
+            metadata: {
+                toolResult: {
+                    success: true,
+                    completionStatus: 'completed',
+                    resultFilesError: 'Returned SVG could not be persisted.',
+                },
+            },
+        }, [{
+            eventId: 'completed-with-result-file-error',
+            cursor: 1,
+            type: 'completed',
+            status: 'completed',
+            payload: {},
+        }]);
+
+        expect(progress).toEqual(expect.objectContaining({
+            phase: 'failed',
+            terminal: true,
+            detail: 'Returned SVG could not be persisted.',
+        }));
     });
 
     test('keeps exact catalog commands on the command lane', async () => {
@@ -315,6 +447,7 @@ describe('web-chat remote CLI agent routing', () => {
                 toolParams: expect.objectContaining({
                     task: 'deploy the demo site',
                     adminMode: true,
+                    collectResultFiles: true,
                 }),
             }),
         }));
@@ -347,6 +480,11 @@ describe('web-chat remote CLI agent routing', () => {
             task: 'deploy the demo site',
             liveRemote: true,
             sessionId: 'session-1',
+            metadata: expect.objectContaining({
+                toolParams: expect.objectContaining({
+                    collectResultFiles: true,
+                }),
+            }),
         }));
         expect(app.sendPreparedMessage).not.toHaveBeenCalled();
         expect(app.selectedDirectTool).toBeNull();
@@ -358,6 +496,224 @@ describe('web-chat remote CLI agent routing', () => {
             }),
         }));
         expect(renderedMessages.some((message) => message.metadata?.asyncRuntimeJobCard === true)).toBe(true);
+    });
+
+    test('keeps explicit selected agent jobs async when only automatic Web Chat shadowing is disabled', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.messageInput.value = 'build the selected site';
+        context.apiClient.getAsyncRuntimeStatus.mockResolvedValueOnce({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: false,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: false,
+        });
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).toHaveBeenCalledWith(expect.objectContaining({
+            adapter: 'remote-cli-agent',
+            task: 'build the selected site',
+        }));
+        expect(app.sendPreparedMessage).not.toHaveBeenCalled();
+        expect(renderedMessages.some((message) => message.metadata?.asyncRuntimeJobCard === true)).toBe(true);
+    });
+
+    test('falls back to the direct remote agent lane before rendering when async jobs are disabled', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.pendingArtifactLineage = {
+            artifactId: 'artifact-direct',
+            parentArtifactId: 'artifact-parent',
+            missionId: 'mission-direct',
+            revision: '2',
+            action: 'build-agent',
+        };
+        app.messageInput.value = 'refine the selected site';
+        context.window.artifactManager.getSelectedIds.mockReturnValueOnce(['artifact-manager-only']);
+        context.apiClient.getAsyncRuntimeStatus.mockResolvedValueOnce({
+            requestedEnabled: false,
+            enabled: false,
+            webChatParallelEnabled: false,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: true,
+        });
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).not.toHaveBeenCalled();
+        expect(app.sendPreparedMessage).toHaveBeenCalledWith(
+            'refine the selected site',
+            expect.objectContaining({
+                artifactIds: ['artifact-direct', 'artifact-manager-only'],
+                metadata: expect.objectContaining({
+                    directToolId: 'remote-cli-agent',
+                    preferredTool: 'remote-cli-agent',
+                    selectedToolSource: 'web-chat-tool-chip',
+                    asyncRuntimePreferred: true,
+                    remoteAgentCollectResultFiles: true,
+                    artifactLineage: expect.objectContaining({
+                        artifactId: 'artifact-direct',
+                        parentArtifactId: 'artifact-parent',
+                    }),
+                }),
+            }),
+        );
+        expect(renderedMessages).toHaveLength(0);
+        expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('direct remote agent lane'),
+            'info',
+        );
+    });
+
+    test('falls back to the direct remote agent lane when async status is unavailable', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'terminal',
+        };
+        app.messageInput.value = 'inspect the build';
+        context.apiClient.getAsyncRuntimeStatus.mockRejectedValueOnce(new Error('status unavailable'));
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).not.toHaveBeenCalled();
+        expect(app.sendPreparedMessage).toHaveBeenCalledWith(
+            'inspect the build',
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    directToolId: 'remote-cli-agent',
+                    preferredTool: 'remote-cli-agent',
+                    remoteAgentCollectResultFiles: true,
+                }),
+            }),
+        );
+        expect(renderedMessages).toHaveLength(0);
+        expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('could not be confirmed'),
+            'warning',
+        );
+    });
+
+    test('stages artifact lineage as a truthful remote agent build handoff', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        const preventDefault = jest.fn();
+        const control = {
+            dataset: {
+                artifactLineageAction: 'build-agent',
+                artifactId: 'artifact-1',
+                parentArtifactId: 'artifact-parent',
+                missionId: 'mission-1',
+                artifactRevision: '3',
+            },
+        };
+
+        expect(app.handleArtifactLineageAction({ preventDefault }, control)).toBe(true);
+        expect(preventDefault).toHaveBeenCalled();
+        expect(context.window.artifactManager.prepareArtifactUpdate).toHaveBeenCalledWith('artifact-1');
+        expect(app.selectedDirectTool).toEqual(expect.objectContaining({ id: 'remote-cli-agent' }));
+        expect(app.messageInput.value).toContain('Build on this artifact with the remote CLI agent');
+        expect(app.messageInput.value).toContain('do not deploy or publish unless I explicitly ask');
+
+        await app.sendMessage();
+
+        expect(context.apiClient.createAsyncRun).toHaveBeenCalledWith(expect.objectContaining({
+            adapter: 'remote-cli-agent',
+            task: expect.stringContaining('Build on this artifact'),
+            liveRemote: true,
+            sessionId: 'session-1',
+            metadata: expect.objectContaining({
+                source: 'web-chat',
+                missionId: 'mission-1',
+                parentArtifactId: 'artifact-parent',
+                revision: '3',
+                requestedArtifactAction: 'build-agent',
+                artifactIds: ['artifact-1'],
+                artifactLineage: expect.objectContaining({
+                    artifactId: 'artifact-1',
+                    parentArtifactId: 'artifact-parent',
+                    missionId: 'mission-1',
+                    revision: '3',
+                    action: 'build-agent',
+                }),
+                toolParams: expect.objectContaining({
+                    task: expect.stringContaining('Build on this artifact'),
+                    artifactIds: ['artifact-1'],
+                    collectResultFiles: true,
+                    artifactLineage: expect.objectContaining({
+                        artifactId: 'artifact-1',
+                        parentArtifactId: 'artifact-parent',
+                    }),
+                    continuitySummary: expect.stringContaining('Artifact ID: artifact-1.'),
+                }),
+            }),
+        }));
+        expect(renderedMessages[0]).toEqual(expect.objectContaining({
+            role: 'user',
+            metadata: expect.objectContaining({
+                artifactIds: ['artifact-1'],
+                artifactLineage: expect.objectContaining({ artifactId: 'artifact-1' }),
+                selectedToolChip: expect.objectContaining({ id: 'remote-cli-agent' }),
+            }),
+        }));
+        expect(app.selectedDirectTool).toBeNull();
+    });
+
+    test('marks queue failures terminal and restores the agent build draft, tool, and lineage', async () => {
+        const { app, context, renderedMessages } = buildAppHarness();
+        const control = {
+            dataset: {
+                artifactLineageAction: 'build-agent',
+                artifactId: 'artifact-retry',
+                parentArtifactId: 'artifact-parent',
+                missionId: 'mission-retry',
+                artifactRevision: '4',
+            },
+        };
+        app.handleArtifactLineageAction({ preventDefault: jest.fn() }, control);
+        const retryDraft = app.messageInput.value;
+        context.apiClient.createAsyncRun.mockRejectedValueOnce(new Error('queue unavailable'));
+
+        await expect(app.sendMessage()).resolves.toBeUndefined();
+
+        const failedCard = renderedMessages
+            .filter((message) => message.metadata?.asyncRuntimeJobCard === true)
+            .at(-1);
+        expect(failedCard).toEqual(expect.objectContaining({
+            isStreaming: false,
+            progressState: expect.objectContaining({
+                phase: 'failed',
+                terminal: true,
+                detail: 'Unable to queue the remote agent run: queue unavailable',
+            }),
+        }));
+        expect(failedCard.metadata.asyncRuntimeToolResult).toEqual(expect.objectContaining({
+            completionStatus: 'failed',
+            blocker: 'Unable to queue the remote agent run: queue unavailable',
+        }));
+        expect(app.messageInput.value).toBe(retryDraft);
+        expect(app.selectedDirectTool).toEqual(expect.objectContaining({ id: 'remote-cli-agent' }));
+        expect(app.pendingArtifactLineage).toEqual(expect.objectContaining({
+            artifactId: 'artifact-retry',
+            parentArtifactId: 'artifact-parent',
+            action: 'build-agent',
+        }));
+        expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
+            expect.stringContaining('ready to retry'),
+            'error',
+        );
     });
 
     test('renders backend-created async runtime runs without queueing a duplicate run', () => {
@@ -383,6 +739,179 @@ describe('web-chat remote CLI agent routing', () => {
         expect(message.metadata.asyncRuntimeRun.id).toBe('managed-run-1');
         expect(renderedMessages.at(-1).metadata.asyncRuntimeRun.adapter).toBe('managed-app');
         expect(eventSources[0].url).toContain('/api/async-lab/runs/managed-run-1/events?after=7');
+    });
+
+    test('hydrates a reloaded async run with the aggregate site bundle and safe result metadata', () => {
+        const { app, renderedMessages } = buildAppHarness();
+        const rawBase64 = 'cmF3LXNpdGUtY29udGVudA==';
+
+        const message = app.createAsyncRemoteJobCardFromRun({
+            run: {
+                id: 'remote-run-complete',
+                adapter: 'remote-cli-agent',
+                status: 'completed',
+                targetKey: 'primary/main-server',
+                metadata: {
+                    toolResult: {
+                        success: true,
+                        completionStatus: 'completed',
+                        provider: 'kimi',
+                        model: 'kimi-k3',
+                        transport: 'provider-agent',
+                        siteBundleArtifactId: 'artifact-site-bundle',
+                        artifactQuality: {
+                            status: 'passed',
+                            score: 0.98,
+                            credentials: 'do-not-store',
+                            nested: {
+                                key: 'do-not-store',
+                                client_secret: 'do-not-store',
+                                signature: 'do-not-store',
+                                keyboard: 'compact',
+                            },
+                        },
+                        resultFiles: [{
+                            artifactId: 'artifact-index',
+                            filename: 'index.html',
+                            role: 'site-entry',
+                            contentBase64: rawBase64,
+                        }, {
+                            artifactId: 'artifact-css',
+                            filename: 'styles.css',
+                            role: 'site-file',
+                            content: 'raw css',
+                        }, {
+                            artifactId: 'artifact-report',
+                            filename: 'qa-report.json',
+                            role: 'deliverable',
+                        }],
+                        artifacts: [{
+                            id: 'artifact-index',
+                            filename: 'index.html',
+                            downloadUrl: '/api/artifacts/artifact-index/download',
+                            contentBase64: rawBase64,
+                        }, {
+                            id: 'artifact-css',
+                            filename: 'styles.css',
+                            downloadUrl: '/api/artifacts/artifact-css/download',
+                            metadata: { content: 'raw css' },
+                        }, {
+                            id: 'artifact-site-bundle',
+                            filename: 'website.zip',
+                            downloadUrl: '/api/artifacts/artifact-site-bundle/download',
+                            previewUrl: '/api/artifacts/artifact-site-bundle/preview?X-Goog-Signature=do-not-store&view=1',
+                            bundleDownloadUrl: '/api/artifacts/artifact-site-bundle/bundle?X-Amz-Credential=do-not-store&X-Amz-Signature=do-not-store&keyboard=compact',
+                        }, {
+                            id: 'artifact-report',
+                            filename: 'qa-report.json',
+                            downloadUrl: '/api/artifacts/artifact-report/download',
+                        }],
+                    },
+                },
+            },
+            events: [{
+                eventId: 'remote-completed-1',
+                cursor: 12,
+                type: 'completed',
+                status: 'completed',
+                payload: { message: 'Async lab run completed.' },
+            }],
+        }, 'session-1');
+
+        expect(message.metadata.asyncRuntimeToolResult).toEqual(expect.objectContaining({
+            completionStatus: 'completed',
+            provider: 'kimi',
+            siteBundleArtifactId: 'artifact-site-bundle',
+            artifactQuality: {
+                status: 'passed',
+                score: 0.98,
+                nested: {
+                    keyboard: 'compact',
+                },
+            },
+        }));
+        expect(JSON.stringify(message.metadata.asyncRuntimeToolResult)).not.toContain('do-not-store');
+        expect(message.metadata.asyncRuntimeToolResult.resultFiles[0]).not.toHaveProperty('contentBase64');
+        expect(message.metadata.asyncRuntimeToolResult.artifacts[0]).not.toHaveProperty('contentBase64');
+        expect(message.metadata.asyncRuntimeToolResult.artifacts[1]).not.toHaveProperty('metadata');
+        expect(message.artifacts.map((artifact) => artifact.id)).toEqual([
+            'artifact-site-bundle',
+            'artifact-report',
+        ]);
+        expect(message.artifacts[0]).toEqual(expect.objectContaining({
+            previewUrl: '/api/artifacts/artifact-site-bundle/preview?view=1',
+            bundleDownloadUrl: '/api/artifacts/artifact-site-bundle/bundle?keyboard=compact',
+        }));
+        expect(message.artifacts.every((artifact) => artifact.id && artifact.downloadUrl)).toBe(true);
+        expect(renderedMessages.at(-1).artifacts).toEqual(message.artifacts);
+    });
+
+    test('hydrates failed SSE tool results, prefers the blocker, and surfaces non-bundled artifacts', () => {
+        const { app, renderedMessages, eventSources } = buildAppHarness();
+        const message = app.createAsyncRemoteJobCardFromRun({
+            run: {
+                id: 'remote-run-failing',
+                adapter: 'remote-cli-agent',
+                status: 'running',
+                targetKey: 'primary/main-server',
+            },
+            events: [{
+                eventId: 'remote-started-1',
+                cursor: 1,
+                type: 'started',
+                status: 'running',
+            }],
+        }, 'session-1');
+        const source = eventSources.at(-1);
+
+        source.listeners.tool_failed({
+            data: JSON.stringify({
+                eventId: 'remote-tool-failed-1',
+                cursor: 2,
+                type: 'tool_failed',
+                status: 'failed',
+                payload: {
+                    message: 'remote-cli-agent reported a blocked or failed result.',
+                    result: {
+                        success: false,
+                        completionStatus: 'blocked',
+                        blocker: 'Returned SVG failed structural validation.',
+                        error: 'Generic remote failure.',
+                        publicUrl: 'https://demo.example.test/?X-Amz-Security-Token=do-not-store&X-Goog-Signature=do-not-store&keyboard=compact&monkey=capuchin',
+                        artifactIds: ['artifact-svg'],
+                        artifacts: [{
+                            id: 'artifact-svg',
+                            filename: 'diagram.svg',
+                            mimeType: 'image/svg+xml',
+                            downloadUrl: '/api/artifacts/artifact-svg/download?X-Amz-Credential=do-not-store&X-Amz-Signature=do-not-store&X-Goog-Signature=do-not-store&sig=do-not-store&keynote=opening&keyboard=compact&view=1',
+                            contentBase64: 'PHN2Zz5yYXc8L3N2Zz4=',
+                        }],
+                    },
+                },
+            }),
+        });
+
+        const updated = renderedMessages.filter((entry) => entry.id === message.id).at(-1);
+        expect(updated.progressState).toEqual(expect.objectContaining({
+            phase: 'failed',
+            terminal: true,
+            detail: 'Returned SVG failed structural validation.',
+        }));
+        expect(updated.metadata.asyncRuntimeToolResult).toEqual(expect.objectContaining({
+            success: false,
+            completionStatus: 'blocked',
+            blocker: 'Returned SVG failed structural validation.',
+            publicUrl: 'https://demo.example.test/?keyboard=compact&monkey=capuchin',
+        }));
+        expect(updated.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-svg',
+                filename: 'diagram.svg',
+                downloadUrl: '/api/artifacts/artifact-svg/download?keynote=opening&keyboard=compact&view=1',
+            }),
+        ]);
+        expect(updated.artifacts[0]).not.toHaveProperty('contentBase64');
+        expect(source.closed).toBe(true);
     });
 
     test('does not use remote-workbench as the remote catalog fallback', async () => {

@@ -17,6 +17,13 @@ const config = require('./lib/config');
 const session = require('./lib/session');
 const api = require('./lib/api');
 const workbench = require('./lib/workbench');
+const {
+  formatRemoteAgentArtifactOutput,
+  formatRemoteAgentStatusOutput,
+  formatRemoteAgentTextOutput,
+  formatSessionArtifactLine,
+  parseRemoteAgentCommand,
+} = require('./lib/remote-agent');
 const modelOutputParser = require('../shared/model-output-parser');
 
 // CLI metadata
@@ -1665,7 +1672,7 @@ function printRemotePlan() {
   console.log(chalk.gray('  2. /remote tools - choose a catalog command.'));
   console.log(chalk.gray('  3. /remote <tool-id> - run a catalog entry such as baseline, kubectl-inspect, logs, rollout, build, or test.'));
   console.log(chalk.gray('  4. /remote run <command> - execute one purposeful inspect, fix, or verify batch.'));
-  console.log(chalk.gray('  5. /remote agent <task> - hand a full coding/build/deploy loop to the backend remote CLI agent.'));
+  console.log(chalk.gray('  5. /remote agent [--artifact <full-id>] [--collect] <task> - hand a full coding/build/deploy loop to the backend remote CLI agent.'));
   console.log(chalk.gray('  6. Continue normal build/test failures while the next step is still on plan.'));
   console.log(chalk.gray('  7. Stop for sudo/package installs, secrets, destructive deletes, force push, repeated failures, missing credentials, or unclear recovery.\n'));
   console.log(chalk.gray('Raw expert access: /remote run hostname && whoami && uname -m\n'));
@@ -1699,29 +1706,46 @@ function printRemoteResult(result = {}) {
 }
 
 function printRemoteAgentResult(result = {}) {
-  const output = String(result.finalOutput || result.output || '').trim();
+  const output = formatRemoteAgentTextOutput(result.finalOutput || result.output);
+  const statusLines = formatRemoteAgentStatusOutput(result);
+  const artifactLines = formatRemoteAgentArtifactOutput(result);
+  const safeField = (value, maxLength = 500) => formatRemoteAgentTextOutput(
+    String(value ?? '').replace(/\r?\n/g, ' '),
+    maxLength,
+  );
 
   console.log(chalk.cyan.bold('\nRemote CLI Agent Result'));
   if (result.targetId) {
-    console.log(chalk.gray(`Target: ${result.targetId}`));
+    console.log(chalk.gray(`Target: ${safeField(result.targetId)}`));
   }
   if (result.cwd) {
-    console.log(chalk.gray(`Workspace: ${result.cwd}`));
+    console.log(chalk.gray(`Workspace: ${safeField(result.cwd, 1200)}`));
   }
   if (result.sessionId) {
-    console.log(chalk.gray(`Remote session: ${result.sessionId}`));
+    console.log(chalk.gray(`Remote session: ${safeField(result.sessionId)}`));
   }
   if (result.mcpSessionId) {
-    console.log(chalk.gray(`MCP session: ${result.mcpSessionId}`));
+    console.log(chalk.gray(`MCP session: ${safeField(result.mcpSessionId)}`));
   }
-  if (result.model) {
-    console.log(chalk.gray(`Model: ${result.model}`));
+  if (result.provider || result.providerId) {
+    console.log(chalk.gray(`Provider: ${safeField(result.provider || result.providerId)}`));
+  }
+  if (result.providerModel || result.model) {
+    console.log(chalk.gray(`Model: ${safeField(result.providerModel || result.model)}`));
+  }
+  if (statusLines.length > 0) {
+    console.log('');
+    statusLines.forEach((line) => console.log(chalk.yellow(line)));
   }
   if (output) {
     console.log('');
     console.log(output);
-  } else {
-    console.log(JSON.stringify(result, null, 2));
+  } else if (statusLines.length === 0 && artifactLines.length === 0) {
+    console.log(chalk.gray('No terminal text or artifact metadata was returned.'));
+  }
+  if (artifactLines.length > 0) {
+    console.log('');
+    artifactLines.forEach((line) => console.log(chalk.gray(line)));
   }
   console.log('');
 }
@@ -1795,6 +1819,10 @@ async function invokeRemoteCliAgent(task, options = {}) {
     clientSurface: 'cli',
     executionProfile: REMOTE_BUILD_EXECUTION_PROFILE,
     model: currentModel || null,
+    artifactIds: options.artifactIds,
+    contextFiles: options.contextFiles,
+    resultFileGlobs: options.resultFileGlobs,
+    collectResultFiles: options.collectResultFiles,
   });
 
   if (response.sessionId) {
@@ -2057,14 +2085,19 @@ async function handleRemote(argString = '') {
     }
 
     if (subcommand === 'agent') {
-      if (!rest) {
-        spinner.fail('Usage: /remote agent <coding/build/deploy task>');
+      const agentCommand = parseRemoteAgentCommand(rest);
+      if (!agentCommand.task) {
+        spinner.fail('Usage: /remote agent [--artifact <full-id>] [--collect] <coding/build/deploy task>');
         return;
       }
-      const result = await invokeRemoteCliAgent(rest, {
+      const result = await invokeRemoteCliAgent(agentCommand.task, {
         cwd: getWorkbenchCwd(),
         waitMs: 30000,
         maxTurns: 30,
+        ...(agentCommand.artifactIds.length > 0 ? { artifactIds: agentCommand.artifactIds } : {}),
+        ...(agentCommand.collectResultFiles !== undefined
+          ? { collectResultFiles: agentCommand.collectResultFiles }
+          : {}),
       });
       spinner.stop();
       printRemoteAgentResult(result);
@@ -2082,7 +2115,7 @@ async function handleRemote(argString = '') {
       return;
     }
 
-    spinner.fail('Usage: /remote status | /remote tools | /remote plan | /remote <catalog-id> | /remote run <command> | /remote agent <task> | /remote verify [host]');
+    spinner.fail('Usage: /remote status | /remote tools | /remote plan | /remote <catalog-id> | /remote run <command> | /remote agent [--artifact <full-id>] [--collect] <task> | /remote verify [host]');
   } catch (err) {
     spinner.fail(chalk.red(`Remote ${subcommand} failed: ${err.message}`));
   }
@@ -2478,7 +2511,9 @@ Remote CLI Commands:
   /remote plan                  Show the remote CLI build loop
   /remote baseline              Run a catalog command by ID
   /remote run <command>         Execute a curated remote-command call
-  /remote agent <task>          Delegate a coding/build/deploy loop to the remote CLI agent
+  /remote agent [options] <task> Delegate a coding/build/deploy loop to the remote CLI agent
+    --artifact <full-id>         Attach a session artifact; repeat for multiple files
+    --collect                    Persist returned files and a site bundle in this session
   /remote verify [host]         Verify DNS and HTTPS from the remote host
 
 Examples:
@@ -2638,7 +2673,7 @@ async function handleArtifactListCommand() {
     }
     console.log(chalk.cyan.bold('\nArtifacts:'));
     artifacts.forEach((artifact) => {
-      console.log(chalk.gray(`  ${artifact.id.slice(0, 8)}  ${artifact.filename}  [${artifact.format}]`));
+      console.log(chalk.gray(formatSessionArtifactLine(artifact)));
     });
     console.log('');
   } catch (err) {

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadCanvasApi(fetchMock = jest.fn(), search = '') {
+function loadCanvasApi(fetchMock = jest.fn(), search = '', windowOverrides = {}) {
     const sourcePath = path.join(__dirname, 'api.js');
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(
@@ -23,6 +23,7 @@ function loadCanvasApi(fetchMock = jest.fn(), search = '') {
             search,
         },
         KimiBuiltGatewaySSE: null,
+        ...windowOverrides,
     };
     const context = {
         module: { exports: {} },
@@ -32,6 +33,7 @@ function loadCanvasApi(fetchMock = jest.fn(), search = '') {
         fetch: fetchMock,
         console,
         URLSearchParams,
+        URL,
     };
     window.window = window;
 
@@ -45,6 +47,54 @@ function loadCanvasApi(fetchMock = jest.fn(), search = '') {
 }
 
 describe('canvas API artifact metadata normalization', () => {
+    test('attaches cross-surface bytes before using the destination artifact id as canvas context', async () => {
+        const attachArtifact = jest.fn().mockResolvedValue({
+            targetSessionId: 'canvas-session-1',
+            sourceArtifactId: 'artifact-source-full-id',
+            artifact: {
+                id: 'artifact-attached-full-id',
+                sessionId: 'canvas-session-1',
+                filename: 'design.svg',
+                revision: 1,
+            },
+            importCapability: {
+                disposition: 'context-only',
+                browserImportAllowed: false,
+            },
+        });
+        const createArtifactHandoffClient = jest.fn(() => ({ attachArtifact }));
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({ content: '{"actions":[]}' }),
+        }));
+        const { OpenAICanvasAPI } = loadCanvasApi(
+            fetchMock,
+            '?artifactId=artifact-source-full-id&missionId=mission-1&revision=4',
+            {
+                KimiBuiltRemoteArtifactWorkflow: { createArtifactHandoffClient },
+            },
+        );
+        const api = new OpenAICanvasAPI('http://localhost:3000/v1');
+
+        await api.requestCanvasAgent({ message: 'Use the attached SVG as design context.' });
+
+        expect(attachArtifact).toHaveBeenCalledWith('artifact-source-full-id', expect.objectContaining({
+            mode: 'canvas',
+            taskType: 'canvas',
+            clientSurface: 'canvas-excalidraw',
+        }));
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.sessionId).toBe('canvas-session-1');
+        expect(body.artifactIds).toEqual(['artifact-attached-full-id']);
+        expect(body.metadata).toEqual(expect.objectContaining({
+            parentArtifactId: 'artifact-attached-full-id',
+            artifactLineage: expect.objectContaining({
+                sourceArtifactId: 'artifact-source-full-id',
+                artifactId: 'artifact-attached-full-id',
+            }),
+        }));
+    });
+
     test('propagates mission and revision lineage into exact-object edits', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,
@@ -171,7 +221,8 @@ describe('canvas API chat model lookup', () => {
     test('serves the capability-aware model filter script', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
-        expect(html).toContain('<script defer src="js/api.js?v=20260715b"></script>');
+        expect(html).toContain('<script defer src="../shared/remote-artifact-workflow.js?v=20260718a"></script>');
+        expect(html).toContain('<script defer src="js/api.js?v=20260718a"></script>');
     });
 
     test('keeps capable gateway chat models while excluding generation-only models', async () => {

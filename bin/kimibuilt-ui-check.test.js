@@ -2,7 +2,9 @@ const {
   buildAuthHeaders,
   hasCorsConsoleError,
   isAuthWallMetrics,
+  isExternalHttpRequest,
   normalizeUrl,
+  parseArgs,
   redactSensitiveUrl,
   rewritePreviewUrlWithToken,
   waitForClientReady,
@@ -130,5 +132,27 @@ describe('kimibuilt-ui-check preview auth helpers', () => {
     expect(buildFrontendLoadCheckUrl('http://127.0.0.1:3013', '/web-chat/')).toBe(
       'http://127.0.0.1:3013/web-chat/',
     );
+  });
+});
+
+describe('kimibuilt UI check network confinement', () => {
+  test('parses the explicit same-origin-only release gate', () => {
+    expect(parseArgs([
+      'https://kimibuilt.example.test/api/artifacts/site-1/preview',
+      '--same-origin-only',
+    ])).toEqual(expect.objectContaining({
+      url: 'https://kimibuilt.example.test/api/artifacts/site-1/preview',
+      sameOriginOnly: true,
+    }));
+  });
+
+  test('classifies only outside-origin HTTP requests as external', () => {
+    const origin = 'https://kimibuilt.example.test';
+
+    expect(isExternalHttpRequest(`${origin}/styles.css`, origin)).toBe(false);
+    expect(isExternalHttpRequest('https://outside.example.test/leak.css', origin)).toBe(true);
+    expect(isExternalHttpRequest('http://kimibuilt.example.test/plain-http', origin)).toBe(true);
+    expect(isExternalHttpRequest('data:image/svg+xml;base64,PHN2Zz4=', origin)).toBe(false);
+    expect(isExternalHttpRequest('about:blank', origin)).toBe(false);
   });
 });

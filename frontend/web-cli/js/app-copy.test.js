@@ -181,7 +181,7 @@ describe('web-cli file manager modal', () => {
         expect(document.activeElement).toBe(filesButton);
     });
 
-    test('renders each file as one native download button', () => {
+    test('renders local files with a separate native download action', () => {
         const { app, document } = createCopyHarness();
         app.sessionFiles = [{
             id: 7,
@@ -198,14 +198,14 @@ describe('web-cli file manager modal', () => {
 
         const row = document.querySelector('.file-item');
         const downloadLabel = document.querySelector('.file-download-btn');
-        expect(row.tagName).toBe('BUTTON');
-        expect(row.type).toBe('button');
-        expect(row.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
-        expect(row.getAttribute('onclick')).toBe("app.downloadFileById('7')");
+        expect(row.tagName).toBe('ARTICLE');
         expect(row.querySelector('.file-icon').textContent).toBe('MD');
         expect(row.querySelector('.file-name').innerHTML).toBe('launch brief &lt;draft&gt;.md');
-        expect(downloadLabel.getAttribute('aria-hidden')).toBe('true');
-        expect(row.querySelectorAll('button')).toHaveLength(0);
+        expect(downloadLabel.tagName).toBe('BUTTON');
+        expect(downloadLabel.type).toBe('button');
+        expect(downloadLabel.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
+        expect(downloadLabel.getAttribute('onclick')).toBe("app.downloadFileById('7')");
+        expect(row.querySelectorAll('button')).toHaveLength(1);
     });
 });
 

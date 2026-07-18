@@ -113,6 +113,9 @@ describe('Web Chat proof pack and artifact lineage', () => {
     expect(fakeMarkup).toBe('');
     expect(realMarkup).toContain('Open in Notes');
     expect(realMarkup).toContain('Open in Canvas');
+    expect(realMarkup).toContain('Build with Agent');
+    expect(realMarkup).toContain('data-artifact-lineage-action="build-agent"');
+    expect(realMarkup).not.toContain('data-artifact-lineage-action="deploy"');
   });
 
   test('reads the canonical run proof pack and typed verdicts', () => {

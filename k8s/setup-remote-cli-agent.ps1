@@ -141,7 +141,7 @@ if (!$gatewayBaseUrl) {
 }
 
 if (!$RemoteCliAgentTransport) {
-  $RemoteCliAgentTransport = "codex-agent"
+  $RemoteCliAgentTransport = "provider-agent"
 }
 
 if (!$RemoteCliCodexAgentBaseUrl) {
@@ -153,7 +153,7 @@ if (!$RemoteCliCodexAgentWorkspacePath) {
 }
 
 if (!$RemoteCliCodexAgentModel) {
-  $RemoteCliCodexAgentModel = "gpt-5.5"
+  $RemoteCliCodexAgentModel = "gpt-5.6-sol"
 }
 
 if (!$RemoteCliCodexAgentApprovalPolicy) {

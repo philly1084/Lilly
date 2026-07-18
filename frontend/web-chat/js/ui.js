@@ -4454,7 +4454,7 @@ class UIHelpers {
                 <a class="artifact-lineage-action" href="${this.escapeHtmlAttr(notesUrl)}" ${dataAttributes} data-artifact-lineage-action="open-notes">Open in Notes</a>
                 <a class="artifact-lineage-action" href="${this.escapeHtmlAttr(canvasUrl)}" ${dataAttributes} data-artifact-lineage-action="open-canvas">Open in Canvas</a>
                 <button class="artifact-lineage-action" type="button" ${dataAttributes} data-artifact-lineage-action="iterate">Iterate in Chat</button>
-                <button class="artifact-lineage-action artifact-lineage-action--deploy" type="button" ${dataAttributes} data-artifact-lineage-action="deploy">Deploy</button>
+                <button class="artifact-lineage-action artifact-lineage-action--agent" type="button" ${dataAttributes} data-artifact-lineage-action="build-agent">Build with Agent</button>
             </div>
         `;
     }

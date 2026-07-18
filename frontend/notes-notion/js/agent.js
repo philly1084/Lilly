@@ -9586,6 +9586,8 @@ Silently verify the lead cluster, section order, and final polish before returni
         messages: [],
         activePageId: null,
         sharedSessionId: null,
+        artifactHandoff: null,
+        artifactHandoffPromise: null,
         isProcessing: false,
         streamingEnabled: true,
         cachedModels: null,
@@ -9889,6 +9891,24 @@ Silently verify the lead cluster, section order, and final polish before returni
             const apiClient = getAPIClient();
             await hydrateSharedConversationSession(apiClient);
             syncConversationWithCurrentPage({ emitEvent: false });
+            const initialLineage = readArtifactLineageFromLocation();
+            if (initialLineage) {
+                try {
+                    const handoff = await ensureArtifactLineageAttached(apiClient, initialLineage);
+                    if (handoff?.artifact) {
+                        const contextOnly = handoff.importCapability?.disposition === 'context-only'
+                            || handoff.importCapability?.browserImportAllowed !== true;
+                        showToast(
+                            contextOnly
+                                ? `${handoff.artifact.filename || 'Source artifact'} is attached as exact agent context; this page was not changed.`
+                                : `${handoff.artifact.filename || 'Source artifact'} is attached for agent context; this page was not changed automatically.`,
+                            contextOnly ? 'info' : 'success',
+                        );
+                    }
+                } catch (error) {
+                    showToast(error.message || 'The linked artifact could not be attached to Notes.', 'error');
+                }
+            }
 
             // Try to fetch models from API first
             try {
@@ -11001,6 +11021,7 @@ Silently verify the lead cluster, section order, and final polish before returni
     function readArtifactLineageFromLocation(search = window.location?.search || '') {
         const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
         const artifactId = String(params.get('artifactId') || '').trim();
+        const sourceArtifactId = String(params.get('sourceArtifactId') || artifactId).trim();
         const missionId = String(params.get('missionId') || '').trim();
         const parentArtifactId = String(params.get('parentArtifactId') || artifactId).trim();
         const revision = Number(params.get('revision'));
@@ -11009,9 +11030,107 @@ Silently verify the lead cluster, section order, and final polish before returni
         }
         return {
             artifactId: artifactId || null,
+            sourceArtifactId: sourceArtifactId || null,
             missionId: missionId || null,
             parentArtifactId: parentArtifactId || null,
             revision: Number.isInteger(revision) && revision > 0 ? revision : null,
+        };
+    }
+
+    function updateArtifactHandoffLocation(handoff = null) {
+        if (!handoff?.artifact?.id || !window.history?.replaceState || !window.location?.href) {
+            return;
+        }
+        try {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('artifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('sourceArtifactId', handoff.sourceArtifactId);
+            nextUrl.searchParams.set('parentArtifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('revision', String(handoff.artifact.revision || 1));
+            window.history.replaceState(window.history.state, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        } catch (_error) {
+            // The server-side handoff remains authoritative when history is unavailable.
+        }
+    }
+
+    async function ensureArtifactLineageAttached(apiClient = null, lineage = null) {
+        const requestedLineage = lineage || readArtifactLineageFromLocation();
+        const sourceArtifactId = String(
+            requestedLineage?.sourceArtifactId
+            || requestedLineage?.artifactId
+            || state.artifactHandoff?.sourceArtifactId
+            || '',
+        ).trim();
+        if (!sourceArtifactId) {
+            return state.artifactHandoff;
+        }
+        if (state.artifactHandoff?.sourceArtifactId === sourceArtifactId) {
+            return state.artifactHandoff;
+        }
+        if (state.artifactHandoffPromise) {
+            return state.artifactHandoffPromise;
+        }
+        const createClient = window.KimiBuiltRemoteArtifactWorkflow?.createArtifactHandoffClient;
+        if (typeof createClient !== 'function') {
+            return null;
+        }
+        const client = apiClient || getAPIClient();
+        const handoffClient = createClient({
+            baseUrl: window.location?.origin || '',
+            getSessionId: () => client?.getSessionId?.() || getConversationSessionId(),
+            setSessionId: (sessionId) => client?.setSessionId?.(sessionId),
+        });
+        state.artifactHandoffPromise = handoffClient.attachArtifact(sourceArtifactId, {
+            targetSessionId: client?.getSessionId?.() || getConversationSessionId(),
+            mode: 'notes',
+            taskType: 'notes',
+            clientSurface: 'notes',
+        }).then((handoff) => {
+            state.sharedSessionId = handoff.targetSessionId;
+            client?.setSessionId?.(handoff.targetSessionId);
+            const attachedLineage = {
+                ...(requestedLineage || {}),
+                schemaVersion: 'ArtifactLineage/v1',
+                sourceArtifactId: handoff.sourceArtifactId,
+                artifactId: handoff.artifact.id,
+                parentArtifactId: handoff.artifact.id,
+                revision: Number(handoff.artifact.revision || 1),
+                sourceSurface: 'notes',
+            };
+            state.artifactHandoff = {
+                ...handoff,
+                lineage: attachedLineage,
+            };
+            const page = window.Editor?.getCurrentPage?.();
+            if (page) {
+                page.metadata = {
+                    ...(page.metadata || {}),
+                    artifactLineage: attachedLineage,
+                };
+                window.Editor?.savePage?.();
+            }
+            updateArtifactHandoffLocation(handoff);
+            return state.artifactHandoff;
+        }).finally(() => {
+            state.artifactHandoffPromise = null;
+        });
+        return state.artifactHandoffPromise;
+    }
+
+    function buildArtifactHandoffRequestOptions(lineage = null, handoff = state.artifactHandoff) {
+        const artifactLineage = handoff?.lineage || lineage || null;
+        const artifactId = String(handoff?.artifact?.id || '').trim();
+        return {
+            ...(artifactId ? { artifactIds: [artifactId] } : {}),
+            ...(artifactLineage ? {
+                metadata: {
+                    missionId: artifactLineage.missionId,
+                    agentRunId: artifactLineage.missionId,
+                    parentArtifactId: artifactLineage.parentArtifactId || artifactLineage.artifactId,
+                    revision: artifactLineage.revision,
+                    artifactLineage,
+                },
+            } : {}),
         };
     }
 
@@ -11030,6 +11149,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         const next = {
             schemaVersion: 'ArtifactLineage/v1',
             artifactId: lineage.artifactId || null,
+            sourceArtifactId: lineage.sourceArtifactId || prior.sourceArtifactId || null,
             missionId: lineage.missionId || null,
             parentArtifactId: lineage.parentArtifactId || lineage.artifactId || null,
             revision: Number.isInteger(currentRevision) && currentRevision > 0 ? currentRevision + 1 : 1,
@@ -11070,22 +11190,20 @@ Silently verify the lead cluster, section order, and final polish before returni
         const agentProfile = getSelectedAgentProfile();
         const normalizedPageReferences = normalizePageReferences(pageReferences);
         const normalizedReferenceSearch = normalizeReferenceSearchPayload(referenceSearch);
-        const artifactLineage = readArtifactLineageFromLocation();
+        const sourceArtifactLineage = readArtifactLineageFromLocation();
+        const artifactHandoff = await ensureArtifactLineageAttached(apiClient, sourceArtifactLineage);
+        const artifactLineage = artifactHandoff?.lineage || sourceArtifactLineage;
+        const handoffRequestOptions = buildArtifactHandoffRequestOptions(artifactLineage, artifactHandoff);
         const requestOptions = {
+            ...handoffRequestOptions,
             ...(requestedArtifactFormat ? { outputFormat: requestedArtifactFormat } : {}),
             reasoningEffort: 'medium',
             metadata: {
+                ...(handoffRequestOptions.metadata || {}),
                 notesAgentProfile: buildAgentProfileMetadata(agentProfile),
                 notesAgentProfileId: agentProfile.id,
                 ...(normalizedPageReferences.length ? { notesPageReferences: normalizedPageReferences } : {}),
                 ...(normalizedReferenceSearch.hits.length ? { notesReferenceSearch: normalizedReferenceSearch } : {}),
-                ...(artifactLineage ? {
-                    missionId: artifactLineage.missionId,
-                    agentRunId: artifactLineage.missionId,
-                    parentArtifactId: artifactLineage.parentArtifactId || artifactLineage.artifactId,
-                    revision: artifactLineage.revision,
-                    artifactLineage,
-                } : {}),
             },
         };
         const requestUnderstanding = buildRequestUnderstanding(question, context, requestOptions);
@@ -12030,6 +12148,8 @@ Silently verify the lead cluster, section order, and final polish before returni
         _shouldSuppressRequestedArtifactFormat: shouldSuppressRequestedArtifactFormat,
         _buildAgentProfilePromptGuidance: buildAgentProfilePromptGuidance,
         _readArtifactLineageFromLocation: readArtifactLineageFromLocation,
+        _ensureArtifactLineageAttached: ensureArtifactLineageAttached,
+        _buildArtifactHandoffRequestOptions: buildArtifactHandoffRequestOptions,
         _recordArtifactRevision: recordArtifactRevision,
     };
 })();

@@ -1,6 +1,12 @@
 'use strict';
 
-const { KubernetesClient } = require('./kubernetes-client');
+const {
+    KubernetesClient,
+    buildManagedAppImageEvidence,
+    normalizeOciSha256Digest,
+} = require('./kubernetes-client');
+
+const TEST_IMAGE_DIGEST = `sha256:${'a'.repeat(64)}`;
 
 function createDeploySshTool({
     applyStdout = '',
@@ -35,10 +41,13 @@ function buildInspectionStdout(overrides = {}) {
         deploymentPresent: 'true',
         servicePresent: 'true',
         ingressPresent: 'true',
+        deploymentImage: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
         deploymentContainerPort: '80',
         servicePort: '80',
         serviceTargetPort: '80',
         podName: 'demo-abc123',
+        podImage: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+        podImageID: `docker-pullable://registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
         podPhase: 'Running',
         podWaitingReason: '',
         podWaitingMessage: '',
@@ -73,10 +82,13 @@ function buildInspectionStdout(overrides = {}) {
         `__KIMIBUILT_DEPLOYMENT_PRESENT__=${values.deploymentPresent}`,
         `__KIMIBUILT_SERVICE_PRESENT__=${values.servicePresent}`,
         `__KIMIBUILT_INGRESS_PRESENT__=${values.ingressPresent}`,
+        `__KIMIBUILT_DEPLOYMENT_IMAGE__=${values.deploymentImage}`,
         `__KIMIBUILT_DEPLOYMENT_CONTAINER_PORT__=${values.deploymentContainerPort}`,
         `__KIMIBUILT_SERVICE_PORT__=${values.servicePort}`,
         `__KIMIBUILT_SERVICE_TARGET_PORT__=${values.serviceTargetPort}`,
         `__KIMIBUILT_POD_NAME__=${values.podName}`,
+        `__KIMIBUILT_POD_IMAGE__=${values.podImage}`,
+        `__KIMIBUILT_POD_IMAGE_ID__=${values.podImageID}`,
         `__KIMIBUILT_POD_PHASE__=${values.podPhase}`,
         `__KIMIBUILT_POD_WAITING_REASON__=${values.podWaitingReason}`,
         `__KIMIBUILT_POD_WAITING_MESSAGE__=${values.podWaitingMessage}`,
@@ -115,6 +127,52 @@ function buildInspectionStdout(overrides = {}) {
 }
 
 describe('KubernetesClient', () => {
+    test('normalizes only OCI sha256 digests from runtime image IDs', () => {
+        expect(normalizeOciSha256Digest(`containerd://${TEST_IMAGE_DIGEST}`)).toBe(TEST_IMAGE_DIGEST);
+        expect(normalizeOciSha256Digest(`docker-pullable://registry.example.test/team/app@${TEST_IMAGE_DIGEST}`)).toBe(TEST_IMAGE_DIGEST);
+        expect(normalizeOciSha256Digest('sha-abcdef123456')).toBe('');
+        expect(normalizeOciSha256Digest('a'.repeat(64))).toBe('');
+        expect(normalizeOciSha256Digest(`prefix ${TEST_IMAGE_DIGEST}`)).toBe('');
+    });
+
+    test('rejects a runtime digest that conflicts with a digest-pinned request', () => {
+        const expectedDigest = `sha256:${'b'.repeat(64)}`;
+        const evidence = buildManagedAppImageEvidence({
+            requestedImage: `registry.example.test/team/app@${expectedDigest}`,
+            deploymentImage: `registry.example.test/team/app@${expectedDigest}`,
+            podImage: `registry.example.test/team/app@${expectedDigest}`,
+            podImageID: `containerd://${TEST_IMAGE_DIGEST}`,
+        });
+
+        expect(evidence).toEqual(expect.objectContaining({
+            expectedDigest,
+            observedDigest: TEST_IMAGE_DIGEST,
+            digestPinnedRequest: true,
+            matchesExpectedDigest: false,
+            verified: false,
+        }));
+        expect(evidence.error).toContain('conflict with requested image digest');
+    });
+
+    test('rejects a tag-only request even when the running pod exposes an OCI digest', () => {
+        const requestedImage = 'registry.example.test/team/app:sha-abcdef123456';
+        const evidence = buildManagedAppImageEvidence({
+            requestedImage,
+            deploymentImage: requestedImage,
+            podImage: requestedImage,
+            podImageID: `containerd://${TEST_IMAGE_DIGEST}`,
+        });
+
+        expect(evidence).toEqual(expect.objectContaining({
+            expectedDigest: '',
+            observedDigest: TEST_IMAGE_DIGEST,
+            digestPinnedRequest: false,
+            matchesExpectedDigest: false,
+            verified: false,
+        }));
+        expect(evidence.error).toContain('not pinned');
+    });
+
     test('deployManagedApp uses SSH when the deployment target is ssh', async () => {
         const sshTool = createDeploySshTool({
             inspectionStdout: buildInspectionStdout(),
@@ -142,7 +200,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             containerPort: 80,
             registryPullSecretName: 'gitlab-registry-credentials',
             registryHost: 'registry.gitlab.demoserver2.buzz',
@@ -161,8 +219,100 @@ describe('KubernetesClient', () => {
         expect(result.rollout.ok).toBe(true);
         expect(result.verification.ingress).toBe(true);
         expect(result.verification.tls).toBe(true);
+        expect(result.verification.imageDigest).toBe(true);
+        expect(result.verification.publicHttps).toBe(true);
         expect(result.verification.https).toBe(true);
+        expect(result.imageDigest).toBe(TEST_IMAGE_DIGEST);
+        expect(result.diagnostics).toEqual(expect.objectContaining({
+            deploymentImage: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+            imageDigest: TEST_IMAGE_DIGEST,
+            podStatus: expect.objectContaining({
+                image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+                imageID: `docker-pullable://registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+            }),
+        }));
         expect(result.executionHost).toBe('deploy.example:22');
+    });
+
+    test('deployManagedApp does not mark HTTPS verified without an observed pod image digest', async () => {
+        const sshTool = createDeploySshTool({
+            inspectionStdout: buildInspectionStdout({
+                podImageID: '',
+            }),
+        });
+        const client = new KubernetesClient({
+            managedAppsConfig: {
+                deployTarget: 'ssh',
+                httpsVerifyTimeoutMs: 5000,
+            },
+            sshTool,
+        });
+
+        client.waitForHttps = jest.fn(async () => ({
+            ok: true,
+            status: 200,
+            attemptsCompleted: true,
+        }));
+        client.isSshConfigured = jest.fn(() => true);
+
+        const result = await client.deployManagedApp({
+            slug: 'demo',
+            namespace: 'app-demo',
+            publicHost: 'demo.demoserver2.buzz',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+            deploymentTarget: 'ssh',
+        });
+
+        expect(result.verification).toEqual(expect.objectContaining({
+            rollout: true,
+            publicHttps: true,
+            imageDigest: false,
+            https: false,
+        }));
+        expect(result.imageDigest).toBe('');
+        expect(result.diagnostics.imageDigestError).toContain('pod imageID');
+    });
+
+    test('deployManagedApp fails digest verification when a pinned image resolves to another digest', async () => {
+        const expectedDigest = `sha256:${'b'.repeat(64)}`;
+        const requestedImage = `registry.gitlab.demoserver2.buzz/agent-apps/demo@${expectedDigest}`;
+        const sshTool = createDeploySshTool({
+            inspectionStdout: buildInspectionStdout({
+                deploymentImage: requestedImage,
+                podImage: requestedImage,
+                podImageID: `containerd://${TEST_IMAGE_DIGEST}`,
+            }),
+        });
+        const client = new KubernetesClient({
+            managedAppsConfig: {
+                deployTarget: 'ssh',
+                httpsVerifyTimeoutMs: 5000,
+            },
+            sshTool,
+        });
+
+        client.waitForHttps = jest.fn(async () => ({
+            ok: true,
+            status: 200,
+            attemptsCompleted: true,
+        }));
+        client.isSshConfigured = jest.fn(() => true);
+
+        const result = await client.deployManagedApp({
+            slug: 'demo',
+            namespace: 'app-demo',
+            publicHost: 'demo.demoserver2.buzz',
+            image: requestedImage,
+            deploymentTarget: 'ssh',
+        });
+
+        expect(result.verification.imageDigest).toBe(false);
+        expect(result.verification.https).toBe(false);
+        expect(result.imageEvidence).toEqual(expect.objectContaining({
+            expectedDigest,
+            observedDigest: TEST_IMAGE_DIGEST,
+            matchesExpectedDigest: false,
+        }));
     });
 
     test('deployManagedApp normalizes legacy namespaces to the managed app namespace prefix', async () => {
@@ -193,7 +343,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'managed-app',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             containerPort: 80,
             registryPullSecretName: 'gitlab-registry-credentials',
             registryHost: 'registry.gitlab.demoserver2.buzz',
@@ -231,7 +381,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             registryPullSecretName: 'gitlab-registry-credentials',
             registryHost: 'registry.gitlab.demoserver2.buzz',
             registryUsername: 'stale-user',
@@ -276,7 +426,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             deploymentTarget: 'in-cluster',
         });
 
@@ -315,7 +465,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             deploymentTarget: 'ssh',
         });
 
@@ -357,7 +507,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             deploymentTarget: 'ssh',
         });
 
@@ -400,7 +550,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             deploymentTarget: 'ssh',
         });
 
@@ -446,7 +596,7 @@ describe('KubernetesClient', () => {
             slug: 'demo',
             namespace: 'app-demo',
             publicHost: 'demo.demoserver2.buzz',
-            image: 'registry.gitlab.demoserver2.buzz/agent-apps/demo:sha-abcdef123456',
+            image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             deploymentTarget: 'ssh',
         });
 

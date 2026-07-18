@@ -781,6 +781,81 @@ describe('OpenAIClient provider sessions', () => {
     );
   });
 
+  test('runRemoteCliAgent forwards the versioned artifact handoff fields', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      headers: {
+        get: jest.fn(() => 'application/json'),
+      },
+      json: jest.fn(async () => ({
+        success: true,
+        sessionId: 'backend-session-artifacts',
+        data: {
+          finalOutput: 'returned files',
+        },
+      })),
+    });
+
+    const contextFiles = [{
+      filename: 'brief.xml',
+      mimeType: 'application/xml',
+      contentBase64: 'PHJvb3QvPg==',
+    }];
+    const client = new OpenAIClient();
+    await client.runRemoteCliAgent('Improve the design files', {
+      backendSessionId: 'backend-session-1',
+      artifactIds: [' artifact-full-1 ', 'artifact-full-1', 'artifact-full-2'],
+      contextFiles: [null, ...contextFiles],
+      resultFileGlobs: [' output/*.svg ', 'output/*.svg', 'output/*.xml'],
+      collectResultFiles: true,
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/api/tools/invoke',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(requestBody).toEqual(expect.objectContaining({
+      tool: 'remote-cli-agent',
+      params: expect.objectContaining({
+        task: 'Improve the design files',
+        artifactIds: ['artifact-full-1', 'artifact-full-2'],
+        contextFiles,
+        resultFileGlobs: ['output/*.svg', 'output/*.xml'],
+        collectResultFiles: true,
+      }),
+      sessionId: 'backend-session-1',
+    }));
+  });
+
+  test('runRemoteCliAgent preserves an explicit result-file collection opt-out', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      headers: {
+        get: jest.fn(() => 'application/json'),
+      },
+      json: jest.fn(async () => ({
+        success: true,
+        sessionId: 'backend-session-no-collection',
+        data: { finalOutput: 'inspection complete' },
+      })),
+    });
+
+    const client = new OpenAIClient();
+    await client.runRemoteCliAgent('Inspect without returning files', {
+      backendSessionId: 'backend-session-1',
+      collectResultFiles: false,
+    });
+
+    const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(requestBody.params).toEqual(expect.objectContaining({
+      task: 'Inspect without returning files',
+      collectResultFiles: false,
+    }));
+  });
+
   test('runK3sDeploy invokes k3s-deploy with action params', async () => {
     global.fetch.mockResolvedValue({
       ok: true,

@@ -7,22 +7,27 @@ on:
       - completed
     branches:
       - master
-      - main
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   KUBE_NAMESPACE: kimibuilt
+  ROUTER_NAMESPACE: n8n-openai-gateway
+  ROUTER_SERVICE: n8n-openai-cli-gateway
+  ROUTER_PORT: '80'
+  REMOTE_AGENT_HANDOFF_VERSION: RemoteAgentHandoff/v1
 
 jobs:
   deploy-to-k3s:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -51,6 +56,22 @@ jobs:
         run: |
           test -s "$HOME/.kube/config"
           kubectl config current-context
+
+      - name: Verify live router handoff contract
+        run: |
+          set -euo pipefail
+          health_path="/api/v1/namespaces/${ROUTER_NAMESPACE}/services/http:${ROUTER_SERVICE}:${ROUTER_PORT}/proxy/healthz"
+          router_health="$(kubectl get --raw "${health_path}")"
+          ROUTER_HEALTH="${router_health}" node -e '
+            const health = JSON.parse(process.env.ROUTER_HEALTH);
+            const expected = process.env.REMOTE_AGENT_HANDOFF_VERSION;
+            const actual = health?.contracts?.remoteAgentHandoff;
+            if (health?.ok !== true || actual !== expected) {
+              console.error(`Router handoff contract gate failed: expected ${expected}, received ${actual ?? "missing"}.`);
+              process.exit(1);
+            }
+            console.log(`Router handoff contract verified: ${actual}`);
+          '
 
       - name: Normalize image name
         run: |

@@ -25,7 +25,7 @@ function normalizeText(value = '') {
 
 function printUsage() {
   console.error([
-    'Usage: kimibuilt-ui-check <url> [--out ui-checks] [--wait selector] [--timeout ms] [--viewports desktop:1440x960,mobile:390x844]',
+    'Usage: kimibuilt-ui-check <url> [--out ui-checks] [--wait selector] [--timeout ms] [--viewports desktop:1440x960,mobile:390x844] [--same-origin-only]',
     '',
     'Captures Playwright screenshots and writes a JSON UI/UX check report with layout, image, error, and text-contrast checks.',
   ].join('\n'));
@@ -38,6 +38,7 @@ function parseArgs(argv = []) {
     waitForSelector: '',
     timeout: 30000,
     fullPage: true,
+    sameOriginOnly: false,
     viewports: DEFAULT_VIEWPORTS,
   };
 
@@ -67,6 +68,10 @@ function parseArgs(argv = []) {
       if (argv[index + 1] && !argv[index + 1].startsWith('--')) {
         index += 1;
       }
+      continue;
+    }
+    if (value === '--same-origin-only') {
+      args.sameOriginOnly = true;
       continue;
     }
     if (value === '--viewports') {
@@ -131,6 +136,18 @@ function normalizeOrigin(value = '') {
     return new URL(withProtocol).origin;
   } catch (_error) {
     return '';
+  }
+}
+
+function isExternalHttpRequest(value = '', allowedOrigin = '') {
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return false;
+    }
+    return parsed.origin !== normalizeOrigin(allowedOrigin);
+  } catch (_error) {
+    return false;
   }
 }
 
@@ -640,6 +657,7 @@ async function run() {
   }
 
   const target = await resolveAuthenticatedPreviewUrl(args.url);
+  const targetOrigin = new URL(target.url).origin;
 
   const { chromium, moduleName } = loadPlaywright();
   const executablePath = await resolveBrowserExecutable();
@@ -662,6 +680,7 @@ async function run() {
       const consoleMessages = [];
       const pageErrors = [];
       const failedRequests = [];
+      const externalRequests = [];
       const context = await browser.newContext({
         ignoreHTTPSErrors: true,
         ...(Object.keys(target.authHeaders || {}).length > 0 ? { extraHTTPHeaders: target.authHeaders } : {}),
@@ -673,6 +692,21 @@ async function run() {
         userAgent: 'KimiBuilt-UI-Check/1.0',
       });
       const page = await context.newPage();
+
+      if (args.sameOriginOnly) {
+        await page.route('**/*', async (route) => {
+          const request = route.request();
+          if (isExternalHttpRequest(request.url(), targetOrigin)) {
+            externalRequests.push({
+              url: request.url(),
+              resourceType: request.resourceType(),
+            });
+            await route.abort('blockedbyclient');
+            return;
+          }
+          await route.continue();
+        });
+      }
 
       page.on('console', (message) => {
         if (['error', 'warning'].includes(message.type())) {
@@ -730,12 +764,16 @@ async function run() {
 
         checks.push({
           viewport,
-          ok: !authWall && !corsErrors,
+          ok: !authWall && !corsErrors && externalRequests.length === 0,
           screenshotPath,
           metrics,
           consoleMessages: redactConsoleMessages(consoleMessages),
           pageErrors: pageErrors.slice(0, 20),
           failedRequests: failedRequests.slice(0, 20).map((request) => ({
+            ...request,
+            url: redactSensitiveUrl(request.url),
+          })),
+          externalRequests: externalRequests.slice(0, 20).map((request) => ({
             ...request,
             url: redactSensitiveUrl(request.url),
           })),
@@ -747,6 +785,7 @@ async function run() {
             ...(metrics.textContrast?.lowContrastCount > 0 ? ['low-contrast-text'] : []),
             ...(pageErrors.length > 0 ? ['page-errors'] : []),
             ...(failedRequests.length > 0 ? ['failed-requests'] : []),
+            ...(externalRequests.length > 0 ? ['external-requests'] : []),
           ],
         });
       } catch (error) {
@@ -757,6 +796,10 @@ async function run() {
           consoleMessages: redactConsoleMessages(consoleMessages),
           pageErrors: pageErrors.slice(0, 20),
           failedRequests: failedRequests.slice(0, 20).map((request) => ({
+            ...request,
+            url: redactSensitiveUrl(request.url),
+          })),
+          externalRequests: externalRequests.slice(0, 20).map((request) => ({
             ...request,
             url: redactSensitiveUrl(request.url),
           })),
@@ -808,7 +851,9 @@ module.exports = {
   buildAuthHeaders,
   hasCorsConsoleError,
   isAuthWallMetrics,
+  isExternalHttpRequest,
   normalizeUrl,
+  parseArgs,
   redactSensitiveUrl,
   rewritePreviewUrlWithToken,
   waitForClientReady,

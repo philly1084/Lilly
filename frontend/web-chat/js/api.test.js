@@ -451,6 +451,81 @@ describe('web-chat reasoning metadata normalization', () => {
     });
 });
 
+describe('web-chat async runtime status', () => {
+    test('normalizes the capability flags used by selected remote agent routing', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                status: {
+                    requestedEnabled: true,
+                    enabled: true,
+                    webChatParallelEnabled: true,
+                    allowLiveRemote: true,
+                    workerEnabled: true,
+                    workerRunning: false,
+                },
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).resolves.toEqual({
+            requestedEnabled: true,
+            enabled: true,
+            webChatParallelEnabled: true,
+            allowLiveRemote: true,
+            workerEnabled: true,
+            workerRunning: false,
+        });
+        expect(fetchMock).toHaveBeenCalledWith(
+            'http://localhost:3000/api/async-lab/status',
+            {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            },
+        );
+    });
+
+    test('fails closed when status fields are absent or serialized truthy values', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                status: {
+                    enabled: 'true',
+                    webChatParallelEnabled: 1,
+                    allowLiveRemote: null,
+                },
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).resolves.toEqual({
+            requestedEnabled: false,
+            enabled: false,
+            webChatParallelEnabled: false,
+            allowLiveRemote: false,
+            workerEnabled: false,
+            workerRunning: false,
+        });
+    });
+
+    test('preserves authentication failures for the caller to distinguish from a disabled runtime', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: false,
+            status: 401,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ error: { message: 'Authentication required' } }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getAsyncRuntimeStatus()).rejects.toMatchObject({
+            message: 'Authentication required',
+            status: 401,
+        });
+    });
+});
+
 describe('web-chat remote build metadata', () => {
     test('sends plugin menu execution profile and planned tools in chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
@@ -579,6 +654,71 @@ describe('web-chat remote build metadata', () => {
             directToolId: 'remote-cli-agent',
             plannedTools: ['remote-cli-agent'],
             userSelectedToolIds: ['remote-cli-agent'],
+        }));
+    });
+
+    test('forwards remote CLI artifact handoff and continuation fields', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                success: true,
+                data: { ok: true },
+                sessionId: 'session-1',
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+        const contextFiles = [{
+            filename: 'design-brief.xml',
+            content: '<brief><goal>Refine the landing page</goal></brief>',
+            mimeType: 'application/xml',
+        }];
+
+        await apiClient.invokeRemoteCliAgent('Refine the selected artifact.', {
+            transport: 'provider-agent',
+            cwd: '/srv/apps/demo',
+            workspacePath: '/srv/apps/demo',
+            targetId: 'k3s-prod',
+            sessionId: 'remote-session-1',
+            threadId: 'thread-1',
+            jobId: 'job-1',
+            mcpSessionId: 'mcp-session-1',
+            agentRunTimeoutMs: 180000,
+            remoteCodeModel: 'kimi-k3',
+            maxStatusPolls: 24,
+            statusPollIntervalMs: 2500,
+            instructions: 'Preserve the design system.',
+            supportAgentResponse: 'Use the existing layout tokens.',
+            artifactIds: ['artifact-1', 'artifact-1', 'artifact-2'],
+            contextFiles,
+            resultFileGlobs: ['dist/*.html', 'dist/*.html', 'assets/*.svg'],
+            collectResultFiles: true,
+            continuitySummary: 'Continue artifact-1 from revision 3.',
+            adminMode: true,
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual(expect.objectContaining({
+            task: 'Refine the selected artifact.',
+            transport: 'provider-agent',
+            cwd: '/srv/apps/demo',
+            workspacePath: '/srv/apps/demo',
+            targetId: 'k3s-prod',
+            sessionId: 'remote-session-1',
+            threadId: 'thread-1',
+            jobId: 'job-1',
+            mcpSessionId: 'mcp-session-1',
+            agentRunTimeoutMs: 180000,
+            remoteCodeModel: 'kimi-k3',
+            maxStatusPolls: 24,
+            statusPollIntervalMs: 2500,
+            instructions: 'Preserve the design system.',
+            supportAgentResponse: 'Use the existing layout tokens.',
+            artifactIds: ['artifact-1', 'artifact-2'],
+            contextFiles,
+            resultFileGlobs: ['dist/*.html', 'assets/*.svg'],
+            collectResultFiles: true,
+            continuitySummary: 'Continue artifact-1 from revision 3.',
+            adminMode: true,
         }));
     });
 

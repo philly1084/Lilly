@@ -81,6 +81,7 @@ class App {
             this.renderObjectLibrary();
             this.renderBoardShelf();
             this.renderProductionTimeline();
+            this.initializeArtifactHandoff();
             
             // Push initial state for undo
             window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
@@ -101,6 +102,33 @@ class App {
             
             console.log('Lilly Canvas initialized with OpenAI SDK');
         });
+    }
+
+    async initializeArtifactHandoff() {
+        if (!window.apiManager?.artifactLineage?.artifactId
+            || typeof window.apiManager.ensureArtifactLineageAttached !== 'function') {
+            return null;
+        }
+        try {
+            const handoff = await window.apiManager.ensureArtifactLineageAttached();
+            if (!handoff?.artifact) {
+                return null;
+            }
+            const capability = handoff.importCapability || {};
+            const filename = handoff.artifact.filename || 'source artifact';
+            const contextOnly = capability.disposition === 'context-only' || capability.browserImportAllowed !== true;
+            this.showToast(
+                contextOnly
+                    ? `${filename} is attached as exact agent context; the board was not changed.`
+                    : `${filename} is attached for agent context; the board was not changed automatically.`,
+                contextOnly ? 'info' : 'success',
+                5000,
+            );
+            return handoff;
+        } catch (error) {
+            this.showToast(error.message || 'The linked artifact could not be attached to Canvas.', 'error', 5000);
+            return null;
+        }
     }
 
     applyCoreWorkspaceMode() {

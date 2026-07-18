@@ -10,7 +10,8 @@
     const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
     const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
     const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
-    const DEFAULT_PUBLIC_WEB_DOMAIN = 'demoserver2.buzz';
+    const remoteArtifactWorkflow = window.KimiBuiltRemoteArtifactWorkflow || {};
+    const DEFAULT_PUBLIC_WEB_DOMAIN = remoteArtifactWorkflow.DEFAULT_PUBLIC_WEB_DOMAIN || 'demoserver2.buzz';
 
     function isRemoteBuildAutonomyApproved() {
         try {
@@ -1995,6 +1996,9 @@
     }
 
     function normalizePublicDomainHost(value = '') {
+        if (typeof remoteArtifactWorkflow.normalizePublicDomainHost === 'function') {
+            return remoteArtifactWorkflow.normalizePublicDomainHost(value);
+        }
         const raw = String(value || '').trim().toLowerCase();
         if (!raw) return '';
         let candidate = raw;
@@ -2019,6 +2023,9 @@
     }
 
     function normalizeDnsLabel(value = '') {
+        if (typeof remoteArtifactWorkflow.normalizeDnsLabel === 'function') {
+            return remoteArtifactWorkflow.normalizeDnsLabel(value);
+        }
         const normalized = String(value || '')
             .trim()
             .toLowerCase()
@@ -2033,6 +2040,9 @@
     }
 
     function getSuggestedDnsLabel(artifact = null) {
+        if (typeof remoteArtifactWorkflow.getSuggestedDnsLabel === 'function') {
+            return remoteArtifactWorkflow.getSuggestedDnsLabel(artifact);
+        }
         const source = String(
             artifact?.metadata?.title
             || artifact?.filename
@@ -2044,6 +2054,9 @@
     }
 
     function resolveRequestedPublicHost(input = '', baseDomain = DEFAULT_PUBLIC_WEB_DOMAIN) {
+        if (typeof remoteArtifactWorkflow.resolveRequestedPublicHost === 'function') {
+            return remoteArtifactWorkflow.resolveRequestedPublicHost(input, baseDomain);
+        }
         const raw = String(input || '').trim();
         if (!raw) {
             return null;
@@ -2152,16 +2165,44 @@
                 }
                 return;
             }
-            const requestedHost = promptForPublicHost(artifact);
-            if (!requestedHost) {
-                if (window.uiHelpers?.showToast) {
-                    uiHelpers.showToast('Enter a valid DNS label like demo or a full host like demo.demoserver2.buzz.', 'warning');
-                }
-                return;
-            }
 
             try {
                 await ensureSession();
+                if (window.uiHelpers?.showToast) {
+                    uiHelpers.showToast('Checking final website bytes and deployment readiness...', 'info');
+                }
+                const preflightResponse = await fetch(resolveApiUrl(`/api/artifacts/${encodeURIComponent(id)}/managed-app/preflight`, { absolute: true }), {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        sessionId: getCurrentSessionId(),
+                        validateOnly: true,
+                    }),
+                });
+                const preflight = await preflightResponse.json().catch(() => ({}));
+                if (!preflightResponse.ok) {
+                    throw new Error(preflight.error?.message || `Website preflight failed (${preflightResponse.status})`);
+                }
+                const blocker = Array.isArray(preflight.blockers) ? preflight.blockers[0] : null;
+                if (preflight.pushToWebEligible !== true) {
+                    throw new Error(blocker?.message || 'This website is not eligible for Push to Web yet.');
+                }
+                const expectedSourceSha256 = String(preflight.sha256 || '').trim().toLowerCase();
+                if (!/^[a-f0-9]{64}$/.test(expectedSourceSha256)) {
+                    throw new Error('Website preflight did not return a valid final-byte fingerprint.');
+                }
+
+                const requestedHost = promptForPublicHost(artifact);
+                if (!requestedHost) {
+                    if (window.uiHelpers?.showToast) {
+                        uiHelpers.showToast('Enter a valid DNS label like demo or a full host like demo.demoserver2.buzz.', 'warning');
+                    }
+                    return;
+                }
                 if (window.uiHelpers?.showToast) {
                     uiHelpers.showToast(`Requesting ${requestedHost.publicHost} through the remote web lane...`, 'info');
                 }
@@ -2180,6 +2221,7 @@
                         publicBaseDomain: DEFAULT_PUBLIC_WEB_DOMAIN,
                         publicHost: requestedHost.publicHost,
                         slug: requestedHost.slug,
+                        expectedSourceSha256,
                         metadata: {
                             requestedPublicHost: requestedHost.publicHost,
                             acmeRequestHost: requestedHost.publicHost,

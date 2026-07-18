@@ -344,9 +344,11 @@ async function getRuntimeSupport(toolId) {
             status: ready ? 'stable' : 'requires_setup',
             notes: ready
                 ? [
-                    publicConfig.transport === 'codex-agent'
-                        ? `Remote CLI Codex-agent API is configured at ${publicConfig.codexAgentBaseUrl}.`
-                        : `Remote CLI MCP server ${publicConfig.name} is configured at ${publicConfig.url}.`,
+                    publicConfig.transport === 'provider-agent'
+                        ? `Remote CLI provider-agent API for Codex, Kimi, and Grok is configured at ${publicConfig.codexAgentBaseUrl}.`
+                        : publicConfig.transport === 'codex-agent'
+                            ? `Remote CLI Codex-agent compatibility API is configured at ${publicConfig.codexAgentBaseUrl}.`
+                            : `Remote CLI MCP server ${publicConfig.name} is configured at ${publicConfig.url}.`,
                     `Default target is ${publicConfig.defaultTargetId}${publicConfig.defaultCwd ? ` with cwd ${publicConfig.defaultCwd}` : ''}.`,
                     runner
                         ? `Deploy-capable remote runner ${runner.runnerId} is online${runnerWorkspace ? ` with workspace ${runnerWorkspace}` : ''}.`
@@ -356,14 +358,17 @@ async function getRuntimeSupport(toolId) {
                         : `K3s feedback blockers: ${k3sFeedback.blockers.join(' ')}`,
                     gitProviderConfig?.baseURL ? `Configured Git provider is ${gitProviderConfig.provider || 'gitlab'} at ${gitProviderConfig.baseURL}.` : 'No configured GitLab base URL is visible to the runtime; remote builds should fall back to local git/direct runner and report the missing source-control automation.',
                     'Use adminMode for scoped remote software deployment loops that need real changes through the admin-capable CLI runner lane.',
-                    publicConfig.transport === 'codex-agent'
-                        ? 'Tool-call contract: backend callers should invoke remote-cli-agent; KimiBuilt will call POST /api/codex-agent/run and stream GET /api/codex-agent/runs/:runId/events progress.'
-                        : 'Tool-call contract: backend callers should invoke remote-cli-agent; the inner agent should use remote_code_run, poll remote_code_status for in-progress jobs, and continue with returned session IDs.',
+                    publicConfig.transport === 'provider-agent'
+                        ? 'Tool-call contract: backend callers invoke remote-cli-agent; KimiBuilt calls POST /admin/remote-agent-tasks, streams the returned task URL, and collects gateway-verified result files.'
+                        : publicConfig.transport === 'codex-agent'
+                            ? 'Tool-call contract: backend callers invoke remote-cli-agent; KimiBuilt calls POST /api/codex-agent/run and streams GET /api/codex-agent/runs/:runId/events progress as an explicit compatibility lane.'
+                            : 'Tool-call contract: backend callers invoke remote-cli-agent; the inner agent uses remote_code_run, polls remote_code_status for in-progress jobs, and continues with returned session IDs.',
                     'Remote deployment contract: Git visibility is required even for local fallback repos; report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and rollback through git revert plus redeploy.',
                 ]
                 : [
-                    'Remote CLI codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL.',
-                    'Remote CLI codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or a compatible gateway bearer token.',
+                    'Remote CLI provider-agent or codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL.',
+                    'Remote CLI gateway transport needs REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or a compatible gateway bearer token.',
+                    'Use REMOTE_CLI_AGENT_TRANSPORT=provider-agent for the shared Codex, Kimi, and Grok task lane.',
                     'Legacy MCP fallback still needs REMOTE_CLI_MCP_URL and REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
                 ],
             runtime: {

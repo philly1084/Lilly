@@ -1,4 +1,5 @@
 const express = require('express');
+const { createHash } = require('crypto');
 const request = require('supertest');
 const { createFrontendBundleArchive } = require('../frontend-bundles');
 
@@ -8,6 +9,9 @@ jest.mock('../session-store', () => ({
         getOrCreateOwned: jest.fn(),
         getOwned: jest.fn(),
         get: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        claimOwnershipIfNeeded: jest.fn(),
     },
 }));
 
@@ -16,6 +20,9 @@ jest.mock('../artifacts/artifact-service', () => ({
         uploadArtifact: jest.fn(),
         generateArtifact: jest.fn(),
         getArtifact: jest.fn(),
+        listSessionArtifacts: jest.fn(),
+        createStoredArtifact: jest.fn(),
+        serializeArtifact: jest.fn(),
         deleteArtifact: jest.fn(),
     },
 }));
@@ -32,6 +39,20 @@ jest.mock('../runtime-tool-manager', () => ({
     ensureRuntimeToolManager: jest.fn(),
 }));
 
+jest.mock('../pii', () => ({
+    rehydrateHtml: jest.fn(async (html) => ({
+        html: String(html || ''),
+        restorations: [],
+        enabled: false,
+    })),
+    rehydrateText: jest.fn(async (text) => ({
+        text: String(text || ''),
+        restorations: [],
+        enabled: false,
+    })),
+    resolvePiiPolicy: jest.fn(() => ({ enabled: false })),
+}));
+
 jest.mock('../generated-audio-artifacts', () => ({
     getLocalGeneratedAudioArtifact: jest.fn(),
     isLocalGeneratedAudioArtifactId: jest.fn(() => false),
@@ -43,13 +64,14 @@ const {
     getLocalGeneratedAudioArtifact,
     isLocalGeneratedAudioArtifactId,
 } = require('../generated-audio-artifacts');
+const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
 const artifactsRouter = require('./artifacts');
 
 describe('/api/artifacts route', () => {
     function buildApp(options = {}) {
         const app = express();
         app.use(express.json());
-        app.locals.managedAppService = {
+        app.locals.managedAppService = options.managedAppService || {
             isAvailable: jest.fn(() => true),
             createApp: jest.fn(async (input) => ({
                 app: {
@@ -84,6 +106,22 @@ describe('/api/artifacts route', () => {
         jest.clearAllMocks();
         isLocalGeneratedAudioArtifactId.mockReturnValue(false);
         getLocalGeneratedAudioArtifact.mockResolvedValue(null);
+        rehydrateHtml.mockImplementation(async (html) => ({
+            html: String(html || ''),
+            restorations: [],
+            enabled: false,
+        }));
+        rehydrateText.mockImplementation(async (text) => ({
+            text: String(text || ''),
+            restorations: [],
+            enabled: false,
+        }));
+        resolvePiiPolicy.mockReturnValue({ enabled: false });
+        artifactService.listSessionArtifacts.mockReset();
+        artifactService.createStoredArtifact.mockReset();
+        artifactService.serializeArtifact.mockReset();
+        artifactService.listSessionArtifacts.mockResolvedValue([]);
+        artifactService.serializeArtifact.mockImplementation((artifact) => artifact);
     });
 
     test('blocks artifact fetch when the artifact session is not owned by the user', async () => {
@@ -116,6 +154,690 @@ describe('/api/artifacts route', () => {
 
         expect(response.status).toBe(200);
         expect(response.text).toBe('hello');
+    });
+
+    test('attaches exact owned artifact bytes to an owner-scoped Notes session', async () => {
+        const contentBuffer = Buffer.from('# Source brief\n\nKeep these exact words.');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source-brief.md',
+            extension: 'md',
+            mimeType: 'text/markdown',
+            contentBuffer,
+            extractedText: '# Source brief\n\nKeep these exact words.',
+            previewHtml: '<h1>Source brief</h1>',
+            metadata: {
+                missionId: 'mission-1',
+                revision: 4,
+                artifactIds: ['artifact-top-level'],
+                provenance: {
+                    sourceSurface: 'web-chat',
+                    createdFromArtifactIds: ['artifact-earlier'],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-attached-1',
+            sessionId: input.sessionId,
+            parentArtifactId: input.parentArtifactId,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            id: artifact.id,
+            sessionId: artifact.sessionId,
+            parentArtifactId: artifact.parentArtifactId,
+            filename: artifact.filename,
+            format: artifact.extension,
+            mimeType: artifact.mimeType,
+            metadata: artifact.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({
+                targetSessionId: 'session-notes',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(201);
+        expect(response.body).toEqual(expect.objectContaining({
+            targetSessionId: 'session-notes',
+            sourceArtifactId: 'artifact-source-1',
+            sha256,
+            reused: false,
+            artifact: expect.objectContaining({
+                id: 'artifact-attached-1',
+                sessionId: 'session-notes',
+                parentArtifactId: null,
+            }),
+            importCapability: expect.objectContaining({
+                surface: 'notes',
+                disposition: 'direct',
+                browserImportAllowed: true,
+                fidelity: 'editable-text',
+            }),
+        }));
+        expect(sessionStore.get).toHaveBeenCalledWith('session-notes');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-notes',
+            parentArtifactId: null,
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'source-brief.md',
+            extension: 'md',
+            mimeType: 'text/markdown',
+            buffer: contentBuffer,
+            extractedText: '# Source brief\n\nKeep these exact words.',
+            previewHtml: '<h1>Source brief</h1>',
+            ownerId: 'phill',
+            vectorize: false,
+            metadata: expect.objectContaining({
+                parentArtifactId: null,
+                lineageVersion: 'ArtifactLineage/v1',
+                revision: 1,
+                createdFromArtifactIds: ['artifact-earlier', 'artifact-top-level', 'artifact-source-1'],
+                handoffSourceArtifactId: 'artifact-source-1',
+                handoffSourceSessionId: 'session-web-chat',
+                handoffSourceSha256: sha256,
+                provenance: expect.objectContaining({
+                    sessionId: 'session-notes',
+                    sourceSessionId: 'session-web-chat',
+                    sourceSurface: 'web-chat',
+                    targetSurface: 'notes',
+                    handoffSourceArtifactId: 'artifact-source-1',
+                    sourceSha256: sha256,
+                    createdFromArtifactIds: ['artifact-earlier', 'artifact-top-level', 'artifact-source-1'],
+                }),
+            }),
+        }));
+        expect(artifactService.createStoredArtifact.mock.calls[0][0].buffer.equals(contentBuffer)).toBe(true);
+    });
+
+    test('allows a missing target id to resolve a server-managed owned surface session', async () => {
+        const contentBuffer = Buffer.from('server-managed destination');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-server-target-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.resolveOwnedSession.mockResolvedValue({
+            id: 'session-notes-generated',
+            scopeKey: 'notes',
+            metadata: { ownerId: 'phill', clientSurface: 'notes', memoryScope: 'notes' },
+        });
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-server-target-copy',
+            sessionId: input.sessionId,
+            direction: input.direction,
+            sourceMode: input.sourceMode,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            sha256: createHash('sha256').update(input.buffer).digest('hex'),
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-server-target-source/attach')
+            .send({ mode: 'notes', taskType: 'notes', clientSurface: 'notes' });
+
+        expect(response.status).toBe(201);
+        expect(response.body.targetSessionId).toBe('session-notes-generated');
+        expect(sessionStore.resolveOwnedSession).toHaveBeenCalledWith(
+            null,
+            expect.objectContaining({
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+                memoryScope: 'notes',
+            }),
+            'phill',
+        );
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-notes-generated',
+            ownerId: 'phill',
+        }));
+    });
+
+    test('idempotently reuses an attached target artifact matching source id and checksum', async () => {
+        const contentBuffer = Buffer.from('<svg viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-svg-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'design.svg',
+            extension: 'svg',
+            mimeType: 'image/svg+xml',
+            contentBuffer,
+            metadata: {},
+        };
+        const attachedArtifact = {
+            id: 'artifact-attached-svg-1',
+            sessionId: 'session-canvas',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'design.svg',
+            extension: 'svg',
+            mimeType: 'image/svg+xml',
+            sha256,
+            contentBuffer,
+            metadata: {
+                handoffSourceArtifactId: 'artifact-svg-1',
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : attachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-canvas',
+            metadata: { ownerId: 'phill', clientSurface: 'canvas-excalidraw' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([{
+            id: 'artifact-attached-svg-1',
+            sessionId: 'session-canvas',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'design.svg',
+            format: 'svg',
+            metadata: {
+                handoffSourceArtifactId: 'artifact-svg-1',
+                handoffSourceSha256: sha256,
+            },
+        }]);
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            ...artifact,
+            format: artifact.extension,
+            contentBuffer: undefined,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-svg-1/attach')
+            .send({
+                targetSessionId: 'session-canvas',
+                mode: 'canvas',
+                taskType: 'canvas',
+                clientSurface: 'canvas-excalidraw',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(expect.objectContaining({
+            targetSessionId: 'session-canvas',
+            sourceArtifactId: 'artifact-svg-1',
+            sha256,
+            reused: true,
+            artifact: expect.objectContaining({ id: 'artifact-attached-svg-1' }),
+            importCapability: expect.objectContaining({
+                surface: 'canvas-excalidraw',
+                format: 'svg',
+                disposition: 'context-only',
+                browserImportAllowed: false,
+            }),
+        }));
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-attached-svg-1', { includeContent: true });
+    });
+
+    test('does not reuse a model-controlled artifact that only forges handoff metadata', async () => {
+        const contentBuffer = Buffer.from('trusted source bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-trusted-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'trusted.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-forged',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([{
+            id: 'artifact-forged-marker',
+            sessionId: 'session-notes-forged',
+            direction: 'generated',
+            sourceMode: 'notes',
+            metadata: {
+                handoffSourceArtifactId: 'artifact-trusted-source',
+                handoffSourceSha256: sha256,
+            },
+        }]);
+        artifactService.createStoredArtifact.mockImplementation(async (input) => ({
+            id: 'artifact-real-attach',
+            sessionId: input.sessionId,
+            direction: input.direction,
+            sourceMode: input.sourceMode,
+            filename: input.filename,
+            extension: input.extension,
+            mimeType: input.mimeType,
+            sha256,
+            contentBuffer: input.buffer,
+            metadata: input.metadata,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-trusted-source/attach')
+            .send({
+                targetSessionId: 'session-notes-forged',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(201);
+        expect(response.body).toEqual(expect.objectContaining({
+            reused: false,
+            artifact: expect.objectContaining({ id: 'artifact-real-attach' }),
+        }));
+        expect(artifactService.getArtifact).not.toHaveBeenCalledWith('artifact-forged-marker', { includeContent: true });
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+    });
+
+    test('reuses a byte-verified attached artifact after a cluster unique-index race', async () => {
+        const contentBuffer = Buffer.from('cluster-safe exact bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-cluster-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'cluster.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        };
+        const attachedArtifact = {
+            id: 'artifact-cluster-winner',
+            sessionId: 'session-notes-cluster',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'cluster.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            sha256,
+            contentBuffer,
+            metadata: {
+                handoffSourceArtifactId: sourceArtifact.id,
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : attachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-cluster',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        artifactService.listSessionArtifacts
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{
+                id: attachedArtifact.id,
+                sessionId: attachedArtifact.sessionId,
+                direction: attachedArtifact.direction,
+                sourceMode: attachedArtifact.sourceMode,
+                metadata: attachedArtifact.metadata,
+            }]);
+        artifactService.createStoredArtifact.mockRejectedValue(Object.assign(
+            new Error('duplicate handoff'),
+            {
+                code: '23505',
+                constraint: 'idx_artifacts_attach_handoff_unique',
+            },
+        ));
+        artifactService.serializeArtifact.mockImplementation((artifact) => ({
+            ...artifact,
+            contentBuffer: undefined,
+        }));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-cluster-source/attach')
+            .send({
+                targetSessionId: 'session-notes-cluster',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(expect.objectContaining({
+            reused: true,
+            sha256,
+            artifact: expect.objectContaining({ id: 'artifact-cluster-winner' }),
+        }));
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+        expect(artifactService.listSessionArtifacts).toHaveBeenCalledTimes(2);
+    });
+
+    test('fails closed when a unique-index winner does not contain the source bytes', async () => {
+        const contentBuffer = Buffer.from('expected source bytes');
+        const sha256 = createHash('sha256').update(contentBuffer).digest('hex');
+        const sourceArtifact = {
+            id: 'artifact-conflict-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            sourceMode: 'chat',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer,
+            metadata: {},
+        };
+        const corruptAttachedArtifact = {
+            id: 'artifact-conflict-corrupt',
+            sessionId: 'session-notes-conflict',
+            direction: 'attached',
+            sourceMode: 'artifact-attach',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            sha256,
+            contentBuffer: Buffer.from('different bytes'),
+            metadata: {
+                handoffSourceArtifactId: sourceArtifact.id,
+                handoffSourceSha256: sha256,
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === sourceArtifact.id ? sourceArtifact : corruptAttachedArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-notes-conflict',
+            metadata: { ownerId: 'phill', clientSurface: 'notes' },
+        });
+        const conflictDescriptor = {
+            id: corruptAttachedArtifact.id,
+            sessionId: corruptAttachedArtifact.sessionId,
+            direction: corruptAttachedArtifact.direction,
+            sourceMode: corruptAttachedArtifact.sourceMode,
+            metadata: corruptAttachedArtifact.metadata,
+        };
+        artifactService.listSessionArtifacts.mockResolvedValue([conflictDescriptor]);
+        artifactService.createStoredArtifact.mockRejectedValue(Object.assign(
+            new Error('duplicate handoff'),
+            {
+                code: '23505',
+                constraint: 'idx_artifacts_attach_handoff_unique',
+            },
+        ));
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-conflict-source/attach')
+            .send({
+                targetSessionId: 'session-notes-conflict',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_IDEMPOTENCY_CONFLICT');
+        expect(artifactService.createStoredArtifact).toHaveBeenCalledTimes(1);
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-conflict-corrupt', { includeContent: true });
+    });
+
+    test('refuses privacy-suppressed artifact attachment before resolving a target session', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-private-1',
+            sessionId: 'session-web-chat',
+            direction: 'uploaded',
+            filename: 'private.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('private'),
+            metadata: {
+                privacyPreviewSuppressed: true,
+                piiCleansing: { uploadPreviewSuppressed: true },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-private-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(422);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_PRIVACY_SUPPRESSED');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('refuses artifacts above the bounded attach size', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-large-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'large.bin',
+            extension: 'bin',
+            mimeType: 'application/octet-stream',
+            contentBuffer: Buffer.alloc((4 * 1024 * 1024) + 1, 1),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-large-1/attach')
+            .send({ clientSurface: 'canvas-excalidraw' });
+
+        expect(response.status).toBe(413);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TOO_LARGE');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('fails closed when stored source checksum and exact bytes disagree', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-corrupt-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.xml',
+            extension: 'xml',
+            mimeType: 'application/xml',
+            sha256: '0'.repeat(64),
+            contentBuffer: Buffer.from('<design/>'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-corrupt-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_SOURCE_INTEGRITY_MISMATCH');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('does not attach into a target session the owner cannot resolve', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-1',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({ id: 'session-web-chat', metadata: { ownerId: 'phill' } });
+        sessionStore.get.mockResolvedValue(null);
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({ targetSessionId: 'session-other', clientSurface: 'notes' });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_NOT_FOUND');
+        expect(sessionStore.get).toHaveBeenCalledWith('session-other');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['owned by another user', { ownerId: 'mallory', clientSurface: 'notes', memoryScope: 'notes' }],
+        ['missing owner metadata', { clientSurface: 'notes', memoryScope: 'notes' }],
+    ])('rejects an explicit target session %s without claiming or mutating it', async (_label, metadata) => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-owned-source',
+            sessionId: 'session-web-chat',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('owner-only source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-explicit-target',
+            scopeKey: 'notes',
+            metadata,
+        });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-owned-source/attach')
+            .send({
+                targetSessionId: 'session-explicit-target',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_NOT_FOUND');
+        expect(sessionStore.get).toHaveBeenCalledWith('session-explicit-target');
+        expect(sessionStore.getOrCreateOwned).not.toHaveBeenCalled();
+        expect(sessionStore.create).not.toHaveBeenCalled();
+        expect(sessionStore.update).not.toHaveBeenCalled();
+        expect(sessionStore.claimOwnershipIfNeeded).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.listSessionArtifacts).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('rejects an explicit target session from a different surface without falling back', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-scope-1',
+            sessionId: 'session-web-chat-source',
+            direction: 'generated',
+            filename: 'source.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.from('source'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-web-chat-source',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+        });
+        sessionStore.get.mockResolvedValue({
+            id: 'session-web-chat-target',
+            scopeKey: 'web-chat',
+            metadata: { ownerId: 'phill', clientSurface: 'web-chat', memoryScope: 'web-chat' },
+        });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-source-scope-1/attach')
+            .send({
+                targetSessionId: 'session-web-chat-target',
+                mode: 'notes',
+                taskType: 'notes',
+                clientSurface: 'notes',
+            });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_TARGET_SESSION_MISMATCH');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.listSessionArtifacts).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
+    });
+
+    test('requires an authenticated owner for artifact attachment', async () => {
+        const response = await request(buildApp({
+            user: { username: 'anonymous', role: 'open' },
+        }))
+            .post('/api/artifacts/artifact-source-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(401);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_AUTH_REQUIRED');
+        expect(artifactService.getArtifact).not.toHaveBeenCalled();
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+    });
+
+    test('does not attach a source artifact outside the authenticated owner boundary', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-other-1',
+            sessionId: 'session-other',
+            contentBuffer: Buffer.from('not owned'),
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        sessionStore.get.mockResolvedValue(null);
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/artifact-other-1/attach')
+            .send({ clientSurface: 'notes' });
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.code).toBe('ARTIFACT_ATTACH_SOURCE_NOT_FOUND');
+        expect(sessionStore.getOwned).toHaveBeenCalledWith('session-other', 'phill');
+        expect(sessionStore.resolveOwnedSession).not.toHaveBeenCalled();
+        expect(artifactService.createStoredArtifact).not.toHaveBeenCalled();
     });
 
     test('allows open-mode artifact downloads without anonymous owner scoping', async () => {
@@ -247,6 +969,14 @@ describe('/api/artifacts route', () => {
         expect(response.text).toContain('<pre>Preview me</pre>');
         expect(response.headers['content-type']).toContain('text/html');
         expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
+        expect(rehydrateHtml).toHaveBeenCalledWith(
+            '<pre>Preview me</pre>',
+            expect.objectContaining({
+                clientSurface: 'artifact-preview',
+                route: '/api/artifacts/:id/preview',
+                highlight: true,
+            }),
+        );
     });
 
     test('hides uploaded-file previews when PII protection is enabled', async () => {
@@ -777,6 +1507,769 @@ describe('/api/artifacts route', () => {
         }));
     });
 
+    test('preflights the exact final managed-app paths, byte sizes, and hashes without creating an app', async () => {
+        const indexHtml = '<!doctype html><html><body><h1>Crème launch 🚀</h1></body></html>';
+        const styles = 'body { color: #123; }\n';
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-preflight-parity',
+            sessionId: 'session-1',
+            filename: 'launch-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: indexHtml },
+                    { path: 'styles.css', content: styles },
+                ],
+            }),
+            metadata: {
+                title: 'Launch Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-preflight-parity/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            artifactId: 'artifact-site-preflight-parity',
+            contentEligible: true,
+            controlPlaneAvailable: true,
+            pushToWebEligible: true,
+            sourceType: 'native-site-archive',
+            targetPaths: ['public/index.html', 'public/styles.css'],
+            fileCount: 2,
+            sizeBytes: Buffer.byteLength(indexHtml, 'utf8') + Buffer.byteLength(styles, 'utf8'),
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            blockers: [],
+        }));
+        expect(preflight.body.files).toEqual([
+            {
+                path: 'public/index.html',
+                sizeBytes: Buffer.byteLength(indexHtml, 'utf8'),
+                sha256: createHash('sha256').update(Buffer.from(indexHtml, 'utf8')).digest('hex'),
+            },
+            {
+                path: 'public/styles.css',
+                sizeBytes: Buffer.byteLength(styles, 'utf8'),
+                sha256: createHash('sha256').update(Buffer.from(styles, 'utf8')).digest('hex'),
+            },
+        ]);
+        expect(preflight.body.files.every((file) => !Object.prototype.hasOwnProperty.call(file, 'content'))).toBe(true);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-preflight-parity/managed-app')
+            .send({
+                requestedAction: 'build',
+                expectedSourceSha256: preflight.body.sha256,
+            });
+
+        expect(mutation.status).toBe(202);
+        expect(mutation.body).toEqual(expect.objectContaining({
+            sourceSha256: preflight.body.sha256,
+            sourceSizeBytes: preflight.body.sizeBytes,
+        }));
+        const createdFiles = app.locals.managedAppService.createApp.mock.calls[0][0].files;
+        expect(createdFiles.map((file) => ({
+            path: file.path,
+            sizeBytes: Buffer.byteLength(file.content, 'utf8'),
+            sha256: createHash('sha256').update(Buffer.from(file.content, 'utf8')).digest('hex'),
+        }))).toEqual(preflight.body.files);
+        expect(app.locals.managedAppService.createApp.mock.calls[0][0].metadata.sourceArtifact).toEqual(
+            expect.objectContaining({
+                id: 'artifact-site-preflight-parity',
+                sha256: preflight.body.sha256,
+                sizeBytes: preflight.body.sizeBytes,
+                fileCount: preflight.body.fileCount,
+            }),
+        );
+    });
+
+    test('blocks preflight and mutation when exact prepared HTML fails artifact quality validation', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-quality-html',
+            sessionId: 'session-1',
+            filename: 'broken-preview.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            contentBuffer: Buffer.from('{"not":"html"}', 'utf8'),
+            previewHtml: '{"not":"html"}',
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-quality-html/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-quality-html/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            targetPaths: [],
+            fileCount: 0,
+            sizeBytes: 0,
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+                blocker: 'artifact_quality_blocked',
+                details: expect.objectContaining({
+                    status: 'blocked',
+                    blockers: expect.arrayContaining([
+                        expect.objectContaining({ code: 'REMOTE_AGENT_ARTIFACT_HTML_INVALID' }),
+                    ]),
+                }),
+            })],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+                blocker: 'artifact_quality_blocked',
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('blocks exact prepared XML, SVG, and unresolved local site references before deployment', async () => {
+        const indexHtml = `<!doctype html><html><body><main>
+            <link rel="stylesheet" href="./missing.css">
+            <a href="./design/design.xml">Design contract</a>
+            <img src="./design/design.svg" alt="Design diagram">
+        </main></body></html>`;
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-quality-members',
+            sessionId: 'session-1',
+            filename: 'broken-members.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: indexHtml },
+                    { path: 'design/design.xml', content: '<design><open></design>' },
+                    { path: 'design/design.svg', content: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>' },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 3,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'design/design.xml', mimeType: 'application/xml' },
+                        { path: 'design/design.svg', mimeType: 'image/svg+xml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-quality-members/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-quality-members/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(false);
+        const blocker = preflight.body.blockers[0];
+        expect(blocker).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_QUALITY_BLOCKED',
+            blocker: 'artifact_quality_blocked',
+        }));
+        expect(blocker.details.blockers.map((item) => item.code)).toEqual(expect.arrayContaining([
+            'REMOTE_AGENT_ARTIFACT_XML_INVALID',
+            'REMOTE_AGENT_ARTIFACT_SVG_ROOT_INVALID',
+            'REMOTE_AGENT_ARTIFACT_SITE_REFERENCE_MISSING',
+        ]));
+        expect(blocker.details.site).toEqual(expect.objectContaining({
+            enabled: true,
+            entries: ['index.html'],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body.error.code).toBe('ARTIFACT_MANAGED_APP_QUALITY_BLOCKED');
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('restores protected HTML as escaped text without preview markup or executable injection', async () => {
+        const placeholder = '[[PII:NAME:canary]]';
+        const restoredName = '<img src=x onerror="alert(1)">';
+        const escapedRestoredName = '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;';
+        const sourceFiles = [
+            {
+                path: 'index.html',
+                content: `<!doctype html><html><body><h1>${placeholder}</h1></body></html>`,
+            },
+            {
+                path: 'styles.css',
+                content: ':root { --owner: "canary"; }\n',
+            },
+            {
+                path: 'data.xml',
+                content: '<site><owner>canary</owner></site>',
+            },
+        ];
+        rehydrateHtml.mockImplementation(async (html, options) => ({
+            html: String(html || '').replaceAll(
+                placeholder,
+                options.escapeValues ? escapedRestoredName : restoredName,
+            ),
+            restorations: [{ placeholder }],
+            enabled: true,
+            options,
+        }));
+        rehydrateText.mockImplementation(async (text, options) => ({
+            text: String(text || ''),
+            restorations: [],
+            enabled: true,
+            options,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-pii-final-bytes',
+            sessionId: 'session-1',
+            filename: 'protected-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: sourceFiles,
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: sourceFiles.length,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                        { path: 'data.xml', mimeType: 'application/xml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-pii-final-bytes/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-pii-final-bytes/managed-app')
+            .send({ expectedSourceSha256: preflight.body.sha256 });
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(true);
+        expect(mutation.status).toBe(202);
+        expect(mutation.body.sourceSha256).toBe(preflight.body.sha256);
+        const createdFiles = app.locals.managedAppService.createApp.mock.calls[0][0].files;
+        expect(createdFiles.map((file) => file.path)).toEqual([
+            'public/data.xml',
+            'public/index.html',
+            'public/styles.css',
+        ]);
+        const createdIndex = createdFiles.find((file) => file.path === 'public/index.html');
+        expect(createdIndex.content).toContain(escapedRestoredName);
+        expect(createdIndex.content).not.toContain(restoredName);
+        expect(createdIndex.content).not.toContain('<img');
+        expect(createdFiles.every((file) => (
+            !file.content.includes(placeholder)
+            && !file.content.includes('<mark')
+            && !file.content.includes('kb-pii-restored')
+        ))).toBe(true);
+        expect(createdFiles.map((file) => ({
+            path: file.path,
+            sizeBytes: Buffer.byteLength(file.content, 'utf8'),
+            sha256: createHash('sha256').update(Buffer.from(file.content, 'utf8')).digest('hex'),
+        }))).toEqual(preflight.body.files);
+        expect(rehydrateHtml.mock.calls).toHaveLength(2);
+        expect(rehydrateText.mock.calls).toHaveLength(4);
+        expect([...rehydrateHtml.mock.calls, ...rehydrateText.mock.calls]
+            .every(([, options]) => options.highlight === false)).toBe(true);
+        expect(rehydrateHtml.mock.calls.every(([, options]) => options.escapeValues === true)).toBe(true);
+    });
+
+    test('fails closed when protected values would be restored into a non-HTML deployment file', async () => {
+        const placeholder = '[[PII:NAME:structured]]';
+        rehydrateText.mockImplementation(async (text) => ({
+            text: String(text || '').replaceAll(placeholder, '"; background: url(javascript:alert(1)); /*'),
+            restorations: String(text || '').includes(placeholder) ? [{ placeholder }] : [],
+            enabled: true,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-pii-structured-restoration',
+            sessionId: 'session-1',
+            filename: 'protected-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Safe</body></html>' },
+                    { path: 'styles.css', content: `:root { --owner: "${placeholder}"; }` },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'styles.css', mimeType: 'text/css' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pii-structured-restoration/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pii-structured-restoration/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.pushToWebEligible).toBe(false);
+        expect(preflight.body.blockers).toEqual([expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+            blocker: 'pii_restoration_failed',
+        })]);
+        expect(mutation.status).toBe(503);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+        expect(JSON.stringify(preflight.body)).not.toContain('javascript:alert');
+        warn.mockRestore();
+    });
+
+    test('blocks a site bundle whose persisted component was already raw-restored before deployment context was known', async () => {
+        const siteArtifact = {
+            id: 'artifact-pre-restored-site',
+            sessionId: 'session-1',
+            filename: 'pre-restored-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [{ path: 'index.html', content: '<!doctype html><html><body><script>alert(1)</script></body></html>' }],
+            }),
+            metadata: {
+                generationStrategy: 'remote-agent-result-site-bundle',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{
+                        path: 'index.html',
+                        mimeType: 'text/html',
+                        artifactId: 'artifact-pre-restored-component',
+                    }],
+                },
+            },
+        };
+        const componentArtifact = {
+            id: 'artifact-pre-restored-component',
+            sessionId: 'session-1',
+            filename: 'index.html',
+            metadata: {
+                piiCleansing: {
+                    enabled: true,
+                    restoredCount: 1,
+                    restoredInGeneratedArtifact: true,
+                },
+            },
+        };
+        artifactService.getArtifact.mockImplementation(async (artifactId) => (
+            artifactId === siteArtifact.id ? siteArtifact : componentArtifact
+        ));
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pre-restored-site/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pre-restored-site/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            files: [],
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_PRE_RESTORED_PII_UNSAFE',
+                blocker: 'pre_restored_pii_context_unsafe',
+                details: expect.objectContaining({ affectedPaths: ['index.html'] }),
+            })],
+        }));
+        expect(mutation.status).toBe(422);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PRE_RESTORED_PII_UNSAFE',
+            blocker: 'pre_restored_pii_context_unsafe',
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test.each([true, false])('fails preflight and mutation closed when reserved placeholders remain with PII enabled=%s', async (enabled) => {
+        rehydrateHtml.mockImplementation(async (html) => ({
+            html,
+            restorations: [],
+            enabled,
+        }));
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-pii-restoration-failure',
+            sessionId: 'session-1',
+            filename: 'protected.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!doctype html><html><body>[[PII:NAME:failure]]</body></html>',
+            contentBuffer: Buffer.from('<!doctype html><html><body>redacted</body></html>', 'utf8'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-pii-restoration-failure/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-pii-restoration-failure/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            pushToWebEligible: false,
+            targetPaths: [],
+            fileCount: 0,
+            sha256: null,
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+                blocker: 'pii_restoration_failed',
+            })],
+        }));
+        expect(mutation.status).toBe(503);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_PII_RESTORATION_FAILED',
+            blocker: 'pii_restoration_failed',
+        }));
+        expect(JSON.stringify(preflight.body)).not.toContain('Protected placeholders remain');
+        expect(JSON.stringify(mutation.body)).not.toContain('Protected placeholders remain');
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    test('rejects a stale preflight fingerprint before creating or changing a managed app', async () => {
+        const buildArtifact = (content) => ({
+            id: 'artifact-site-source-changed',
+            sessionId: 'session-1',
+            filename: 'source.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: content,
+            contentBuffer: Buffer.from(content, 'utf8'),
+            metadata: {},
+        });
+        artifactService.getArtifact
+            .mockResolvedValueOnce(buildArtifact('<!doctype html><html><body>Version one</body></html>'))
+            .mockResolvedValueOnce(buildArtifact('<!doctype html><html><body>Version two</body></html>'));
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-source-changed/managed-app/preflight')
+            .send({});
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-site-source-changed/managed-app')
+            .send({ expectedSourceSha256: preflight.body.sha256 });
+
+        expect(preflight.status).toBe(200);
+        expect(mutation.status).toBe(412);
+        expect(mutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_SOURCE_CHANGED',
+            blocker: 'managed_app_source_changed',
+            details: expect.objectContaining({
+                expectedSha256: preflight.body.sha256,
+                actualSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            }),
+        }));
+        expect(mutation.body.error.details.actualSha256).not.toBe(preflight.body.sha256);
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('uses typed blockers with control-plane-first priority for an empty source', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-empty-source',
+            sessionId: 'session-1',
+            filename: 'empty.txt',
+            extension: 'txt',
+            mimeType: 'text/plain',
+            contentBuffer: Buffer.alloc(0),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const managedAppService = {
+            isAvailable: jest.fn(() => false),
+            createApp: jest.fn(),
+        };
+        const app = buildApp({ managedAppService });
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app/preflight')
+            .send({});
+        const unavailableMutation = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app')
+            .send({});
+        managedAppService.isAvailable.mockReturnValue(true);
+        const emptyMutation = await request(app)
+            .post('/api/artifacts/artifact-site-empty-source/managed-app')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body.blockers.map((blocker) => blocker.code)).toEqual([
+            'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+            'ARTIFACT_MANAGED_APP_NO_DEPLOYABLE_FILES',
+        ]);
+        expect(unavailableMutation.status).toBe(503);
+        expect(unavailableMutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+            blocker: 'managed_app_control_plane_unavailable',
+        }));
+        expect(emptyMutation.status).toBe(400);
+        expect(emptyMutation.body.error).toEqual(expect.objectContaining({
+            code: 'ARTIFACT_MANAGED_APP_NO_DEPLOYABLE_FILES',
+            blocker: 'no_deployable_website_files',
+        }));
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('applies the same session-ownership boundary to managed-app preflight', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-not-owned',
+            sessionId: 'session-other',
+            filename: 'private.html',
+            previewHtml: '<!doctype html><html><body>Private</body></html>',
+        });
+        sessionStore.getOwned.mockResolvedValue(null);
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-not-owned/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(404);
+        expect(preflight.body).toEqual({ error: { message: 'Artifact not found' } });
+        expect(sessionStore.getOwned).toHaveBeenCalledWith('session-other', 'phill');
+        expect(app.locals.managedAppService.isAvailable).not.toHaveBeenCalled();
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('reports a valid source but blocks Push to Web when the managed-app control plane is unavailable', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-control-plane',
+            sessionId: 'session-1',
+            filename: 'landing.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!doctype html><html><body>Ready</body></html>',
+            contentBuffer: Buffer.from('<!doctype html><html><body>Raw</body></html>', 'utf8'),
+            metadata: { title: 'Ready Landing' },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const managedAppService = {
+            isAvailable: jest.fn(() => false),
+            createApp: jest.fn(),
+        };
+        const app = buildApp({ managedAppService });
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-control-plane/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: true,
+            controlPlaneAvailable: false,
+            pushToWebEligible: false,
+            sourceType: 'preview-html',
+            targetPaths: ['public/index.html'],
+            sizeBytes: Buffer.byteLength('<!doctype html><html><body>Ready</body></html>', 'utf8'),
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+                blocker: 'managed_app_control_plane_unavailable',
+            })],
+        }));
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+
+        const mutation = await request(app)
+            .post('/api/artifacts/artifact-preflight-control-plane/managed-app')
+            .send({});
+
+        expect(mutation.status).toBe(503);
+        expect(mutation.body).toEqual({
+            error: {
+                code: 'ARTIFACT_MANAGED_APP_CONTROL_PLANE_UNAVAILABLE',
+                message: 'Managed app export requires the managed app control plane to be available.',
+                blocker: 'managed_app_control_plane_unavailable',
+            },
+        });
+        expect(managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('fails preflight closed with a typed blocker for an invalid native site archive', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-invalid-site',
+            sessionId: 'session-1',
+            filename: 'invalid-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: Buffer.from('not a zip archive', 'utf8'),
+            previewHtml: '<!doctype html><html><body>Unsafe fallback</body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{ path: 'index.html' }],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-invalid-site/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            controlPlaneAvailable: true,
+            pushToWebEligible: false,
+            sourceType: 'native-site-archive',
+            targetPaths: [],
+            fileCount: 0,
+            sizeBytes: 0,
+            sha256: null,
+            files: [],
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({ reason: 'archive_parse_failed' }),
+            })],
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('fails preflight closed with a typed blocker for unsupported binary site members', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-preflight-binary-site',
+            sessionId: 'session-1',
+            filename: 'binary-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Binary</body></html>' },
+                    { path: 'assets/logo.png', language: 'binary', contentBuffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+                ],
+            }),
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html', mimeType: 'text/html' },
+                        { path: 'assets/logo.png', language: 'binary', mimeType: 'image/png' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const app = buildApp();
+
+        const preflight = await request(app)
+            .post('/api/artifacts/artifact-preflight-binary-site/managed-app/preflight')
+            .send({});
+
+        expect(preflight.status).toBe(200);
+        expect(preflight.body).toEqual(expect.objectContaining({
+            contentEligible: false,
+            controlPlaneAvailable: true,
+            pushToWebEligible: false,
+            sourceType: 'native-site-archive',
+            targetPaths: [],
+            sizeBytes: 0,
+            sha256: null,
+            files: [],
+            blockers: [expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+                blocker: 'unsupported_binary_assets',
+                details: expect.objectContaining({ unsupportedAssets: ['assets/logo.png'] }),
+            })],
+        }));
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
     test('exports a site bundle artifact to the managed app build lane', async () => {
         artifactService.getArtifact.mockResolvedValue({
             id: 'artifact-site-zip-1',
@@ -805,6 +2298,18 @@ describe('/api/artifacts route', () => {
                         purpose: 'Vite handoff',
                         content: 'console.log("handoff");',
                     },
+                    {
+                        path: 'assets/logo.svg',
+                        language: 'svg',
+                        purpose: 'Portable logo',
+                        content: '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h8v8z"/></svg>',
+                    },
+                    {
+                        path: 'data/config.xml',
+                        language: 'xml',
+                        purpose: 'Site configuration',
+                        content: '<config><theme>newsroom</theme></config>',
+                    },
                 ],
             }),
             metadata: {
@@ -812,11 +2317,13 @@ describe('/api/artifacts route', () => {
                 sourcePrompt: 'Build a newsroom website.',
                 siteBundle: {
                     entry: 'index.html',
-                    fileCount: 3,
+                    fileCount: 5,
                     files: [
                         { path: 'index.html' },
                         { path: 'styles.css' },
                         { path: 'src/main.jsx' },
+                        { path: 'assets/logo.svg', mimeType: 'image/svg+xml' },
+                        { path: 'data/config.xml', mimeType: 'application/xml' },
                     ],
                 },
             },
@@ -832,8 +2339,14 @@ describe('/api/artifacts route', () => {
             .send({ requestedAction: 'deploy', deployRequested: true });
 
         expect(response.status).toBe(202);
-        expect(response.body.fileCount).toBe(3);
-        expect(response.body.files).toEqual(['public/index.html', 'public/styles.css', 'src/main.jsx']);
+        expect(response.body.fileCount).toBe(5);
+        expect(response.body.files).toEqual([
+            'public/assets/logo.svg',
+            'public/data/config.xml',
+            'public/index.html',
+            'public/styles.css',
+            'src/main.jsx',
+        ]);
         expect(app.locals.managedAppService.createApp).toHaveBeenCalledWith(
             expect.objectContaining({
                 appName: 'Newsroom Preview',
@@ -842,12 +2355,233 @@ describe('/api/artifacts route', () => {
                 files: expect.arrayContaining([
                     expect.objectContaining({ path: 'public/index.html' }),
                     expect.objectContaining({ path: 'public/styles.css' }),
+                    expect.objectContaining({ path: 'public/assets/logo.svg' }),
+                    expect.objectContaining({ path: 'public/data/config.xml' }),
                     expect.objectContaining({ path: 'src/main.jsx' }),
                 ]),
             }),
             'phill',
             expect.objectContaining({ sessionId: 'session-1' }),
         );
+    });
+
+    test('preserves every safe UTF-8 native archive member regardless of file extension', async () => {
+        const archiveIndex = '<!doctype html><html><body><h1>Archive source</h1></body></html>';
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-text-extensions-1',
+            sessionId: 'session-1',
+            filename: 'portable-text-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            previewHtml: '<!doctype html><html><body><h1>Stale preview fallback</h1></body></html>',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: archiveIndex },
+                    { path: 'config/site.yaml', content: 'theme: midnight\nlocale: en-CA\n' },
+                    { path: 'shaders/hero.glsl', content: 'void main() { gl_FragColor = vec4(1.0); }\n' },
+                    { path: 'manifest.webmanifest', content: '{"name":"Portable Site"}\n' },
+                    { path: 'CNAME', content: 'portable.example.test\n' },
+                ],
+            }),
+            metadata: {
+                title: 'Portable Text Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 5,
+                    files: [
+                        { path: 'index.html' },
+                        { path: 'config/site.yaml' },
+                        { path: 'shaders/hero.glsl' },
+                        { path: 'manifest.webmanifest', mimeType: 'application/manifest+json' },
+                        { path: 'CNAME' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-text-extensions-1/managed-app')
+            .send({ requestedAction: 'build' });
+
+        expect(response.status).toBe(202);
+        expect(response.body.files).toEqual([
+            'public/CNAME',
+            'public/config/site.yaml',
+            'public/index.html',
+            'public/manifest.webmanifest',
+            'public/shaders/hero.glsl',
+        ]);
+        const createInput = app.locals.managedAppService.createApp.mock.calls[0][0];
+        expect(createInput.files).toEqual(expect.arrayContaining([
+            { path: 'public/CNAME', content: 'portable.example.test\n' },
+            { path: 'public/config/site.yaml', content: 'theme: midnight\nlocale: en-CA\n' },
+            { path: 'public/index.html', content: archiveIndex },
+            { path: 'public/manifest.webmanifest', content: '{"name":"Portable Site"}\n' },
+            { path: 'public/shaders/hero.glsl', content: 'void main() { gl_FragColor = vec4(1.0); }\n' },
+        ]));
+        expect(createInput.files.find((file) => file.path === 'public/index.html').content)
+            .not.toContain('Stale preview fallback');
+    });
+
+    test('typed-blocks a malformed explicit native site ZIP instead of deploying preview HTML', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-malformed-1',
+            sessionId: 'session-1',
+            filename: 'malformed-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: Buffer.from('this is not a ZIP archive', 'utf8'),
+            previewHtml: '<!doctype html><html><body><h1>Must not deploy</h1></body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 1,
+                    files: [{ path: 'index.html' }],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-malformed-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({
+                    reason: 'archive_parse_failed',
+                    remediation: expect.stringContaining('Regenerate the site ZIP'),
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('typed-blocks a native site ZIP that omits a declared member', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-incomplete-1',
+            sessionId: 'session-1',
+            filename: 'incomplete-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    { path: 'index.html', content: '<!doctype html><html><body>Incomplete</body></html>' },
+                ],
+            }),
+            previewHtml: '<!doctype html><html><body>Fallback must not deploy</body></html>',
+            metadata: {
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 2,
+                    files: [
+                        { path: 'index.html' },
+                        { path: 'config/site.yaml' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-incomplete-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_INVALID_SITE_BUNDLE',
+                blocker: 'invalid_site_bundle',
+                details: expect.objectContaining({
+                    reason: 'declared_members_missing_from_archive',
+                    affectedMembers: ['config/site.yaml'],
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
+    });
+
+    test('rejects Push to Web when a native site bundle contains unsupported binary assets', async () => {
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const opaqueBinary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x10]);
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-binary-1',
+            sessionId: 'session-1',
+            filename: 'binary-site.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            contentBuffer: createFrontendBundleArchive({
+                entry: 'index.html',
+                files: [
+                    {
+                        path: 'index.html',
+                        language: 'html',
+                        content: '<!doctype html><html><body><img src="assets/hero.png"></body></html>',
+                    },
+                    {
+                        path: 'assets/hero.png',
+                        language: 'binary',
+                        contentBuffer: png,
+                    },
+                    {
+                        path: 'assets/texture.asset',
+                        contentBuffer: opaqueBinary,
+                    },
+                ],
+            }),
+            metadata: {
+                title: 'Binary Site',
+                siteBundle: {
+                    entry: 'index.html',
+                    fileCount: 3,
+                    files: [
+                        { path: 'index.html', language: 'html', mimeType: 'text/html' },
+                        { path: 'assets/hero.png', language: 'binary', mimeType: 'image/png' },
+                        { path: 'assets/texture.asset' },
+                    ],
+                },
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-site-binary-1/managed-app')
+            .send({ requestedAction: 'deploy', deployRequested: true });
+
+        expect(response.status).toBe(422);
+        expect(response.body).toEqual({
+            error: expect.objectContaining({
+                code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
+                blocker: 'unsupported_binary_assets',
+                details: expect.objectContaining({
+                    unsupportedAssets: ['assets/hero.png', 'assets/texture.asset'],
+                    remediation: expect.stringContaining('SVG/XML/text'),
+                }),
+            }),
+        });
+        expect(app.locals.managedAppService.createApp).not.toHaveBeenCalled();
     });
 
     test('exports a previewable single HTML artifact with requested DNS host', async () => {
@@ -905,7 +2639,7 @@ describe('/api/artifacts route', () => {
         );
     });
 
-    test('queues requested managed-app deploys through the async runtime when enabled', async () => {
+    test('waits for the digest-attested build webhook instead of racing a queued build with an async deploy', async () => {
         artifactService.getArtifact.mockResolvedValue({
             id: 'artifact-html-async',
             sessionId: 'session-1',
@@ -950,21 +2684,86 @@ describe('/api/artifacts route', () => {
             });
 
         expect(response.status).toBe(202);
-        expect(response.body.asyncRuntime.run.id).toBe('async-run-1');
+        expect(response.body.asyncRuntime).toBeUndefined();
+        expect(response.body.deploymentLifecycle).toEqual({
+            mode: 'build-webhook',
+            status: 'queued',
+            buildRunId: 'build-1',
+            commitSha: '',
+            deployRequested: true,
+            digestRequired: true,
+        });
+        expect(createRun).not.toHaveBeenCalled();
+    });
+
+    test('queues a direct async deploy only when the managed-app mutation produced no new build', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-html-existing',
+            sessionId: 'session-1',
+            filename: 'landing-page.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!DOCTYPE html><html><body><h1>Existing</h1></body></html>',
+            contentBuffer: Buffer.from('<!DOCTYPE html><html><body><h1>Existing</h1></body></html>'),
+            metadata: { title: 'Existing Landing' },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const createRun = jest.fn(async (input) => ({
+            run: {
+                id: 'async-run-existing',
+                adapter: input.adapter,
+                targetKey: input.targetKey,
+                status: 'queued',
+            },
+            events: [{ type: 'queued', cursor: 1 }],
+            duplicate: false,
+        }));
+        const managedAppService = {
+            isAvailable: jest.fn(() => true),
+            createApp: jest.fn(async (input) => ({
+                app: {
+                    id: 'managed-app-existing',
+                    appName: input.appName,
+                    slug: 'existing-demo',
+                    publicHost: input.publicHost,
+                },
+                buildRun: null,
+                committedPaths: [],
+            })),
+        };
+        const app = buildApp({
+            managedAppService,
+            asyncLabService: {
+                isEnabled: jest.fn(() => true),
+                createRun,
+            },
+        });
+
+        const response = await request(app)
+            .post('/api/artifacts/artifact-html-existing/managed-app')
+            .send({
+                requestedAction: 'deploy',
+                deployRequested: true,
+                publicHost: 'existing-demo.demoserver2.buzz',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.deploymentLifecycle).toBeUndefined();
+        expect(response.body.asyncRuntime.run.id).toBe('async-run-existing');
         expect(createRun).toHaveBeenCalledWith(
             expect.objectContaining({
                 adapter: 'managed-app',
-                targetKey: 'managed-app:async-demo.demoserver2.buzz',
-                liveRemote: true,
-                idempotencyKey: 'managed-app-deploy:managed-app-1:build-1',
+                targetKey: 'managed-app:existing-demo.demoserver2.buzz',
                 metadata: expect.objectContaining({
-                    appRef: 'managed-app-1',
-                    publicHost: 'async-demo.demoserver2.buzz',
+                    appRef: 'managed-app-existing',
+                    buildRunId: '',
                     toolParams: expect.objectContaining({
                         action: 'deploy',
-                        appRef: 'managed-app-1',
-                        deployRequested: true,
-                        publicHost: 'async-demo.demoserver2.buzz',
+                        appRef: 'managed-app-existing',
+                        publicHost: 'existing-demo.demoserver2.buzz',
                     }),
                 }),
             }),

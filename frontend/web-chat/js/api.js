@@ -3056,6 +3056,36 @@ class OpenAIAPIClient extends EventTarget {
         });
     }
 
+    async getAsyncRuntimeStatus() {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/status`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+
+        if (!response.ok) {
+            const details = await this.parseErrorPayload(response);
+            const error = new Error(details?.error?.message || details?.message || `Async runtime status failed: HTTP ${response.status}`);
+            error.status = response.status;
+            error.details = details;
+            throw error;
+        }
+
+        const payload = await response.json();
+        const status = payload?.status && typeof payload.status === 'object'
+            ? payload.status
+            : {};
+        return {
+            requestedEnabled: status.requestedEnabled === true,
+            enabled: status.enabled === true,
+            webChatParallelEnabled: status.webChatParallelEnabled === true,
+            allowLiveRemote: status.allowLiveRemote === true,
+            workerEnabled: status.workerEnabled === true,
+            workerRunning: status.workerRunning === true,
+        };
+    }
+
     async createAsyncRun(payload = {}) {
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/runs`, {
             method: 'POST',
@@ -3113,6 +3143,19 @@ class OpenAIAPIClient extends EventTarget {
     async invokeRemoteCliAgent(task, options = {}) {
         const normalizedTask = String(task || '').trim();
         const normalizedModel = String(options.model || '').trim();
+        const normalizedArtifactIds = Array.from(new Set(
+            (Array.isArray(options.artifactIds) ? options.artifactIds : [])
+                .map((artifactId) => String(artifactId || '').trim())
+                .filter(Boolean),
+        ));
+        const contextFiles = Array.isArray(options.contextFiles)
+            ? options.contextFiles.filter((entry) => entry && typeof entry === 'object')
+            : [];
+        const resultFileGlobs = Array.from(new Set(
+            (Array.isArray(options.resultFileGlobs) ? options.resultFileGlobs : [])
+                .map((glob) => String(glob || '').trim())
+                .filter(Boolean),
+        ));
         if (!normalizedTask) {
             throw new Error('Remote agent task is required.');
         }
@@ -3122,12 +3165,31 @@ class OpenAIAPIClient extends EventTarget {
             waitMs: options.waitMs || 30000,
             maxTurns: options.maxTurns || 30,
             ...(normalizedModel ? { model: normalizedModel } : {}),
-              ...(options.cwd ? { cwd: options.cwd } : {}),
-              ...(options.targetId ? { targetId: options.targetId } : {}),
-              ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-              ...(options.mcpSessionId ? { mcpSessionId: options.mcpSessionId } : {}),
-              ...(options.adminMode !== undefined ? { adminMode: options.adminMode === true } : {}),
-          }, {
+            ...(options.cwd ? { cwd: options.cwd } : {}),
+            ...(options.workspacePath ? { workspacePath: options.workspacePath } : {}),
+            ...(options.targetId ? { targetId: options.targetId } : {}),
+            ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+            ...(options.threadId ? { threadId: options.threadId } : {}),
+            ...(options.jobId ? { jobId: options.jobId } : {}),
+            ...(options.mcpSessionId ? { mcpSessionId: options.mcpSessionId } : {}),
+            ...(options.transport ? { transport: options.transport } : {}),
+            ...(options.agentRunTimeoutMs ? { agentRunTimeoutMs: options.agentRunTimeoutMs } : {}),
+            ...(options.remoteCodeModel ? { remoteCodeModel: options.remoteCodeModel } : {}),
+            ...(options.maxStatusPolls ? { maxStatusPolls: options.maxStatusPolls } : {}),
+            ...(options.statusPollIntervalMs ? { statusPollIntervalMs: options.statusPollIntervalMs } : {}),
+            ...(options.instructions ? { instructions: options.instructions } : {}),
+            ...(options.supportAgentResponse ? { supportAgentResponse: options.supportAgentResponse } : {}),
+            ...(normalizedArtifactIds.length > 0 ? { artifactIds: normalizedArtifactIds } : {}),
+            ...(contextFiles.length > 0 ? { contextFiles } : {}),
+            ...(resultFileGlobs.length > 0 ? { resultFileGlobs } : {}),
+            ...(options.collectResultFiles !== undefined
+                ? { collectResultFiles: options.collectResultFiles === true }
+                : {}),
+            ...(String(options.continuitySummary || '').trim()
+                ? { continuitySummary: String(options.continuitySummary).trim() }
+                : {}),
+            ...(options.adminMode !== undefined ? { adminMode: options.adminMode === true } : {}),
+        }, {
             executionProfile: 'remote-build',
             metadata: {
                 remoteBuildAutonomyApproved: true,

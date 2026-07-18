@@ -7229,6 +7229,7 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/srv/apps/retry-deploy',
+                collectResultFiles: true,
             },
         });
     });
@@ -10590,6 +10591,37 @@ describe('ConversationOrchestrator', () => {
                 adminMode: true,
             }),
         }));
+
+        const fallbackObjective = 'Inspect which files are present in the current workspace.';
+        const fallbackToolContext = {
+            metadata: {
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                preferredTool: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+                remoteAgentCollectResultFiles: true,
+            },
+        };
+        const fallbackToolPolicy = orchestrator.buildToolPolicy({
+            objective: fallbackObjective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext: fallbackToolContext,
+            metadata: fallbackToolContext.metadata,
+        });
+        const fallbackAction = orchestrator.buildDirectAction({
+            objective: fallbackObjective,
+            session: { metadata: {} },
+            toolPolicy: fallbackToolPolicy,
+            toolContext: fallbackToolContext,
+        });
+
+        expect(fallbackAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                collectResultFiles: true,
+            }),
+        }));
     });
 
     test('keeps discovery-first server build prompts out of the repo implementation lane', () => {
@@ -10916,6 +10948,7 @@ describe('ConversationOrchestrator', () => {
             toolPolicy,
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
             },
         });
         const normalizedAction = orchestrator.normalizePlannedStep(directAction, {
@@ -10926,6 +10959,7 @@ describe('ConversationOrchestrator', () => {
             executionProfile: 'remote-build',
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
             },
         });
 
@@ -10943,6 +10977,8 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
+                collectResultFiles: true,
             },
         });
         expect(normalizedAction).toEqual(directAction);
@@ -11011,6 +11047,7 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/opt/kimibuilt',
+                collectResultFiles: true,
             },
         });
     });
@@ -11081,6 +11118,7 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/srv/apps/weather',
+                collectResultFiles: true,
             },
         });
     });
@@ -11265,6 +11303,7 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/srv/apps/status-dashboard',
+                collectResultFiles: true,
             },
         });
     });

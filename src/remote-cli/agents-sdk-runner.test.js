@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { ReadableStream } = require('stream/web');
 
 const {
@@ -19,8 +20,32 @@ const {
   resolveRemoteCliTargetId,
 } = require('./agents-sdk-runner');
 
+function buildVerifiedResultFiles(handoff, {
+  filename = 'result.xml',
+  mimeType = 'application/xml',
+  content = '<result/>',
+} = {}) {
+  const buffer = Buffer.from(content);
+  return {
+    version: 'RemoteAgentResultFiles/v1',
+    gatewayVerified: true,
+    operationId: handoff.operationId,
+    manifestPath: handoff.output.manifestPath,
+    files: [{
+      path: `${handoff.output.filesDirectory}/${filename}`,
+      filename,
+      role: 'deliverable',
+      mimeType,
+      description: 'Verified remote agent output',
+      sizeBytes: buffer.length,
+      sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+      contentBase64: buffer.toString('base64'),
+    }],
+  };
+}
+
 describe('RemoteCliAgentsSdkRunner', () => {
-  test('maps selected Kimi and Grok models to their matching gateway CLI providers', () => {
+  test('maps selected Codex, Kimi, and Grok models to their matching gateway CLI providers', () => {
     expect(resolveProviderAgentSelection('grok-build')).toMatchObject({
       providerId: 'grok-build-cli',
       providerLabel: 'Grok Build',
@@ -29,16 +54,40 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(resolveProviderAgentSelection('kimi-k2.7-code')).toMatchObject({
       providerId: 'kimi-code-cli',
       providerLabel: 'Kimi CLI',
-      providerModel: '',
+      providerModel: 'kimi-for-coding',
     });
-    expect(resolveProviderAgentSelection('gpt-5.6-sol')).toBeNull();
+    expect(resolveProviderAgentSelection('kimi-k3')).toMatchObject({
+      providerId: 'kimi-code-cli',
+      providerLabel: 'Kimi CLI',
+      requestedModel: 'kimi-k3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('Kimi K3')).toMatchObject({
+      requestedModel: 'Kimi K3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('Kimi 3')).toMatchObject({
+      requestedModel: 'Kimi 3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('k3')).toMatchObject({
+      requestedModel: 'k3',
+      providerModel: 'k3',
+    });
+    expect(resolveProviderAgentSelection('gpt-5.6-sol')).toMatchObject({
+      providerId: 'codex-cli',
+      providerLabel: 'Codex',
+      providerModel: 'gpt-5.6-sol',
+    });
   });
 
-  test('only forwards native Grok UUIDs for provider-agent continuation', () => {
+  test('only forwards native Codex and Grok UUIDs for provider-agent continuation', () => {
+    const codex = resolveProviderAgentSelection('gpt-5.6-sol');
     const grok = resolveProviderAgentSelection('grok-build');
     const kimi = resolveProviderAgentSelection('kimi-k2.7-code');
     const sessionId = '019f6357-10a2-7f61-9bf8-541fa830de18';
 
+    expect(resolveProviderAgentContinuationSessionId(codex, sessionId)).toBe(sessionId);
     expect(resolveProviderAgentContinuationSessionId(grok, sessionId)).toBe(sessionId);
     expect(resolveProviderAgentContinuationSessionId(grok, 'ps_legacy_gateway_session')).toBe('');
     expect(resolveProviderAgentContinuationSessionId(kimi, sessionId)).toBe('');
@@ -180,6 +229,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       'PUBLIC_HOST=weather.demoserver2.buzz',
       'PUBLIC_URL=https://weather.demoserver2.buzz',
       'UI_CHECK_REPORT=/srv/apps/weather/ui-checks/ui-check-report.json',
+      'RESULT_FILES_MANIFEST=.kimibuilt/remote-agent-results.json',
       'UI_SCREENSHOTS=/srv/apps/weather/ui-checks/weather-desktop.png,/srv/apps/weather/ui-checks/weather-mobile.png',
       'WHAT_CHANGED=Updated the weather dashboard copy and deployment manifest.',
       'VERIFY_COMMANDS=npm test -- --runTestsByPath src/weather.test.js',
@@ -199,6 +249,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       publicHost: 'weather.demoserver2.buzz',
       publicUrl: 'https://weather.demoserver2.buzz',
       uiCheckReport: '/srv/apps/weather/ui-checks/ui-check-report.json',
+      resultFilesManifest: '.kimibuilt/remote-agent-results.json',
       uiScreenshots: [
         '/srv/apps/weather/ui-checks/weather-desktop.png',
         '/srv/apps/weather/ui-checks/weather-mobile.png',
@@ -242,6 +293,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         evidenceAttestations: [],
       }),
       sourceControl: expect.objectContaining({ commit: 'abc1234' }),
+      artifacts: { resultFilesManifest: null },
     }));
   });
 
@@ -703,13 +755,41 @@ describe('RemoteCliAgentsSdkRunner', () => {
   });
 
   test.each([
+    ['gpt-5.6-sol', 'codex-cli', 'gpt-5.6-sol', 'Codex'],
     ['grok-build', 'grok-build-cli', 'grok-build', 'Grok Build'],
-    ['kimi-k2.7-code', 'kimi-code-cli', undefined, 'Kimi CLI'],
+    ['kimi-k3', 'kimi-code-cli', 'k3', 'Kimi CLI'],
+    ['kimi-k2.7-code', 'kimi-code-cli', 'kimi-for-coding', 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
     const progress = [];
-    const continuationSessionId = providerId === 'grok-build-cli'
+    const continuationSessionId = ['codex-cli', 'grok-build-cli'].includes(providerId)
       ? '019f6357-10a2-7f61-9bf8-541fa830de18'
       : undefined;
+    const handoff = {
+      version: 'RemoteAgentHandoff/v1',
+      operationId: '11111111-2222-4333-8444-555555555555',
+      contextDirectory: '.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/input',
+      manifestPath: '.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/input/manifest.json',
+      sourceArtifactIds: ['artifact-design-1'],
+      files: [{
+        filename: 'design.svg',
+        mimeType: 'image/svg+xml',
+        sizeBytes: 6,
+        sha256: 'abc123',
+        contentBase64: 'PHN2Zy8+',
+      }],
+      output: {
+        version: 'RemoteAgentResultFiles/v1',
+        enabled: true,
+        filesDirectory: '.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/files',
+        manifestPath: '.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json',
+        requestedGlobs: ['dist/*.html'],
+      },
+    };
+    const verifiedResultFiles = buildVerifiedResultFiles(handoff, {
+      filename: 'diagram.svg',
+      mimeType: 'image/svg+xml',
+      content: '<svg/>',
+    });
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
         const body = JSON.parse(options.body);
@@ -717,6 +797,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           providerId,
           targetId: 'k3s-prod',
           cwd: '/opt/kimibuilt',
+          handoff,
         });
         if (continuationSessionId) {
           expect(body.sessionId).toBe(continuationSessionId);
@@ -730,6 +811,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
         }
         expect(body.task).toContain(`Use ${providerLabel}`);
         expect(body.task).toContain(`selected in the KimiBuilt header is ${selectedModel}`);
+        expect(body.task).toContain('RemoteAgentHandoff/v1');
+        expect(body.task).toContain('RESULT_FILES_MANIFEST=.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json');
         return {
           ok: true,
           status: 200,
@@ -738,8 +821,16 @@ describe('RemoteCliAgentsSdkRunner', () => {
               task: {
                 id: `task-${providerId}`,
                 sessionId: `session-${providerId}`,
+                handoff: {
+                  accepted: true,
+                  version: handoff.version,
+                  operationId: handoff.operationId,
+                  inputManifestPath: handoff.manifestPath,
+                  resultManifestPath: handoff.output.manifestPath,
+                },
               },
               streamUrl: `/admin/remote-agent-tasks/task-${providerId}/stream?token=safe-token`,
+              resultFilesUrl: `/admin/remote-agent-tasks/task-${providerId}/result-files`,
             });
           },
         };
@@ -753,13 +844,26 @@ describe('RemoteCliAgentsSdkRunner', () => {
               const encoder = new TextEncoder();
               controller.enqueue(encoder.encode(
                 'event: output\n'
-                + `data: {"type":"output","data":"WORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Finished with ${providerLabel}.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n`
+                + `data: {"type":"output","data":"WORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Finished with ${providerLabel}.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nRESULT_FILES_MANIFEST=.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n`
                 + 'event: exit\n'
                 + 'data: {"type":"exit","exitCode":0}\n\n',
               ));
               controller.close();
             },
           }),
+        };
+      }
+      if (url === `https://gateway.example.com/admin/remote-agent-tasks/task-${providerId}/result-files`) {
+        expect(options).toMatchObject({
+          method: 'GET',
+          headers: { Authorization: 'Bearer frontend-secret' },
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify(verifiedResultFiles);
+          },
         };
       }
       if (url === `https://gateway.example.com/admin/remote-agent-tasks/task-${providerId}/cancel`) {
@@ -791,21 +895,92 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
     const result = await runner.run({
       task: 'Fix the selected remote app and verify it.',
+      transport: 'provider-agent',
       model: selectedModel,
       ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
+      handoff,
       onProgress: (event) => progress.push(event),
     });
 
     expect(result).toMatchObject({
       transport: 'provider-agent',
       providerId,
+      providerModel,
       model: selectedModel,
       apiMode: 'provider-agent',
       whatChanged: `Finished with ${providerLabel}.`,
       verifyResults: ['passed'],
       completionStatus: 'complete',
+      resultFilesManifest: '.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json',
+      handoffVersion: 'RemoteAgentHandoff/v1',
+      resultFiles: verifiedResultFiles,
     });
     expect(progress.some((event) => event.toolEvents?.[0]?.providerId === providerId)).toBe(true);
+  });
+
+  test('uses the configured Codex provider when provider-agent has no explicit model', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks') {
+        expect(JSON.parse(options.body)).toMatchObject({
+          providerId: 'codex-cli',
+          model: 'gpt-5.6-sol',
+          targetId: 'k3s-prod',
+          cwd: '/opt/kimibuilt',
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: { id: 'task-codex-default', sessionId: 'session-codex-default' },
+              streamUrl: '/admin/remote-agent-tasks/task-codex-default/stream?token=safe-token',
+            });
+          },
+        };
+      }
+      if (url.includes('/task-codex-default/stream')) {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: output\ndata: {"type":"output","data":"WHAT_CHANGED=Verified Codex default.\\nVERIFY_RESULTS=passed\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n'
+                + 'event: exit\ndata: {"type":"exit","exitCode":0}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (url.endsWith('/task-codex-default/cancel')) {
+        return { ok: true, status: 200, async text() { return '{"ok":true}'; } };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentModel: 'gpt-5.6-sol',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      sdkLoader: () => { throw new Error('provider-agent transport should not load the MCP SDK'); },
+      fetchImpl,
+    });
+
+    const result = await runner.run({ task: 'Verify the configured Codex provider.' });
+
+    expect(result).toMatchObject({
+      transport: 'provider-agent',
+      providerId: 'codex-cli',
+      providerModel: 'gpt-5.6-sol',
+      completionStatus: 'complete',
+    });
   });
 
   test('accepts Markdown-bold provider proof markers split across events', async () => {
@@ -932,12 +1107,33 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
   test('uses the /api/codex-agent/run plus /events SSE transport when configured', async () => {
     const progress = [];
+    const handoff = {
+      version: 'RemoteAgentHandoff/v1',
+      operationId: '66666666-7777-4888-8999-000000000000',
+      contextDirectory: '.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/input',
+      manifestPath: '.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/input/manifest.json',
+      sourceArtifactIds: ['artifact-brief-1'],
+      files: [],
+      output: {
+        version: 'RemoteAgentResultFiles/v1',
+        enabled: true,
+        filesDirectory: '.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/output/files',
+        manifestPath: '.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/output/manifest.json',
+        requestedGlobs: [],
+      },
+    };
+    const verifiedResultFiles = buildVerifiedResultFiles(handoff, {
+      filename: 'index.html',
+      mimeType: 'text/html',
+      content: '<!doctype html><title>Ready</title>',
+    });
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/api/codex-agent/run') {
         const body = JSON.parse(options.body);
         expect(options.method).toBe('POST');
         expect(options.headers.Authorization).toBe('Bearer frontend-secret');
         expect(body.workspacePath).toBe('/srv/apps/my-app');
+        expect(body.handoff).toEqual(handoff);
         expect(body.prompt).toContain('Fix the remote app and verify it.');
         expect(body.prompt).toContain('/api/codex-agent/run');
         expect(body.prompt).toContain('GET /api/codex-agent/runs/:runId/events streams progress');
@@ -951,6 +1147,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.prompt).toContain('A server-side Git provider token is configured for this workflow.');
         expect(body.prompt).not.toContain('gitlab-secret');
         expect(body.prompt).toContain('REMOTE_CLI_SESSION_ID');
+        expect(body.prompt).toContain('RemoteAgentHandoff/v1');
+        expect(body.prompt).toContain('RESULT_FILES_MANIFEST=.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/output/manifest.json');
         expect(body.config).toMatchObject({
           approvalPolicy: 'never',
           threadSandbox: 'workspace-write',
@@ -967,6 +1165,14 @@ describe('RemoteCliAgentsSdkRunner', () => {
               turnId: 'turn_codex_1',
               sessionId: 'thread_codex_1-turn_codex_1',
               status: 'running',
+              handoff: {
+                accepted: true,
+                version: handoff.version,
+                operationId: handoff.operationId,
+                inputManifestPath: handoff.manifestPath,
+                resultManifestPath: handoff.output.manifestPath,
+              },
+              resultFilesUrl: '/api/codex-agent/runs/run_codex_1/result-files',
             });
           },
         };
@@ -984,11 +1190,24 @@ describe('RemoteCliAgentsSdkRunner', () => {
                 'event: output\n',
                 'data: {"event":"output","text":"Checking workspace. "}\n\n',
                 'event: turn_completed\n',
-                'data: {"event":"turn_completed","thread_id":"thread_codex_1","turn_id":"turn_codex_1","result":{"output_text":"REMOTE_AGENT_RESULT=codex-agent:/srv/apps/my-app\\nREMOTE_CLI_SESSION_ID=thread_codex_1\\nWORKSPACE=/srv/apps/my-app\\nWHAT_CHANGED=Fixed the remote app through the Codex agent contract.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none"}}\n\n',
+                'data: {"event":"turn_completed","thread_id":"thread_codex_1","turn_id":"turn_codex_1","result":{"output_text":"REMOTE_AGENT_RESULT=codex-agent:/srv/apps/my-app\\nREMOTE_CLI_SESSION_ID=thread_codex_1\\nWORKSPACE=/srv/apps/my-app\\nGIT_BRANCH=codex/design-handoff\\nGIT_BASE_COMMIT=abc1234\\nGIT_COMMIT=def5678\\nCHANGED_FILES=dist/index.html,artifacts/diagram.svg\\nWHAT_CHANGED=Fixed the remote app through the Codex agent contract.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nRESULT_FILES_MANIFEST=.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/output/manifest.json\\nPUBLIC_URL=not_available\\nBLOCKER=none"}}\n\n',
               ].forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
               controller.close();
             },
           }),
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_codex_1/result-files') {
+        expect(options).toMatchObject({
+          method: 'GET',
+          headers: { Authorization: 'Bearer frontend-secret' },
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify(verifiedResultFiles);
+          },
         };
       }
       throw new Error(`Unexpected fetch URL: ${url}`);
@@ -1023,10 +1242,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
       task: 'Fix the remote app and verify it.',
       model: 'gpt-5.6-sol',
       adminMode: true,
+      handoff,
       onProgress: (event) => progress.push(event),
     });
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(progress.map((event) => event.codexAgentEvent?.event).filter(Boolean)).toEqual([
       'session_started',
       'session_started',
@@ -1044,10 +1264,93 @@ describe('RemoteCliAgentsSdkRunner', () => {
       whatChanged: 'Fixed the remote app through the Codex agent contract.',
       verifyCommands: ['npm test'],
       verifyResults: ['passed'],
+      gitBranch: 'codex/design-handoff',
+      gitBaseCommit: 'abc1234',
+      gitCommit: 'def5678',
+      changedFiles: ['dist/index.html', 'artifacts/diagram.svg'],
+      resultFilesManifest: '.kimibuilt/agent-runs/66666666-7777-4888-8999-000000000000/output/manifest.json',
+      handoffVersion: 'RemoteAgentHandoff/v1',
+      resultFiles: verifiedResultFiles,
       completionStatus: 'complete',
       model: 'gpt-5.6-sol',
       apiMode: 'codex-agent',
     });
+  });
+
+  test('fails closed and cancels the Codex run when the gateway handoff acknowledgement mismatches', async () => {
+    const operationId = '77777777-8888-4999-8aaa-bbbbbbbbbbbb';
+    const handoff = {
+      version: 'RemoteAgentHandoff/v1',
+      operationId,
+      runDirectory: `.kimibuilt/agent-runs/${operationId}`,
+      contextDirectory: `.kimibuilt/agent-runs/${operationId}/input`,
+      manifestPath: `.kimibuilt/agent-runs/${operationId}/input/manifest.json`,
+      sourceArtifactIds: [],
+      files: [],
+      output: {
+        version: 'RemoteAgentResultFiles/v1',
+        enabled: true,
+        directory: `.kimibuilt/agent-runs/${operationId}/output`,
+        filesDirectory: `.kimibuilt/agent-runs/${operationId}/output/files`,
+        manifestPath: `.kimibuilt/agent-runs/${operationId}/output/manifest.json`,
+        requestedGlobs: [],
+      },
+    };
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_bad_handoff',
+              handoff: {
+                accepted: true,
+                version: handoff.version,
+                operationId: '99999999-8888-4777-8666-555555555555',
+                inputManifestPath: handoff.manifestPath,
+                resultManifestPath: handoff.output.manifestPath,
+              },
+              resultFilesUrl: '/api/codex-agent/runs/run_bad_handoff/result-files',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_bad_handoff/cancel') {
+        expect(options).toMatchObject({
+          method: 'POST',
+          headers: { Authorization: 'Bearer frontend-secret' },
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ ok: true, status: 'cancelled' });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/srv/apps/my-app',
+      },
+      fetchImpl,
+    });
+
+    await expect(runner.run({
+      task: 'Build and return an artifact.',
+      handoff,
+    })).rejects.toMatchObject({
+      name: 'RemoteCliAgentError',
+      cause: { code: 'REMOTE_AGENT_HANDOFF_NOT_ACKNOWLEDGED' },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   test('prefers codex-agent over MCP when auto-detecting from mixed config', async () => {
