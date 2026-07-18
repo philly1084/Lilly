@@ -6,6 +6,7 @@ const JSZip = require('jszip');
 const { JSDOM } = require('jsdom');
 
 const CANARY_VERSION = 'SandboxAgentAttachCanary/v1';
+const PROGRESS_VERSION = 'SandboxAgentAttachProgress/v1';
 const ALLOWED_MODES = new Set(['codex', 'kimi', 'grok', 'all']);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SUCCESS_COMPLETION_STATUSES = new Set(['complete', 'completed', 'success', 'succeeded']);
@@ -398,7 +399,27 @@ function buildLiveConfiguration(env = process.env) {
             min: 1000,
             max: 120000,
         }),
+        progressIntervalMs: normalizePositiveInteger(env.KIMIBUILT_CANARY_PROGRESS_INTERVAL_MS, 15000, {
+            min: 5000,
+            max: 60000,
+        }),
     };
+}
+
+function emitProgress(runtime = {}, event = '', details = {}) {
+    if (typeof runtime.onProgress !== 'function') {
+        return;
+    }
+    try {
+        runtime.onProgress({
+            version: PROGRESS_VERSION,
+            canaryVersion: CANARY_VERSION,
+            event,
+            ...details,
+        });
+    } catch (_error) {
+        // Progress reporting is observability only and must not change canary behavior.
+    }
 }
 
 function sanitizeErrorMessage(value = '', secrets = []) {
@@ -804,8 +825,11 @@ function validateRunExecutionEvidence(run, events, plan, expectedRunId) {
     }
 }
 
-async function pollRun(client, runId, options) {
+async function pollRun(client, runId, options, progressContext = {}) {
     const startedAt = options.now();
+    let lastProgressAt = startedAt;
+    let lastStatus = '';
+    let firstPoll = true;
     let after = 0;
     const collectedEvents = [];
     const eventKeys = new Set();
@@ -813,15 +837,41 @@ async function pollRun(client, runId, options) {
         const payload = await client.requestJson(`/api/async-lab/runs/${encodeURIComponent(runId)}?after=${after}`);
         const run = payload?.run;
         const events = Array.isArray(payload?.events) ? payload.events : [];
+        const newEventTypes = [];
         for (const event of events) {
             const key = String(event?.eventId || `${event?.cursor || 0}:${event?.type || ''}`);
             if (!eventKeys.has(key)) {
                 eventKeys.add(key);
                 collectedEvents.push(event);
+                const eventType = String(event?.type || '')
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_.-]+/g, '')
+                    .slice(0, 64);
+                if (eventType && !newEventTypes.includes(eventType) && newEventTypes.length < 12) {
+                    newEventTypes.push(eventType);
+                }
             }
         }
         after = Math.max(after, ...events.map((event) => Number(event?.cursor || 0) || 0));
         const status = String(run?.status || '').trim().toLowerCase();
+        const observedAt = options.now();
+        if (firstPoll
+            || status !== lastStatus
+            || newEventTypes.length > 0
+            || observedAt - lastProgressAt >= options.progressIntervalMs) {
+            emitProgress(options, 'run_progress', {
+                ...progressContext,
+                runId,
+                status: status || 'unknown',
+                elapsedMs: Math.max(0, observedAt - startedAt),
+                cursor: after,
+                newEventTypes,
+            });
+            firstPoll = false;
+            lastProgressAt = observedAt;
+            lastStatus = status;
+        }
         if (TERMINAL_RUN_STATUSES.has(status)) {
             return { run, events: collectedEvents, status };
         }
@@ -843,7 +893,13 @@ async function executeAgentRun(plan, client, runtime) {
     runtime.activeRunIds.add(runId);
     runtime.runStartUncertain = false;
     validateRunIdentity(created.run, plan, runId, 'accepted');
-    const completed = await pollRun(client, runId, runtime);
+    const progressContext = {
+        lane: plan.lane,
+        scenario: plan.scenario,
+        ...(plan.surface ? { surface: plan.surface.key } : {}),
+    };
+    emitProgress(runtime, 'run_started', { ...progressContext, runId });
+    const completed = await pollRun(client, runId, runtime, progressContext);
     if (TERMINAL_RUN_STATUSES.has(completed.status)) {
         runtime.activeRunIds.delete(runId);
     }
@@ -872,6 +928,12 @@ async function executeAgentRun(plan, client, runtime) {
     if (buffer.length !== plan.expectedSizeBytes || sha256(buffer) !== plan.expectedSha256) {
         throw new Error(`${plan.lane} ${plan.scenario} returned artifact changed the source bytes.`);
     }
+    emitProgress(runtime, 'run_completed', {
+        ...progressContext,
+        runId,
+        status: completed.status,
+        artifactId: compact.artifactId,
+    });
     return {
         lane: plan.lane,
         scenario: plan.scenario,
@@ -1084,6 +1146,11 @@ async function attachArtifact(client, source, targetSession, surface, runtime) {
     if (buffer.length !== source.sizeBytes || sha256(buffer) !== source.sha256) {
         throw new Error(`${surface.key} attached artifact changed the source bytes.`);
     }
+    emitProgress(runtime, 'attachment_completed', {
+        surface: surface.key,
+        sourceArtifactId: source.artifactId,
+        artifactId,
+    });
     return {
         artifactId,
         sourceArtifactId: source.artifactId,
@@ -1113,6 +1180,11 @@ async function cancelAndConfirmTerminal(client, runId, runtime) {
 }
 
 async function cleanupRuntime(client, runtime) {
+    emitProgress(runtime, 'cleanup_started', {
+        activeRunCount: runtime.activeRunIds.size,
+        sessionCount: runtime.sessionIds.length,
+        workspaceCount: runtime.workspaceIds.length,
+    });
     const errors = [];
     for (const runId of [...runtime.activeRunIds]) {
         try {
@@ -1123,7 +1195,7 @@ async function cleanupRuntime(client, runtime) {
         }
     }
     if (runtime.runStartUncertain || runtime.activeRunIds.size > 0) {
-        return {
+        const retainedCleanup = {
             deletedSessionIds: [],
             retainedSessionIds: [...runtime.sessionIds],
             deletedWorkspaceIds: [],
@@ -1133,6 +1205,14 @@ async function cleanupRuntime(client, runtime) {
                 `Canary sessions retained because ${runtime.activeRunIds.size} run(s) remain non-terminal or a run start is untrackable.`,
             ].join(' '),
         };
+        emitProgress(runtime, 'cleanup_completed', {
+            deletedSessionCount: 0,
+            retainedSessionCount: retainedCleanup.retainedSessionIds.length,
+            deletedWorkspaceCount: 0,
+            retainedWorkspaceCount: retainedCleanup.retainedWorkspaceIds.length,
+            passed: false,
+        });
+        return retainedCleanup;
     }
     const deletedSessionIds = [];
     for (const sessionId of [...runtime.sessionIds].reverse()) {
@@ -1160,13 +1240,21 @@ async function cleanupRuntime(client, runtime) {
             errors.push(`workspace ${workspaceId}: ${error.message}`);
         }
     }
-    return {
+    const cleanup = {
         deletedSessionIds,
         retainedSessionIds: runtime.sessionIds.filter((id) => !deletedSessionIds.includes(id)),
         deletedWorkspaceIds,
         retainedWorkspaceIds,
         error: errors.join(' '),
     };
+    emitProgress(runtime, 'cleanup_completed', {
+        deletedSessionCount: cleanup.deletedSessionIds.length,
+        retainedSessionCount: cleanup.retainedSessionIds.length,
+        deletedWorkspaceCount: cleanup.deletedWorkspaceIds.length,
+        retainedWorkspaceCount: cleanup.retainedWorkspaceIds.length,
+        passed: !cleanup.error,
+    });
+    return cleanup;
 }
 
 async function runLive(lanes, options = {}) {
@@ -1183,12 +1271,17 @@ async function runLive(lanes, options = {}) {
         runStartUncertain: false,
         sessionIds: [],
         workspaceIds: [],
+        onProgress: options.onProgress,
     };
     let primaryError = null;
     let cleanup = null;
     let output = null;
 
     try {
+        emitProgress(runtime, 'canary_started', {
+            mode: lanes.length === 3 ? 'all' : lanes[0],
+            lanes,
+        });
         const auth = await client.requestJson('/api/auth/protected-check');
         if (auth?.success !== true) {
             throw new Error('KimiBuilt authentication probe did not confirm access.');
@@ -1201,6 +1294,11 @@ async function runLive(lanes, options = {}) {
         const sourceSession = await createOwnedSession(client, 'source', lanes);
         runtime.sessionIds.push(sourceSession.id);
         const sandboxSource = await createSandboxSource(client, sourceSession, runtime);
+        emitProgress(runtime, 'sandbox_source_verified', {
+            artifactId: sandboxSource.artifactId,
+            workspaceId: sandboxSource.workspaceId,
+            sizeBytes: sandboxSource.sizeBytes,
+        });
 
         const originResults = [];
         for (const lane of lanes) {
@@ -1296,7 +1394,7 @@ async function runLive(lanes, options = {}) {
     if (cleanup?.error) {
         throw new Error(`Canary cleanup failed: ${cleanup.error}`);
     }
-    return {
+    const result = {
         ...output,
         networkRequestsMade: client.networkRequestsMade,
         ephemeralSessionsDeleted: cleanup.deletedSessionIds.length,
@@ -1304,6 +1402,12 @@ async function runLive(lanes, options = {}) {
         ephemeralWorkspacesDeleted: cleanup.deletedWorkspaceIds.length,
         retainedWorkspaceIds: cleanup.retainedWorkspaceIds,
     };
+    emitProgress(runtime, 'canary_completed', {
+        mode: result.mode,
+        passed: result.passed === true,
+        networkRequestsMade: result.networkRequestsMade,
+    });
+    return result;
 }
 
 function describeDryRun(lanes, env) {
@@ -1385,7 +1489,11 @@ async function runCanary(options = {}) {
 
 async function main() {
     try {
-        const result = await runCanary({ argv: process.argv.slice(2), env: process.env });
+        const result = await runCanary({
+            argv: process.argv.slice(2),
+            env: process.env,
+            onProgress: (entry) => process.stderr.write(`${JSON.stringify(entry)}\n`),
+        });
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } catch (error) {
         process.stderr.write(`${JSON.stringify({
@@ -1403,6 +1511,7 @@ if (require.main === module) {
 
 module.exports = {
     CANARY_VERSION,
+    PROGRESS_VERSION,
     LANE_DEFAULTS,
     SURFACES,
     artifactApiPath,
@@ -1414,6 +1523,7 @@ module.exports = {
     createSandboxToolPayload,
     describeDryRun,
     parseArguments,
+    pollRun,
     runCanary,
     validateAgentPlan,
     validateCompactAgentResult,
