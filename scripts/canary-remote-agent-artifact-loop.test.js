@@ -812,7 +812,7 @@ describe('remote agent artifact-loop canary', () => {
         const css = badSemantics.find((file) => file.definition.outputPath === 'styles.css');
         css.buffer = Buffer.from(css.buffer.toString('utf8').replace('@media', '@supports'), 'utf8');
         expect(() => validateAuthoredArtifactSet(plan, badSemantics)).toThrow(
-            'The kimi authored CSS failed marker, responsive, focus, or color semantics.',
+            'The kimi authored CSS failed required semantics: missing @media rule.',
         );
 
         const badNavigation = createAuthoredFiles(plan);
@@ -942,6 +942,32 @@ describe('remote agent artifact-loop canary', () => {
         );
         expect(() => validateAuthoredArtifactSet(plan, badXhtmlXml)).toThrow(
             'The kimi authored XML included an unsupported namespace declaration.',
+        );
+
+        const badXmlDataAttribute = createAuthoredFiles(plan);
+        const badXmlDataAttributeFile = badXmlDataAttribute.find((file) => file.definition.outputPath === 'design/design.xml');
+        badXmlDataAttributeFile.buffer = Buffer.from(
+            badXmlDataAttributeFile.buffer.toString('utf8').replace(
+                '<design>',
+                '<design data="https://outside.example.test/leak.json">',
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXmlDataAttribute)).toThrow(
+            'The kimi authored XML included external-reference attribute data.',
+        );
+
+        const badXmlVersion = createAuthoredFiles(plan);
+        const badXmlVersionFile = badXmlVersion.find((file) => file.definition.outputPath === 'design/design.xml');
+        badXmlVersionFile.buffer = Buffer.from(
+            badXmlVersionFile.buffer.toString('utf8').replace(
+                'version="1"',
+                `version="${AUTHORING_CANARY_VERSION}"`,
+            ),
+            'utf8',
+        );
+        expect(() => validateAuthoredArtifactSet(plan, badXmlVersion)).toThrow(
+            'The kimi authored XML failed required semantics: missing version="1".',
         );
 
         const badSvgDoctype = createAuthoredFiles(plan);
