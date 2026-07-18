@@ -1681,6 +1681,14 @@ async function maybeQueueManagedAppAsyncDeploy(req, {
         return null;
     }
 
+    // A newly accepted build with deployRequested=true is promoted by the
+    // authenticated build-events webhook after GitLab has attested its OCI
+    // digest. Starting a deploy run here would race that queued build and can
+    // only deploy stale evidence (or fail while the build is pending).
+    if (String(managedAppResult?.buildRun?.id || '').trim()) {
+        return null;
+    }
+
     const asyncService = req.app.locals.asyncLabService;
     if (!asyncService?.isEnabled?.() || !asyncService?.createRun) {
         return null;
@@ -1718,6 +1726,29 @@ async function maybeQueueManagedAppAsyncDeploy(req, {
             },
         },
     }, getRequestOwnerId(req));
+}
+
+function buildManagedAppDeploymentLifecycle(managedAppResult = null, requestedAction = '') {
+    const buildRun = managedAppResult?.buildRun && typeof managedAppResult.buildRun === 'object'
+        ? managedAppResult.buildRun
+        : null;
+    if (!buildRun || !String(buildRun.id || '').trim()) {
+        return null;
+    }
+    if (!shouldQueueManagedAppAsyncDeploy({
+        deployRequested: buildRun.deployRequested === true,
+        requestedAction,
+    }, requestedAction)) {
+        return null;
+    }
+    return {
+        mode: 'build-webhook',
+        status: String(buildRun.buildStatus || 'queued').trim().toLowerCase() || 'queued',
+        buildRunId: String(buildRun.id).trim(),
+        commitSha: String(buildRun.commitSha || '').trim(),
+        deployRequested: true,
+        digestRequired: true,
+    };
 }
 
 router.post('/upload', async (req, res, next) => {
@@ -2337,6 +2368,7 @@ router.post('/:id/managed-app', async (req, res, next) => {
             publicHost,
             artifact,
         });
+        const deploymentLifecycle = buildManagedAppDeploymentLifecycle(result, requestedAction);
 
         res.status(202).json({
             artifactId: artifact.id,
@@ -2346,6 +2378,7 @@ router.post('/:id/managed-app', async (req, res, next) => {
             sourceSha256: preparedSource.sha256,
             sourceSizeBytes: preparedSource.sizeBytes,
             publicHost: publicHost || result?.publicHost || result?.app?.publicHost || null,
+            ...(deploymentLifecycle ? { deploymentLifecycle } : {}),
             ...(asyncRuntime ? {
                 asyncRuntime: {
                     run: asyncRuntime.run,

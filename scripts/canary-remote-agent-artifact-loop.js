@@ -13,6 +13,11 @@ const AUTHORING_CANARY_VERSION = 'RemoteAgentAuthoringCanary/v1';
 const ALLOWED_MODES = new Set(['codex', 'kimi', 'grok', 'all']);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SUCCESS_COMPLETION_STATUSES = new Set(['complete', 'completed', 'success', 'succeeded']);
+const SUCCESS_BUILD_STATUSES = new Set(['complete', 'completed', 'passed', 'success', 'succeeded']);
+const SUCCESS_DEPLOY_STATUSES = new Set(['deployed', 'live', 'success', 'succeeded']);
+const MANAGED_APP_TERMINAL_PHASES = new Set(['live', 'build_failed', 'deploy_failed']);
+const PUSH_TO_WEB_LANE_TOKEN = '{lane}';
+const CHANGE_TICKET_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{1,127}$/;
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_AUTHORING_FILE_BYTES = 4 * 1024 * 1024;
@@ -280,6 +285,7 @@ function parseArguments(argv = []) {
     let help = false;
     let authoring = false;
     let browserQa = false;
+    let pushToWeb = false;
 
     for (let index = 0; index < argv.length; index += 1) {
         const argument = String(argv[index] || '').trim();
@@ -293,6 +299,10 @@ function parseArguments(argv = []) {
         }
         if (argument === '--browser-qa') {
             browserQa = true;
+            continue;
+        }
+        if (argument === '--push-to-web') {
+            pushToWeb = true;
             continue;
         }
         if (argument === '--help' || argument === '-h') {
@@ -314,11 +324,14 @@ function parseArguments(argv = []) {
     if (!ALLOWED_MODES.has(mode)) {
         throw new Error('Mode must be one of: codex, kimi, grok, all.');
     }
+    if (pushToWeb && (!run || !authoring || !browserQa)) {
+        throw new Error('--push-to-web requires --run --authoring --browser-qa.');
+    }
     if (browserQa && !authoring) {
         throw new Error('--browser-qa requires --authoring.');
     }
 
-    return { run, mode, help, authoring, browserQa };
+    return { run, mode, help, authoring, browserQa, pushToWeb };
 }
 
 function selectedLanes(mode = 'all') {
@@ -653,6 +666,93 @@ function buildLiveConfiguration(env = process.env) {
             min: 1000,
             max: 120000,
         }),
+    };
+}
+
+function normalizeExactPublicHost(value = '') {
+    const host = String(value || '').trim();
+    if (!host || host !== host.toLowerCase() || host.includes('://') || host.includes('*')) {
+        return '';
+    }
+    let parsed;
+    try {
+        parsed = new URL(`https://${host}`);
+    } catch (_error) {
+        return '';
+    }
+    if (parsed.protocol !== 'https:'
+        || parsed.hostname !== host
+        || parsed.host !== host
+        || parsed.port
+        || parsed.username
+        || parsed.password
+        || parsed.pathname !== '/'
+        || parsed.search
+        || parsed.hash) {
+        return '';
+    }
+    const labels = host.split('.');
+    if (labels.length < 2
+        || host.length > 253
+        || /^\d+(?:\.\d+){3}$/.test(host)
+        || labels.some((label) => label.length > 63
+            || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) {
+        return '';
+    }
+    return host;
+}
+
+function buildPushToWebConfiguration(env = process.env, lanes = []) {
+    if (String(env.ALLOW_PROD_WRITE || '') !== 'yes') {
+        throw new Error('Push-to-Web canary requires ALLOW_PROD_WRITE=yes.');
+    }
+    if (String(env.HUMAN_APPROVED || '') !== 'yes') {
+        throw new Error('Push-to-Web canary requires HUMAN_APPROVED=yes.');
+    }
+    const changeTicket = String(env.CHANGE_TICKET || '').trim();
+    if (!CHANGE_TICKET_PATTERN.test(changeTicket)) {
+        throw new Error('Push-to-Web canary requires a valid CHANGE_TICKET.');
+    }
+
+    const hostTemplate = String(env.KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE || '');
+    const approvedHostTemplate = String(env.KIMIBUILT_CANARY_APPROVED_HOST_TEMPLATE || '');
+    if (!hostTemplate
+        || !approvedHostTemplate
+        || hostTemplate !== hostTemplate.trim()
+        || approvedHostTemplate !== approvedHostTemplate.trim()
+        || hostTemplate !== approvedHostTemplate) {
+        throw new Error('Push-to-Web canary requires an exact approved host template match.');
+    }
+    if (hostTemplate !== hostTemplate.toLowerCase()
+        || (hostTemplate.match(/\{lane\}/g) || []).length !== 1
+        || /[{}]/.test(hostTemplate.replace(PUSH_TO_WEB_LANE_TOKEN, ''))) {
+        throw new Error(`Push-to-Web host template must contain exactly one ${PUSH_TO_WEB_LANE_TOKEN} token.`);
+    }
+
+    const selected = Array.isArray(lanes) ? lanes : [];
+    if (selected.length === 0 || selected.some((lane) => !LANE_DEFAULTS[lane])) {
+        throw new Error('Push-to-Web canary requires at least one supported lane.');
+    }
+    const hosts = {};
+    const publicOrigins = {};
+    for (const lane of selected) {
+        const host = normalizeExactPublicHost(hostTemplate.replace(PUSH_TO_WEB_LANE_TOKEN, lane));
+        if (!host) {
+            throw new Error(`Push-to-Web host template produced an invalid ${lane} hostname.`);
+        }
+        hosts[lane] = host;
+        publicOrigins[lane] = `https://${host}`;
+    }
+    if (new Set(Object.values(hosts)).size !== selected.length) {
+        throw new Error('Push-to-Web host template must produce one unique hostname per lane.');
+    }
+
+    return {
+        changeTicket,
+        hostTemplate,
+        approvedHostTemplate,
+        hosts,
+        publicOrigins,
     };
 }
 
@@ -1482,6 +1582,81 @@ async function runBrowserQa(options = {}) {
     };
 }
 
+async function runPublicBrowserQa(options = {}) {
+    const publicUrl = new URL(String(options.publicUrl || ''));
+    const expectedOrigin = new URL(String(options.expectedOrigin || ''));
+    if (publicUrl.protocol !== 'https:'
+        || expectedOrigin.protocol !== 'https:'
+        || publicUrl.origin !== expectedOrigin.origin
+        || publicUrl.username
+        || publicUrl.password
+        || publicUrl.search
+        || publicUrl.hash
+        || !['', '/'].includes(publicUrl.pathname)
+        || expectedOrigin.pathname !== '/'
+        || expectedOrigin.search
+        || expectedOrigin.hash) {
+        throw new Error('Public browser QA requires the exact approved credential-free HTTPS origin.');
+    }
+    const lane = String(options.lane || '').trim().toLowerCase();
+    if (!LANE_DEFAULTS[lane]) {
+        throw new Error('Public browser QA requires a supported canary lane.');
+    }
+    const inheritedEnv = { ...process.env, ...(options.env || {}) };
+    inheritedEnv.API_BASE_URL = publicUrl.origin;
+    [
+        'KIMIBUILT_FRONTEND_API_KEY',
+        'FRONTEND_API_KEY',
+        'GATEWAY_API_KEY',
+        'N8N_API_KEY',
+    ].forEach((name) => delete inheritedEnv[name]);
+    const outDir = path.resolve(
+        String(inheritedEnv.KIMIBUILT_CANARY_LIVE_UI_CHECK_OUT_DIR || path.join(
+            process.cwd(),
+            'ui-checks',
+            'remote-agent-authoring-live',
+            `${lane}-${Date.now()}`,
+        )),
+    );
+    const scriptPath = path.resolve(__dirname, '..', 'bin', 'kimibuilt-ui-check.js');
+    const args = [scriptPath, `${publicUrl.origin}/`, '--out', outDir, '--same-origin-only'];
+    const { stdout } = await execFileAsync(
+        options.execFileImpl || execFile,
+        process.execPath,
+        args,
+        {
+            cwd: process.cwd(),
+            env: inheritedEnv,
+            windowsHide: true,
+            maxBuffer: 2 * 1024 * 1024,
+        },
+    );
+    const resultLine = stdout.split(/\r?\n/)
+        .find((line) => line.startsWith('KIMIBUILT_UI_CHECK_RESULT='));
+    if (!resultLine) {
+        throw new Error(`The ${lane} public browser QA did not return a UI-check summary.`);
+    }
+    let summary;
+    try {
+        summary = JSON.parse(resultLine.slice('KIMIBUILT_UI_CHECK_RESULT='.length));
+    } catch (_error) {
+        throw new Error(`The ${lane} public browser QA returned an invalid UI-check summary.`);
+    }
+    if (summary?.ok !== true
+        || Number(summary?.checkedViewports || 0) < 2
+        || !Array.isArray(summary?.issues)
+        || summary.issues.length > 0) {
+        throw new Error(`The ${lane} public browser QA reported a visual release blocker.`);
+    }
+    return {
+        ok: true,
+        checkedViewports: summary.checkedViewports,
+        issues: [],
+        outDir,
+        publicUrl: `${publicUrl.origin}/`,
+    };
+}
+
 function buildExpectedManagedAppFingerprint(fixtures = []) {
     const files = fixtures.map((fixture) => ({
         path: `public/${fixture.outputPath}`,
@@ -1541,6 +1716,548 @@ function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactI
         }
     }
     return true;
+}
+
+function resolveManagedAppRepoIdentity(app = {}, lane = '', phase = 'response') {
+    const repoOwner = String(app.repoOwner || '').trim();
+    const repoName = String(app.repoName || '').trim();
+    const repoUrlValue = String(app.repoUrl || app.repoCloneUrl || '').trim();
+    let repoUrl;
+    try {
+        repoUrl = new URL(repoUrlValue);
+    } catch (_error) {
+        repoUrl = null;
+    }
+    const repoPath = repoUrl
+        ? decodeURIComponent(repoUrl.pathname).replace(/\/+$/, '').replace(/\.git$/i, '')
+        : '';
+    const expectedRepoPath = repoOwner && repoName ? `/${repoOwner}/${repoName}` : '';
+    if (!repoUrl
+        || repoUrl.protocol !== 'https:'
+        || repoUrl.username
+        || repoUrl.password
+        || repoUrl.search
+        || repoUrl.hash
+        || !expectedRepoPath
+        || repoPath !== expectedRepoPath) {
+        throw new Error(`The ${lane} Push-to-Web ${phase} did not bind the managed app to a canonical GitLab repository.`);
+    }
+    return {
+        repoOwner,
+        repoName,
+        repoOrigin: repoUrl.origin,
+        repoPath,
+    };
+}
+
+function validateManagedAppDeploymentAccepted(payload, plan, options = {}) {
+    const expectedArtifactId = String(options.artifactId || '').trim();
+    const expectedHost = String(options.deploymentPlan?.publicHost || '').trim();
+    const expectedSha256 = String(options.preflight?.sha256 || '').trim();
+    const app = payload?.app && typeof payload.app === 'object' ? payload.app : {};
+    const buildRun = payload?.buildRun && typeof payload.buildRun === 'object' ? payload.buildRun : {};
+    const returnedHost = String(payload?.publicHost || app.publicHost || '').trim().toLowerCase();
+    if (String(payload?.artifactId || '').trim() !== expectedArtifactId) {
+        throw new Error(`The ${plan.lane} Push-to-Web response belongs to a different artifact.`);
+    }
+    if (!expectedSha256 || String(payload?.sourceSha256 || '').trim() !== expectedSha256) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not attest the accepted preflight SHA-256.`);
+    }
+    if (Number(payload?.sourceSizeBytes) !== Number(options.expectedFingerprint?.sizeBytes)
+        || Number(payload?.fileCount) !== Number(options.expectedFingerprint?.files?.length)) {
+        throw new Error(`The ${plan.lane} Push-to-Web response changed the accepted source size or file count.`);
+    }
+    if (!expectedHost || returnedHost !== expectedHost) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not preserve the exact approved public host.`);
+    }
+    const appRef = String(app.id || app.slug || '').trim();
+    if (!appRef) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not include a managed-app reference.`);
+    }
+    const repoIdentity = resolveManagedAppRepoIdentity(app, plan.lane, 'response');
+    const buildRunId = String(buildRun.id || '').trim();
+    const commitSha = String(buildRun.commitSha || '').trim();
+    const committedPaths = Array.isArray(buildRun?.metadata?.committedPaths)
+        ? buildRun.metadata.committedPaths.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const expectedPaths = (options.expectedFingerprint?.files || [])
+        .map((file) => String(file?.path || '').trim())
+        .filter(Boolean);
+    if (!buildRunId
+        || !/^[a-f0-9]{7,64}$/i.test(commitSha)
+        || expectedPaths.length === 0
+        || expectedPaths.some((expectedPath) => !committedPaths.includes(expectedPath))) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not bind the accepted source to a build run and commit.`);
+    }
+    const sourceArtifact = app?.metadata?.sourceArtifact && typeof app.metadata.sourceArtifact === 'object'
+        ? app.metadata.sourceArtifact
+        : {};
+    if (String(sourceArtifact.id || '').trim() !== expectedArtifactId
+        || String(sourceArtifact.sha256 || '').trim() !== expectedSha256
+        || Number(sourceArtifact.sizeBytes) !== Number(options.expectedFingerprint?.sizeBytes)
+        || Number(sourceArtifact.fileCount) !== Number(options.expectedFingerprint?.files?.length)) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not persist the exact preflight source fingerprint.`);
+    }
+    const lifecycle = payload?.deploymentLifecycle && typeof payload.deploymentLifecycle === 'object'
+        ? payload.deploymentLifecycle
+        : null;
+    if (!lifecycle
+        || String(lifecycle.mode || '').trim() !== 'build-webhook'
+        || String(lifecycle.buildRunId || '').trim() !== buildRunId
+        || String(lifecycle.commitSha || '').trim() !== commitSha
+        || lifecycle.deployRequested !== true
+        || lifecycle.digestRequired !== true) {
+        throw new Error(`The ${plan.lane} Push-to-Web response did not bind deployment to the digest-attested build webhook lifecycle.`);
+    }
+    if (payload?.asyncRuntime?.run) {
+        throw new Error(`The ${plan.lane} Push-to-Web response started a premature async deploy before its build completed.`);
+    }
+    return {
+        appRef,
+        appId: String(app.id || '').trim(),
+        appSlug: String(app.slug || '').trim(),
+        buildRunId,
+        commitSha,
+        committedPaths,
+        acceptedPipelineId: String(buildRun.externalRunId || '').trim(),
+        acceptedPipelineUrl: String(buildRun.externalRunUrl || '').trim(),
+        ...repoIdentity,
+        deploymentLifecycle: lifecycle,
+        sourceSha256: expectedSha256,
+        publicHost: expectedHost,
+    };
+}
+
+function collectManagedAppProgressHosts(payload = {}) {
+    const progress = payload?.progress && typeof payload.progress === 'object'
+        ? payload.progress
+        : (payload?.project?.progress && typeof payload.project.progress === 'object'
+            ? payload.project.progress
+            : {});
+    const evidence = progress?.evidence && typeof progress.evidence === 'object'
+        ? progress.evidence
+        : {};
+    return [
+        payload?.app?.publicHost,
+        payload?.project?.publicHost,
+        payload?.project?.targetPublicHost,
+        evidence.targetPublicHost,
+    ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function validateManagedAppPublicUrl(value, expectedOrigin, lane) {
+    let publicUrl;
+    try {
+        publicUrl = new URL(String(value || ''));
+    } catch (_error) {
+        throw new Error(`The ${lane} managed-app progress did not include a valid public HTTPS URL.`);
+    }
+    if (publicUrl.protocol !== 'https:'
+        || publicUrl.origin !== expectedOrigin
+        || publicUrl.username
+        || publicUrl.password
+        || publicUrl.search
+        || publicUrl.hash
+        || !['', '/'].includes(publicUrl.pathname)) {
+        throw new Error(`The ${lane} managed-app progress did not preserve the exact approved public origin.`);
+    }
+    return `${publicUrl.origin}/`;
+}
+
+function extractExactOciDigest(value = '') {
+    const image = String(value || '');
+    if (!image || image !== image.trim()) {
+        return '';
+    }
+    if (/^sha256:[a-f0-9]{64}$/.test(image)) {
+        return image;
+    }
+    const digestMatch = image.match(/@(?<digest>sha256:[a-f0-9]{64})$/);
+    const imageName = digestMatch ? image.slice(0, digestMatch.index) : '';
+    if (!digestMatch
+        || !imageName
+        || imageName.includes('@')
+        || /[\s?#]/.test(imageName)) {
+        return '';
+    }
+    return digestMatch.groups.digest;
+}
+
+function resolveExactManagedAppDigest(payload, evidence, buildRun) {
+    const deployment = buildRun?.metadata?.deployment && typeof buildRun.metadata.deployment === 'object'
+        ? buildRun.metadata.deployment
+        : {};
+    const liveDeploy = payload?.app?.metadata?.liveDeploy && typeof payload.app.metadata.liveDeploy === 'object'
+        ? payload.app.metadata.liveDeploy
+        : {};
+    const proofGroups = [
+        {
+            label: 'observed',
+            values: [evidence.observedImageDigest, liveDeploy.observedImageDigest],
+        },
+        {
+            label: 'build',
+            values: [evidence.imageDigest, buildRun?.imageDigest],
+        },
+        {
+            label: 'deployed',
+            values: [deployment.imageDigest, liveDeploy.imageDigest],
+        },
+    ];
+    const digests = [];
+    for (const group of proofGroups) {
+        const values = group.values.map((value) => String(value || '')).filter(Boolean);
+        if (values.length === 0) {
+            throw new Error(`Managed-app progress is missing ${group.label} OCI digest evidence.`);
+        }
+        for (const value of values) {
+            const digest = extractExactOciDigest(value);
+            if (!digest) {
+                throw new Error(`Managed-app progress reported non-digest ${group.label} image evidence.`);
+            }
+            digests.push(digest);
+        }
+    }
+    const pinnedReferenceGroups = [
+        {
+            label: 'deployed',
+            values: [evidence.deployedImage, deployment.deployedImage, liveDeploy.deployedImage],
+        },
+        {
+            label: 'observed Deployment',
+            values: [evidence.observedDeploymentImage, deployment.deploymentImage, liveDeploy.observedDeploymentImage],
+        },
+        {
+            label: 'observed pod',
+            values: [evidence.observedPodImage, deployment.podImage, liveDeploy.observedPodImage],
+        },
+    ];
+    for (const group of pinnedReferenceGroups) {
+        const values = group.values.map((value) => String(value || '')).filter(Boolean);
+        if (values.length === 0) {
+            throw new Error(`Managed-app progress is missing the ${group.label} digest-pinned image reference.`);
+        }
+        for (const value of values) {
+            const digest = extractExactOciDigest(value);
+            if (!digest) {
+                throw new Error(`Managed-app progress reported a non-digest ${group.label} image reference.`);
+            }
+            digests.push(digest);
+        }
+    }
+    if (new Set(digests).size !== 1) {
+        throw new Error('Managed-app progress reported conflicting OCI image digests.');
+    }
+    return digests[0];
+}
+
+function validateManagedAppTerminalProgress(payload, plan, options = {}) {
+    const progress = payload?.progress && typeof payload.progress === 'object'
+        ? payload.progress
+        : (payload?.project?.progress && typeof payload.project.progress === 'object'
+            ? payload.project.progress
+            : null);
+    const phase = String(progress?.phase || payload?.project?.phase || '').trim().toLowerCase();
+    if (!progress || progress.terminal !== true || phase !== 'live') {
+        throw new Error(`The ${plan.lane} managed-app progress was not terminal and live.`);
+    }
+    const evidence = progress.evidence && typeof progress.evidence === 'object'
+        ? progress.evidence
+        : {};
+    const accepted = options.accepted && typeof options.accepted === 'object'
+        ? options.accepted
+        : null;
+    const buildRun = payload?.latestBuildRun && typeof payload.latestBuildRun === 'object'
+        ? payload.latestBuildRun
+        : null;
+    if (!accepted
+        || !buildRun
+        || String(buildRun.id || '').trim() !== accepted.buildRunId) {
+        throw new Error(`The ${plan.lane} managed-app progress did not preserve the accepted build-run identity.`);
+    }
+    const terminalRepoIdentity = resolveManagedAppRepoIdentity(payload?.app || {}, plan.lane, 'terminal progress');
+    if (terminalRepoIdentity.repoOwner !== accepted.repoOwner
+        || terminalRepoIdentity.repoName !== accepted.repoName
+        || terminalRepoIdentity.repoOrigin !== accepted.repoOrigin
+        || terminalRepoIdentity.repoPath !== accepted.repoPath) {
+        throw new Error(`The ${plan.lane} managed-app progress changed the accepted GitLab repository identity.`);
+    }
+    const sourceArtifact = payload?.app?.metadata?.sourceArtifact;
+    if (!sourceArtifact
+        || String(sourceArtifact.sha256 || '').trim() !== accepted.sourceSha256
+        || String(sourceArtifact.id || '').trim() !== String(options.artifactId || '').trim()) {
+        throw new Error(`The ${plan.lane} managed-app progress did not preserve the accepted preflight source SHA-256.`);
+    }
+    const requiredProof = evidence.requiredProof && typeof evidence.requiredProof === 'object'
+        ? evidence.requiredProof
+        : {};
+    for (const proofName of [
+        'sourceChanged',
+        'gitlabPipelineObserved',
+        'imageAvailable',
+        'deploymentObserved',
+        'publicVerificationObserved',
+    ]) {
+        if (requiredProof[proofName] !== true) {
+            throw new Error(`The ${plan.lane} managed-app progress is missing required ${proofName} evidence.`);
+        }
+    }
+
+    const commitSha = String(evidence.commitSha || '').trim();
+    const buildCommitSha = String(buildRun.commitSha || '').trim();
+    const committedPaths = Array.isArray(evidence.committedPaths)
+        ? evidence.committedPaths.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const buildCommittedPaths = Array.isArray(buildRun?.metadata?.committedPaths)
+        ? buildRun.metadata.committedPaths.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const expectedPaths = (options.expectedFingerprint?.files || [])
+        .map((file) => String(file?.path || '').trim())
+        .filter(Boolean);
+    if (!/^[a-f0-9]{7,64}$/i.test(commitSha)
+        || commitSha !== accepted.commitSha
+        || buildCommitSha !== accepted.commitSha
+        || expectedPaths.length === 0
+        || expectedPaths.some((expectedPath) => !committedPaths.includes(expectedPath))
+        || JSON.stringify([...committedPaths].sort()) !== JSON.stringify([...accepted.committedPaths].sort())
+        || JSON.stringify([...buildCommittedPaths].sort()) !== JSON.stringify([...accepted.committedPaths].sort())) {
+        throw new Error(`The ${plan.lane} managed-app progress did not preserve the accepted commit and source paths.`);
+    }
+
+    const buildStatus = String(buildRun.buildStatus || '').trim().toLowerCase();
+    const pipelineStatus = String(evidence.pipelineStatus || '').trim().toLowerCase();
+    const pipelineUrl = String(evidence.pipelineUrl || '').trim();
+    const buildPipelineUrl = String(buildRun.externalRunUrl || '').trim();
+    const buildPipelineId = String(buildRun.externalRunId || '').trim();
+    let parsedPipelineUrl;
+    try {
+        parsedPipelineUrl = new URL(pipelineUrl);
+    } catch (_error) {
+        parsedPipelineUrl = null;
+    }
+    const pipelinePathId = parsedPipelineUrl
+        ? decodeURIComponent(parsedPipelineUrl.pathname.split('/').filter(Boolean).at(-1) || '')
+        : '';
+    const expectedPipelinePath = `${accepted.repoPath}/-/pipelines/${encodeURIComponent(buildPipelineId)}`;
+    if (!SUCCESS_BUILD_STATUSES.has(buildStatus)
+        || !SUCCESS_BUILD_STATUSES.has(pipelineStatus)
+        || !parsedPipelineUrl
+        || parsedPipelineUrl.protocol !== 'https:'
+        || parsedPipelineUrl.username
+        || parsedPipelineUrl.password
+        || parsedPipelineUrl.search
+        || parsedPipelineUrl.hash
+        || parsedPipelineUrl.origin !== accepted.repoOrigin
+        || parsedPipelineUrl.pathname !== expectedPipelinePath
+        || pipelineUrl !== buildPipelineUrl
+        || !buildPipelineId
+        || pipelinePathId !== buildPipelineId
+        || (accepted.acceptedPipelineId && accepted.acceptedPipelineId !== buildPipelineId)
+        || (accepted.acceptedPipelineUrl && accepted.acceptedPipelineUrl !== pipelineUrl)) {
+        throw new Error(`The ${plan.lane} managed-app progress did not preserve the accepted commit-to-pipeline chain.`);
+    }
+
+    const image = resolveExactManagedAppDigest(payload, evidence, buildRun);
+
+    const deployment = buildRun?.metadata?.deployment;
+    const liveDeploy = payload?.app?.metadata?.liveDeploy;
+    const rolloutObserved = liveDeploy?.rollout === true
+        || deployment?.verification?.rollout === true;
+    const httpsObserved = liveDeploy?.https === true
+        || deployment?.verification?.https === true;
+    const deployStatus = String(
+        evidence.deployStatus
+        || payload?.latestBuildRun?.deployStatus
+        || payload?.project?.deployStatus
+        || '',
+    ).trim().toLowerCase();
+    const verificationStatus = String(
+        evidence.verificationStatus
+        || payload?.latestBuildRun?.verificationStatus
+        || payload?.project?.verificationStatus
+        || '',
+    ).trim().toLowerCase();
+    if (!rolloutObserved || !SUCCESS_DEPLOY_STATUSES.has(deployStatus)) {
+        throw new Error(`The ${plan.lane} managed-app progress did not prove a successful k3s rollout.`);
+    }
+    if (!httpsObserved || !SUCCESS_DEPLOY_STATUSES.has(verificationStatus)) {
+        throw new Error(`The ${plan.lane} managed-app progress did not prove successful public HTTPS verification.`);
+    }
+
+    const expectedHost = String(options.deploymentPlan?.publicHost || '').trim();
+    const expectedOrigin = String(options.deploymentPlan?.publicOrigin || '').trim();
+    const observedHosts = collectManagedAppProgressHosts(payload);
+    if (!expectedHost
+        || observedHosts.length === 0
+        || observedHosts.some((host) => host !== expectedHost)) {
+        throw new Error(`The ${plan.lane} managed-app progress did not preserve the exact approved public host.`);
+    }
+    const publicUrlCandidates = [
+        evidence.livePublicUrl,
+        evidence.publicUrl,
+        payload?.project?.livePublicUrl,
+        payload?.project?.publicUrl,
+    ].map((value) => String(value || '').trim()).filter(Boolean);
+    if (publicUrlCandidates.length === 0) {
+        throw new Error(`The ${plan.lane} managed-app progress did not expose a verified public URL.`);
+    }
+    const publicUrls = publicUrlCandidates
+        .map((value) => validateManagedAppPublicUrl(value, expectedOrigin, plan.lane));
+    if (new Set(publicUrls).size !== 1) {
+        throw new Error(`The ${plan.lane} managed-app progress reported conflicting public URLs.`);
+    }
+
+    return {
+        phase,
+        commitSha,
+        committedPaths,
+        pipelineUrl,
+        buildStatus,
+        image,
+        deployStatus,
+        verificationStatus,
+        rolloutObserved: true,
+        httpsObserved: true,
+        publicHost: expectedHost,
+        publicUrl: publicUrls[0],
+    };
+}
+
+async function pollManagedAppProgress(client, appRef, plan, options = {}) {
+    const sleep = options.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    const now = options.now || (() => Date.now());
+    const startedAt = now();
+    const pollIntervalMs = Number(options.pollIntervalMs) || 2000;
+    const timeoutMs = Number(options.timeoutMs) || 15 * 60 * 1000;
+    const maximumPolls = Math.max(1, Math.ceil(timeoutMs / Math.max(1, pollIntervalMs)) + 1);
+    for (let pollCount = 1; pollCount <= maximumPolls; pollCount += 1) {
+        const payload = await client.requestJson(
+            `/api/managed-apps/${encodeURIComponent(appRef)}/progress`,
+        );
+        const observedHosts = collectManagedAppProgressHosts(payload);
+        const expectedHost = String(options.deploymentPlan?.publicHost || '').trim();
+        if (observedHosts.some((host) => host !== expectedHost)) {
+            throw new Error(`The ${plan.lane} managed-app progress switched away from the approved public host.`);
+        }
+        const progress = payload?.progress && typeof payload.progress === 'object'
+            ? payload.progress
+            : payload?.project?.progress;
+        const phase = String(progress?.phase || payload?.project?.phase || '').trim().toLowerCase();
+        const terminal = progress?.terminal === true || MANAGED_APP_TERMINAL_PHASES.has(phase);
+        if (terminal) {
+            if (phase !== 'live') {
+                throw new Error(`The ${plan.lane} managed-app deployment ended with phase ${phase || 'unknown'}.`);
+            }
+            return {
+                polls: pollCount,
+                payload,
+                proof: validateManagedAppTerminalProgress(payload, plan, options),
+            };
+        }
+        if ((now() - startedAt) >= timeoutMs || pollCount === maximumPolls) {
+            throw new Error(`The ${plan.lane} managed-app deployment did not reach terminal proof before timeout.`);
+        }
+        await sleep(pollIntervalMs);
+    }
+    throw new Error(`The ${plan.lane} managed-app deployment progress loop ended unexpectedly.`);
+}
+
+async function executePushToWebScenario(plan, sessionId, client, options = {}) {
+    const deploymentPlan = options.deploymentPlan || {};
+    const artifactId = String(options.siteBundleArtifactId || '').trim();
+    if (!artifactId || !deploymentPlan.publicHost || !deploymentPlan.publicOrigin) {
+        throw new Error(`The ${plan.lane} Push-to-Web plan is incomplete.`);
+    }
+    if (options.browserQaPassed !== true) {
+        throw new Error(`The ${plan.lane} Push-to-Web canary requires completed artifact browser QA.`);
+    }
+    const preflightSha256 = String(options.preflight?.sha256 || '').trim();
+    if (!/^[a-f0-9]{64}$/.test(preflightSha256)
+        || preflightSha256 !== options.expectedFingerprint?.sha256) {
+        throw new Error(`The ${plan.lane} Push-to-Web canary requires the exact accepted preflight SHA-256.`);
+    }
+
+    const slug = deploymentPlan.publicHost.split('.')[0];
+    const created = await client.requestJson(
+        `/api/artifacts/${encodeURIComponent(artifactId)}/managed-app`,
+        {
+            method: 'POST',
+            body: {
+                sessionId,
+                requestedAction: 'deploy',
+                deployRequested: true,
+                queueAsyncDeploy: false,
+                expectedSourceSha256: preflightSha256,
+                appName: `Remote Agent ${plan.lane} Authoring Canary`,
+                name: slug,
+                slug,
+                dnsName: deploymentPlan.publicHost,
+                publicHost: deploymentPlan.publicHost,
+                sourcePrompt: `Publish the verified ${plan.lane} ${AUTHORING_CANARY_VERSION} site bundle without changing its accepted bytes.`,
+                metadata: {
+                    source: 'remote-agent-authoring-push-to-web-canary',
+                    canaryVersion: CANARY_VERSION,
+                    authoringCanaryVersion: AUTHORING_CANARY_VERSION,
+                    lane: plan.lane,
+                    changeTicket: deploymentPlan.changeTicket,
+                    approvedHostTemplate: deploymentPlan.hostTemplate,
+                    expectedPublicOrigin: deploymentPlan.publicOrigin,
+                    expectedSourceSha256: preflightSha256,
+                },
+            },
+        },
+    );
+    const accepted = validateManagedAppDeploymentAccepted(created, plan, {
+        artifactId,
+        deploymentPlan,
+        expectedFingerprint: options.expectedFingerprint,
+        preflight: options.preflight,
+    });
+    const terminal = await pollManagedAppProgress(client, accepted.appRef, plan, {
+        ...options,
+        accepted,
+        artifactId,
+        deploymentPlan,
+    });
+    const publicBrowserQaRunner = options.publicBrowserQaRunner || runPublicBrowserQa;
+    const browserQa = await publicBrowserQaRunner({
+        publicUrl: terminal.proof.publicUrl,
+        expectedOrigin: deploymentPlan.publicOrigin,
+        lane: plan.lane,
+        sessionId,
+        appRef: accepted.appRef,
+        env: options.env,
+    });
+    if (browserQa?.ok !== true
+        || Number(browserQa?.checkedViewports || 0) < 2
+        || !Array.isArray(browserQa?.issues)
+        || browserQa.issues.length > 0) {
+        throw new Error(`The ${plan.lane} public browser QA did not attest two clean viewports.`);
+    }
+    return {
+        status: 'passed',
+        appRef: accepted.appRef,
+        ...(accepted.appId ? { appId: accepted.appId } : {}),
+        ...(accepted.appSlug ? { appSlug: accepted.appSlug } : {}),
+        ...(accepted.buildRunId ? { buildRunId: accepted.buildRunId } : {}),
+        sourceSha256: accepted.sourceSha256,
+        deploymentLifecycle: accepted.deploymentLifecycle.mode,
+        publicHost: terminal.proof.publicHost,
+        publicUrl: terminal.proof.publicUrl,
+        progressPolls: terminal.polls,
+        sourceCommit: terminal.proof.commitSha,
+        buildStatus: terminal.proof.buildStatus,
+        pipelineUrl: terminal.proof.pipelineUrl,
+        image: terminal.proof.image,
+        rollout: 'passed',
+        https: 'passed',
+        browserQa: {
+            status: 'passed',
+            checkedViewports: browserQa.checkedViewports,
+            issues: [],
+            ...(browserQa.outDir ? { outDir: browserQa.outDir } : {}),
+        },
+    };
 }
 
 async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
@@ -1824,6 +2541,18 @@ async function executeAuthoringScenario(plan, sessionId, client, runtimeOptions)
         }
     }
 
+    let pushToWeb = null;
+    if (runtimeOptions.pushToWebPlan) {
+        pushToWeb = await executePushToWebScenario(plan, sessionId, client, {
+            ...runtimeOptions,
+            deploymentPlan: runtimeOptions.pushToWebPlan,
+            siteBundleArtifactId: inspected.siteBundleArtifactId,
+            expectedFingerprint,
+            preflight,
+            browserQaPassed: browserQa?.ok === true,
+        });
+    }
+
     return {
         scenario: 'authoring',
         runId,
@@ -1847,6 +2576,7 @@ async function executeAuthoringScenario(plan, sessionId, client, runtimeOptions)
             issues: [],
             ...(browserQa.outDir ? { outDir: browserQa.outDir } : {}),
         } : { status: 'not-requested' },
+        ...(pushToWeb ? { pushToWeb } : {}),
     };
 }
 
@@ -1901,7 +2631,9 @@ async function runLive(plans, options = {}) {
                     ephemeral: true,
                     canaryVersion: CANARY_VERSION,
                     lanes: plans.map((plan) => plan.lane),
-                    scenarios: options.authoring === true ? ['transfer', 'authoring'] : ['transfer'],
+                    scenarios: options.pushToWeb === true
+                        ? ['transfer', 'authoring', 'push-to-web']
+                        : (options.authoring === true ? ['transfer', 'authoring'] : ['transfer']),
                 },
             },
         });
@@ -1934,6 +2666,12 @@ async function runLive(plans, options = {}) {
             if (options.authoring === true) {
                 const authoringPlan = buildAuthoringPlan(firstHopPlan.lane, options.env);
                 validateAuthoringPlan(authoringPlan);
+                const pushToWebPlan = options.pushToWeb === true ? {
+                    publicHost: options.pushToWebConfiguration?.hosts?.[firstHopPlan.lane],
+                    publicOrigin: options.pushToWebConfiguration?.publicOrigins?.[firstHopPlan.lane],
+                    hostTemplate: options.pushToWebConfiguration?.hostTemplate,
+                    changeTicket: options.pushToWebConfiguration?.changeTicket,
+                } : null;
                 authoring = await executeAuthoringScenario(authoringPlan, sessionId, client, {
                     ...configuration,
                     sleep,
@@ -1941,6 +2679,8 @@ async function runLive(plans, options = {}) {
                     activeRunIds,
                     browserQa: options.browserQa === true,
                     browserQaRunner: options.browserQaRunner,
+                    pushToWebPlan,
+                    publicBrowserQaRunner: options.publicBrowserQaRunner,
                     env: options.env,
                 });
             }
@@ -2003,6 +2743,7 @@ async function runLive(plans, options = {}) {
         ephemeralSessionDeleted: true,
         bidirectionalRoundTrip: true,
         authoringScenario: options.authoring === true ? 'passed' : 'not-requested',
+        pushToWebScenario: options.pushToWeb === true ? 'passed' : 'not-requested',
         lanes: laneResults,
     };
 }
@@ -2011,12 +2752,23 @@ async function runCanary(options = {}) {
     const parsed = parseArguments(options.argv || []);
     if (parsed.help) {
         return {
-            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|grok|all] [--authoring [--browser-qa]] [--run]',
+            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|grok|all] [--authoring [--browser-qa [--push-to-web]]] [--run]',
         };
     }
     const env = options.env || process.env;
     const plans = selectedLanes(parsed.mode).map((lane) => buildLanePlan(lane, env, { hop: 1 }));
     plans.forEach(validateLanePlan);
+
+    let pushToWebConfiguration = null;
+    if (parsed.pushToWeb) {
+        if (!parsed.run || !parsed.authoring || !parsed.browserQa) {
+            throw new Error('--push-to-web requires --run --authoring --browser-qa.');
+        }
+        pushToWebConfiguration = buildPushToWebConfiguration(
+            env,
+            plans.map((plan) => plan.lane),
+        );
+    }
 
     if (!parsed.run) {
         const lanes = plans.map((firstHopPlan) => {
@@ -2050,6 +2802,7 @@ async function runCanary(options = {}) {
             passed: true,
             networkRequestsMade: 0,
             authoringScenario: parsed.authoring ? 'planned' : 'not-requested',
+            pushToWebScenario: 'not-requested',
             note: 'Transfer and optional authoring payloads were validated locally. No HTTP request, remote agent run, or browser QA was attempted.',
             lanes,
         };
@@ -2059,6 +2812,8 @@ async function runCanary(options = {}) {
         ...options,
         authoring: parsed.authoring,
         browserQa: parsed.browserQa,
+        pushToWeb: parsed.pushToWeb,
+        pushToWebConfiguration,
     });
 }
 
@@ -2085,17 +2840,21 @@ module.exports = {
     CANARY_VERSION,
     buildAuthoringPlan,
     buildLanePlan,
+    buildPushToWebConfiguration,
     buildRunPayload,
     createFixtures,
     createHttpClient,
     parseArguments,
+    pollManagedAppProgress,
     runBrowserQa,
+    runPublicBrowserQa,
     runCanary,
     validateAuthoredArtifactSet,
     validateAuthoredPreview,
     validateAuthoringPlan,
     validateCompactToolResult,
     validateLanePlan,
+    validateManagedAppTerminalProgress,
     validatePreflight,
     validateRunExecutionEvidence,
     validateRunIdentity,

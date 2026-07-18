@@ -37,7 +37,7 @@ variables:
   IMAGE_REPO: ${imageRepo}
   REGISTRY_HOST: ${registryHost}
   BUILD_EVENTS_URL: ${buildEventsUrl}
-  DEFAULT_TARGET_PLATFORMS: linux/amd64,linux/arm64
+  DEFAULT_TARGET_PLATFORMS: linux/arm64
 
 build-and-publish:
   stage: build
@@ -46,15 +46,15 @@ build-and-publish:
     - kimibuilt
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
   before_script:
-    - apk add --no-cache bash curl wget tar git ca-certificates coreutils
+    - apk add --no-cache bash curl wget tar git ca-certificates coreutils jq
   script:
     - |
       bash <<'BASH'
       set -euo pipefail
 
       build_status="failed"
+      IMAGE_DIGEST=""
       notify_kimibuilt() {
         local exit_code="$1"
         if [ "$exit_code" = "0" ]; then
@@ -71,7 +71,7 @@ build-and-publish:
 
         payload_file="$(mktemp)"
         cat > "$payload_file" <<EOF
-      {"repoOwner":"$GIT_PROVIDER_ORG","repoName":"$APP_SLUG","slug":"$APP_SLUG","commitSha":"\${CI_COMMIT_SHA:-}","imageTag":"\${IMAGE_TAG:-}","imageRepo":"$IMAGE_REPO","buildStatus":"$build_status","requestedAction":"deploy","deployRequested":true,"runId":"\${CI_PIPELINE_ID:-}","runUrl":"\${CI_PIPELINE_URL:-}","platforms":"\${TARGET_PLATFORMS:-}"}
+      {"repoOwner":"$GIT_PROVIDER_ORG","repoName":"$APP_SLUG","slug":"$APP_SLUG","commitSha":"\${CI_COMMIT_SHA:-}","imageTag":"\${IMAGE_TAG:-}","imageDigest":"\${IMAGE_DIGEST:-}","imageRepo":"$IMAGE_REPO","buildStatus":"$build_status","requestedAction":"deploy","deployRequested":true,"runId":"\${CI_PIPELINE_ID:-}","runUrl":"\${CI_PIPELINE_URL:-}","platforms":"\${TARGET_PLATFORMS:-}"}
       EOF
 
         header_secret="\${KIMIBUILT_BUILD_EVENTS_SECRET:-}"
@@ -162,6 +162,7 @@ build-and-publish:
       esac
 
       BUILDKIT_ADDR="\${BUILDKIT_HOST:-tcp://buildkitd.agent-platform.svc.cluster.local:1234}"
+      build_metadata_file="$(mktemp)"
       buildctl --addr "$BUILDKIT_ADDR" build \\
         --frontend dockerfile.v0 \\
         --local context=. \\
@@ -169,7 +170,13 @@ build-and-publish:
         --opt platform="$TARGET_PLATFORMS" \\
         --output "type=image,name=$IMAGE_REPO:$IMAGE_TAG,push=true" \\
         --export-cache type=inline \\
-        --import-cache "type=registry,ref=$IMAGE_REPO:latest"
+        --import-cache "type=registry,ref=$IMAGE_REPO:latest" \\
+        --metadata-file "$build_metadata_file"
+      IMAGE_DIGEST="$(jq -er '."containerimage.digest" | select(type == "string")' "$build_metadata_file")"
+      if ! printf '%s' "$IMAGE_DIGEST" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+        echo "BuildKit did not report a canonical pushed OCI image digest." >&2
+        exit 1
+      fi
       BASH
 `;
 }

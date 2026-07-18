@@ -7,7 +7,6 @@ on:
       - completed
     branches:
       - master
-      - main
   workflow_dispatch:
 
 env:
@@ -22,11 +21,13 @@ env:
 jobs:
   deploy-to-k3s:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3

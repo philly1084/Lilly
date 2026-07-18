@@ -2639,7 +2639,7 @@ describe('/api/artifacts route', () => {
         );
     });
 
-    test('queues requested managed-app deploys through the async runtime when enabled', async () => {
+    test('waits for the digest-attested build webhook instead of racing a queued build with an async deploy', async () => {
         artifactService.getArtifact.mockResolvedValue({
             id: 'artifact-html-async',
             sessionId: 'session-1',
@@ -2684,21 +2684,86 @@ describe('/api/artifacts route', () => {
             });
 
         expect(response.status).toBe(202);
-        expect(response.body.asyncRuntime.run.id).toBe('async-run-1');
+        expect(response.body.asyncRuntime).toBeUndefined();
+        expect(response.body.deploymentLifecycle).toEqual({
+            mode: 'build-webhook',
+            status: 'queued',
+            buildRunId: 'build-1',
+            commitSha: '',
+            deployRequested: true,
+            digestRequired: true,
+        });
+        expect(createRun).not.toHaveBeenCalled();
+    });
+
+    test('queues a direct async deploy only when the managed-app mutation produced no new build', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-html-existing',
+            sessionId: 'session-1',
+            filename: 'landing-page.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!DOCTYPE html><html><body><h1>Existing</h1></body></html>',
+            contentBuffer: Buffer.from('<!DOCTYPE html><html><body><h1>Existing</h1></body></html>'),
+            metadata: { title: 'Existing Landing' },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const createRun = jest.fn(async (input) => ({
+            run: {
+                id: 'async-run-existing',
+                adapter: input.adapter,
+                targetKey: input.targetKey,
+                status: 'queued',
+            },
+            events: [{ type: 'queued', cursor: 1 }],
+            duplicate: false,
+        }));
+        const managedAppService = {
+            isAvailable: jest.fn(() => true),
+            createApp: jest.fn(async (input) => ({
+                app: {
+                    id: 'managed-app-existing',
+                    appName: input.appName,
+                    slug: 'existing-demo',
+                    publicHost: input.publicHost,
+                },
+                buildRun: null,
+                committedPaths: [],
+            })),
+        };
+        const app = buildApp({
+            managedAppService,
+            asyncLabService: {
+                isEnabled: jest.fn(() => true),
+                createRun,
+            },
+        });
+
+        const response = await request(app)
+            .post('/api/artifacts/artifact-html-existing/managed-app')
+            .send({
+                requestedAction: 'deploy',
+                deployRequested: true,
+                publicHost: 'existing-demo.demoserver2.buzz',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.deploymentLifecycle).toBeUndefined();
+        expect(response.body.asyncRuntime.run.id).toBe('async-run-existing');
         expect(createRun).toHaveBeenCalledWith(
             expect.objectContaining({
                 adapter: 'managed-app',
-                targetKey: 'managed-app:async-demo.demoserver2.buzz',
-                liveRemote: true,
-                idempotencyKey: 'managed-app-deploy:managed-app-1:build-1',
+                targetKey: 'managed-app:existing-demo.demoserver2.buzz',
                 metadata: expect.objectContaining({
-                    appRef: 'managed-app-1',
-                    publicHost: 'async-demo.demoserver2.buzz',
+                    appRef: 'managed-app-existing',
+                    buildRunId: '',
                     toolParams: expect.objectContaining({
                         action: 'deploy',
-                        appRef: 'managed-app-1',
-                        deployRequested: true,
-                        publicHost: 'async-demo.demoserver2.buzz',
+                        appRef: 'managed-app-existing',
+                        publicHost: 'existing-demo.demoserver2.buzz',
                     }),
                 }),
             }),

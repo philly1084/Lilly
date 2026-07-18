@@ -9,6 +9,7 @@ const {
     createHttpClient,
     createFixtures,
     runBrowserQa,
+    runPublicBrowserQa,
     runCanary,
     validateAuthoredArtifactSet,
     validateAuthoredPreview,
@@ -17,6 +18,11 @@ const {
     validateRunExecutionEvidence,
     validateRunIdentity,
 } = require('./canary-remote-agent-artifact-loop');
+
+const OCI_DIGEST = `sha256:${'a'.repeat(64)}`;
+const CONFLICTING_OCI_DIGEST = `sha256:${'b'.repeat(64)}`;
+const MANAGED_APP_COMMIT_SHA = 'abcdef1234567890abcdef1234567890abcdef12';
+const MANAGED_APP_PIPELINE_URL = 'https://gitlab.demoserver2.buzz/agent-apps/remote-agent-canary/-/pipelines/42';
 
 function jsonResponse(payload, status = 200) {
     return new Response(status === 204 ? null : JSON.stringify(payload), {
@@ -221,6 +227,27 @@ function managedAppFingerprintFromRequest(body, artifactId) {
     };
 }
 
+function managedAppFingerprintFromAuthoredFiles(authoredFiles) {
+    const files = authoredFiles.map((file) => ({
+        path: `public/${file.definition.outputPath}`,
+        buffer: file.buffer,
+    })).sort((left, right) => left.path.localeCompare(right.path));
+    const aggregateHash = crypto.createHash('sha256');
+    files.forEach((file) => {
+        const pathBuffer = Buffer.from(file.path, 'utf8');
+        aggregateHash.update(Buffer.from(`${pathBuffer.length}:`, 'utf8'));
+        aggregateHash.update(pathBuffer);
+        aggregateHash.update(Buffer.from(`:${file.buffer.length}:`, 'utf8'));
+        aggregateHash.update(file.buffer);
+    });
+    return {
+        sha256: aggregateHash.digest('hex'),
+        sizeBytes: files.reduce((total, file) => total + file.buffer.length, 0),
+        fileCount: files.length,
+        paths: files.map((file) => file.path),
+    };
+}
+
 async function createLiveAuthoringHarness(env) {
     const firstPlan = buildLanePlan('codex', env, { hop: 1 });
     const firstResult = buildCompactResult(firstPlan, 'author-hop-1');
@@ -378,6 +405,224 @@ async function createLiveAuthoringHarness(env) {
     };
 }
 
+function buildPushToWebEnv(overrides = {}) {
+    const hostTemplate = 'remote-agent-{lane}-authoring-canary.demoserver2.buzz';
+    return {
+        KIMIBUILT_CANARY_BASE_URL: 'https://kimibuilt.example.test',
+        KIMIBUILT_FRONTEND_API_KEY: 'push-to-web-api-key',
+        KIMIBUILT_CANARY_CODEX_MODEL: 'codex-push-to-web-canary',
+        KIMIBUILT_CANARY_POLL_INTERVAL_MS: '100',
+        ALLOW_PROD_WRITE: 'yes',
+        HUMAN_APPROVED: 'yes',
+        CHANGE_TICKET: 'CHG-REMOTE-AGENT-CANARY-1',
+        KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE: hostTemplate,
+        KIMIBUILT_CANARY_APPROVED_HOST_TEMPLATE: hostTemplate,
+        ...overrides,
+    };
+}
+
+function buildManagedAppProgressPayload(harness, host, options = {}) {
+    const publicUrl = `https://${host}`;
+    const committedPaths = harness.authoredFiles.map((file) => `public/${file.definition.outputPath}`);
+    const fingerprint = managedAppFingerprintFromAuthoredFiles(harness.authoredFiles);
+    const sourceSha256 = options.sourceSha256 || fingerprint.sha256;
+    const commitSha = options.commitSha || MANAGED_APP_COMMIT_SHA;
+    const buildRunId = options.buildRunId || 'build-push-canary';
+    const pipelineUrl = options.pipelineUrl || MANAGED_APP_PIPELINE_URL;
+    const pipelineId = options.pipelineId || '42';
+    const observedDigest = options.observedDigest || OCI_DIGEST;
+    const buildDigest = options.buildDigest || OCI_DIGEST;
+    const deployedDigest = options.deployedDigest || OCI_DIGEST;
+    const deployedImage = options.deployedImage
+        || `registry.demoserver2.buzz/agent-apps/remote-agent-canary@${deployedDigest}`;
+    const requestedImage = 'registry.demoserver2.buzz/agent-apps/remote-agent-canary:sha-abcdef123456';
+    const terminal = options.terminal !== false;
+    const live = terminal && options.phase !== 'deploy_failed';
+    const rollout = options.rollout !== false;
+    const https = options.https !== false;
+    const requiredProof = {
+        sourceChanged: true,
+        gitlabPipelineObserved: true,
+        imageAvailable: true,
+        deploymentObserved: true,
+        publicVerificationObserved: live && https,
+        ...(options.requiredProof || {}),
+    };
+    const phase = options.phase || (terminal ? 'live' : 'deploying');
+    const evidence = {
+        commitSha,
+        committedPaths,
+        pipelineUrl,
+        pipelineStatus: live ? 'success' : 'running',
+        imageTag: 'sha-abcdef123456',
+        imageDigest: buildDigest,
+        observedImageDigest: observedDigest,
+        requestedImage,
+        deployedImage,
+        observedDeploymentImage: deployedImage,
+        observedPodImage: deployedImage,
+        deployStatus: live ? 'succeeded' : 'pending',
+        verificationStatus: live && https ? 'live' : 'pending',
+        targetPublicHost: host,
+        publicUrl: live && https ? publicUrl : '',
+        livePublicUrl: live && https ? publicUrl : '',
+        requiredProof,
+    };
+    return {
+        app: {
+            id: 'managed-app-push-canary',
+            slug: 'remote-agent-codex-authoring-canary',
+            repoOwner: 'agent-apps',
+            repoName: 'remote-agent-canary',
+            repoUrl: 'https://gitlab.demoserver2.buzz/agent-apps/remote-agent-canary.git',
+            publicHost: host,
+            status: live ? 'live' : phase,
+            metadata: {
+                sourceArtifact: {
+                    id: 'artifact-authoring-site-bundle',
+                    sha256: sourceSha256,
+                    sizeBytes: fingerprint.sizeBytes,
+                    fileCount: fingerprint.fileCount,
+                },
+                liveDeploy: {
+                    imageDigest: deployedDigest,
+                    observedImageDigest: observedDigest,
+                    requestedImage,
+                    lastImage: requestedImage,
+                    deployedImage,
+                    observedDeploymentImage: deployedImage,
+                    observedPodImage: deployedImage,
+                    rollout: live && rollout,
+                    https: live && https,
+                },
+            },
+        },
+        latestBuildRun: {
+            id: buildRunId,
+            commitSha,
+            imageTag: 'sha-abcdef123456',
+            imageDigest: buildDigest,
+            buildStatus: live ? 'success' : 'running',
+            deployStatus: live ? 'succeeded' : 'pending',
+            verificationStatus: live && https ? 'live' : 'pending',
+            externalRunId: pipelineId,
+            externalRunUrl: pipelineUrl,
+            metadata: {
+                committedPaths,
+                deployment: {
+                    imageDigest: deployedDigest,
+                    image: deployedImage,
+                    deployedImage,
+                    deploymentImage: deployedImage,
+                    podImage: deployedImage,
+                    verification: {
+                        rollout: live && rollout,
+                        https: live && https,
+                    },
+                },
+            },
+        },
+        project: {
+            phase,
+            publicHost: host,
+            targetPublicHost: host,
+            publicUrl: live && https ? publicUrl : '',
+            livePublicUrl: live && https ? publicUrl : '',
+            publicVerificationObserved: live && https,
+        },
+        progress: {
+            phase,
+            terminal,
+            evidence,
+        },
+    };
+}
+
+async function createPushToWebHarness(env, options = {}) {
+    const harness = await createLiveAuthoringHarness(env);
+    const fingerprint = managedAppFingerprintFromAuthoredFiles(harness.authoredFiles);
+    const publicHost = String(env.KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE)
+        .replace('{lane}', 'codex');
+    const progressPayloads = options.progressPayloads || [
+        buildManagedAppProgressPayload(harness, publicHost, {
+            terminal: false,
+            sourceSha256: fingerprint.sha256,
+        }),
+        buildManagedAppProgressPayload(harness, publicHost, {
+            sourceSha256: fingerprint.sha256,
+        }),
+    ];
+    let progressIndex = 0;
+    const fetchImpl = jest.fn(async (url, requestOptions = {}) => {
+        const parsed = new URL(url);
+        const method = requestOptions.method || 'GET';
+        const body = requestOptions.body ? JSON.parse(requestOptions.body) : null;
+        if (method === 'POST'
+            && parsed.pathname === '/api/artifacts/artifact-authoring-site-bundle/managed-app') {
+            harness.calls.push({ method, path: parsed.pathname, body });
+            const acceptedSourceSha256 = options.deploymentSourceSha256 || body.expectedSourceSha256;
+            return jsonResponse({
+                artifactId: 'artifact-authoring-site-bundle',
+                fileCount: harness.authoredFiles.length,
+                files: harness.authoredFiles.map((file) => `public/${file.definition.outputPath}`),
+                sourceSha256: acceptedSourceSha256,
+                sourceSizeBytes: fingerprint.sizeBytes,
+                publicHost: body.publicHost,
+                app: {
+                    id: 'managed-app-push-canary',
+                    slug: 'remote-agent-codex-authoring-canary',
+                    repoOwner: 'agent-apps',
+                    repoName: 'remote-agent-canary',
+                    repoUrl: 'https://gitlab.demoserver2.buzz/agent-apps/remote-agent-canary.git',
+                    publicHost: body.publicHost,
+                    metadata: {
+                        sourceArtifact: {
+                            id: 'artifact-authoring-site-bundle',
+                            sha256: acceptedSourceSha256,
+                            sizeBytes: fingerprint.sizeBytes,
+                            fileCount: fingerprint.fileCount,
+                        },
+                    },
+                },
+                buildRun: {
+                    id: 'build-push-canary',
+                    commitSha: MANAGED_APP_COMMIT_SHA,
+                    imageTag: 'sha-abcdef123456',
+                    buildStatus: 'queued',
+                    metadata: { committedPaths: fingerprint.paths },
+                },
+                deploymentLifecycle: {
+                    mode: 'build-webhook',
+                    status: 'queued',
+                    buildRunId: 'build-push-canary',
+                    commitSha: MANAGED_APP_COMMIT_SHA,
+                    deployRequested: true,
+                    digestRequired: true,
+                },
+                ...(options.includePrematureAsyncRun ? {
+                    asyncRuntime: {
+                        run: { id: 'run-managed-app-push-canary' },
+                    },
+                } : {}),
+            }, 202);
+        }
+        if (method === 'GET'
+            && parsed.pathname === '/api/managed-apps/managed-app-push-canary/progress') {
+            harness.calls.push({ method, path: parsed.pathname, body });
+            const payload = progressPayloads[Math.min(progressIndex, progressPayloads.length - 1)];
+            progressIndex += 1;
+            return jsonResponse(payload);
+        }
+        return harness.fetchImpl(url, requestOptions);
+    });
+    return {
+        ...harness,
+        fetchImpl,
+        publicHost,
+        progressPayloads,
+    };
+}
+
 describe('remote agent artifact-loop canary', () => {
     test('defaults to a deterministic two-hop, three-lane dry run with zero network requests', async () => {
         const fetchImpl = jest.fn(() => {
@@ -444,6 +689,89 @@ describe('remote agent artifact-loop canary', () => {
         await expect(runCanary({ argv: ['--browser-qa'], env: {}, fetchImpl })).rejects.toThrow(
             '--browser-qa requires --authoring.',
         );
+    });
+
+    test('fails closed before network unless every Push-to-Web execution and approval gate is exact', async () => {
+        const completeArgs = ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'];
+        const completeEnv = buildPushToWebEnv();
+        const cases = [
+            {
+                name: 'missing run',
+                argv: ['--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+                env: completeEnv,
+                error: '--push-to-web requires --run --authoring --browser-qa.',
+            },
+            {
+                name: 'missing authoring',
+                argv: ['--run', '--mode=codex', '--browser-qa', '--push-to-web'],
+                env: completeEnv,
+                error: '--push-to-web requires --run --authoring --browser-qa.',
+            },
+            {
+                name: 'missing browser QA',
+                argv: ['--run', '--mode=codex', '--authoring', '--push-to-web'],
+                env: completeEnv,
+                error: '--push-to-web requires --run --authoring --browser-qa.',
+            },
+            {
+                name: 'missing production write gate',
+                argv: completeArgs,
+                env: { ...completeEnv, ALLOW_PROD_WRITE: '' },
+                error: 'Push-to-Web canary requires ALLOW_PROD_WRITE=yes.',
+            },
+            {
+                name: 'missing human approval',
+                argv: completeArgs,
+                env: { ...completeEnv, HUMAN_APPROVED: '' },
+                error: 'Push-to-Web canary requires HUMAN_APPROVED=yes.',
+            },
+            {
+                name: 'invalid change ticket',
+                argv: completeArgs,
+                env: { ...completeEnv, CHANGE_TICKET: 'bad ticket' },
+                error: 'Push-to-Web canary requires a valid CHANGE_TICKET.',
+            },
+            {
+                name: 'mismatched host approval',
+                argv: completeArgs,
+                env: {
+                    ...completeEnv,
+                    KIMIBUILT_CANARY_APPROVED_HOST_TEMPLATE: 'different-{lane}.demoserver2.buzz',
+                },
+                error: 'Push-to-Web canary requires an exact approved host template match.',
+            },
+            {
+                name: 'whitespace-normalized host approval',
+                argv: completeArgs,
+                env: {
+                    ...completeEnv,
+                    KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE: ` ${completeEnv.KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE}`,
+                },
+                error: 'Push-to-Web canary requires an exact approved host template match.',
+            },
+            {
+                name: 'non-templated host',
+                argv: completeArgs,
+                env: {
+                    ...completeEnv,
+                    KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE: 'single-host.demoserver2.buzz',
+                    KIMIBUILT_CANARY_APPROVED_HOST_TEMPLATE: 'single-host.demoserver2.buzz',
+                },
+                error: 'Push-to-Web host template must contain exactly one {lane} token.',
+            },
+        ];
+
+        for (const testCase of cases) {
+            const fetchImpl = jest.fn(() => {
+                throw new Error(`${testCase.name} must fail before fetch`);
+            });
+            await expect(runCanary({
+                argv: testCase.argv,
+                env: testCase.env,
+                fetchImpl,
+            })).rejects.toThrow(testCase.error);
+            expect(fetchImpl).not.toHaveBeenCalled();
+        }
     });
 
     test('rejects bad authoring semantics and missing resolved provider-model evidence', () => {
@@ -803,6 +1131,44 @@ describe('remote agent artifact-loop canary', () => {
         expect(options.env.API_BASE_URL).toBe('https://kimibuilt.example.test');
     });
 
+    test('runs public browser QA only at the exact approved HTTPS origin and strips API credentials', async () => {
+        const execFileImpl = jest.fn((_executable, _args, _options, callback) => {
+            callback(null, [
+                'UI_CHECK_REPORT=C:\\checks\\public-ui-check-report.json',
+                'KIMIBUILT_UI_CHECK_RESULT={"ok":true,"checkedViewports":2,"issues":[]}',
+                '',
+            ].join('\n'), '');
+        });
+        const result = await runPublicBrowserQa({
+            publicUrl: 'https://remote-agent-codex-authoring-canary.demoserver2.buzz/',
+            expectedOrigin: 'https://remote-agent-codex-authoring-canary.demoserver2.buzz',
+            lane: 'codex',
+            env: {
+                KIMIBUILT_FRONTEND_API_KEY: 'must-not-reach-public-browser',
+                KIMIBUILT_CANARY_LIVE_UI_CHECK_OUT_DIR: 'C:\\tmp\\public-authoring-ui-check',
+            },
+            execFileImpl,
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            ok: true,
+            checkedViewports: 2,
+            publicUrl: 'https://remote-agent-codex-authoring-canary.demoserver2.buzz/',
+        }));
+        const [, args, options] = execFileImpl.mock.calls[0];
+        expect(args[1]).toBe('https://remote-agent-codex-authoring-canary.demoserver2.buzz/');
+        expect(args).toContain('--same-origin-only');
+        expect(options.env.KIMIBUILT_FRONTEND_API_KEY).toBeUndefined();
+        expect(options.env.API_BASE_URL).toBe('https://remote-agent-codex-authoring-canary.demoserver2.buzz');
+        await expect(runPublicBrowserQa({
+            publicUrl: 'https://other.demoserver2.buzz/',
+            expectedOrigin: 'https://remote-agent-codex-authoring-canary.demoserver2.buzz',
+            lane: 'codex',
+            execFileImpl,
+        })).rejects.toThrow('exact approved credential-free HTTPS origin');
+        expect(execFileImpl).toHaveBeenCalledTimes(1);
+    });
+
     test('proves an authenticated two-hop live lane, final bytes, preview, preflight, and cleanup', async () => {
         const apiKey = 'frontend-api-key-for-test';
         const env = {
@@ -1041,6 +1407,352 @@ describe('remote agent artifact-loop canary', () => {
         const deleteIndex = harness.calls.findIndex((call) => call.method === 'DELETE');
         expect(browserIndex).toBeGreaterThan(-1);
         expect(deleteIndex).toBeGreaterThan(browserIndex);
+    });
+
+    test('pushes the exact preflight SHA, observes terminal source/build/image/rollout/HTTPS proof, and checks the approved public origin', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env);
+        const browserQaRunner = jest.fn(async (input) => {
+            harness.calls.push({ method: 'BROWSER_QA', path: new URL(input.previewUrl).pathname });
+            return { ok: true, checkedViewports: 2, issues: [], outDir: 'ui-checks/push-preview' };
+        });
+        const publicBrowserQaRunner = jest.fn(async (input) => {
+            harness.calls.push({ method: 'PUBLIC_BROWSER_QA', path: input.publicUrl });
+            return { ok: true, checkedViewports: 2, issues: [], outDir: 'ui-checks/push-live' };
+        });
+
+        const result = await runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            execution: 'live',
+            passed: true,
+            ephemeralSessionDeleted: true,
+            authoringScenario: 'passed',
+            pushToWebScenario: 'passed',
+        }));
+        const pushed = result.lanes[0].authoring.pushToWeb;
+        expect(pushed).toEqual(expect.objectContaining({
+            status: 'passed',
+            appRef: 'managed-app-push-canary',
+            sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            publicHost: harness.publicHost,
+            publicUrl: `https://${harness.publicHost}/`,
+            progressPolls: 2,
+            sourceCommit: MANAGED_APP_COMMIT_SHA,
+            buildStatus: 'success',
+            image: OCI_DIGEST,
+            deploymentLifecycle: 'build-webhook',
+            rollout: 'passed',
+            https: 'passed',
+            browserQa: expect.objectContaining({ status: 'passed', checkedViewports: 2 }),
+        }));
+
+        const preflightCall = harness.calls.find((call) => (
+            call.method === 'POST'
+            && call.path === '/api/artifacts/artifact-authoring-site-bundle/managed-app/preflight'
+        ));
+        const deployCall = harness.calls.find((call) => (
+            call.method === 'POST'
+            && call.path === '/api/artifacts/artifact-authoring-site-bundle/managed-app'
+        ));
+        expect(deployCall.body).toEqual(expect.objectContaining({
+            sessionId: 'session-authoring-canary',
+            requestedAction: 'deploy',
+            deployRequested: true,
+            queueAsyncDeploy: false,
+            expectedSourceSha256: preflightCall.body.expectedSourceSha256,
+            publicHost: harness.publicHost,
+        }));
+        expect(deployCall.body.metadata).toEqual(expect.objectContaining({
+            changeTicket: env.CHANGE_TICKET,
+            approvedHostTemplate: env.KIMIBUILT_CANARY_APPROVED_HOST_TEMPLATE,
+            expectedPublicOrigin: `https://${harness.publicHost}`,
+            expectedSourceSha256: preflightCall.body.expectedSourceSha256,
+        }));
+        expect(harness.calls.filter((call) => call.path === '/api/managed-apps/managed-app-push-canary/progress')).toHaveLength(2);
+        expect(harness.calls.filter((call) => call.path.includes('run-managed-app-push-canary'))).toHaveLength(0);
+        expect(publicBrowserQaRunner).toHaveBeenCalledWith(expect.objectContaining({
+            publicUrl: `https://${harness.publicHost}/`,
+            expectedOrigin: `https://${harness.publicHost}`,
+            lane: 'codex',
+        }));
+        const publicQaIndex = harness.calls.findIndex((call) => call.method === 'PUBLIC_BROWSER_QA');
+        const managedProgressIndex = harness.calls.findIndex((call) => call.path === '/api/managed-apps/managed-app-push-canary/progress');
+        const deleteIndex = harness.calls.findIndex((call) => call.method === 'DELETE');
+        expect(managedProgressIndex).toBeGreaterThan(-1);
+        expect(publicQaIndex).toBeGreaterThan(-1);
+        expect(deleteIndex).toBeGreaterThan(publicQaIndex);
+    });
+
+    test('rejects a Push-to-Web response whose source hash differs from preflight and still cleans up', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env, {
+            deploymentSourceSha256: '0'.repeat(64),
+        });
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('Push-to-Web response did not attest the accepted preflight SHA-256.');
+
+        expect(harness.calls.some((call) => call.path === '/api/managed-apps/managed-app-push-canary/progress')).toBe(false);
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+    });
+
+    test('fails closed on terminal progress without explicit HTTPS proof and cleans up before public browser QA', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env);
+        const terminal = harness.progressPayloads.at(-1);
+        terminal.app.metadata.liveDeploy.https = false;
+        terminal.latestBuildRun.metadata.deployment.verification.https = false;
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('managed-app progress did not prove successful public HTTPS verification.');
+
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+    });
+
+    test('rejects sha-* tags and bare hashes as managed-app image proof', async () => {
+        for (const mutableReference of ['sha-abcdef123456', 'a'.repeat(64)]) {
+            const env = buildPushToWebEnv();
+            const harness = await createPushToWebHarness(env);
+            const terminal = harness.progressPayloads.at(-1);
+            terminal.progress.evidence.imageDigest = mutableReference;
+            terminal.progress.evidence.observedImageDigest = mutableReference;
+            terminal.latestBuildRun.imageDigest = mutableReference;
+            terminal.latestBuildRun.metadata.deployment.imageDigest = mutableReference;
+            terminal.app.metadata.liveDeploy.imageDigest = mutableReference;
+            terminal.app.metadata.liveDeploy.observedImageDigest = mutableReference;
+            const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+            const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+            await expect(runCanary({
+                argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+                env,
+                fetchImpl: harness.fetchImpl,
+                browserQaRunner,
+                publicBrowserQaRunner,
+                sleep: jest.fn(),
+            })).rejects.toThrow('Managed-app progress reported non-digest observed image evidence.');
+
+            expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+            expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+                method: 'DELETE',
+                path: '/api/sessions/session-authoring-canary',
+            }));
+        }
+    });
+
+    test('rejects tag-pinned deployment specs even when repeated digest scalars agree', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env);
+        const terminal = harness.progressPayloads.at(-1);
+        const mutableImage = 'registry.demoserver2.buzz/agent-apps/remote-agent-canary:sha-abcdef123456';
+        terminal.progress.evidence.deployedImage = mutableImage;
+        terminal.latestBuildRun.metadata.deployment.deployedImage = mutableImage;
+        terminal.app.metadata.liveDeploy.deployedImage = mutableImage;
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('Managed-app progress reported a non-digest deployed image reference.');
+
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+    });
+
+    test('rejects conflicting observed, build, and deployed OCI digests', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env);
+        harness.progressPayloads.at(-1).latestBuildRun.imageDigest = CONFLICTING_OCI_DIGEST;
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('Managed-app progress reported conflicting OCI image digests.');
+
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+    });
+
+    test('rejects terminal progress that breaks the accepted build, source, commit, or pipeline chain', async () => {
+        const cases = [
+            {
+                mutate: (terminal) => { terminal.latestBuildRun.id = 'stale-build-run'; },
+                error: 'managed-app progress did not preserve the accepted build-run identity.',
+            },
+            {
+                mutate: (terminal) => { terminal.app.metadata.sourceArtifact.sha256 = '0'.repeat(64); },
+                error: 'managed-app progress did not preserve the accepted preflight source SHA-256.',
+            },
+            {
+                mutate: (terminal) => { terminal.progress.evidence.commitSha = '1234567890abcdef1234567890abcdef12345678'; },
+                error: 'managed-app progress did not preserve the accepted commit and source paths.',
+            },
+            {
+                mutate: (terminal) => {
+                    terminal.progress.evidence.pipelineUrl = 'https://gitlab.demoserver2.buzz/agent-apps/remote-agent-canary/-/pipelines/99';
+                },
+                error: 'managed-app progress did not preserve the accepted commit-to-pipeline chain.',
+            },
+            {
+                mutate: (terminal) => { terminal.latestBuildRun.externalRunId = '99'; },
+                error: 'managed-app progress did not preserve the accepted commit-to-pipeline chain.',
+            },
+            {
+                mutate: (terminal) => {
+                    const foreignUrl = 'https://evil.example/agent-apps/remote-agent-canary/-/pipelines/42';
+                    terminal.progress.evidence.pipelineUrl = foreignUrl;
+                    terminal.latestBuildRun.externalRunUrl = foreignUrl;
+                },
+                error: 'managed-app progress did not preserve the accepted commit-to-pipeline chain.',
+            },
+            {
+                mutate: (terminal) => {
+                    const foreignUrl = 'https://gitlab.demoserver2.buzz/other/repository/-/pipelines/42';
+                    terminal.progress.evidence.pipelineUrl = foreignUrl;
+                    terminal.latestBuildRun.externalRunUrl = foreignUrl;
+                },
+                error: 'managed-app progress did not preserve the accepted commit-to-pipeline chain.',
+            },
+            {
+                mutate: (terminal) => {
+                    terminal.app.repoName = 'renamed-repository';
+                    terminal.app.repoUrl = 'https://gitlab.demoserver2.buzz/agent-apps/renamed-repository.git';
+                },
+                error: 'managed-app progress changed the accepted GitLab repository identity.',
+            },
+        ];
+
+        for (const testCase of cases) {
+            const env = buildPushToWebEnv();
+            const harness = await createPushToWebHarness(env);
+            testCase.mutate(harness.progressPayloads.at(-1));
+            const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+            const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+            await expect(runCanary({
+                argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+                env,
+                fetchImpl: harness.fetchImpl,
+                browserQaRunner,
+                publicBrowserQaRunner,
+                sleep: jest.fn(),
+            })).rejects.toThrow(testCase.error);
+
+            expect(publicBrowserQaRunner).not.toHaveBeenCalled();
+            expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+                method: 'DELETE',
+                path: '/api/sessions/session-authoring-canary',
+            }));
+        }
+    });
+
+    test('rejects a premature managed-app async deploy and deletes the session before polling progress', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env, {
+            includePrematureAsyncRun: true,
+        });
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow('started a premature async deploy before its build completed.');
+
+        expect(harness.calls.some((call) => call.path === '/api/managed-apps/managed-app-push-canary/progress')).toBe(false);
+        expect(harness.calls.at(-1)).toEqual(expect.objectContaining({
+            method: 'DELETE',
+            path: '/api/sessions/session-authoring-canary',
+        }));
+    });
+
+    test('times out a non-terminal webhook-driven deployment before deleting the session', async () => {
+        const env = buildPushToWebEnv({ KIMIBUILT_CANARY_TIMEOUT_MS: '10000' });
+        const pendingHost = env.KIMIBUILT_CANARY_PUSH_TO_WEB_HOST_TEMPLATE.replace('{lane}', 'codex');
+        const pendingProgress = buildManagedAppProgressPayload(
+            await createLiveAuthoringHarness(env),
+            pendingHost,
+            { terminal: false },
+        );
+        const harness = await createPushToWebHarness(env, {
+            progressPayloads: [pendingProgress],
+        });
+        let clock = 0;
+        const now = jest.fn(() => {
+            clock += 6000;
+            return clock;
+        });
+        const browserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+        const publicBrowserQaRunner = jest.fn(async () => ({ ok: true, checkedViewports: 2, issues: [] }));
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+            now,
+        })).rejects.toThrow('managed-app deployment did not reach terminal proof before timeout.');
+
+        const progressIndex = harness.calls.findIndex((call) => call.path === '/api/managed-apps/managed-app-push-canary/progress');
+        const deleteIndex = harness.calls.findIndex((call) => call.path === '/api/sessions/session-authoring-canary');
+        expect(progressIndex).toBeGreaterThan(-1);
+        expect(deleteIndex).toBeGreaterThan(progressIndex);
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
     });
 
     test('deletes the ephemeral session when optional authoring browser QA fails after terminal runs', async () => {

@@ -12,7 +12,11 @@ const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-mem
 const { sessionStore } = require('../session-store');
 const { managedAppStore } = require('./store');
 const { GitLabClient } = require('./gitlab-client');
-const { KubernetesClient } = require('./kubernetes-client');
+const {
+    KubernetesClient,
+    extractOciSha256DigestFromImageRef,
+    normalizeOciSha256Digest,
+} = require('./kubernetes-client');
 const { remoteCliAgentsSdkRunner } = require('../remote-cli/agents-sdk-runner');
 const {
     buildDefaultScaffoldFiles,
@@ -61,6 +65,8 @@ const MAX_MANAGED_APP_SLUG_LENGTH = 63;
 const MAX_KUBERNETES_NAME_LENGTH = 63;
 const DEFAULT_GITLAB_RUNNER_TAGS = 'kimibuilt,buildkit';
 const DEFAULT_MANAGED_APP_SLUG_PREFIX = 'managed-app';
+const GIT_COMMIT_SHA_PATTERN = /^[a-f0-9]{7,64}$/i;
+const KIMIBUILT_BUILD_RUN_SOURCES = new Set(['managed-app-service', 'remote-cli-agent']);
 const MANAGED_APP_VIEWPORT_STATE_KEYS = [
     'viewportSize',
     'projectViewportSize',
@@ -379,6 +385,10 @@ function inferDeployRequested(value = '', fallback = false) {
     return ['deploy', 'publish', 'live', 'launch', 'release'].includes(normalized);
 }
 
+function isKimiBuiltInitiatedBuildRun(buildRun = null) {
+    return Boolean(buildRun && KIMIBUILT_BUILD_RUN_SOURCES.has(normalizeText(buildRun.source).toLowerCase()));
+}
+
 function normalizeFilesInput(files = []) {
     return (Array.isArray(files) ? files : [])
         .filter((entry) => entry && typeof entry === 'object' && normalizeText(entry.path))
@@ -431,6 +441,10 @@ function mergeRepositoryFiles(baseFiles = [], overrideFiles = []) {
 function buildImageTagFromCommit(commitSha = '') {
     const normalized = normalizeText(commitSha);
     return normalized ? `sha-${normalized.slice(0, 12)}` : '';
+}
+
+function isValidGitCommitSha(value = '') {
+    return GIT_COMMIT_SHA_PATTERN.test(normalizeText(value));
 }
 
 function extractHostFromUrl(value = '') {
@@ -570,19 +584,17 @@ function resolveManagedAppImageRepo(input = {}, giteaConfig = {}) {
     return isUsableImageRepo(derived) ? derived : '';
 }
 
-function extractImageTagFromImageRef(value = '') {
-    const normalized = normalizeText(value);
-    if (!normalized) {
+function buildManagedAppImageReference(imageRepo = '', imageTag = '') {
+    const normalizedRepo = normalizeImageRepo(imageRepo);
+    const normalizedTag = normalizeText(imageTag);
+    const digest = normalizeOciSha256Digest(normalizedTag);
+    if (!normalizedRepo || !normalizedTag) {
         return '';
     }
 
-    const lastSlash = normalized.lastIndexOf('/');
-    const lastColon = normalized.lastIndexOf(':');
-    if (lastColon <= lastSlash) {
-        return '';
-    }
-
-    return normalizeText(normalized.slice(lastColon + 1));
+    return digest
+        ? `${normalizedRepo}@${digest}`
+        : `${normalizedRepo}:${normalizedTag}`;
 }
 
 function buildManagedAppDeployBuildStateError(buildRun = null) {
@@ -591,7 +603,7 @@ function buildManagedAppDeployBuildStateError(buildRun = null) {
     if (isPendingBuildStatus(status)) {
         message = 'Managed app deployment requires a successful image build. The latest build is still running or queued; wait for the remote GitLab pipeline to finish before deploying.';
     } else if (isFailedBuildStatus(status)) {
-        message = 'Managed app deployment requires a successful image build. The latest build failed, so deployment will not continue until the image build succeeds or an explicit image tag is provided.';
+        message = 'Managed app deployment requires a successful image build. The latest build failed, so deployment will not continue until a new image build succeeds with canonical digest evidence.';
     }
 
     const error = new Error(message);
@@ -859,6 +871,19 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
     const podTerminatedReason = normalizeText(podStatus.terminatedReason);
     const podTerminatedMessage = normalizeText(podStatus.terminatedMessage);
     const rolloutError = normalizeText(deployResult?.rollout?.error);
+    const imageDigest = normalizeOciSha256Digest(
+        deployResult?.observedImageDigest
+        || diagnostics.observedImageDigest
+        || diagnostics.imageDigest
+        || diagnostics.imageEvidence?.observedDigest
+        || podStatus.imageID,
+    );
+    const imageDigestError = normalizeText(
+        diagnostics.imageDigestError
+        || diagnostics.imageEvidence?.error
+        || deployResult?.imageEvidence?.error,
+    );
+    const publicHttpsVerified = verification.publicHttps === true || https.ok === true;
 
     let ingressIssue = '';
     if (deployResult) {
@@ -928,9 +953,15 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
 
     const httpsStatus = !deployResult
         ? ''
-        : (verification.https === true
+        : (publicHttpsVerified || verification.https === true
             ? `HTTPS returned ${httpsStatusCode || 200}${httpsLocation ? ` and redirected to ${httpsLocation}` : ''}.`
             : httpsIssue);
+
+    const imageDigestStatus = !deployResult
+        ? ''
+        : (verification.imageDigest === true && imageDigest
+            ? `Kubernetes observed runtime image digest ${imageDigest}.`
+            : (imageDigestError || 'Kubernetes did not prove an OCI sha256 digest from the running pod imageID.'));
 
     const appProbeStatusSummary = !deployResult || appProbeAttempted !== true
         ? ''
@@ -956,6 +987,9 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
             failureCategory = 'rollout';
             failureReason = rolloutError || `Deployment rollout failed on the remote cluster${podPhase ? ` while pod phase was ${podPhase}` : '.'}`;
         }
+    } else if (verification.imageDigest !== true || !imageDigest) {
+        failureCategory = 'image_digest';
+        failureReason = imageDigestStatus;
     } else if (ingressIssue) {
         failureCategory = 'ingress';
         failureReason = ingressIssue;
@@ -971,14 +1005,16 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
         failureReason = httpsIssue;
     }
 
-    const shouldFailClosed = ['rollout', 'image_pull', 'ingress', 'tls', 'https', 'app'].includes(failureCategory)
-        && (httpsStatusCode > 0 || ['rollout', 'image_pull', 'ingress', 'tls', 'app'].includes(failureCategory));
+    const shouldFailClosed = ['rollout', 'image_pull', 'image_digest', 'ingress', 'tls', 'https', 'app'].includes(failureCategory)
+        && (httpsStatusCode > 0 || ['rollout', 'image_pull', 'image_digest', 'ingress', 'tls', 'app'].includes(failureCategory));
     const nextStep = (() => {
         switch (failureCategory) {
             case 'rollout':
                 return 'Inspect the remote rollout error, fix the cluster state, and redeploy the managed app.';
             case 'image_pull':
                 return 'Inspect the registry pull secret and GitLab registry credentials on the remote cluster, then redeploy once the image can be pulled.';
+            case 'image_digest':
+                return 'Inspect the Deployment image, pod image, and runtime imageID, then redeploy until Kubernetes proves the expected OCI sha256 digest.';
             case 'ingress':
                 if (httpsStatusCode === 404 && appProbeOk) {
                     return 'Inspect Traefik ingress routing for this host because the service is reachable but the public endpoint returns 404.';
@@ -1000,6 +1036,8 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
         ingressStatus,
         tlsStatus,
         httpsStatus,
+        imageDigest,
+        imageDigestStatus,
         appProbeStatus: appProbeStatusSummary,
         failureCategory,
         failureReason,
@@ -1010,6 +1048,7 @@ function getManagedAppDeployDiagnostics(app = null, deployment = null) {
             ingressStatus && verification.ingress !== true ? ingressStatus : '',
             tlsStatus && verification.tls !== true ? tlsStatus : '',
             httpsStatus && verification.https !== true ? httpsStatus : '',
+            imageDigestStatus && verification.imageDigest !== true ? imageDigestStatus : '',
             appProbeStatusSummary && !appProbeOk ? appProbeStatusSummary : '',
             challengeSummary[0] || '',
             ingressEvents[0] || '',
@@ -1173,11 +1212,60 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
         || run.imageTag
         || buildImageTagFromCommit(commitSha),
     );
-    const imageDigest = normalizeText(details.imageDigest || run.imageDigest);
     const publicHost = normalizeText(normalizedApp.publicHost);
     const liveDeploy = normalizedApp.metadata?.liveDeploy && typeof normalizedApp.metadata.liveDeploy === 'object'
         ? normalizedApp.metadata.liveDeploy
         : {};
+    const deployment = details.deployment && typeof details.deployment === 'object'
+        ? details.deployment
+        : (metadata.deployment && typeof metadata.deployment === 'object'
+            ? metadata.deployment
+            : (liveDeploy.lastDeployResult && typeof liveDeploy.lastDeployResult === 'object'
+                ? liveDeploy.lastDeployResult
+                : {}));
+    const imageEvidence = deployment.imageEvidence && typeof deployment.imageEvidence === 'object'
+        ? deployment.imageEvidence
+        : {};
+    const imageDigest = normalizeOciSha256Digest(
+        details.imageDigest
+        || run.imageDigest
+        || liveDeploy.buildImageDigest
+        || imageEvidence.buildDigest,
+    );
+    const requestedImage = normalizeText(
+        details.requestedImage
+        || liveDeploy.requestedImage
+        || liveDeploy.lastImage
+        || deployment.requestedImage
+        || imageEvidence.requestedImage,
+    );
+    const observedDeploymentImage = normalizeText(
+        liveDeploy.observedDeploymentImage
+        || deployment.deploymentImage
+        || imageEvidence.observedDeploymentImage
+        || imageEvidence.deploymentImage,
+    );
+    const observedPodImage = normalizeText(
+        liveDeploy.observedPodImage
+        || deployment.podImage
+        || imageEvidence.observedPodImage
+        || imageEvidence.podImage,
+    );
+    const observedImageID = normalizeText(
+        liveDeploy.observedImageID
+        || deployment.podImageID
+        || imageEvidence.observedImageID
+        || imageEvidence.podImageID,
+    );
+    const observedImageDigest = normalizeOciSha256Digest(
+        details.observedImageDigest
+        || liveDeploy.observedImageDigest
+        || deployment.observedImageDigest
+        || deployment.diagnostics?.observedImageDigest
+        || deployment.diagnostics?.imageDigest
+        || imageEvidence.observedImageDigest
+        || imageEvidence.observedDigest,
+    );
     const remoteCli = details.remoteCli && typeof details.remoteCli === 'object'
         ? details.remoteCli
         : (iteration.remoteCli && typeof iteration.remoteCli === 'object' ? iteration.remoteCli : {});
@@ -1197,6 +1285,12 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
         pipelineStatus: normalizeText(run.buildStatus || metadata.gitlabPipeline?.status),
         imageTag,
         imageDigest,
+        requestedImage,
+        deployedImage: normalizeText(liveDeploy.deployedImage || deployment.deployedImage || imageEvidence.deployedImage),
+        observedDeploymentImage,
+        observedPodImage,
+        observedImageID,
+        observedImageDigest,
         deployStatus: normalizeText(run.deployStatus || liveDeploy.lastStatus),
         verificationStatus: normalizeText(run.verificationStatus || liveDeploy.lastVerificationStatus),
         publicUrl: livePublicUrl,
@@ -1219,7 +1313,7 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
         requiredProof: {
             sourceChanged: Boolean(commitSha && committedPaths.length > 0),
             gitlabPipelineObserved: Boolean(pipelineUrl || run.externalRunId || metadata.gitlabPipeline),
-            imageAvailable: Boolean(imageTag || imageDigest),
+            imageAvailable: Boolean(imageDigest),
             deploymentObserved: Boolean(run.deployStatus && run.deployStatus !== 'not_requested'),
             publicVerificationObserved,
         },
@@ -1695,6 +1789,13 @@ function normalizeManagedAppMetadata(metadata = {}, app = {}, options = {}) {
     const repoState = source.repoState && typeof source.repoState === 'object' ? source.repoState : {};
     const desiredDeploy = source.desiredDeploy && typeof source.desiredDeploy === 'object' ? source.desiredDeploy : {};
     const liveDeploy = source.liveDeploy && typeof source.liveDeploy === 'object' ? source.liveDeploy : {};
+    const liveImageEvidence = liveDeploy.lastDeployResult?.imageEvidence && typeof liveDeploy.lastDeployResult.imageEvidence === 'object'
+        ? liveDeploy.lastDeployResult.imageEvidence
+        : {};
+    const liveBuildImageDigest = normalizeOciSha256Digest(
+        liveDeploy.buildImageDigest
+        || liveImageEvidence.buildDigest,
+    );
     const containerPort = Number(
         desiredDeploy.containerPort
         || source.requestedContainerPort
@@ -1736,6 +1837,14 @@ function normalizeManagedAppMetadata(metadata = {}, app = {}, options = {}) {
         },
         liveDeploy: {
             lastImage: normalizeText(liveDeploy.lastImage || source.lastImage),
+            requestedImage: normalizeText(liveDeploy.requestedImage || liveDeploy.lastImage || liveImageEvidence.requestedImage || source.lastImage),
+            deployedImage: normalizeText(liveDeploy.deployedImage || liveImageEvidence.deployedImage),
+            buildImageDigest: liveBuildImageDigest,
+            observedDeploymentImage: normalizeText(liveDeploy.observedDeploymentImage || liveImageEvidence.observedDeploymentImage || liveImageEvidence.deploymentImage),
+            observedPodImage: normalizeText(liveDeploy.observedPodImage || liveImageEvidence.observedPodImage || liveImageEvidence.podImage),
+            observedImageID: normalizeText(liveDeploy.observedImageID || liveImageEvidence.observedImageID || liveImageEvidence.podImageID),
+            observedImageDigest: normalizeOciSha256Digest(liveDeploy.observedImageDigest || liveImageEvidence.observedImageDigest || liveImageEvidence.observedDigest),
+            imageDigest: liveBuildImageDigest,
             rollout: liveDeploy.rollout === true,
             ingress: liveDeploy.ingress === true,
             tls: liveDeploy.tls === true,
@@ -1809,6 +1918,14 @@ function buildManagedAppMetadata(existingMetadata = {}, app = {}, options = {}) 
     merged.desiredDeploy.tlsClusterIssuer = normalizeText(merged.desiredDeploy.tlsClusterIssuer);
     merged.desiredDeploy.registryPullSecretName = normalizeText(merged.desiredDeploy.registryPullSecretName);
     merged.liveDeploy.lastImage = normalizeText(merged.liveDeploy.lastImage);
+    merged.liveDeploy.requestedImage = normalizeText(merged.liveDeploy.requestedImage || merged.liveDeploy.lastImage);
+    merged.liveDeploy.deployedImage = normalizeText(merged.liveDeploy.deployedImage);
+    merged.liveDeploy.buildImageDigest = normalizeOciSha256Digest(merged.liveDeploy.buildImageDigest);
+    merged.liveDeploy.observedDeploymentImage = normalizeText(merged.liveDeploy.observedDeploymentImage);
+    merged.liveDeploy.observedPodImage = normalizeText(merged.liveDeploy.observedPodImage);
+    merged.liveDeploy.observedImageID = normalizeText(merged.liveDeploy.observedImageID);
+    merged.liveDeploy.observedImageDigest = normalizeOciSha256Digest(merged.liveDeploy.observedImageDigest);
+    merged.liveDeploy.imageDigest = merged.liveDeploy.buildImageDigest;
     merged.liveDeploy.lastVerifiedAt = normalizeText(merged.liveDeploy.lastVerifiedAt);
     merged.liveDeploy.lastError = normalizeText(merged.liveDeploy.lastError);
 
@@ -2132,8 +2249,9 @@ class ManagedAppService {
             baseURL: giteaConfig.baseURL,
         });
         const reconciledBuildStatus = normalizeWorkflowRunBuildStatus(workflowRun);
+        const reconciledImageDigest = normalizeOciSha256Digest(buildRun.imageDigest);
 
-        if (isSuccessfulBuildStatus(reconciledBuildStatus) || isFailedBuildStatus(reconciledBuildStatus)) {
+        if ((isSuccessfulBuildStatus(reconciledBuildStatus) && reconciledImageDigest) || isFailedBuildStatus(reconciledBuildStatus)) {
             const handledResult = await this.handleBuildEvent({
                 repoOwner,
                 repoName,
@@ -2141,6 +2259,7 @@ class ManagedAppService {
                 imageRepo: resolveManagedAppImageRepo(normalizedApp, giteaConfig),
                 commitSha: buildRun.commitSha,
                 imageTag: normalizeText(buildRun.imageTag || buildImageTagFromCommit(buildRun.commitSha)),
+                imageDigest: reconciledImageDigest,
                 buildStatus: reconciledBuildStatus,
                 runId: externalRunId,
                 runUrl: externalRunUrl,
@@ -2167,6 +2286,7 @@ class ManagedAppService {
                 status: normalizeText(workflowRun.status),
                 conclusion: normalizeText(workflowRun.conclusion),
                 htmlUrl: externalRunUrl,
+                awaitingDigestWebhook: isSuccessfulBuildStatus(reconciledBuildStatus) && !reconciledImageDigest,
                 updatedAt: normalizeText(
                     workflowRun.updated_at
                     || workflowRun.completed_at
@@ -2175,12 +2295,18 @@ class ManagedAppService {
                 ),
             },
         };
+        const persistedBuildStatus = isSuccessfulBuildStatus(reconciledBuildStatus) && !reconciledImageDigest
+            ? normalizeBuildStatus(buildRun.buildStatus)
+            : reconciledBuildStatus;
         const shouldPersistBuildRun = externalRunId !== normalizeText(buildRun.externalRunId)
             || externalRunUrl !== normalizeText(buildRun.externalRunUrl)
-            || normalizeText(buildRun.buildStatus).toLowerCase() !== reconciledBuildStatus;
+            || normalizeText(buildRun.buildStatus).toLowerCase() !== persistedBuildStatus
+            || (isSuccessfulBuildStatus(reconciledBuildStatus)
+                && !reconciledImageDigest
+                && buildRun.metadata?.gitlabPipeline?.awaitingDigestWebhook !== true);
         const nextBuildRun = shouldPersistBuildRun
             ? await this.store.updateBuildRun(buildRun.id, {
-                buildStatus: reconciledBuildStatus,
+                buildStatus: persistedBuildStatus,
                 externalRunId: externalRunId || buildRun.externalRunId,
                 externalRunUrl: externalRunUrl || buildRun.externalRunUrl,
                 metadata: workflowMetadata,
@@ -3663,9 +3789,35 @@ class ManagedAppService {
         }
         const deploymentTarget = this.resolveDeploymentTarget(input, context, app);
 
-        let latestBuildRun = (await this.store.listBuildRunsForApp(app.id, ownerId, 1))[0] || null;
+        const requestedBuildRunId = normalizeText(input.buildRunId);
+        let latestBuildRun = requestedBuildRunId
+            ? await this.store.getBuildRunById?.(requestedBuildRunId)
+            : (await this.store.listBuildRunsForApp(app.id, ownerId, 1))[0] || null;
+        if (requestedBuildRunId && !latestBuildRun) {
+            const error = new Error(`Managed app build run ${requestedBuildRunId} was not found.`);
+            error.statusCode = 404;
+            error.code = 'MANAGED_APP_BUILD_RUN_NOT_FOUND';
+            throw error;
+        }
         const reconciled = await this.reconcilePendingBuildForApp(app, ownerId, latestBuildRun);
         latestBuildRun = reconciled.latestBuildRun || latestBuildRun;
+        if (requestedBuildRunId) {
+            const requestedCommitSha = normalizeText(input.commitSha);
+            const requestedImageDigest = normalizeOciSha256Digest(input.imageDigest);
+            const identityMismatch = !isValidGitCommitSha(requestedCommitSha)
+                || !requestedImageDigest
+                || normalizeText(latestBuildRun?.id) !== requestedBuildRunId
+                || normalizeText(latestBuildRun?.appId) !== normalizeText(app.id)
+                || normalizeText(latestBuildRun?.ownerId) !== normalizeText(app.ownerId)
+                || normalizeText(latestBuildRun?.commitSha) !== requestedCommitSha
+                || normalizeOciSha256Digest(latestBuildRun?.imageDigest) !== requestedImageDigest;
+            if (identityMismatch) {
+                const error = new Error('Managed app deployment build identity did not match the requested app, owner, commit, and canonical image digest.');
+                error.statusCode = 409;
+                error.code = 'MANAGED_APP_BUILD_IDENTITY_MISMATCH';
+                throw error;
+            }
+        }
         const giteaConfig = this.getEffectiveGiteaConfig();
         const managedAppsConfig = this.getEffectiveManagedAppsConfig();
         const deployConfig = this.getEffectiveDeployConfig();
@@ -3674,15 +3826,17 @@ class ManagedAppService {
         const latestSuccessfulImageTag = isSuccessfulBuildStatus(latestBuildRun?.buildStatus)
             ? normalizeText(latestBuildRun?.imageTag || buildImageTagFromCommit(latestBuildRun?.commitSha))
             : '';
-        const lastSuccessfulBuild = deployableApp.metadata?.lastSuccessfulBuild || {};
-        const lastSuccessfulImageTag = normalizeText(
-            lastSuccessfulBuild.imageTag
-            || buildImageTagFromCommit(lastSuccessfulBuild.commitSha),
-        );
-        const lastLiveImageTag = extractImageTagFromImageRef(deployableApp.metadata?.liveDeploy?.lastImage || '');
-
-        if (!explicitImageTag && latestBuildRun && (isPendingBuildStatus(latestBuildRun.buildStatus) || isFailedBuildStatus(latestBuildRun.buildStatus))) {
+        const latestSuccessfulImageDigest = isSuccessfulBuildStatus(latestBuildRun?.buildStatus)
+            ? normalizeOciSha256Digest(latestBuildRun?.imageDigest)
+            : '';
+        if (!latestBuildRun || !isSuccessfulBuildStatus(latestBuildRun.buildStatus)) {
             throw buildManagedAppDeployBuildStateError(latestBuildRun);
+        }
+        if (!isKimiBuiltInitiatedBuildRun(latestBuildRun)) {
+            const error = new Error('Managed-app deployment requires a successful build run initiated by the KimiBuilt control plane.');
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_DEPLOY_BUILD_RUN_UNTRUSTED';
+            throw error;
         }
 
         if (!this.kubernetesClient.isConfigured(deploymentTarget)) {
@@ -3691,14 +3845,24 @@ class ManagedAppService {
             throw error;
         }
 
-        const imageTag = explicitImageTag
-            || latestSuccessfulImageTag
-            || lastSuccessfulImageTag
-            || lastLiveImageTag;
+        const attestedImageTag = latestSuccessfulImageTag;
+        if (explicitImageTag && explicitImageTag !== attestedImageTag) {
+            const error = new Error(`Requested image tag ${explicitImageTag} does not match the selected successful build tag ${attestedImageTag || '(missing)'}.`);
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_BUILD_TAG_MISMATCH';
+            throw error;
+        }
+        const imageTag = attestedImageTag;
         if (!imageTag) {
             throw buildManagedAppDeployBuildStateError(latestBuildRun);
         }
-
+        const buildImageDigest = latestSuccessfulImageDigest;
+        if (!buildImageDigest) {
+            const error = new Error('Managed app deployment requires a canonical OCI sha256 digest attested by the successful build webhook. Mutable image tags are metadata only and cannot authorize deployment.');
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_BUILD_DIGEST_REQUIRED';
+            throw error;
+        }
         const normalizedNamespace = normalizeManagedAppNamespace(
             input.namespace || deployableApp.metadata?.desiredDeploy?.namespace || deployableApp.namespace,
             {
@@ -3760,11 +3924,15 @@ class ManagedAppService {
             });
         }
 
-        const image = `${resolvedImageRepo}:${imageTag}`;
+        const requestedImage = buildManagedAppImageReference(resolvedImageRepo, imageTag);
+        const image = `${resolvedImageRepo}@${buildImageDigest}`;
         await this.broadcastLifecycleEvent(deployableApp, latestBuildRun, 'deploying', {
+            requestedImage,
+            imageDigest: buildImageDigest,
             summary: buildManagedAppStatusSummary(deployableApp, latestBuildRun, 'deploying'),
             deployment: {
                 image,
+                requestedImage,
             },
         });
 
@@ -3805,7 +3973,7 @@ class ManagedAppService {
             platformRuntimeSecretName: managedAppsConfig.platformRuntimeSecretName,
             deploymentTarget,
         });
-        const deployResult = platformPreflight
+        const deployResultWithPreflight = platformPreflight
             ? {
                 ...rawDeployResult,
                 preflight: {
@@ -3817,6 +3985,100 @@ class ManagedAppService {
                 },
             }
             : rawDeployResult;
+        const observedImageDigest = normalizeOciSha256Digest(
+            deployResultWithPreflight.imageDigest
+            || deployResultWithPreflight.imageEvidence?.observedDigest
+            || deployResultWithPreflight.diagnostics?.imageDigest
+            || deployResultWithPreflight.diagnostics?.podStatus?.imageID,
+        );
+        const observedDeploymentImage = normalizeText(
+            deployResultWithPreflight.deploymentImage
+            || deployResultWithPreflight.imageEvidence?.observedDeploymentImage
+            || deployResultWithPreflight.imageEvidence?.deploymentImage
+            || deployResultWithPreflight.diagnostics?.deploymentImage,
+        );
+        const observedPodImage = normalizeText(
+            deployResultWithPreflight.podImage
+            || deployResultWithPreflight.imageEvidence?.observedPodImage
+            || deployResultWithPreflight.imageEvidence?.podImage
+            || deployResultWithPreflight.diagnostics?.podStatus?.image,
+        );
+        const observedImageID = normalizeText(
+            deployResultWithPreflight.podImageID
+            || deployResultWithPreflight.imageEvidence?.observedImageID
+            || deployResultWithPreflight.imageEvidence?.podImageID
+            || deployResultWithPreflight.diagnostics?.podStatus?.imageID,
+        );
+        const pinnedImageDigest = extractOciSha256DigestFromImageRef(image);
+        const expectedImageDigest = buildImageDigest;
+        const publicHttpsVerified = deployResultWithPreflight.verification?.publicHttps === true
+            || deployResultWithPreflight.https?.ok === true
+            || deployResultWithPreflight.verification?.https === true;
+        const expectedImageDigestMatches = !expectedImageDigest || observedImageDigest === expectedImageDigest;
+        const imageDigestVerified = Boolean(
+            deployResultWithPreflight.verification?.imageDigest === true
+            && observedImageDigest
+            && expectedImageDigestMatches,
+        );
+        let imageDigestError = normalizeText(
+            deployResultWithPreflight.diagnostics?.imageDigestError
+            || deployResultWithPreflight.imageEvidence?.error,
+        );
+        if (!observedImageDigest) {
+            imageDigestError = imageDigestError || 'Kubernetes pod imageID did not contain an OCI sha256 digest.';
+        } else if (!expectedImageDigestMatches) {
+            imageDigestError = `Observed pod image digest ${observedImageDigest} does not match build-attested digest ${expectedImageDigest}.`;
+        } else if (!imageDigestVerified) {
+            imageDigestError = imageDigestError || 'Kubernetes did not verify the observed pod image digest.';
+        }
+        const imageEvidence = {
+            ...(deployResultWithPreflight.imageEvidence || {}),
+            requestedImage,
+            deployedImage: image,
+            deploymentImage: observedDeploymentImage,
+            podImage: observedPodImage,
+            podImageID: observedImageID,
+            observedDeploymentImage,
+            observedPodImage,
+            observedImageID,
+            expectedDigest: expectedImageDigest,
+            expectedDigestSource: 'build_run',
+            buildDigest: buildImageDigest,
+            observedDigest: observedImageDigest,
+            observedImageDigest,
+            digestPinnedRequest: Boolean(extractOciSha256DigestFromImageRef(requestedImage)),
+            digestPinnedDeployment: Boolean(pinnedImageDigest),
+            matchesBuildDigest: buildImageDigest ? observedImageDigest === buildImageDigest : null,
+            matchesExpectedDigest: expectedImageDigest ? expectedImageDigestMatches : null,
+            verified: imageDigestVerified,
+            error: imageDigestError,
+        };
+        const deployResult = {
+            ...deployResultWithPreflight,
+            imageDigest: buildImageDigest,
+            buildImageDigest,
+            observedImageDigest,
+            requestedImage,
+            deployedImage: image,
+            deploymentImage: observedDeploymentImage,
+            podImage: observedPodImage,
+            podImageID: observedImageID,
+            imageEvidence,
+            verification: {
+                ...(deployResultWithPreflight.verification || {}),
+                imageDigest: imageDigestVerified,
+                publicHttps: publicHttpsVerified,
+                https: publicHttpsVerified && imageDigestVerified,
+            },
+            diagnostics: {
+                ...(deployResultWithPreflight.diagnostics || {}),
+                imageDigest: observedImageDigest,
+                buildImageDigest,
+                observedImageDigest,
+                imageDigestError,
+                imageEvidence,
+            },
+        };
 
         const deployDiagnostics = getManagedAppDeployDiagnostics(deployableApp, deployResult);
         const lifecyclePhase = deployResult.verification.https
@@ -3881,7 +4143,15 @@ class ManagedAppService {
                     registryPullSecretName: managedAppsConfig.registryPullSecretName,
                 },
                 liveDeploy: {
-                    lastImage: image,
+                    lastImage: requestedImage,
+                    requestedImage,
+                    deployedImage: image,
+                    buildImageDigest,
+                    observedDeploymentImage,
+                    observedPodImage,
+                    observedImageID,
+                    observedImageDigest,
+                    imageDigest: buildImageDigest,
                     rollout: deployResult.verification?.rollout === true,
                     ingress: deployResult.verification?.ingress === true,
                     tls: deployResult.verification?.tls === true,
@@ -3921,15 +4191,22 @@ class ManagedAppService {
 
         this.recordClusterDeployment(updatedApp, {
             image,
+            requestedImage,
+            imageDigest: buildImageDigest,
+            observedImageDigest,
             deployStatus: buildRun?.deployStatus || 'succeeded',
             verificationStatus,
             deployment: deployResult,
             error: lastError ? { message: lastError } : null,
         });
         await this.broadcastLifecycleEvent(updatedApp, buildRun, lifecyclePhase, {
+            requestedImage,
+            imageDigest: buildImageDigest,
+            observedImageDigest,
             deployment: {
                 ...deployResult,
                 image,
+                requestedImage,
             },
             nextStep: projectNextStep,
             openItems: projectOpenItems,
@@ -3954,18 +4231,25 @@ class ManagedAppService {
 
     async handleBuildEvent(payload = {}) {
         await this.store.ensureAvailable();
-        const repoOwner = normalizeText(payload.repoOwner || payload.owner || this.getEffectiveGiteaConfig().org);
-        const repoName = normalizeText(payload.repoName || payload.repository || payload.slug);
+        const suppliedRepoOwner = normalizeText(payload.repoOwner || payload.owner);
+        const suppliedRepoName = normalizeText(payload.repoName || payload.repository);
+        const repositoryCoordinatesSupplied = Boolean(suppliedRepoOwner || suppliedRepoName);
+        let repoOwner = normalizeText(suppliedRepoOwner || this.getEffectiveGiteaConfig().org);
+        let repoName = normalizeText(suppliedRepoName || payload.slug);
         const slug = normalizeText(payload.slug || repoName);
         const commitSha = normalizeText(payload.commitSha || payload.sha);
         const imageTag = normalizeText(payload.imageTag || buildImageTagFromCommit(commitSha));
+        const imageDigest = normalizeOciSha256Digest(payload.imageDigest || payload.image_digest || payload.digest)
+            || extractOciSha256DigestFromImageRef(payload.imageDigest || payload.image_digest || payload.digest);
         const buildStatus = normalizeBuildStatus(payload.buildStatus || payload.status);
+        const payloadDeployRequested = payload.deployRequested === true
+            || inferDeployRequested(payload.requestedAction || payload.action);
         const giteaConfig = this.getEffectiveGiteaConfig();
         let app = null;
-        if (repoOwner && repoName) {
+        if (repositoryCoordinatesSupplied && repoOwner && repoName) {
             app = this.normalizeAppRecord(await this.store.getAppByRepo(repoOwner, repoName));
         }
-        if (!app && slug) {
+        if (!repositoryCoordinatesSupplied && slug) {
             app = this.normalizeAppRecord(await this.store.getAppBySlug(slug));
         }
         if (!app) {
@@ -3973,19 +4257,85 @@ class ManagedAppService {
             error.statusCode = 404;
             throw error;
         }
+        if (repositoryCoordinatesSupplied
+            && (normalizeText(app.repoOwner) !== repoOwner || normalizeText(app.repoName) !== repoName)) {
+            const error = new Error('Managed app build webhook repository identity does not match the persisted app repository.');
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_REPOSITORY_IDENTITY_MISMATCH';
+            throw error;
+        }
+        if (!repositoryCoordinatesSupplied) {
+            repoOwner = normalizeText(app.repoOwner || repoOwner);
+            repoName = normalizeText(app.repoName || repoName || slug);
+        }
+        if (buildStatus === 'success' && !isValidGitCommitSha(commitSha)) {
+            const error = new Error('Successful managed-app build events must include a valid hexadecimal commitSha built by the pipeline.');
+            error.statusCode = 400;
+            error.code = 'MANAGED_APP_BUILD_COMMIT_REQUIRED';
+            throw error;
+        }
+        if (buildStatus === 'success' && !imageDigest) {
+            const error = new Error('Successful managed-app build events must include a canonical OCI sha256 imageDigest from the pipeline metadata.');
+            error.statusCode = 400;
+            error.code = 'MANAGED_APP_BUILD_DIGEST_REQUIRED';
+            throw error;
+        }
         const imageRepo = resolveManagedAppImageRepo({
             ...app,
-            imageRepo: payload.imageRepo || app.imageRepo,
-            repoOwner: repoOwner || app.repoOwner,
-            repoName: repoName || app.repoName,
+            imageRepo: app.imageRepo,
+            repoOwner: app.repoOwner || repoOwner,
+            repoName: app.repoName || repoName,
             slug: slug || app.slug,
         }, giteaConfig);
+        const reportedImageRepo = normalizeImageRepo(payload.imageRepo);
+        if (reportedImageRepo && reportedImageRepo !== imageRepo) {
+            const error = new Error(`Managed app build webhook image repository ${reportedImageRepo} does not match canonical repository ${imageRepo || '(missing)'}.`);
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_IMAGE_REPOSITORY_MISMATCH';
+            throw error;
+        }
 
-        let buildRun = normalizeText(payload.runId)
-            ? await this.store.getBuildRunByExternalRunId(normalizeText(payload.runId))
+        const reportedRunId = normalizeText(payload.runId);
+        let buildRun = reportedRunId
+            ? await this.store.getBuildRunByExternalRunId(reportedRunId)
             : null;
         if (!buildRun && commitSha) {
             buildRun = await this.store.getBuildRunByCommitSha(app.id, commitSha);
+        }
+        if (buildRun) {
+            const existingDigest = normalizeOciSha256Digest(buildRun.imageDigest);
+            const buildIdentityMismatch = normalizeText(buildRun.appId) !== normalizeText(app.id)
+                || normalizeText(buildRun.ownerId) !== normalizeText(app.ownerId)
+                || normalizeText(buildRun.commitSha) !== commitSha
+                || (reportedRunId && normalizeText(buildRun.externalRunId)
+                    && normalizeText(buildRun.externalRunId) !== reportedRunId)
+                || (existingDigest && imageDigest && existingDigest !== imageDigest);
+            if (buildIdentityMismatch) {
+                const error = new Error('Managed-app build webhook identity conflicts with the persisted app, owner, commit, or image digest.');
+                error.statusCode = 409;
+                error.code = 'MANAGED_APP_BUILD_IDENTITY_MISMATCH';
+                throw error;
+            }
+        }
+        if (buildStatus === 'success' && payloadDeployRequested && !buildRun) {
+            const error = new Error('Deploying a successful managed-app build requires a pre-existing app-owned KimiBuilt build run with the exact commit identity.');
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_DEPLOY_BUILD_RUN_REQUIRED';
+            throw error;
+        }
+        if (buildStatus === 'success' && buildRun && (payloadDeployRequested || buildRun.deployRequested === true)) {
+            if (!isKimiBuiltInitiatedBuildRun(buildRun)) {
+                const error = new Error('Managed-app deployment requires a build run initiated by the KimiBuilt control plane.');
+                error.statusCode = 409;
+                error.code = 'MANAGED_APP_DEPLOY_BUILD_RUN_UNTRUSTED';
+                throw error;
+            }
+            if (payloadDeployRequested && buildRun.deployRequested !== true) {
+                const error = new Error('The persisted KimiBuilt build run was not authorized for deployment.');
+                error.statusCode = 409;
+                error.code = 'MANAGED_APP_DEPLOY_NOT_REQUESTED';
+                throw error;
+            }
         }
         if (!buildRun) {
             buildRun = await this.store.createBuildRun({
@@ -3993,12 +4343,13 @@ class ManagedAppService {
                 ownerId: app.ownerId,
                 sessionId: app.sessionId,
                 source: 'gitlab-webhook',
-                requestedAction: inferDeployRequested(payload.requestedAction || payload.action) ? 'deploy' : 'build',
+                requestedAction: payloadDeployRequested ? 'deploy' : 'build',
                 commitSha,
                 imageTag,
+                imageDigest,
                 buildStatus,
-                deployRequested: payload.deployRequested === true,
-                deployStatus: payload.deployRequested === true ? 'pending' : 'not_requested',
+                deployRequested: false,
+                deployStatus: 'not_requested',
                 verificationStatus: 'pending',
                 externalRunId: normalizeText(payload.runId) || null,
                 externalRunUrl: normalizeText(payload.runUrl || ''),
@@ -4012,6 +4363,7 @@ class ManagedAppService {
             buildRun = await this.store.updateBuildRun(buildRun.id, {
                 buildStatus,
                 imageTag: imageTag || buildRun.imageTag,
+                imageDigest: imageDigest || buildRun.imageDigest,
                 externalRunId: normalizeText(payload.runId) || buildRun.externalRunId,
                 externalRunUrl: normalizeText(payload.runUrl || buildRun.externalRunUrl),
                 metadata: {
@@ -4086,6 +4438,7 @@ class ManagedAppService {
                 lastSuccessfulBuild: {
                     commitSha,
                     imageTag,
+                    ...(normalizeOciSha256Digest(buildRun.imageDigest) ? { imageDigest: normalizeOciSha256Digest(buildRun.imageDigest) } : {}),
                     ...(imageRepo ? { imageRepo } : {}),
                     ...(normalizeText(payload.platforms) ? { platforms: normalizeText(payload.platforms) } : {}),
                 },
@@ -4094,7 +4447,9 @@ class ManagedAppService {
 
         if (buildRun.deployRequested) {
             const deployed = await this.deployApp(updatedApp.id, {
-                imageTag,
+                buildRunId: buildRun.id,
+                commitSha: buildRun.commitSha,
+                imageDigest: buildRun.imageDigest,
             }, updatedApp.ownerId, {
                 sessionId: updatedApp.sessionId,
             });

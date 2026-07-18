@@ -11,6 +11,84 @@ function normalizeText(value = '') {
     return String(value || '').trim();
 }
 
+const OCI_SHA256_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/i;
+
+function normalizeOciSha256Digest(value = '') {
+    const normalized = normalizeText(value);
+    if (!normalized || /\s/.test(normalized)) {
+        return '';
+    }
+
+    if (OCI_SHA256_DIGEST_PATTERN.test(normalized)) {
+        return normalized.toLowerCase();
+    }
+
+    const imageIdMatch = normalized.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@\s]+@)?(sha256:[a-f0-9]{64})$/i);
+    return imageIdMatch?.[1] ? imageIdMatch[1].toLowerCase() : '';
+}
+
+function extractOciSha256DigestFromImageRef(value = '') {
+    const normalized = normalizeText(value);
+    if (!normalized || /\s/.test(normalized)) {
+        return '';
+    }
+
+    const match = normalized.match(/@(sha256:[a-f0-9]{64})$/i);
+    return match?.[1] ? match[1].toLowerCase() : '';
+}
+
+function buildManagedAppImageEvidence({
+    requestedImage = '',
+    deploymentImage = '',
+    podImage = '',
+    podImageID = '',
+} = {}) {
+    const normalizedRequestedImage = normalizeText(requestedImage);
+    const normalizedDeploymentImage = normalizeText(deploymentImage);
+    const normalizedPodImage = normalizeText(podImage);
+    const expectedDigest = extractOciSha256DigestFromImageRef(normalizedRequestedImage);
+    const deploymentDigest = extractOciSha256DigestFromImageRef(normalizedDeploymentImage);
+    const podSpecDigest = extractOciSha256DigestFromImageRef(normalizedPodImage);
+    const observedDigest = normalizeOciSha256Digest(podImageID);
+    const deploymentImageMatches = Boolean(normalizedRequestedImage && normalizedDeploymentImage === normalizedRequestedImage);
+    const podImageMatches = Boolean(normalizedDeploymentImage && normalizedPodImage === normalizedDeploymentImage);
+    const conflictingDigests = [deploymentDigest, podSpecDigest, observedDigest]
+        .filter(Boolean)
+        .filter((digest) => expectedDigest && digest !== expectedDigest);
+    let error = '';
+
+    if (!deploymentImageMatches) {
+        error = `Kubernetes Deployment image ${normalizedDeploymentImage || '(missing)'} does not match requested image ${normalizedRequestedImage || '(missing)'}.`;
+    } else if (!podImageMatches) {
+        error = `Kubernetes pod image ${normalizedPodImage || '(missing)'} does not match Deployment image ${normalizedDeploymentImage}.`;
+    } else if (!expectedDigest) {
+        error = 'Requested Kubernetes image was not pinned to a canonical OCI sha256 digest.';
+    } else if (!observedDigest) {
+        error = 'Kubernetes pod imageID did not contain an OCI sha256 digest.';
+    } else if (conflictingDigests.length > 0) {
+        error = `Observed Kubernetes image digests conflict with requested image digest ${expectedDigest}; pod imageID resolved to ${observedDigest}.`;
+    }
+
+    return {
+        requestedImage: normalizedRequestedImage,
+        deploymentImage: normalizedDeploymentImage,
+        podImage: normalizedPodImage,
+        podImageID: normalizeText(podImageID),
+        observedDeploymentImage: normalizedDeploymentImage,
+        observedPodImage: normalizedPodImage,
+        observedImageID: normalizeText(podImageID),
+        expectedDigest,
+        observedDigest,
+        observedImageDigest: observedDigest,
+        digestPinnedRequest: Boolean(expectedDigest),
+        deploymentImageMatches,
+        podImageMatches,
+        matchesExpectedDigest: Boolean(expectedDigest && observedDigest === expectedDigest && conflictingDigests.length === 0),
+        verified: Boolean(expectedDigest && deploymentImageMatches && podImageMatches && observedDigest === expectedDigest && conflictingDigests.length === 0),
+        error,
+    };
+}
+
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -616,19 +694,25 @@ class KubernetesClient {
             'echo "__KIMIBUILT_DEPLOYMENT_PRESENT__=${deployment_present}"',
             'echo "__KIMIBUILT_SERVICE_PRESENT__=${service_present}"',
             'echo "__KIMIBUILT_INGRESS_PRESENT__=${ingress_present}"',
+            'deployment_image=$(kubectl_cmd get deployment "$deployment_name" -n "$namespace" -o jsonpath=\'{.spec.template.spec.containers[0].image}\' 2>/dev/null || true)',
             'deployment_container_port=$(kubectl_cmd get deployment "$deployment_name" -n "$namespace" -o jsonpath=\'{.spec.template.spec.containers[0].ports[0].containerPort}\' 2>/dev/null || true)',
+            'if [ -n "${deployment_image:-}" ]; then echo "__KIMIBUILT_DEPLOYMENT_IMAGE__=${deployment_image}"; fi',
             'if [ -n "${deployment_container_port:-}" ]; then echo "__KIMIBUILT_DEPLOYMENT_CONTAINER_PORT__=${deployment_container_port}"; fi',
             'service_port=$(kubectl_cmd get service "$service_name" -n "$namespace" -o jsonpath=\'{.spec.ports[0].port}\' 2>/dev/null || true)',
             'service_target_port=$(kubectl_cmd get service "$service_name" -n "$namespace" -o jsonpath=\'{.spec.ports[0].targetPort}\' 2>/dev/null || true)',
             'if [ -n "${service_port:-}" ]; then echo "__KIMIBUILT_SERVICE_PORT__=${service_port}"; fi',
             'if [ -n "${service_target_port:-}" ]; then echo "__KIMIBUILT_SERVICE_TARGET_PORT__=${service_target_port}"; fi',
-            'pod_name=$(kubectl_cmd get pods -n "$namespace" -l app.kubernetes.io/name="$deployment_name" -o jsonpath=\'{.items[0].metadata.name}\' 2>/dev/null || true)',
+            'pod_name=$(kubectl_cmd get pods -n "$namespace" -l app.kubernetes.io/name="$deployment_name" --sort-by=.metadata.creationTimestamp -o jsonpath=\'{.items[-1].metadata.name}\' 2>/dev/null || true)',
+            'pod_image=""',
+            'pod_image_id=""',
             'pod_phase=""',
             'pod_waiting_reason=""',
             'pod_waiting_message=""',
             'pod_terminated_reason=""',
             'pod_terminated_message=""',
             'if [ -n "${pod_name:-}" ]; then',
+            '  pod_image=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.spec.containers[0].image}\' 2>/dev/null || true)',
+            '  pod_image_id=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.status.containerStatuses[0].imageID}\' 2>/dev/null || true)',
             '  pod_phase=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.status.phase}\' 2>/dev/null || true)',
             '  pod_waiting_reason=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.status.containerStatuses[0].state.waiting.reason}\' 2>/dev/null || true)',
             '  pod_waiting_message=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.status.containerStatuses[0].state.waiting.message}\' 2>/dev/null || true)',
@@ -636,6 +720,8 @@ class KubernetesClient {
             '  pod_terminated_message=$(kubectl_cmd get pod "$pod_name" -n "$namespace" -o jsonpath=\'{.status.containerStatuses[0].state.terminated.message}\' 2>/dev/null || true)',
             'fi',
             'if [ -n "${pod_name:-}" ]; then echo "__KIMIBUILT_POD_NAME__=${pod_name}"; fi',
+            'if [ -n "${pod_image:-}" ]; then echo "__KIMIBUILT_POD_IMAGE__=${pod_image}"; fi',
+            'if [ -n "${pod_image_id:-}" ]; then echo "__KIMIBUILT_POD_IMAGE_ID__=${pod_image_id}"; fi',
             'if [ -n "${pod_phase:-}" ]; then echo "__KIMIBUILT_POD_PHASE__=${pod_phase}"; fi',
             'if [ -n "${pod_waiting_reason:-}" ]; then echo "__KIMIBUILT_POD_WAITING_REASON__=${pod_waiting_reason}"; fi',
             'if [ -n "${pod_waiting_message:-}" ]; then echo "__KIMIBUILT_POD_WAITING_MESSAGE__=${pod_waiting_message}"; fi',
@@ -762,6 +848,9 @@ class KubernetesClient {
         }, {}, createNoopTracker());
         const stdout = String(result.stdout || '');
         const certificateReadyValue = readMarkerValue(stdout, '__KIMIBUILT_CERTIFICATE_READY__');
+        const deploymentImage = readMarkerValue(stdout, '__KIMIBUILT_DEPLOYMENT_IMAGE__');
+        const podImage = readMarkerValue(stdout, '__KIMIBUILT_POD_IMAGE__');
+        const podImageID = readMarkerValue(stdout, '__KIMIBUILT_POD_IMAGE_ID__');
 
         return {
             expectedHost: readMarkerValue(stdout, '__KIMIBUILT_EXPECTED_HOST__') || normalizeText(publicHost),
@@ -771,11 +860,14 @@ class KubernetesClient {
             deploymentPresent: parseBooleanMarkerValue(stdout, '__KIMIBUILT_DEPLOYMENT_PRESENT__'),
             servicePresent: parseBooleanMarkerValue(stdout, '__KIMIBUILT_SERVICE_PRESENT__'),
             ingressPresent: parseBooleanMarkerValue(stdout, '__KIMIBUILT_INGRESS_PRESENT__'),
+            deploymentImage,
             deploymentContainerPort: parseInteger(readMarkerValue(stdout, '__KIMIBUILT_DEPLOYMENT_CONTAINER_PORT__'), 0),
             servicePort: parseInteger(readMarkerValue(stdout, '__KIMIBUILT_SERVICE_PORT__'), 0),
             serviceTargetPort: parseInteger(readMarkerValue(stdout, '__KIMIBUILT_SERVICE_TARGET_PORT__'), 0),
             podStatus: {
                 name: readMarkerValue(stdout, '__KIMIBUILT_POD_NAME__'),
+                image: podImage,
+                imageID: podImageID,
                 phase: readMarkerValue(stdout, '__KIMIBUILT_POD_PHASE__'),
                 waitingReason: readMarkerValue(stdout, '__KIMIBUILT_POD_WAITING_REASON__'),
                 waitingMessage: summarizeShellPreview(readMarkerValue(stdout, '__KIMIBUILT_POD_WAITING_MESSAGE__'), 220),
@@ -1530,7 +1622,15 @@ class KubernetesClient {
             && deploymentInspection.tlsSecretPresent
             && deploymentInspection.certificateReady === true,
         );
-        const verificationHttps = https.ok === true;
+        const imageEvidence = buildManagedAppImageEvidence({
+            requestedImage: image,
+            deploymentImage: deploymentInspection.deploymentImage,
+            podImage: deploymentInspection.podStatus?.image,
+            podImageID: deploymentInspection.podStatus?.imageID,
+        });
+        const verificationImageDigest = rolloutOk && imageEvidence.verified;
+        const verificationPublicHttps = https.ok === true;
+        const verificationHttps = verificationPublicHttps && verificationImageDigest;
         const tlsStatus = {
             ok: verificationTls,
             certificateReady: deploymentInspection.certificateReady === true,
@@ -1551,8 +1651,11 @@ class KubernetesClient {
         };
         const diagnostics = {
             ...deploymentInspection,
+            imageDigest: imageEvidence.observedDigest,
+            imageDigestError: imageEvidence.error,
+            imageEvidence,
             httpsStatus: Number(https.status || 0),
-            httpsOk: verificationHttps,
+            httpsOk: verificationPublicHttps,
             httpsError: summarizeShellPreview(https.error || ''),
             httpsLocation: normalizeText(https.location || ''),
             httpsBodyPreview: summarizeShellPreview(https.bodyPreview || ''),
@@ -1575,8 +1678,16 @@ class KubernetesClient {
                 rollout: rolloutOk,
                 ingress: verificationIngress,
                 tls: verificationTls,
+                imageDigest: verificationImageDigest,
+                publicHttps: verificationPublicHttps,
                 https: verificationHttps,
             },
+            imageDigest: imageEvidence.observedDigest,
+            requestedImage: imageEvidence.requestedImage,
+            deploymentImage: imageEvidence.deploymentImage,
+            podImage: imageEvidence.podImage,
+            podImageID: imageEvidence.podImageID,
+            imageEvidence,
             tlsStatus,
             https,
             diagnostics,
@@ -1587,4 +1698,7 @@ class KubernetesClient {
 
 module.exports = {
     KubernetesClient,
+    buildManagedAppImageEvidence,
+    extractOciSha256DigestFromImageRef,
+    normalizeOciSha256Digest,
 };
