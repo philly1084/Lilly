@@ -305,6 +305,36 @@ describe('web-cli remote artifact workflow', () => {
         expect(app.printError).toHaveBeenCalled();
     });
 
+    test('surfaces the exact preflight remediation without prompting or deploying', async () => {
+        const api = {
+            preflightManagedAppArtifact: jest.fn().mockResolvedValue({
+                pushToWebEligible: false,
+                blockers: [{
+                    message: 'GitLab rejected the configured credential.',
+                    remediation: 'Rotate GITLAB_TOKEN and verify agent-apps access.',
+                }],
+            }),
+            deployManagedAppArtifact: jest.fn(),
+        };
+        const { app } = createHarness({ api });
+        app.sessionFiles = [{
+            id: 7,
+            artifactId: 'artifact-site-123456789',
+            filename: 'site.html',
+            mimeType: 'text/html',
+            artifact: { format: 'html', metadata: {} },
+        }];
+        app.promptForManagedAppHost = jest.fn();
+
+        await app.pushArtifactToWeb('7');
+
+        expect(app.printError).toHaveBeenCalledWith(
+            'Push to Web failed: GitLab rejected the configured credential. Next: Rotate GITLAB_TOKEN and verify agent-apps access.',
+        );
+        expect(app.promptForManagedAppHost).not.toHaveBeenCalled();
+        expect(api.deployManagedAppArtifact).not.toHaveBeenCalled();
+    });
+
     test('renders separate accessible select, download, and Push-to-Web controls', () => {
         const { app, dom } = createHarness();
         app.sessionFiles = [{

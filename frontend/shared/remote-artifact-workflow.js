@@ -714,6 +714,7 @@
             .map((blocker) => ({
                 code: sanitizeResultText(blocker?.code || 'MANAGED_APP_PREFLIGHT_BLOCKED', 160),
                 message: sanitizeResultText(blocker?.message || 'Push to Web is blocked.', 1200),
+                remediation: sanitizeResultText(blocker?.remediation || '', 1200),
                 blocker: sanitizeResultText(blocker?.blocker || '', 160),
                 details: normalizeErrorDetails(blocker?.details),
             }));
@@ -751,12 +752,19 @@
         }
         if (normalized.pushToWebEligible !== true) {
             const blocker = normalized.blockers[0] || {};
-            throw new RemoteArtifactWorkflowError(blocker.message || 'Push to Web is blocked.', {
-                code: blocker.code || 'MANAGED_APP_PREFLIGHT_BLOCKED',
-                status: 422,
-                blocker: blocker.blocker || 'managed_app_preflight_blocked',
-                details: blocker.details,
-            });
+            const message = blocker.message || 'Push to Web is blocked.';
+            throw new RemoteArtifactWorkflowError(
+                blocker.remediation ? `${message} Next: ${blocker.remediation}` : message,
+                {
+                    code: blocker.code || 'MANAGED_APP_PREFLIGHT_BLOCKED',
+                    status: 422,
+                    blocker: blocker.blocker || 'managed_app_preflight_blocked',
+                    details: {
+                        ...(blocker.details || {}),
+                        ...(blocker.remediation ? { remediation: blocker.remediation } : {}),
+                    },
+                },
+            );
         }
         if (!SHA256_PATTERN.test(normalized.sha256)) {
             throw new RemoteArtifactWorkflowError('Managed-app preflight did not return a valid source fingerprint.', {

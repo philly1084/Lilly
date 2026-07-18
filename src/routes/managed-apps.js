@@ -40,6 +40,24 @@ router.get('/managed-apps', async (req, res, next) => {
     }
 });
 
+router.get('/managed-apps/readiness', async (req, res, next) => {
+    try {
+        const service = getService(req);
+        if (!service || typeof service.inspectPushToWebReadiness !== 'function') {
+            return res.status(503).json({
+                error: {
+                    code: 'MANAGED_APP_READINESS_UNAVAILABLE',
+                    message: 'Managed-app Push-to-Web readiness inspection is unavailable.',
+                },
+            });
+        }
+
+        res.json(await service.inspectPushToWebReadiness());
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.post('/managed-apps', async (req, res, next) => {
     try {
         const service = getService(req);

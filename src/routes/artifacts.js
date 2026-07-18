@@ -1553,10 +1553,17 @@ function getExpectedManagedAppSourceSha256(body = {}) {
     return { value, failure: null };
 }
 
-function collectManagedAppPreflightBlockers({ controlPlaneAvailable = false, preparedSource = null } = {}) {
+function collectManagedAppPreflightBlockers({
+    controlPlaneAvailable = false,
+    preparedSource = null,
+    pushToWebReadiness = null,
+} = {}) {
     const blockers = [];
     if (!controlPlaneAvailable) {
         blockers.push(buildManagedAppControlPlaneError().error);
+    }
+    if (controlPlaneAvailable && Array.isArray(pushToWebReadiness?.blockers)) {
+        blockers.push(...pushToWebReadiness.blockers);
     }
     if (preparedSource?.failure) {
         blockers.push(preparedSource.failure.error);
@@ -2264,17 +2271,30 @@ router.post('/:id/managed-app/preflight', async (req, res, next) => {
 
         const service = req.app.locals.managedAppService;
         const controlPlaneAvailable = Boolean(service?.isAvailable && service.isAvailable());
+        const pushToWebReadiness = controlPlaneAvailable
+            && typeof service?.inspectPushToWebReadiness === 'function'
+            ? await service.inspectPushToWebReadiness()
+            : null;
+        const repositoryControlPlaneReady = Boolean(
+            controlPlaneAvailable
+            && pushToWebReadiness?.repositoryControlPlane?.ready === true,
+        );
         const preparedSource = await prepareArtifactManagedAppSource(artifact, req);
         const blockers = collectManagedAppPreflightBlockers({
             controlPlaneAvailable,
             preparedSource,
+            pushToWebReadiness,
         });
 
         res.json({
             artifactId: artifact.id,
             contentEligible: preparedSource.contentEligible,
             controlPlaneAvailable,
-            pushToWebEligible: preparedSource.contentEligible && controlPlaneAvailable,
+            repositoryControlPlaneReady,
+            repositoryControlPlane: pushToWebReadiness?.repositoryControlPlane || null,
+            pushToWebEligible: preparedSource.contentEligible
+                && controlPlaneAvailable
+                && repositoryControlPlaneReady,
             sourceType: preparedSource.sourceType,
             targetPaths: preparedSource.descriptors.map((file) => file.path),
             fileCount: preparedSource.descriptors.length,
@@ -2300,6 +2320,26 @@ router.post('/:id/managed-app', async (req, res, next) => {
             const failure = buildManagedAppControlPlaneError();
             return res.status(failure.statusCode).json({
                 error: failure.error,
+            });
+        }
+
+        if (typeof service.inspectPushToWebReadiness !== 'function') {
+            return res.status(503).json({
+                error: {
+                    code: 'MANAGED_APP_READINESS_UNAVAILABLE',
+                    blocker: 'managed_app_readiness_unavailable',
+                    message: 'Managed-app Push-to-Web readiness inspection is unavailable.',
+                },
+            });
+        }
+        const pushToWebReadiness = await service.inspectPushToWebReadiness();
+        if (pushToWebReadiness?.ready !== true) {
+            return res.status(503).json({
+                error: pushToWebReadiness?.blockers?.[0] || {
+                    code: 'MANAGED_APP_READINESS_BLOCKED',
+                    blocker: 'managed_app_readiness_blocked',
+                    message: 'Managed-app Push-to-Web readiness is blocked.',
+                },
             });
         }
 

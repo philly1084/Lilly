@@ -272,6 +272,7 @@ describe('managed-app promotion client', () => {
             blockers: [{
                 code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
                 message: 'Replace the PNG before deployment.',
+                remediation: 'Convert the PNG to an inline SVG and rerun preflight.',
                 blocker: 'unsupported_binary_assets',
             }],
         };
@@ -287,6 +288,10 @@ describe('managed-app promotion client', () => {
         })).rejects.toEqual(expect.objectContaining({
             code: 'ARTIFACT_MANAGED_APP_UNSUPPORTED_BINARY_ASSETS',
             blocker: 'unsupported_binary_assets',
+            message: 'Replace the PNG before deployment. Next: Convert the PNG to an inline SVG and rerun preflight.',
+            details: expect.objectContaining({
+                remediation: 'Convert the PNG to an inline SVG and rerun preflight.',
+            }),
         }));
         await expect(client.deployArtifact('artifact-site-bundle-full-id', {
             preflight: eligible,

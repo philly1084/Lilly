@@ -213,6 +213,13 @@ function managedAppFingerprintFromRequest(body, artifactId) {
         artifactId,
         contentEligible: true,
         controlPlaneAvailable: true,
+        repositoryControlPlaneReady: true,
+        repositoryControlPlane: {
+            provider: 'gitlab',
+            baseURL: 'https://gitlab.demoserver2.buzz',
+            org: 'agent-apps',
+            ready: true,
+        },
         pushToWebEligible: true,
         sourceType: 'native-site-archive',
         fileCount: body.expectedFiles.length,
@@ -557,6 +564,24 @@ async function createPushToWebHarness(env, options = {}) {
         const parsed = new URL(url);
         const method = requestOptions.method || 'GET';
         const body = requestOptions.body ? JSON.parse(requestOptions.body) : null;
+        if (method === 'GET' && parsed.pathname === '/api/managed-apps/readiness') {
+            harness.calls.push({ method, path: parsed.pathname, body });
+            return jsonResponse(options.readinessPayload || {
+                ready: true,
+                persistenceAvailable: true,
+                repositoryControlPlane: {
+                    provider: 'gitlab',
+                    baseURL: 'https://gitlab.demoserver2.buzz',
+                    org: 'agent-apps',
+                    configured: true,
+                    checked: true,
+                    authenticated: true,
+                    namespaceAccessible: true,
+                    ready: true,
+                },
+                blockers: [],
+            });
+        }
         if (method === 'POST'
             && parsed.pathname === '/api/artifacts/artifact-authoring-site-bundle/managed-app') {
             harness.calls.push({ method, path: parsed.pathname, body });
@@ -1061,6 +1086,7 @@ describe('remote agent artifact-loop canary', () => {
             sourceType: 'native-site-archive',
             contentEligible: true,
             controlPlaneAvailable: true,
+            repositoryControlPlaneReady: true,
             pushToWebEligible: true,
             fileCount: 1,
             sizeBytes: 12,
@@ -1471,6 +1497,15 @@ describe('remote agent artifact-loop canary', () => {
             ephemeralSessionDeleted: true,
             authoringScenario: 'passed',
             pushToWebScenario: 'passed',
+            pushToWebReadiness: expect.objectContaining({
+                status: 'passed',
+                persistenceAvailable: true,
+                repositoryControlPlane: expect.objectContaining({
+                    provider: 'gitlab',
+                    authenticated: true,
+                    namespaceAccessible: true,
+                }),
+            }),
         }));
         const pushed = result.lanes[0].authoring.pushToWeb;
         expect(pushed).toEqual(expect.objectContaining({
@@ -1524,6 +1559,54 @@ describe('remote agent artifact-loop canary', () => {
         expect(managedProgressIndex).toBeGreaterThan(-1);
         expect(publicQaIndex).toBeGreaterThan(-1);
         expect(deleteIndex).toBeGreaterThan(publicQaIndex);
+    });
+
+    test('fails Push-to-Web on repository authentication before creating a session or starting an agent', async () => {
+        const env = buildPushToWebEnv();
+        const harness = await createPushToWebHarness(env, {
+            readinessPayload: {
+                ready: false,
+                persistenceAvailable: true,
+                repositoryControlPlane: {
+                    provider: 'gitlab',
+                    baseURL: 'https://gitlab.demoserver2.buzz',
+                    org: 'agent-apps',
+                    configured: true,
+                    checked: true,
+                    authenticated: false,
+                    namespaceAccessible: false,
+                    ready: false,
+                },
+                blockers: [{
+                    code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED',
+                    blocker: 'managed_app_repository_auth_rejected',
+                    message: 'The gitlab repository control plane rejected the configured managed-app credential.',
+                    upstreamStatusCode: 401,
+                    remediation: 'Rotate the GitLab API credential.',
+                }],
+            },
+        });
+        const browserQaRunner = jest.fn();
+        const publicBrowserQaRunner = jest.fn();
+
+        await expect(runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa', '--push-to-web'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            publicBrowserQaRunner,
+            sleep: jest.fn(),
+        })).rejects.toThrow(
+            'Push-to-Web readiness failed before remote agent execution: The gitlab repository control plane rejected the configured managed-app credential. Remediation: Rotate the GitLab API credential.',
+        );
+
+        expect(harness.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+            'GET /api/auth/protected-check',
+            'GET /api/async-lab/status',
+            'GET /api/managed-apps/readiness',
+        ]);
+        expect(browserQaRunner).not.toHaveBeenCalled();
+        expect(publicBrowserQaRunner).not.toHaveBeenCalled();
     });
 
     test('rejects a Push-to-Web response whose source hash differs from preflight and still cleans up', async () => {

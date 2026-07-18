@@ -1693,6 +1693,34 @@ function buildExpectedManagedAppFingerprint(fixtures = []) {
     };
 }
 
+function validatePushToWebReadiness(payload = {}) {
+    const blockers = Array.isArray(payload?.blockers) ? payload.blockers : [];
+    const repositoryControlPlane = payload?.repositoryControlPlane || {};
+    if (payload?.ready !== true
+        || payload?.persistenceAvailable !== true
+        || repositoryControlPlane?.ready !== true
+        || blockers.length > 0) {
+        const blocker = blockers[0] || {};
+        const message = String(blocker.message || 'Managed-app deployment readiness is blocked.').trim();
+        const remediation = String(blocker.remediation || '').trim();
+        throw new Error(
+            `Push-to-Web readiness failed before remote agent execution: ${message}`
+            + (remediation ? ` Remediation: ${remediation}` : ''),
+        );
+    }
+    return {
+        status: 'passed',
+        persistenceAvailable: true,
+        repositoryControlPlane: {
+            provider: String(repositoryControlPlane.provider || '').trim(),
+            baseURL: String(repositoryControlPlane.baseURL || '').trim(),
+            org: String(repositoryControlPlane.org || '').trim(),
+            authenticated: repositoryControlPlane.authenticated === true,
+            namespaceAccessible: repositoryControlPlane.namespaceAccessible === true,
+        },
+    };
+}
+
 function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactId) {
     const status = String(payload?.status || payload?.preflight?.status || '').trim().toLowerCase();
     const blockers = payload?.blockers || payload?.preflight?.blockers || [];
@@ -1701,6 +1729,7 @@ function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactI
         || payload?.preflight?.eligible === false
         || payload?.contentEligible !== true
         || payload?.controlPlaneAvailable !== true
+        || payload?.repositoryControlPlaneReady !== true
         || payload?.pushToWebEligible !== true
         || String(payload?.artifactId || '').trim() !== expectedArtifactId
         || String(payload?.sourceType || '').trim() !== 'native-site-archive'
@@ -2621,6 +2650,7 @@ async function runLive(plans, options = {}) {
     let primaryError = null;
     let cleanupError = null;
     const laneResults = [];
+    let pushToWebReadiness = null;
 
     try {
         const authProbe = await client.requestJson('/api/auth/protected-check');
@@ -2631,6 +2661,11 @@ async function runLive(plans, options = {}) {
         const status = statusPayload?.status || {};
         if (status.enabled !== true || status.allowLiveRemote !== true) {
             throw new Error('Async runtime must be enabled with live remote execution allowed before --run can proceed.');
+        }
+        if (options.pushToWeb === true) {
+            pushToWebReadiness = validatePushToWebReadiness(
+                await client.requestJson('/api/managed-apps/readiness'),
+            );
         }
 
         const session = await client.requestJson('/api/sessions', {
@@ -2756,6 +2791,7 @@ async function runLive(plans, options = {}) {
         bidirectionalRoundTrip: true,
         authoringScenario: options.authoring === true ? 'passed' : 'not-requested',
         pushToWebScenario: options.pushToWeb === true ? 'passed' : 'not-requested',
+        ...(pushToWebReadiness ? { pushToWebReadiness } : {}),
         lanes: laneResults,
     };
 }
@@ -2868,6 +2904,7 @@ module.exports = {
     validateLanePlan,
     validateManagedAppTerminalProgress,
     validatePreflight,
+    validatePushToWebReadiness,
     validateRunExecutionEvidence,
     validateRunIdentity,
     validateSiteZip,
