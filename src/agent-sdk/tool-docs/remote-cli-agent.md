@@ -9,7 +9,7 @@ Also use this tool when the user asks to "ask Codex for help", "use Codex for th
 For most remote software deployments, prefer `remote-cli-agent` over one-shot `remote-command`: if an app, website, service, dashboard, frontend, or game needs to be created or changed and put live, let the remote CLI agent own the author -> build/test -> deploy -> verify loop.
 
 Layer boundary:
-- `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`.
+- `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`. Use `artifactIds`/`contextFiles` for inbound files and `collectResultFiles:true` when generated files must return to the active KimiBuilt session.
 - The default transport is `codex-agent`: KimiBuilt calls `POST /api/codex-agent/run`, then consumes `GET /api/codex-agent/runs/:runId/events` as SSE.
 - The `mcp` transport remains available for compatibility: KimiBuilt calls `remote_code_run`, then polls `remote_code_status`.
 - Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
@@ -25,9 +25,30 @@ Outer tool call shape:
   "transport": "codex-agent",
   "waitMs": 30000,
   "threadId": "optional prior Codex thread id for codex-agent transport",
-  "supportAgentResponse": "optional answer from a support agent for a resumed CLI thread"
+  "supportAgentResponse": "optional answer from a support agent for a resumed CLI thread",
+  "artifactIds": ["session-owned-sandbox-or-document-artifact-id"],
+  "contextFiles": [
+    {
+      "filename": "design-brief.xml",
+      "mimeType": "application/xml",
+      "content": "<brief>...</brief>"
+    }
+  ],
+  "collectResultFiles": true,
+  "resultFileGlobs": ["dist/*.html", "artifacts/*.svg"]
 }
 ```
+
+Artifact handoff contract:
+
+- KimiBuilt owns artifacts, session authorization, lineage, and final download/preview URLs. The `nuts` router owns secure staging and collection at the CLI execution boundary. The frontend renders one job; it does not mirror Codex/Kimi/Grok transport tools.
+- Selected artifacts are loaded only after their `sessionId` matches the active session. Inline and stored files are strict-base64/checksum normalized. `manifest.json` is reserved for gateway metadata.
+- Each invocation gets an isolated `.kimibuilt/agent-runs/<operationId>/` directory. Inputs live under `input/`; returnable files must be copied under `output/files/`; the agent writes `output/manifest.json` using `RemoteAgentResultFiles/v1`.
+- The bounded v1 envelope accepts at most 12 files, 4 MiB per file, and 6 MiB decoded total. This remains below the router's 10 MiB JSON request limit after base64 expansion. Larger bundles should use a future scoped object-store URL rather than increasing the JSON body without an explicit gateway limit change.
+- `nuts` must acknowledge `RemoteAgentHandoff/v1`, the `operationId`, and the exact isolated paths before the CLI turn begins. KimiBuilt fails closed when a rolling deployment ignores or mismatches the contract.
+- After a terminal turn, KimiBuilt pulls `GET /api/codex-agent/runs/:runId/result-files` or `GET /admin/remote-agent-tasks/:taskId/result-files` with server-side bearer auth. The router returns only gateway-verified regular, non-symlink files from the isolated output directory, with computed sizes, SHA-256 hashes, and base64.
+- KimiBuilt verifies the envelope again, stores each file as a generated `remote-cli-agent` artifact, records source artifact IDs and remote run metadata, and strips base64 from the tool result. Returned XML, SVG, HTML, source, and binary files therefore become normal reusable session artifacts.
+- Read-only calls without inputs or `collectResultFiles` create no handoff directory. The legacy MCP transport rejects any file-handoff request because it cannot preserve these staging/collection guarantees.
 
 For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
 
@@ -72,11 +93,12 @@ Headless Codex operating model:
 
 Codex-agent gateway contract:
 
-- `POST /api/codex-agent/run` with `{ workspacePath, prompt, continuation?, threadId?, config? }`.
+- `POST /api/codex-agent/run` with `{ workspacePath, prompt, continuation?, threadId?, config?, handoff? }`.
 - `GET /api/codex-agent/runs/:runId/events` returns SSE frames with named events.
 - Expected stream events are `session_started`, `output`, and one terminal event: `turn_completed`, `turn_failed`, `turn_cancelled`, or `turn_input_required`.
 - KimiBuilt forwards these events through its own chat SSE progress payloads so the browser sees live throughput instead of waiting for the final answer.
 - Use `threadId` for continuation when a prior Codex thread id is known.
+- A handoff start response includes `{ handoff: { accepted, version, operationId, inputManifestPath, resultManifestPath? }, resultFilesUrl? }`. Never treat the caller's requested version as proof that staging happened.
 
 Legacy MCP gateway contract:
 
@@ -142,6 +164,7 @@ Behavior:
   - `PUBLIC_URL=<https URL or not_available>`
   - `BLOCKER=<none or exact blocker>`
 - The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_BRANCH=...`, `GIT_BASE_COMMIT=...`, `GIT_COMMIT=...`, `CHANGED_FILES=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
+- When returned files were requested, include `RESULT_FILES_MANIFEST=<the exact operation-scoped output/manifest.json path>`. This marker is descriptive; the authenticated router result-files endpoint remains authoritative.
 - Prefer `waitMs: 30000` for long coding tasks.
 - Pass `sessionId` when continuing a previous remote coding session.
 - Pass `threadId` when continuing a previous `/api/codex-agent/run` Codex thread.

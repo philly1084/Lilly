@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { RemoteCliAgentTool } = require('./RemoteCliAgentTool');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
 
@@ -68,6 +69,175 @@ describe('RemoteCliAgentTool', () => {
     expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
       task: 'Build and verify the remote app.',
       model: 'grok-build',
+    }));
+  });
+
+  test('stages selected session artifacts into the versioned runner handoff', async () => {
+    const runner = {
+      run: jest.fn(async () => ({
+        finalOutput: 'RESULT_FILES_MANIFEST=.kimibuilt/remote-agent-results.json',
+        resultFilesManifest: '.kimibuilt/remote-agent-results.json',
+      })),
+    };
+    const artifactService = {
+      getArtifact: jest.fn(async () => ({
+        id: 'artifact-design-1',
+        sessionId: 'session-1',
+        filename: 'design.svg',
+        mimeType: 'image/svg+xml',
+        contentBuffer: Buffer.from('<svg/>'),
+        sizeBytes: Buffer.byteLength('<svg/>'),
+      })),
+    };
+    const tool = new RemoteCliAgentTool({ runner, artifactService });
+
+    const result = await tool.execute({
+      task: 'Use the selected design to build and verify the remote page.',
+      artifact_ids: ['artifact-design-1'],
+      context_files: [{
+        filename: 'brief.xml',
+        mimeType: 'application/xml',
+        content: '<brief/>',
+      }],
+    }, {
+      sessionId: 'session-1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      requestedHandoffVersion: 'RemoteAgentHandoff/v1',
+      inputArtifactIds: ['artifact-design-1'],
+      resultFilesManifest: '.kimibuilt/remote-agent-results.json',
+    });
+    expect(result.data).not.toHaveProperty('handoff');
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      handoff: expect.objectContaining({
+        version: 'RemoteAgentHandoff/v1',
+        sourceArtifactIds: ['artifact-design-1'],
+        files: expect.arrayContaining([
+          expect.objectContaining({ filename: 'brief.xml', mimeType: 'application/xml' }),
+          expect.objectContaining({ filename: 'design.svg', artifactId: 'artifact-design-1' }),
+        ]),
+      }),
+    }));
+    expect(artifactService.getArtifact).toHaveBeenNthCalledWith(1, 'artifact-design-1');
+    expect(artifactService.getArtifact).toHaveBeenNthCalledWith(2, 'artifact-design-1', { includeContent: true });
+  });
+
+  test('fails closed when a selected artifact belongs to another session', async () => {
+    const runner = { run: jest.fn() };
+    const tool = new RemoteCliAgentTool({
+      runner,
+      artifactService: {
+        getArtifact: jest.fn(async () => ({
+          id: 'artifact-other',
+          sessionId: 'session-other',
+          filename: 'private.xml',
+          contentBuffer: Buffer.from('<private/>'),
+        })),
+      },
+    });
+
+    const result = await tool.execute({
+      task: 'Use the selected file.',
+      artifactIds: ['artifact-other'],
+    }, {
+      sessionId: 'session-1',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('REMOTE_AGENT_HANDOFF_ARTIFACT_SCOPE_MISMATCH');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  test('does not start the remote runner when returned files have no active session', async () => {
+    const runner = { run: jest.fn() };
+    const tool = new RemoteCliAgentTool({ runner });
+
+    const result = await tool.execute({
+      task: 'Build the remote document and return its files.',
+      collectResultFiles: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('REMOTE_AGENT_HANDOFF_SESSION_REQUIRED');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  test('persists verified return files as session artifacts without exposing base64', async () => {
+    const content = Buffer.from('<document><title>Remote draft</title></document>');
+    const artifactService = {
+      createStoredArtifact: jest.fn(async (input) => ({
+        ...input,
+        id: 'artifact-returned-1',
+        sizeBytes: input.buffer.length,
+      })),
+      serializeArtifact: jest.fn((artifact) => ({
+        id: artifact.id,
+        sessionId: artifact.sessionId,
+        filename: artifact.filename,
+        metadata: artifact.metadata,
+      })),
+      deleteArtifact: jest.fn(),
+    };
+    const runner = {
+      run: jest.fn(async (params) => ({
+        finalOutput: `RESULT_FILES_MANIFEST=${params.handoff.output.manifestPath}`,
+        handoffVersion: params.handoff.version,
+        resultFilesManifest: params.handoff.output.manifestPath,
+        resultFiles: {
+          version: 'RemoteAgentResultFiles/v1',
+          gatewayVerified: true,
+          operationId: params.handoff.operationId,
+          manifestPath: params.handoff.output.manifestPath,
+          files: [{
+            path: `${params.handoff.output.filesDirectory}/draft.xml`,
+            filename: 'draft.xml',
+            role: 'document',
+            mimeType: 'application/xml',
+            description: 'Remote XML draft',
+            sizeBytes: content.length,
+            sha256: crypto.createHash('sha256').update(content).digest('hex'),
+            contentBase64: content.toString('base64'),
+          }],
+        },
+        transport: 'codex-agent',
+        targetId: 'k3s-prod',
+        cwd: '/srv/apps/docs',
+        sessionId: 'thread-1',
+        completionStatus: 'complete',
+        verifyResults: ['passed'],
+      })),
+    };
+    const tool = new RemoteCliAgentTool({ runner, artifactService });
+
+    const result = await tool.execute({
+      task: 'Create the XML document and return it.',
+      collectResultFiles: true,
+    }, {
+      sessionId: 'session-1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      handoffVersion: 'RemoteAgentHandoff/v1',
+      requestedHandoffVersion: 'RemoteAgentHandoff/v1',
+      artifactIds: ['artifact-returned-1'],
+      artifacts: [expect.objectContaining({
+        id: 'artifact-returned-1',
+        filename: 'draft.xml',
+      })],
+      resultFiles: [expect.objectContaining({
+        filename: 'draft.xml',
+        role: 'document',
+      })],
+    });
+    expect(result.data.resultFiles[0]).not.toHaveProperty('contentBase64');
+    expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-1',
+      sourceMode: 'remote-cli-agent',
+      filename: 'draft.xml',
+      buffer: content,
     }));
   });
 

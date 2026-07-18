@@ -8,6 +8,10 @@ const {
   buildAgentQualityContractText,
 } = require('../agent-quality-contract');
 const { normalizeEvidenceAttestation, redactSecrets } = require('../agent-evidence');
+const {
+  buildRemoteAgentHandoffPrompt,
+  normalizeRelativeWorkspacePath,
+} = require('./agent-handoff');
 
 const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
@@ -603,6 +607,9 @@ function buildRemoteCliStructuredResult({ task = '', metadata = {}, agentQuality
       publicHost: normalizeText(metadata.publicHost) || null,
       publicUrl: normalizeText(metadata.publicUrl) || null,
     },
+    artifacts: {
+      resultFilesManifest: normalizeText(metadata.resultFilesManifest) || null,
+    },
     blocker: normalizeText(metadata.blocker) || null,
     agentQuality,
   });
@@ -640,6 +647,18 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
   const publicUrl = normalizeOptionalProofValue(readMarkerLine(text, ['PUBLIC_URL', 'LIVE_URL']));
   const uiCheckReport = readMarkerLine(text, ['UI_CHECK_REPORT']);
+  let resultFilesManifest = '';
+  const resultFilesManifestMarker = normalizeOptionalProofValue(readMarkerLine(text, [
+    'RESULT_FILES_MANIFEST',
+    'REMOTE_AGENT_RESULT_FILES_MANIFEST',
+  ]));
+  if (resultFilesManifestMarker) {
+    try {
+      resultFilesManifest = normalizeRelativeWorkspacePath(resultFilesManifestMarker);
+    } catch (_error) {
+      resultFilesManifest = '';
+    }
+  }
   const uiScreenshots = Array.from(new Set(
     readMarkerLines(text, ['UI_SCREENSHOTS', 'UI_SCREENSHOT'])
       .flatMap((value) => value.split(','))
@@ -693,6 +712,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(publicHost ? { publicHost } : {}),
     ...(publicUrl ? { publicUrl } : {}),
     ...(uiCheckReport ? { uiCheckReport } : {}),
+    ...(resultFilesManifest ? { resultFilesManifest } : {}),
     ...(uiScreenshots.length > 0 ? { uiScreenshots } : {}),
     ...(whatChanged ? { whatChanged } : {}),
     ...(supportAgentRequest ? { supportAgentRequest } : {}),
@@ -751,6 +771,9 @@ function buildRemoteCliProofDisplay(source = '', metadata = {}) {
   }
   if (metadata.uiCheckReport) {
     pushUniqueLine(lines, `UI_CHECK_REPORT=${metadata.uiCheckReport}`);
+  }
+  if (metadata.resultFilesManifest) {
+    pushUniqueLine(lines, `RESULT_FILES_MANIFEST=${metadata.resultFilesManifest}`);
   }
   if (metadata.whatChanged) {
     pushUniqueLine(lines, `WHAT_CHANGED=${metadata.whatChanged}`);
@@ -1275,7 +1298,9 @@ function buildProviderAgentTask({
   providerLabel = 'CLI provider',
   requestedModel = '',
   continuitySummary = '',
+  handoff = null,
 } = {}) {
+  const handoffPrompt = buildRemoteAgentHandoffPrompt(handoff);
   return [
     `Use ${providerLabel} for this remote coding task.`,
     requestedModel ? `The model selected in the KimiBuilt header is ${requestedModel}.` : '',
@@ -1290,6 +1315,7 @@ function buildProviderAgentTask({
     '- Finish with marker lines: WHAT_CHANGED=<summary>, VERIFY_COMMANDS=<commands>, VERIFY_RESULTS=<results>, PUBLIC_URL=<url or not_available>, BLOCKER=<none or exact blocker>.',
     '- Include Git and deployment continuity markers when known.',
     '- The final marker must be REMOTE_AGENT_RESULT: success <summary> or REMOTE_AGENT_RESULT: failed <reason>.',
+    handoffPrompt,
     continuitySummary ? 'Prior verified continuity context:' : '',
     continuitySummary,
   ].filter(Boolean).join('\n');
@@ -1343,6 +1369,85 @@ function buildCodexAgentUrl(baseUrl = '', path = '') {
   const base = normalizeText(baseUrl).replace(/\/+$/, '');
   const suffix = `/${normalizeText(path).replace(/^\/+/, '')}`;
   return `${base}${suffix}`;
+}
+
+function resolveRemoteAgentHandoffAcknowledgement(startBody = {}, handoff = null) {
+  if (!handoff) {
+    return null;
+  }
+  const acknowledgement = startBody?.handoff
+    || startBody?.task?.handoff
+    || startBody?.handoffAcknowledgement
+    || null;
+  const version = normalizeText(acknowledgement?.version);
+  const operationId = normalizeText(acknowledgement?.operationId);
+  const inputManifestPath = normalizeText(
+    acknowledgement?.inputManifestPath || acknowledgement?.manifestPath,
+  );
+  const resultManifestPath = normalizeText(acknowledgement?.resultManifestPath);
+  if (acknowledgement?.accepted !== true
+    || version !== handoff.version
+    || operationId !== handoff.operationId
+    || inputManifestPath !== handoff.manifestPath
+    || (handoff.output?.enabled && resultManifestPath !== handoff.output.manifestPath)) {
+    const error = new Error('The remote gateway did not acknowledge the requested artifact handoff contract and isolated paths.');
+    error.code = 'REMOTE_AGENT_HANDOFF_NOT_ACKNOWLEDGED';
+    throw error;
+  }
+
+  const resultFilesUrl = normalizeText(
+    startBody?.resultFilesUrl
+    || startBody?.task?.resultFilesUrl
+    || acknowledgement?.resultFilesUrl,
+  );
+  if (handoff.output?.enabled && !resultFilesUrl) {
+    const error = new Error('The remote gateway acknowledged the handoff but did not return a result-files endpoint.');
+    error.code = 'REMOTE_AGENT_RESULT_FILES_URL_MISSING';
+    throw error;
+  }
+  return {
+    version,
+    operationId,
+    inputManifestPath,
+    resultManifestPath: resultManifestPath || null,
+    resultFilesUrl: resultFilesUrl || null,
+  };
+}
+
+function buildSameOriginGatewayUrl(baseUrl = '', value = '') {
+  const absoluteUrl = new URL(value, `${trimTrailingSlash(baseUrl)}/`).toString();
+  if (new URL(absoluteUrl).origin !== new URL(baseUrl).origin) {
+    const error = new Error('Remote agent result-files URL must use the configured gateway origin.');
+    error.code = 'REMOTE_AGENT_RESULT_FILES_CROSS_ORIGIN';
+    throw error;
+  }
+  return absoluteUrl;
+}
+
+function applyRemoteAgentResultFilesOutcome(metadata = {}, handoff = null, resultFiles = null, error = null) {
+  if (!handoff?.output?.enabled) {
+    return metadata;
+  }
+  const resultFilesError = error
+    ? `Remote agent result files were not returned safely: ${error.message}`
+    : !Array.isArray(resultFiles?.files) || resultFiles.files.length === 0
+      ? 'Remote agent result files were requested, but the verified result contained no files.'
+      : '';
+  if (!resultFilesError) {
+    return {
+      ...metadata,
+      resultFilesManifest: normalizeText(resultFiles.manifestPath) || handoff.output.manifestPath,
+    };
+  }
+  const verifyResults = Array.isArray(metadata.verifyResults) ? metadata.verifyResults : [];
+  return {
+    ...metadata,
+    resultFilesManifest: normalizeText(resultFiles?.manifestPath) || handoff.output.manifestPath,
+    resultFilesError,
+    verifyResults: [...verifyResults, resultFilesError],
+    blocker: metadata.blocker || resultFilesError,
+    completionStatus: 'blocked',
+  };
 }
 
 function parseSseEventFrames(buffer = '', onEvent = () => {}) {
@@ -1429,6 +1534,7 @@ function buildCodexAgentPrompt({
   adminMode = false,
   continuitySummary = '',
   supportAgentResponse = '',
+  handoff = null,
   gitProvider = resolveConfiguredGitProviderContext(),
 } = {}) {
   const gitProviderLines = gitProvider?.configured ? [
@@ -1465,7 +1571,8 @@ function buildCodexAgentPrompt({
     supportAgentResponse ? 'Support agent response for this continuation:' : '',
     supportAgentResponse,
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
-    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, SUPPORT_AGENT_REQUIRED=<help request or none>, SUPPORT_AGENT_CONTEXT=<context or none>.',
+    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, RESULT_FILES_MANIFEST=<workspace-relative path>, SUPPORT_AGENT_REQUIRED=<help request or none>, SUPPORT_AGENT_CONTEXT=<context or none>.',
+    buildRemoteAgentHandoffPrompt(handoff),
     continuitySummary ? 'Remote project continuity context:' : '',
     continuitySummary,
     '',
@@ -1876,6 +1983,37 @@ class RemoteCliAgentsSdkRunner {
     }
   }
 
+  async fetchRemoteAgentResultFiles({
+    baseUrl = '',
+    apiKey = '',
+    acknowledgement = null,
+    signal = null,
+  } = {}) {
+    if (!acknowledgement?.resultFilesUrl) {
+      return null;
+    }
+    const resultFilesUrl = buildSameOriginGatewayUrl(baseUrl, acknowledgement.resultFilesUrl);
+    const response = await this.fetch(resultFilesUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+      ...(signal ? { signal } : {}),
+    });
+    const body = await this.readJsonResponse(response);
+    if (!response?.ok) {
+      const error = new Error(
+        normalizeText(body?.error || body?.message)
+        || `remote agent result-files request failed with status ${response?.status || 'unknown'}`,
+      );
+      error.code = 'REMOTE_AGENT_RESULT_FILES_FETCH_FAILED';
+      error.status = response?.status;
+      throw error;
+    }
+    return body;
+  }
+
   async consumeCodexAgentEvents(response, {
     onEvent = () => {},
     signal = null,
@@ -1950,6 +2088,7 @@ class RemoteCliAgentsSdkRunner {
       || input.codex_thread_id
       || '',
     );
+    const handoff = input.handoff || null;
     if (!workspacePath) {
       throw new Error('remote-cli-agent codex-agent transport requires cwd, workspacePath, or REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH.');
     }
@@ -1997,6 +2136,7 @@ class RemoteCliAgentsSdkRunner {
         gitProvider: resolveConfiguredGitProviderContext(this.config),
         continuitySummary: continuitySummary || normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context),
         supportAgentResponse: normalizeText(input.supportAgentResponse || input.support_agent_response || input.supportAgentNotes || input.support_agent_notes),
+        handoff,
       }),
       continuation: Boolean(priorThreadId),
       ...(priorThreadId ? { threadId: priorThreadId } : {}),
@@ -2016,8 +2156,11 @@ class RemoteCliAgentsSdkRunner {
           ? { reasoningEffort: normalizeText(input.reasoningEffort || input.reasoning_effort || this.config.codexAgentReasoningEffort) }
           : {}),
       },
+      ...(handoff ? { handoff } : {}),
     };
 
+    let runId = '';
+    let terminalReached = false;
     try {
       emitProgress('Starting Codex agent through /api/codex-agent/run.', { percent: 35, stage: 'starting' });
       const startResponse = await this.fetch(buildCodexAgentUrl(baseUrl, '/api/codex-agent/run'), {
@@ -2036,10 +2179,11 @@ class RemoteCliAgentsSdkRunner {
         error.body = startBody;
         throw error;
       }
-      const runId = normalizeText(startBody?.runId || startBody?.id);
+      runId = normalizeText(startBody?.runId || startBody?.id);
       if (!runId) {
         throw new Error('codex-agent run response did not include runId.');
       }
+      const handoffAcknowledgement = resolveRemoteAgentHandoffAcknowledgement(startBody, handoff);
 
       emitProgress(`Codex agent run ${runId} started; streaming /events.`, {
         percent: 42,
@@ -2153,6 +2297,7 @@ class RemoteCliAgentsSdkRunner {
       if (!terminalEvent) {
         throw new Error(`codex-agent events stream ended without a terminal event${latestEvent?.event ? ` after ${latestEvent.event}` : ''}.`);
       }
+      terminalReached = true;
 
       const terminalName = normalizeText(terminalEvent.event);
       const terminalOutput = normalizeText(
@@ -2181,7 +2326,27 @@ class RemoteCliAgentsSdkRunner {
         transportLabel: 'codex-agent',
         transportDescription: '/api/codex-agent run/events contract',
       });
-      const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      let resultFiles = null;
+      let resultFilesError = null;
+      if (handoff?.output?.enabled) {
+        try {
+          resultFiles = await this.fetchRemoteAgentResultFiles({
+            baseUrl,
+            apiKey,
+            acknowledgement: handoffAcknowledgement,
+            signal: controller?.signal || null,
+          });
+        } catch (error) {
+          resultFilesError = error;
+        }
+      }
+      let runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      runMetadata = applyRemoteAgentResultFilesOutcome(
+        runMetadata,
+        handoff,
+        resultFiles,
+        resultFilesError,
+      );
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
       const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
       return {
@@ -2189,6 +2354,7 @@ class RemoteCliAgentsSdkRunner {
         humanSummary: structuredResult.humanSummary,
         structuredResult,
         transport: 'codex-agent',
+        handoffVersion: handoffAcknowledgement?.version || null,
         codexAgentRunId: runId,
         codexThreadId: normalizeText(terminalEvent.thread_id || terminalEvent.threadId || startBody?.threadId) || null,
         codexTurnId: normalizeText(terminalEvent.turn_id || terminalEvent.turnId || startBody?.turnId) || null,
@@ -2198,11 +2364,17 @@ class RemoteCliAgentsSdkRunner {
         remoteCodeSessionId: runMetadata.sessionId || startBody?.threadId || startBody?.sessionId || sessionId || null,
         remoteCodeJobId: null,
         gitRepo: runMetadata.gitRepo || null,
+        gitBranch: runMetadata.gitBranch || null,
+        gitBaseCommit: runMetadata.gitBaseCommit || null,
         gitCommit: runMetadata.gitCommit || null,
+        changedFiles: runMetadata.changedFiles || [],
         deployment: runMetadata.deployment || null,
         publicHost: runMetadata.publicHost || null,
         publicUrl: runMetadata.publicUrl || null,
         uiCheckReport: runMetadata.uiCheckReport || null,
+        resultFilesManifest: runMetadata.resultFilesManifest || null,
+        resultFiles: resultFiles || null,
+        resultFilesError: runMetadata.resultFilesError || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
         whatChanged: runMetadata.whatChanged || null,
         supportAgentRequest: runMetadata.supportAgentRequest || null,
@@ -2216,6 +2388,15 @@ class RemoteCliAgentsSdkRunner {
         apiMode: 'codex-agent',
       };
     } catch (error) {
+      if (runId && !terminalReached) {
+        await this.fetch(buildCodexAgentUrl(baseUrl, `/api/codex-agent/runs/${encodeURIComponent(runId)}/cancel`), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+          },
+        }).catch(() => null);
+      }
       if (error?.name === 'AbortError') {
         const timeoutError = new RemoteCliAgentRunTimeoutError(timeoutMs);
         timeoutError.cause = error;
@@ -2256,6 +2437,7 @@ class RemoteCliAgentsSdkRunner {
     let markerComplete = false;
     let markerStatus = '';
     let terminalEvent = null;
+    const handoff = input.handoff || null;
 
     const emitProgress = (detail, extra = {}) => {
       if (typeof onProgress !== 'function' || !detail) {
@@ -2295,9 +2477,11 @@ class RemoteCliAgentsSdkRunner {
             providerLabel: selection.providerLabel,
             requestedModel: selection.requestedModel,
             continuitySummary,
+            handoff,
           }),
           ...(selection.providerModel ? { model: selection.providerModel } : {}),
           ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
+          ...(handoff ? { handoff } : {}),
         }),
         ...(controller ? { signal: controller.signal } : {}),
       });
@@ -2311,6 +2495,7 @@ class RemoteCliAgentsSdkRunner {
       if (!taskId || !streamUrl) {
         throw new Error(`${selection.providerLabel} remote-agent response did not include task id and stream URL.`);
       }
+      const handoffAcknowledgement = resolveRemoteAgentHandoffAcknowledgement(startBody, handoff);
 
       emitProgress(`${selection.providerLabel} remote task ${taskId} started.`, { percent: 35, stage: 'streaming' });
       const absoluteStreamUrl = new URL(streamUrl, `${trimTrailingSlash(baseUrl)}/`).toString();
@@ -2377,7 +2562,27 @@ class RemoteCliAgentsSdkRunner {
         transportLabel: 'provider-agent',
         transportDescription: `${selection.providerLabel} via /admin/remote-agent-tasks`,
       });
-      const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      let resultFiles = null;
+      let resultFilesError = null;
+      if (handoff?.output?.enabled) {
+        try {
+          resultFiles = await this.fetchRemoteAgentResultFiles({
+            baseUrl,
+            apiKey,
+            acknowledgement: handoffAcknowledgement,
+            signal: controller?.signal || null,
+          });
+        } catch (error) {
+          resultFilesError = error;
+        }
+      }
+      let runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      runMetadata = applyRemoteAgentResultFilesOutcome(
+        runMetadata,
+        handoff,
+        resultFiles,
+        resultFilesError,
+      );
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
       const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
       return {
@@ -2385,6 +2590,7 @@ class RemoteCliAgentsSdkRunner {
         humanSummary: structuredResult.humanSummary,
         structuredResult,
         transport: 'provider-agent',
+        handoffVersion: handoffAcknowledgement?.version || null,
         providerId: selection.providerId,
         targetId,
         cwd: runMetadata.workspace || cwd,
@@ -2400,6 +2606,9 @@ class RemoteCliAgentsSdkRunner {
         publicHost: runMetadata.publicHost || null,
         publicUrl: runMetadata.publicUrl || null,
         uiCheckReport: runMetadata.uiCheckReport || null,
+        resultFilesManifest: runMetadata.resultFilesManifest || null,
+        resultFiles: resultFiles || null,
+        resultFilesError: runMetadata.resultFilesError || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
         whatChanged: runMetadata.whatChanged || null,
         verifyCommands: runMetadata.verifyCommands || [],
@@ -2601,7 +2810,14 @@ class RemoteCliAgentsSdkRunner {
       input.targetId || input.target_id,
       this.config.defaultTargetId || 'prod',
     );
-    const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
+    const cwd = normalizeText(
+      input.cwd
+      || input.workingDirectory
+      || input.working_directory
+      || input.workspacePath
+      || input.workspace_path
+      || this.config.defaultCwd,
+    );
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs ?? input.wait_ms, 30000, { min: 1000, max: 300000 });
@@ -2617,6 +2833,7 @@ class RemoteCliAgentsSdkRunner {
     const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs ?? input.status_poll_interval_ms ?? this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
     const adminMode = resolveAdminMode(input, task);
     const continuitySummary = normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context);
+    const handoff = input.handoff || null;
 
     if (transport === 'provider-agent') {
       return this.executeProviderAgentRun({
@@ -2665,6 +2882,12 @@ class RemoteCliAgentsSdkRunner {
           error,
         );
       }
+    }
+
+    if (handoff) {
+      const error = new Error('remote-cli-agent file handoffs require the codex-agent or provider-agent transport; MCP does not preserve staged files.');
+      error.code = 'REMOTE_AGENT_HANDOFF_UNSUPPORTED_TRANSPORT';
+      throw error;
     }
 
     const sdk = this.sdkLoader();
@@ -2970,6 +3193,7 @@ class RemoteCliAgentsSdkRunner {
         publicHost: runMetadata.publicHost || null,
         publicUrl: runMetadata.publicUrl || null,
         uiCheckReport: runMetadata.uiCheckReport || null,
+        resultFilesManifest: runMetadata.resultFilesManifest || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
         whatChanged: runMetadata.whatChanged || null,
         supportAgentRequest: runMetadata.supportAgentRequest || null,
@@ -3017,6 +3241,7 @@ module.exports = {
   RemoteCliAgentsSdkRunner,
   buildRemoteCliInstructions,
   buildRemoteCliStructuredResult,
+  applyRemoteAgentResultFilesOutcome,
   buildRemoteCliPrompt,
   extractRemoteCliRunMetadata,
   remoteCliAgentsSdkRunner,
@@ -3031,5 +3256,6 @@ module.exports = {
   resolveAdminMode,
   resolveProviderAgentContinuationSessionId,
   resolveProviderAgentSelection,
+  resolveRemoteAgentHandoffAcknowledgement,
   trimTrailingSlash,
 };

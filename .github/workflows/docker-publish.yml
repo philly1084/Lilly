@@ -33,6 +33,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify remote agent artifact handoff
+        run: |
+          node --check src/remote-cli/agent-handoff.js
+          node --check src/remote-cli/agent-result-artifacts.js
+          node --check src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.js
+          node --check src/remote-cli/agents-sdk-runner.js
+          node --check src/conversation-orchestrator.js
+          npm test -- --runInBand --coverage=false --runTestsByPath \
+            src/remote-cli/agent-handoff.test.js \
+            src/remote-cli/agent-result-artifacts.test.js \
+            src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.test.js \
+            src/remote-cli/agents-sdk-runner.test.js
+          npm test -- --runInBand --coverage=false --runTestsByPath \
+            src/conversation-orchestrator.test.js \
+            --testNamePattern='routes explicit assisted remote CLI authoring requests to remote-cli-agent instead of the end-to-end workflow'
+
       - name: Run release gate
         run: npm run release:gate
 

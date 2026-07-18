@@ -10916,6 +10916,7 @@ describe('ConversationOrchestrator', () => {
             toolPolicy,
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
             },
         });
         const normalizedAction = orchestrator.normalizePlannedStep(directAction, {
@@ -10926,6 +10927,7 @@ describe('ConversationOrchestrator', () => {
             executionProfile: 'remote-build',
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
             },
         });
 
@@ -10943,6 +10945,8 @@ describe('ConversationOrchestrator', () => {
                 waitMs: 30000,
                 adminMode: true,
                 cwd: '/srv/apps/world-dashboard',
+                artifactIds: ['design-bundle-1'],
+                collectResultFiles: true,
             },
         });
         expect(normalizedAction).toEqual(directAction);

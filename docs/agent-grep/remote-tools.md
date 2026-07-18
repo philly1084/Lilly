@@ -10,7 +10,7 @@ Use when:
 Small decision map:
 - Unified remote-access model: treat these as one remote operations system with five lanes. Prefer the stateful Codex-agent SSE lane through `remote-cli-agent` for GitLab-backed source/build/deploy work and remote coding/build/deploy work, use `managed-app` only for explicit managed-app control-plane actions, use direct command/workbench/deploy lanes for narrow operations, and keep MCP `remote_code_*` only as compatibility transport inside `remote-cli-agent`.
 - `managed-app`: explicit managed-app catalog/control-plane lane. Use `managed-app create`, `managed-app iterate`, `doctor`, or `reconcile` only when the user asks for managed-app operations; when deeper CLI work is needed, pass `executor:"remote-cli-agent"` so remote-cli-agent is a worker inside the managed-app evidence loop.
-- `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, game, GitLab repo, pipeline, or registry-backed changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
+- `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, game, GitLab repo, pipeline, or registry-backed changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `waitMs`, `transport`, `artifactIds`/`contextFiles`, and `collectResultFiles`.
 - `remote-command`: one direct remote command for inspect, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification. Params use `command`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists.
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after source/image/manifests already exist.
@@ -30,10 +30,12 @@ Boundary:
 - MCP compatibility transport: the runner can still call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and poll `remote_code_status({ jobId })` with the job id only.
 - Do not put raw shell fields like `command`, `args`, `shell`, or `executable` in `remote-cli-agent`.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
+- For sandbox/design/document handoff, KimiBuilt owns session artifacts and lineage; `nuts` stages/collects the versioned files for Codex/Kimi/Grok. Use `RemoteAgentHandoff/v1`, require the router acknowledgment, and persist only authenticated `RemoteAgentResultFiles/v1` output. Do not build three frontend-specific transfer tools.
+- Handoff directories are operation-scoped under `.kimibuilt/agent-runs/<operationId>/`. V1 caps are 12 files, 4 MiB each, 6 MiB decoded total. Read-only/no-file calls must not dirty the workspace; MCP must reject file handoffs.
 
 Remote completion proof:
 - Require `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER`.
-- Keep continuity markers when known: `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_BRANCH`, `GIT_BASE_COMMIT`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, `UI_SCREENSHOTS`, `SUPPORT_AGENT_REQUIRED`, `SUPPORT_AGENT_CONTEXT`.
+- Keep continuity markers when known: `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_BRANCH`, `GIT_BASE_COMMIT`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, `UI_SCREENSHOTS`, `RESULT_FILES_MANIFEST`, `SUPPORT_AGENT_REQUIRED`, `SUPPORT_AGENT_CONTEXT`.
 - If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, success requires browser/Playwright proof or `kimibuilt-ui-check` evidence. If the proof cannot run, mark that as the blocker instead of claiming ready.
 - If `SUPPORT_AGENT_REQUIRED=<request>` appears, get bounded support-agent help, then resume `remote-cli-agent` with the same `threadId` and `supportAgentResponse`. This is not a user decision by default.
 - Forward `USER_INPUT_REQUIRED=<question/options>` to the user and continue the same session after the answer.

@@ -27,6 +27,9 @@ data/piper/voices/*
 npm-debug.log*
 ui-checks/
 
+# Ephemeral gateway-owned remote agent handoffs
+.kimibuilt/agent-runs/
+
 # OS
 .DS_Store
 Thumbs.db

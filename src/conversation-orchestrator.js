@@ -12789,6 +12789,8 @@ class ConversationOrchestrator extends EventEmitter {
                     ...(cwd ? { cwd } : {}),
                     ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
                     ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
+                    ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+                    ...(authoringIntent ? { collectResultFiles: true } : {}),
                     ...jobContinuationParams,
                 },
             });
