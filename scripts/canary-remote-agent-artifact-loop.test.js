@@ -255,7 +255,7 @@ function managedAppFingerprintFromAuthoredFiles(authoredFiles) {
     };
 }
 
-async function createLiveAuthoringHarness(env) {
+async function createLiveAuthoringHarness(env, harnessOptions = {}) {
     const firstPlan = buildLanePlan('codex', env, { hop: 1 });
     const firstResult = buildCompactResult(firstPlan, 'author-hop-1');
     const secondPlan = buildLanePlan('codex', env, {
@@ -392,7 +392,23 @@ async function createLiveAuthoringHarness(env) {
         }
         if (method === 'POST' && /\/managed-app\/preflight$/.test(parsed.pathname)) {
             const artifactId = parsed.pathname.split('/').at(-3);
-            return jsonResponse(managedAppFingerprintFromRequest(body, artifactId));
+            const preflight = managedAppFingerprintFromRequest(body, artifactId);
+            if (harnessOptions.repositoryBlocked === true) {
+                preflight.repositoryControlPlaneReady = false;
+                preflight.repositoryControlPlane = {
+                    ...preflight.repositoryControlPlane,
+                    ready: false,
+                    authenticated: false,
+                    namespaceAccessible: false,
+                };
+                preflight.pushToWebEligible = false;
+                preflight.blockers = [{
+                    code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED',
+                    blocker: 'managed_app_repository_auth_rejected',
+                    message: 'The repository control plane rejected the configured credential.',
+                }];
+            }
+            return jsonResponse(preflight);
         }
         if (method === 'DELETE' && parsed.pathname === '/api/sessions/session-authoring-canary') {
             return jsonResponse(null, 204);
@@ -1105,7 +1121,32 @@ describe('remote agent artifact-loop canary', () => {
             plan,
             expectedFingerprint,
             'artifact-authoring-site-bundle',
+        )).toThrow('The codex managed-app source preflight reported a content blocker.');
+        const repositoryBlocked = {
+            ...preflight,
+            repositoryControlPlaneReady: false,
+            pushToWebEligible: false,
+            blockers: [{ code: 'MANAGED_APP_REPOSITORY_AUTH_REJECTED' }],
+        };
+        expect(validatePreflight(
+            repositoryBlocked,
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+        )).toBe(true);
+        expect(() => validatePreflight(
+            repositoryBlocked,
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+            { requirePushToWebReady: true },
         )).toThrow('The codex managed-app preflight reported a deployment blocker.');
+        expect(() => validatePreflight(
+            { ...repositoryBlocked, contentEligible: false },
+            plan,
+            expectedFingerprint,
+            'artifact-authoring-site-bundle',
+        )).toThrow('The codex managed-app source preflight reported a content blocker.');
         expect(() => validatePreflight(
             {
                 ...preflight,
@@ -1370,10 +1411,19 @@ describe('remote agent artifact-loop canary', () => {
             lane: 'codex',
             bidirectionalRoundTrip: true,
             fixtureCount: 4,
+            managedAppSourcePreflight: 'passed',
+            pushToWebEligibility: 'ready',
             managedAppPreflight: 'passed',
             hops: [
                 expect.objectContaining({ hop: 1, liveRemoteExecutionProved: true, componentDownloadsVerified: 4 }),
-                expect.objectContaining({ hop: 2, liveRemoteExecutionProved: true, componentDownloadsVerified: 4, managedAppPreflight: 'passed' }),
+                expect.objectContaining({
+                    hop: 2,
+                    liveRemoteExecutionProved: true,
+                    componentDownloadsVerified: 4,
+                    managedAppSourcePreflight: 'passed',
+                    pushToWebEligibility: 'ready',
+                    managedAppPreflight: 'passed',
+                }),
             ],
         })]);
         expect(calls.every((call) => call.headers.get('X-API-Key') === apiKey)).toBe(true);
@@ -1441,6 +1491,8 @@ describe('remote agent artifact-loop canary', () => {
             semanticBriefVerified: true,
             siteZipFilesVerified: 4,
             previewVerified: true,
+            managedAppSourcePreflight: 'passed',
+            pushToWebEligibility: 'ready',
             managedAppPreflight: 'passed',
             browserQa: expect.objectContaining({ status: 'passed', checkedViewports: 2, issues: [] }),
         }));
@@ -1468,6 +1520,55 @@ describe('remote agent artifact-loop canary', () => {
         const deleteIndex = harness.calls.findIndex((call) => call.method === 'DELETE');
         expect(browserIndex).toBeGreaterThan(-1);
         expect(deleteIndex).toBeGreaterThan(browserIndex);
+    });
+
+    test('proves authoring and browser quality when only repository deployment readiness is blocked', async () => {
+        const env = {
+            KIMIBUILT_CANARY_BASE_URL: 'https://kimibuilt.example.test',
+            KIMIBUILT_FRONTEND_API_KEY: 'repository-blocked-authoring-key',
+            KIMIBUILT_CANARY_CODEX_MODEL: 'codex-authoring-canary',
+            KIMIBUILT_CANARY_POLL_INTERVAL_MS: '100',
+        };
+        const harness = await createLiveAuthoringHarness(env, { repositoryBlocked: true });
+        const browserQaRunner = jest.fn(async () => ({
+            ok: true,
+            checkedViewports: 2,
+            issues: [],
+            outDir: 'ui-checks/repository-blocked-authoring',
+        }));
+
+        const result = await runCanary({
+            argv: ['--run', '--mode=codex', '--authoring', '--browser-qa'],
+            env,
+            fetchImpl: harness.fetchImpl,
+            browserQaRunner,
+            sleep: jest.fn(),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            passed: true,
+            authoringScenario: 'passed',
+            pushToWebScenario: 'not-requested',
+        }));
+        expect(result.lanes[0]).toEqual(expect.objectContaining({
+            managedAppSourcePreflight: 'passed',
+            pushToWebEligibility: 'blocked',
+            pushToWebBlockerCodes: ['MANAGED_APP_REPOSITORY_AUTH_REJECTED'],
+        }));
+        expect(result.lanes[0]).not.toHaveProperty('managedAppPreflight');
+        expect(result.lanes[0].authoring).toEqual(expect.objectContaining({
+            scenario: 'authoring',
+            managedAppSourcePreflight: 'passed',
+            pushToWebEligibility: 'blocked',
+            pushToWebBlockerCodes: ['MANAGED_APP_REPOSITORY_AUTH_REJECTED'],
+            browserQa: expect.objectContaining({ status: 'passed', checkedViewports: 2 }),
+        }));
+        expect(result.lanes[0].authoring).not.toHaveProperty('managedAppPreflight');
+        expect(harness.calls.filter((call) => (
+            call.method === 'POST' && call.path === '/api/async-lab/runs'
+        ))).toHaveLength(3);
+        expect(browserQaRunner).toHaveBeenCalledTimes(1);
+        expect(harness.calls.some((call) => call.path.endsWith('/managed-app'))).toBe(false);
     });
 
     test('pushes the exact preflight SHA, observes terminal source/build/image/rollout/HTTPS proof, and checks the approved public origin', async () => {

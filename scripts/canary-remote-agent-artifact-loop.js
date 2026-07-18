@@ -1721,21 +1721,14 @@ function validatePushToWebReadiness(payload = {}) {
     };
 }
 
-function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactId) {
+function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactId, options = {}) {
     const status = String(payload?.status || payload?.preflight?.status || '').trim().toLowerCase();
     const blockers = payload?.blockers || payload?.preflight?.blockers || [];
-    if (payload?.ok === false
-        || payload?.eligible === false
-        || payload?.preflight?.eligible === false
-        || payload?.contentEligible !== true
-        || payload?.controlPlaneAvailable !== true
-        || payload?.repositoryControlPlaneReady !== true
-        || payload?.pushToWebEligible !== true
+    if (payload?.contentEligible !== true
         || String(payload?.artifactId || '').trim() !== expectedArtifactId
         || String(payload?.sourceType || '').trim() !== 'native-site-archive'
-        || ['blocked', 'failed', 'error'].includes(status)
-        || (Array.isArray(blockers) && blockers.length > 0)) {
-        throw new Error(`The ${plan.lane} managed-app preflight reported a deployment blocker.`);
+        || (['failed', 'error'].includes(status) && payload?.contentEligible !== true)) {
+        throw new Error(`The ${plan.lane} managed-app source preflight reported a content blocker.`);
     }
     if (payload?.sha256 !== expectedFingerprint.sha256
         || payload?.sizeBytes !== expectedFingerprint.sizeBytes
@@ -1756,7 +1749,33 @@ function validatePreflight(payload, plan, expectedFingerprint, expectedArtifactI
             throw new Error(`The ${plan.lane} managed-app preflight changed ${expected.path}.`);
         }
     }
+
+    if (options.requirePushToWebReady === true
+        && (payload?.ok === false
+            || payload?.eligible === false
+            || payload?.preflight?.eligible === false
+            || payload?.controlPlaneAvailable !== true
+            || payload?.repositoryControlPlaneReady !== true
+            || payload?.pushToWebEligible !== true
+            || ['blocked', 'failed', 'error'].includes(status)
+            || (Array.isArray(blockers) && blockers.length > 0))) {
+        throw new Error(`The ${plan.lane} managed-app preflight reported a deployment blocker.`);
+    }
     return true;
+}
+
+function summarizePreflight(payload = {}) {
+    const blockerCodes = (Array.isArray(payload?.blockers) ? payload.blockers : [])
+        .map((blocker) => String(blocker?.code || blocker?.blocker || '').trim())
+        .filter(Boolean)
+        .slice(0, 8);
+    const pushToWebEligibility = payload?.pushToWebEligible === true ? 'ready' : 'blocked';
+    return {
+        managedAppSourcePreflight: 'passed',
+        pushToWebEligibility,
+        ...(pushToWebEligibility === 'ready' ? { managedAppPreflight: 'passed' } : {}),
+        ...(blockerCodes.length > 0 ? { pushToWebBlockerCodes: blockerCodes } : {}),
+    };
 }
 
 function resolveManagedAppRepoIdentity(app = {}, lane = '', phase = 'response') {
@@ -2393,6 +2412,7 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
         throw new Error(`The ${plan.lane} hop ${plan.hop} preview did not preserve the deterministic site semantics.`);
     }
 
+    let preflightSummary = null;
     if (runtimeOptions.preflight === true) {
         const expectedFingerprint = buildExpectedManagedAppFingerprint(plan.fixtures);
         const preflight = await client.requestJson(
@@ -2414,7 +2434,14 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
                 },
             },
         );
-        validatePreflight(preflight, plan, expectedFingerprint, inspected.siteBundleArtifactId);
+        validatePreflight(
+            preflight,
+            plan,
+            expectedFingerprint,
+            inspected.siteBundleArtifactId,
+            { requirePushToWebReady: runtimeOptions.requirePushToWebReady === true },
+        );
+        preflightSummary = summarizePreflight(preflight);
     }
 
     return {
@@ -2439,7 +2466,7 @@ async function executeLiveHop(plan, sessionId, client, runtimeOptions) {
             siteBundleArtifactId: inspected.siteBundleArtifactId,
             siteZipFilesVerified: archivePaths.length,
             previewVerified: true,
-            ...(runtimeOptions.preflight === true ? { managedAppPreflight: 'passed' } : {}),
+            ...(preflightSummary || {}),
         },
     };
 }
@@ -2558,7 +2585,14 @@ async function executeAuthoringScenario(plan, sessionId, client, runtimeOptions)
             },
         },
     );
-    validatePreflight(preflight, plan, expectedFingerprint, inspected.siteBundleArtifactId);
+    validatePreflight(
+        preflight,
+        plan,
+        expectedFingerprint,
+        inspected.siteBundleArtifactId,
+        { requirePushToWebReady: Boolean(runtimeOptions.pushToWebPlan) },
+    );
+    const preflightSummary = summarizePreflight(preflight);
 
     let browserQa = null;
     if (runtimeOptions.browserQa === true) {
@@ -2610,7 +2644,7 @@ async function executeAuthoringScenario(plan, sessionId, client, runtimeOptions)
         siteBundleArtifactId: inspected.siteBundleArtifactId,
         siteZipFilesVerified: archivePaths.length,
         previewVerified: true,
-        managedAppPreflight: 'passed',
+        ...preflightSummary,
         browserQa: browserQa ? {
             status: 'passed',
             checkedViewports: browserQa.checkedViewports,
@@ -2708,6 +2742,7 @@ async function runLive(plans, options = {}) {
                 now,
                 activeRunIds,
                 preflight: true,
+                requirePushToWebReady: options.pushToWeb === true,
             });
             let authoring = null;
             if (options.authoring === true) {
@@ -2736,7 +2771,14 @@ async function runLive(plans, options = {}) {
                 bidirectionalRoundTrip: true,
                 fixtureCount: firstHopPlan.fixtures.length,
                 hops: [firstHop.summary, secondHop.summary],
-                managedAppPreflight: 'passed',
+                managedAppSourcePreflight: secondHop.summary.managedAppSourcePreflight,
+                pushToWebEligibility: secondHop.summary.pushToWebEligibility,
+                ...(secondHop.summary.managedAppPreflight
+                    ? { managedAppPreflight: secondHop.summary.managedAppPreflight }
+                    : {}),
+                ...(secondHop.summary.pushToWebBlockerCodes
+                    ? { pushToWebBlockerCodes: secondHop.summary.pushToWebBlockerCodes }
+                    : {}),
                 ...(authoring ? { authoring } : {}),
             });
         }
