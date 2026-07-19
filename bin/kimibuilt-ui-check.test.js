@@ -3,9 +3,11 @@ const {
   hasCorsConsoleError,
   isAuthWallMetrics,
   isExternalHttpRequest,
+  mergeSameOriginAuthHeaders,
   normalizeUrl,
   parseArgs,
   redactSensitiveUrl,
+  resolveAuthenticatedAppUrl,
   rewritePreviewUrlWithToken,
   waitForClientReady,
 } = require('./kimibuilt-ui-check');
@@ -62,6 +64,44 @@ describe('kimibuilt-ui-check preview auth helpers', () => {
     });
     expect(buildAuthHeaders('https://example.com/api/artifacts/site/sandbox')).toEqual({});
     expect(buildAuthHeaders('https://kimibuilt.secdevsolutions.help/web-chat/')).toEqual({});
+  });
+
+  test('exchanges the frontend key for a short-lived same-origin app token', async () => {
+    process.env.PUBLIC_URL = 'https://kimibuilt.secdevsolutions.help';
+    process.env.KIMIBUILT_FRONTEND_API_KEY = 'frontend-secret';
+    const fetchImpl = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: 'short-lived-jwt', authRequired: true }),
+    }));
+
+    await expect(resolveAuthenticatedAppUrl(
+      'https://kimibuilt.secdevsolutions.help/web-cli/',
+      fetchImpl,
+    )).resolves.toEqual({
+      url: 'https://kimibuilt.secdevsolutions.help/web-cli/',
+      authHeaders: { authorization: 'Bearer short-lived-jwt' },
+      authenticated: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://kimibuilt.secdevsolutions.help/api/auth/ws-token',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer frontend-secret',
+          'x-api-key': 'frontend-secret',
+        }),
+      }),
+    );
+  });
+
+  test('refuses authenticated app token exchange outside configured origins', async () => {
+    process.env.PUBLIC_URL = 'https://kimibuilt.secdevsolutions.help';
+    process.env.KIMIBUILT_FRONTEND_API_KEY = 'frontend-secret';
+    const fetchImpl = jest.fn();
+
+    await expect(resolveAuthenticatedAppUrl('https://outside.example.test/web-cli/', fetchImpl))
+      .rejects.toThrow('outside the configured KimiBuilt origins');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test('rewrites sandbox and preview URLs to tokenized access routes', () => {
@@ -144,6 +184,36 @@ describe('kimibuilt UI check network confinement', () => {
       url: 'https://kimibuilt.example.test/api/artifacts/site-1/preview',
       sameOriginOnly: true,
     }));
+  });
+
+  test('parses the explicit authenticated app proof mode', () => {
+    expect(parseArgs([
+      'https://kimibuilt.example.test/web-cli/',
+      '--authenticated-app',
+    ])).toEqual(expect.objectContaining({
+      authenticatedApp: true,
+    }));
+  });
+
+  test('adds short-lived auth only to same-origin browser requests', () => {
+    const origin = 'https://kimibuilt.example.test';
+    const authHeaders = { authorization: 'Bearer short-lived-jwt' };
+
+    expect(mergeSameOriginAuthHeaders(
+      `${origin}/web-cli/app.js`,
+      origin,
+      { accept: '*/*' },
+      authHeaders,
+    )).toEqual({
+      accept: '*/*',
+      authorization: 'Bearer short-lived-jwt',
+    });
+    expect(mergeSameOriginAuthHeaders(
+      'https://outside.example.test/leak.js',
+      origin,
+      { accept: '*/*' },
+      authHeaders,
+    )).toBeNull();
   });
 
   test('classifies only outside-origin HTTP requests as external', () => {

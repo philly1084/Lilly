@@ -1263,14 +1263,6 @@ function resolveProviderAgentSelection(model = '') {
   if (!normalized || normalized === 'auto') {
     return null;
   }
-  if (/(?:^|[\/_-])grok(?:[\/_-]|$)|\bxai\b/.test(normalized)) {
-    return {
-      providerId: 'grok-build-cli',
-      providerLabel: 'Grok Build',
-      requestedModel,
-      providerModel: 'grok-build',
-    };
-  }
   const hasKimiMarker = /(?:^|[\s\/_-])kimi(?:[\s\/_-]|$)|moonshot/.test(normalized);
   const isKimiK3 = /^k3(?:[\s\/_-]|$)/.test(normalized)
     || (hasKimiMarker && /(?:^|[\s\/_-])k?3(?:[\s\/_-]|$)/.test(normalized));
@@ -1294,7 +1286,7 @@ function resolveProviderAgentSelection(model = '') {
 }
 
 function resolveProviderAgentContinuationSessionId(selection = null, sessionId = '') {
-  if (!['codex-cli', 'grok-build-cli'].includes(selection?.providerId)) {
+  if (selection?.providerId !== 'codex-cli') {
     return '';
   }
   const normalized = normalizeText(sessionId);
@@ -2432,7 +2424,7 @@ class RemoteCliAgentsSdkRunner {
     onProgress = null,
   } = {}) {
     if (!selection) {
-      throw new Error('provider-agent transport requires a Kimi or Grok model selection.');
+      throw new Error('provider-agent transport requires a Codex or Kimi model selection.');
     }
     const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
     const apiKey = resolveCodexAgentApiKey(input, this.config);

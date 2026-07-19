@@ -28,6 +28,7 @@ describe('sandbox browser library catalog', () => {
       'highlightjs',
       'marked',
       'codemirror',
+      'pdf-lib',
       'pdfjs',
       'mammoth',
       'docx',
@@ -43,6 +44,7 @@ describe('sandbox browser library catalog', () => {
     expect(guidance).toContain('CodeMirror');
     expect(guidance).toContain('highlight.js');
     expect(guidance).toContain('PDF.js');
+    expect(guidance).toContain('PDF-Lib');
     expect(guidance).toContain('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js');
   });
 

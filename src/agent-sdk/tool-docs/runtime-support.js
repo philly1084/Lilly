@@ -345,7 +345,7 @@ async function getRuntimeSupport(toolId) {
             notes: ready
                 ? [
                     publicConfig.transport === 'provider-agent'
-                        ? `Remote CLI provider-agent API for Codex, Kimi, and Grok is configured at ${publicConfig.codexAgentBaseUrl}.`
+                        ? `Remote CLI provider-agent API for Codex and Kimi is configured at ${publicConfig.codexAgentBaseUrl}.`
                         : publicConfig.transport === 'codex-agent'
                             ? `Remote CLI Codex-agent compatibility API is configured at ${publicConfig.codexAgentBaseUrl}.`
                             : `Remote CLI MCP server ${publicConfig.name} is configured at ${publicConfig.url}.`,
@@ -368,7 +368,7 @@ async function getRuntimeSupport(toolId) {
                 : [
                     'Remote CLI provider-agent or codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL.',
                     'Remote CLI gateway transport needs REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or a compatible gateway bearer token.',
-                    'Use REMOTE_CLI_AGENT_TRANSPORT=provider-agent for the shared Codex, Kimi, and Grok task lane.',
+                    'Use REMOTE_CLI_AGENT_TRANSPORT=provider-agent for the shared Codex and Kimi task lane.',
                     'Legacy MCP fallback still needs REMOTE_CLI_MCP_URL and REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
                 ],
             runtime: {

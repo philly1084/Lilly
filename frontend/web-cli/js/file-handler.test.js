@@ -77,4 +77,30 @@ describe('web-cli imported file actions', () => {
         expect(app.commandInput.value).toContain('first file body');
         expect(app.commandInput.value).not.toContain('second file body');
     });
+
+    test('loads PDF.js and its worker through same-origin sandbox library routes', async () => {
+        const { fileHandler } = createFileHandlerHarness();
+        const page = {
+            getTextContent: jest.fn().mockResolvedValue({ items: [{ str: 'Local PDF text' }] }),
+        };
+        const pdfDocument = {
+            numPages: 1,
+            getPage: jest.fn().mockResolvedValue(page),
+        };
+        const pdfjsModule = {
+            GlobalWorkerOptions: {},
+            getDocument: jest.fn(() => ({ promise: Promise.resolve(pdfDocument) })),
+        };
+        fileHandler.loadModule = jest.fn().mockResolvedValue(pdfjsModule);
+        fileHandler.displayImportedContent = jest.fn();
+
+        const result = await fileHandler.importPdf({
+            name: 'local.pdf',
+            arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
+        });
+
+        expect(fileHandler.loadModule).toHaveBeenCalledWith('/api/sandbox-libraries/pdfjs/pdf.min.mjs');
+        expect(pdfjsModule.GlobalWorkerOptions.workerSrc).toBe('/api/sandbox-libraries/pdfjs/pdf.worker.min.mjs');
+        expect(result).toContain('Local PDF text');
+    });
 });

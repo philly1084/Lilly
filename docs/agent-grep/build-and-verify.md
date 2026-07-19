@@ -13,6 +13,7 @@ Local path:
 - Run focused tests first: `node .\node_modules\jest\bin\jest.js --runTestsByPath <test-file>`
 - Syntax check edited JS when useful: `node --check <file>`
 - For generated HTML/UI: `node bin/kimibuilt-ui-check.js <url-or-file-url> --out ui-checks/<name>`
+- For a protected KimiBuilt application route such as Web CLI, Canvas, or Notes, run `node bin/kimibuilt-ui-check.js <url> --authenticated-app --same-origin-only --out ui-checks/<name>`. The checker uses an existing environment key or the in-pod gateway resolver, exchanges it for a short-lived app token, and adds that token only to same-origin browser requests; never put a key or token in the command line.
 
 Sandbox path:
 - Use `code-sandbox` for static preview bundles or runnable snippets.

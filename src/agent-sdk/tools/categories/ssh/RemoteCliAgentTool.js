@@ -341,7 +341,7 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
     context?.metadata?.requestedModel,
     context?.metadata?.model,
   );
-  const supportedHeaderModel = /(?:^|[\/_-])(?:gpt|codex|openai|kimi|grok|xai)(?:[\/_-]|$)|^o[134](?:[\/_-]|$)|moonshot/i.test(selectedHeaderModel)
+  const supportedHeaderModel = /(?:^|[\/_-])(?:gpt|codex|openai|kimi)(?:[\/_-]|$)|^o[134](?:[\/_-]|$)|moonshot/i.test(selectedHeaderModel)
     ? selectedHeaderModel
     : '';
   applyAlias(
@@ -431,7 +431,7 @@ class RemoteCliAgentTool extends ToolBase {
       id: options.id || 'remote-cli-agent',
       name: options.name || 'Remote CLI Agent',
       description: options.description || [
-        'Run the server-side coding CLI that matches the selected chat model: Kimi CLI for Kimi models, Grok Build for Grok models, and Codex for OpenAI models, with the legacy remote-cli MCP lane available for compatibility.',
+        'Run one of the two active server-side coding CLIs: Kimi CLI for Kimi models and Codex for OpenAI models, with the legacy remote-cli MCP lane available for compatibility.',
         'Use for remote/server coding/build/deploy tasks that should stream progress through the trusted backend runner, with adminMode for scoped live software changes.',
         'Remote deployments must preserve Git visibility: inspect status/remotes, create or reuse a git-backed workspace, commit before deploy, return GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and use git revert plus redeploy for rollback.',
       ].join(' '),
@@ -520,7 +520,7 @@ class RemoteCliAgentTool extends ToolBase {
           },
           model: {
             type: 'string',
-            description: 'Selected chat model. Kimi, Grok, and OpenAI families choose their matching gateway CLI provider on the shared task lane.',
+            description: 'Selected chat model. Kimi and OpenAI families choose their matching gateway CLI provider on the shared task lane.',
           },
           instructions: {
             type: 'string',
@@ -533,7 +533,7 @@ class RemoteCliAgentTool extends ToolBase {
           artifactIds: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Session-owned artifact IDs to stage as files for the selected Codex, Kimi, or Grok CLI agent.',
+            description: 'Session-owned artifact IDs to stage as files for the selected Codex or Kimi CLI agent.',
           },
           contextFiles: {
             type: 'array',

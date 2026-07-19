@@ -45,12 +45,7 @@ function buildVerifiedResultFiles(handoff, {
 }
 
 describe('RemoteCliAgentsSdkRunner', () => {
-  test('maps selected Codex, Kimi, and Grok models to their matching gateway CLI providers', () => {
-    expect(resolveProviderAgentSelection('grok-build')).toMatchObject({
-      providerId: 'grok-build-cli',
-      providerLabel: 'Grok Build',
-      providerModel: 'grok-build',
-    });
+  test('maps selected Codex and Kimi models to their matching gateway CLI providers', () => {
     expect(resolveProviderAgentSelection('kimi-k2.7-code')).toMatchObject({
       providerId: 'kimi-code-cli',
       providerLabel: 'Kimi CLI',
@@ -79,17 +74,15 @@ describe('RemoteCliAgentsSdkRunner', () => {
       providerLabel: 'Codex',
       providerModel: 'gpt-5.6-sol',
     });
+    expect(resolveProviderAgentSelection('grok-build')).toBeNull();
   });
 
-  test('only forwards native Codex and Grok UUIDs for provider-agent continuation', () => {
+  test('only forwards native Codex UUIDs for provider-agent continuation', () => {
     const codex = resolveProviderAgentSelection('gpt-5.6-sol');
-    const grok = resolveProviderAgentSelection('grok-build');
     const kimi = resolveProviderAgentSelection('kimi-k2.7-code');
     const sessionId = '019f6357-10a2-7f61-9bf8-541fa830de18';
 
     expect(resolveProviderAgentContinuationSessionId(codex, sessionId)).toBe(sessionId);
-    expect(resolveProviderAgentContinuationSessionId(grok, sessionId)).toBe(sessionId);
-    expect(resolveProviderAgentContinuationSessionId(grok, 'ps_legacy_gateway_session')).toBe('');
     expect(resolveProviderAgentContinuationSessionId(kimi, sessionId)).toBe('');
   });
 
@@ -756,12 +749,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
   test.each([
     ['gpt-5.6-sol', 'codex-cli', 'gpt-5.6-sol', 'Codex'],
-    ['grok-build', 'grok-build-cli', 'grok-build', 'Grok Build'],
     ['kimi-k3', 'kimi-code-cli', 'k3', 'Kimi CLI'],
     ['kimi-k2.7-code', 'kimi-code-cli', 'kimi-for-coding', 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
     const progress = [];
-    const continuationSessionId = ['codex-cli', 'grok-build-cli'].includes(providerId)
+    const continuationSessionId = providerId === 'codex-cli'
       ? '019f6357-10a2-7f61-9bf8-541fa830de18'
       : undefined;
     const handoff = {
@@ -983,7 +975,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
-  test('accepts Markdown-bold provider proof markers split across events', async () => {
+  test('accepts Markdown-bold Codex proof markers split across events', async () => {
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
         return {
@@ -991,13 +983,13 @@ describe('RemoteCliAgentsSdkRunner', () => {
           status: 200,
           async text() {
             return JSON.stringify({
-              task: { id: 'task-grok-split', sessionId: 'session-grok-split' },
-              streamUrl: '/admin/remote-agent-tasks/task-grok-split/stream?token=safe-token',
+              task: { id: 'task-codex-split', sessionId: 'session-codex-split' },
+              streamUrl: '/admin/remote-agent-tasks/task-codex-split/stream?token=safe-token',
             });
           },
         };
       }
-      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-grok-split/stream?token=safe-token') {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-codex-split/stream?token=safe-token') {
         return {
           ok: true,
           status: 200,
@@ -1006,10 +998,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
               const encoder = new TextEncoder();
               for (const data of [
                 '**REMOTE_AGENT_RESULT',
-                ': success GRO',
-                'K_REMOTE_OK**\n',
+                ': success CO',
+                'DEX_REMOTE_OK**\n',
                 '**WORKSPACE**=/opt/kimibuilt\n**WHAT_CHANGED**=Read-only verification.\n',
-                '**VERIFY_COMMANDS**=pwd\n**VERIFY_RESULTS**=GROK_REMOTE_OK /opt/kimibuilt\n',
+                '**VERIFY_COMMANDS**=pwd\n**VERIFY_RESULTS**=CODEX_REMOTE_OK /opt/kimibuilt\n',
                 '**PUBLIC_URL**=not_available\n**BLOCKER**=none\n',
               ]) {
                 controller.enqueue(encoder.encode(
@@ -1024,7 +1016,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           }),
         };
       }
-      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-grok-split/cancel') {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-codex-split/cancel') {
         return {
           ok: true,
           status: 200,
@@ -1038,7 +1030,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     const runner = new RemoteCliAgentsSdkRunner({
       config: {
         enabled: true,
-        transport: 'codex-agent',
+        transport: 'provider-agent',
         codexAgentBaseUrl: 'https://gateway.example.com',
         codexAgentApiKey: 'frontend-secret',
         codexAgentWorkspacePath: '/opt/kimibuilt',
@@ -1049,21 +1041,21 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
 
     const result = await runner.run({
-      task: 'Run the read-only Grok verification.',
-      model: 'grok-build',
+      task: 'Run the read-only Codex verification.',
+      model: 'gpt-5.6-sol',
     });
 
     expect(result).toMatchObject({
       transport: 'provider-agent',
-      providerId: 'grok-build-cli',
+      providerId: 'codex-cli',
       completionStatus: 'complete',
       whatChanged: 'Read-only verification.',
-      verifyResults: ['GROK_REMOTE_OK /opt/kimibuilt'],
+      verifyResults: ['CODEX_REMOTE_OK /opt/kimibuilt'],
       blocker: null,
     });
-    expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=success GROK_REMOTE_OK');
+    expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=success CODEX_REMOTE_OK');
     expect(fetchImpl).toHaveBeenLastCalledWith(
-      'https://gateway.example.com/admin/remote-agent-tasks/task-grok-split/cancel',
+      'https://gateway.example.com/admin/remote-agent-tasks/task-codex-split/cancel',
       expect.objectContaining({ method: 'POST' }),
     );
   });

@@ -1,6 +1,6 @@
 # remote-cli-agent
 
-Purpose: run Codex, Kimi, or Grok as a server-side remote coding agent through the gateway's authenticated `/admin/remote-agent-tasks` contract, with direct in-pod Codex and MCP retained only as explicit compatibility transports.
+Purpose: run Codex or Kimi as a server-side remote coding agent through the gateway's authenticated `/admin/remote-agent-tasks` contract, with direct in-pod Codex and MCP retained only as explicit compatibility transports.
 
 Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress while the remote agent owns the implementation loop.
 
@@ -10,7 +10,7 @@ For most remote software deployments, prefer `remote-cli-agent` over one-shot `r
 
 Layer boundary:
 - `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`. Use `artifactIds`/`contextFiles` for inbound files and `collectResultFiles:true` when generated files must return to the active KimiBuilt session.
-- The production default is `provider-agent`: KimiBuilt calls `POST /admin/remote-agent-tasks`, streams the returned same-origin task URL, and collects gateway-verified result files. The selected model maps to `codex-cli`, `kimi-code-cli`, or `grok-build-cli`.
+- The production default is `provider-agent`: KimiBuilt calls `POST /admin/remote-agent-tasks`, streams the returned same-origin task URL, and collects gateway-verified result files. The selected model maps to `codex-cli` or `kimi-code-cli`.
 - The `codex-agent` transport remains available explicitly for compatible environments that can safely run the Codex app-server bridge in the gateway pod.
 - The `mcp` transport remains available for compatibility: KimiBuilt calls `remote_code_run`, then polls `remote_code_status`.
 - Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
@@ -25,7 +25,7 @@ Outer tool call shape:
   "cwd": "/srv/apps/my-app",
   "transport": "provider-agent",
   "waitMs": 30000,
-  "sessionId": "optional prior provider session id for Codex or Grok continuation",
+  "sessionId": "optional prior provider session id for Codex continuation",
   "supportAgentResponse": "optional answer from a support agent for a resumed CLI thread",
   "artifactIds": ["session-owned-sandbox-or-document-artifact-id"],
   "contextFiles": [
@@ -42,7 +42,7 @@ Outer tool call shape:
 
 Artifact handoff contract:
 
-- KimiBuilt owns artifacts, session authorization, lineage, and final download/preview URLs. The `nuts` router owns secure staging and collection at the CLI execution boundary. The frontend renders one job; it does not mirror Codex/Kimi/Grok transport tools.
+- KimiBuilt owns artifacts, session authorization, lineage, and final download/preview URLs. The `nuts` router owns secure staging and collection at the CLI execution boundary. The frontend renders one job; it does not mirror Codex/Kimi transport tools.
 - Selected artifacts are loaded only after their `sessionId` matches the active session. Inline and stored files are strict-base64/checksum normalized. `manifest.json` is reserved for gateway metadata.
 - Each invocation gets an isolated `.kimibuilt/agent-runs/<operationId>/` directory. Inputs live under `input/`; returnable files must be copied under `output/files/`; the agent writes `output/manifest.json` using `RemoteAgentResultFiles/v1`.
 - The bounded v1 envelope accepts at most 12 files, 4 MiB per file, and 6 MiB decoded total. This remains below the router's 10 MiB JSON request limit after base64 expansion. Larger bundles should use a future scoped object-store URL rather than increasing the JSON body without an explicit gateway limit change.
@@ -87,7 +87,7 @@ REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
 
 Headless Codex operating model:
 
-- KimiBuilt's preferred remote CLI agent path is not raw TTY automation. It uses the router's provider-session task bridge so Codex, Kimi, and Grok share authentication, isolated file staging, progress streaming, and verified result collection.
+- KimiBuilt's preferred remote CLI agent path is not raw TTY automation. It uses the router's provider-session task bridge so Codex and Kimi share authentication, isolated file staging, progress streaming, and verified result collection.
 - This maps to the current Codex headless guidance better than driving the interactive TUI. One-shot automation can use `codex exec --json`, but multi-turn orchestration should keep a durable conversation handle. In the provider-task contract that handle is `sessionId` when the selected CLI supports continuation; direct Codex compatibility uses `threadId`.
 - The remote agent should emit short milestone messages during inspect/edit/build/deploy/verify phases so the outer web-chat stream has real progress. Do not leave the user with only a start card and final result.
 - Treat `turn_input_required` as a controlled pause: forward the concise decision to the user, then resume with the same `sessionId` or direct-Codex `threadId` when possible.

@@ -10982,7 +10982,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                     <button class="file-manager-close" type="button" onclick="app.closeFileManager()" aria-label="Close file manager">&times;</button>
                 </div>
                 <p id="file-manager-description" class="file-manager-description">
-                    Select persisted artifacts for Codex, Kimi, or Grok; download files; or push an eligible website after preflight.
+                    Select persisted artifacts for Codex or Kimi; download files; or push an eligible website after preflight.
                 </p>
                 <div class="file-manager-body">
                     ${!hasFiles ?
@@ -11509,36 +11509,36 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             : null;
 
         document.getElementById('shortcutsContent').innerHTML = `
-            <div class="grid gap-2 text-sm">
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+            <div class="cli-shortcuts-list">
+                <div class="cli-shortcuts-row">
                     <span>Send message</span>
                     <code class="inline-code">Enter</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>Command history</span>
                     <code class="inline-code">Up / Down</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>Autocomplete</span>
                     <code class="inline-code">Tab</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>Clear screen</span>
                     <code class="inline-code">Ctrl + L</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>Copy last response</span>
                     <code class="inline-code">Ctrl + C</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>Show help</span>
                     <code class="inline-code">F1</code>
                 </div>
-                <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
+                <div class="cli-shortcuts-row">
                     <span>File manager</span>
                     <code class="inline-code">Ctrl + Shift + F</code>
                 </div>
-                <div class="flex justify-between py-1">
+                <div class="cli-shortcuts-row cli-shortcuts-row--last">
                     <span>Close/cancel</span>
                     <code class="inline-code">Esc</code>
                 </div>

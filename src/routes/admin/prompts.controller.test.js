@@ -281,8 +281,9 @@ describe('admin prompts controller', () => {
     expect(prompt.content).toContain('"ask Codex for help", "Codex help", and "use Codex for this"');
     expect(prompt.content).toContain('targetId `k3s-prod` and cwd `/opt/kimibuilt`');
     expect(prompt.content).toContain('`remote-cli-agent` is the outer KimiBuilt tool');
-    expect(prompt.content).toContain('/admin/remote-agent-tasks provider lane for Codex, Kimi, and Grok');
-    expect(prompt.content).toContain('preserve returned sessionId');
+    expect(prompt.content).toContain('/admin/remote-agent-tasks provider lane for Codex and Kimi');
+    expect(prompt.content).not.toContain('Codex, Kimi, and Grok');
+    expect(prompt.content).toContain('preserve returned Codex sessionId');
     expect(prompt.content).toContain('prefer `remote-cli-agent` so the remote coding agent owns authoring, build, deploy, and verification');
     expect(prompt.content).toContain('pass `params.adminMode:true`');
     expect(prompt.content).toContain('KimiBuilt Remote Ops baseline');
