@@ -36,12 +36,8 @@ function bufferResponse(buffer, contentType = 'application/octet-stream') {
 }
 
 function buildCompactResult(plan, prefix) {
-    const provider = plan.lane === 'kimi'
-        ? 'kimi-code-cli'
-        : (plan.lane === 'grok' ? 'grok-build-cli' : null);
-    const providerModel = plan.lane === 'kimi'
-        ? 'k3'
-        : (plan.lane === 'grok' ? 'grok-build' : null);
+    const provider = plan.lane === 'kimi' ? 'kimi-code-cli' : null;
+    const providerModel = plan.lane === 'kimi' ? 'k3' : null;
     const resultFiles = plan.fixtures.map((fixture, index) => ({
         artifactId: `artifact-${prefix}-component-${index + 1}`,
         filename: fixture.filename,
@@ -162,12 +158,8 @@ function createAuthoredFiles(plan) {
 }
 
 function buildAuthoredCompactResult(plan, prefix, authoredFiles) {
-    const provider = plan.lane === 'kimi'
-        ? 'kimi-code-cli'
-        : (plan.lane === 'grok' ? 'grok-build-cli' : null);
-    const providerModel = plan.lane === 'kimi'
-        ? 'k3'
-        : (plan.lane === 'grok' ? 'grok-build' : null);
+    const provider = plan.lane === 'kimi' ? 'kimi-code-cli' : null;
+    const providerModel = plan.lane === 'kimi' ? 'k3' : null;
     const resultFiles = authoredFiles.map((file, index) => ({
         ...file.descriptor,
         artifactId: `artifact-${prefix}-component-${index + 1}`,
@@ -665,7 +657,7 @@ async function createPushToWebHarness(env, options = {}) {
 }
 
 describe('remote agent artifact-loop canary', () => {
-    test('defaults to a deterministic two-hop, three-lane dry run with zero network requests', async () => {
+    test('defaults to a deterministic two-hop, two-lane dry run with zero network requests', async () => {
         const fetchImpl = jest.fn(() => {
             throw new Error('dry-run must not call fetch');
         });
@@ -678,7 +670,7 @@ describe('remote agent artifact-loop canary', () => {
             passed: true,
             networkRequestsMade: 0,
         }));
-        expect(result.lanes.map((lane) => lane.lane)).toEqual(['codex', 'kimi', 'grok']);
+        expect(result.lanes.map((lane) => lane.lane)).toEqual(['codex', 'kimi']);
         expect(result.lanes.every((lane) => lane.bidirectionalRoundTripPlanned && lane.hops.length === 2)).toBe(true);
         expect(result.lanes.every((lane) => lane.hops.every((hop) => hop.payloadValid && hop.adminMode === false))).toBe(true);
         expect(result.lanes.every((lane) => lane.hops.every((hop) => hop.fixtureCount === 4))).toBe(true);
@@ -686,6 +678,9 @@ describe('remote agent artifact-loop canary', () => {
         expect(result.lanes[0].hops[1].inputMode).toBe('session-artifacts');
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(JSON.stringify(result)).not.toContain('<!doctype html>');
+        await expect(runCanary({ argv: ['--mode=grok'], env: {}, fetchImpl })).rejects.toThrow(
+            'Mode must be one of: codex, kimi, all.',
+        );
     });
 
     test('plans the explicit output-only authoring and optional browser QA scenario without network access', async () => {
@@ -2051,7 +2046,7 @@ describe('remote agent artifact-loop canary', () => {
         });
 
         await expect(runCanary({
-            argv: ['--run', '--mode=grok'],
+            argv: ['--run', '--mode=codex'],
             env,
             fetchImpl,
             sleep: jest.fn(),

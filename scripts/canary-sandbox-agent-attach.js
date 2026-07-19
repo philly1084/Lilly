@@ -7,7 +7,7 @@ const { JSDOM } = require('jsdom');
 
 const CANARY_VERSION = 'SandboxAgentAttachCanary/v1';
 const PROGRESS_VERSION = 'SandboxAgentAttachProgress/v1';
-const ALLOWED_MODES = new Set(['codex', 'kimi', 'grok', 'all']);
+const ALLOWED_MODES = new Set(['codex', 'kimi', 'all']);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SUCCESS_COMPLETION_STATUSES = new Set(['complete', 'completed', 'success', 'succeeded']);
 const MAX_JSON_BYTES = 1024 * 1024;
@@ -27,13 +27,6 @@ const LANE_DEFAULTS = Object.freeze({
         transport: 'provider-agent',
         provider: 'kimi-code-cli',
         providerModel: 'k3',
-    }),
-    grok: Object.freeze({
-        modelEnv: 'KIMIBUILT_CANARY_GROK_MODEL',
-        model: 'grok',
-        transport: 'provider-agent',
-        provider: 'grok-build-cli',
-        providerModel: 'grok-build',
     }),
 });
 
@@ -71,7 +64,7 @@ const FIXTURE_DEFINITIONS = Object.freeze([
             '<body>',
             '  <main>',
             '    <h1>Exact artifact handoff</h1>',
-            '    <p>The sandbox bundle crosses three CLI lanes and two editing surfaces without byte drift.</p>',
+            '    <p>The sandbox bundle crosses two CLI lanes and two editing surfaces without byte drift.</p>',
             '    <img src="./design/design.svg" alt="Connected sandbox, CLI, Canvas, and Notes nodes">',
             '    <a href="./design/design.xml">Open the design contract</a>',
             '  </main>',
@@ -106,7 +99,7 @@ const FIXTURE_DEFINITIONS = Object.freeze([
             '<?xml version="1.0" encoding="UTF-8"?>',
             `<sandbox-agent-attach-canary version="1" contract="${CANARY_VERSION}">`,
             '  <source kind="code-sandbox" mode="project"/>',
-            '  <lanes><lane>codex</lane><lane>kimi</lane><lane>grok</lane></lanes>',
+            '  <lanes><lane>codex</lane><lane>kimi</lane></lanes>',
             '  <surfaces><surface>canvas-excalidraw</surface><surface>notes</surface></surfaces>',
             '</sandbox-agent-attach-canary>',
             '',
@@ -121,14 +114,14 @@ const FIXTURE_DEFINITIONS = Object.freeze([
             '<?xml version="1.0" encoding="UTF-8"?>',
             `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 240" role="img" aria-labelledby="title desc" data-canary-version="${CANARY_VERSION}">`,
             '  <title id="title">Sandbox artifact handoff</title>',
-            '  <desc id="desc">A sandbox node connects to three CLI lanes and then to Canvas and Notes.</desc>',
+            '  <desc id="desc">A sandbox node connects to the Codex and Kimi CLI lanes and then to Canvas and Notes.</desc>',
             '  <rect width="720" height="240" rx="28" fill="#14213d"/>',
             '  <path d="M105 120H615" stroke="#7dd3fc" stroke-width="10" stroke-linecap="round"/>',
             '  <g fill="#fff" stroke="#174ea6" stroke-width="5">',
-            '    <circle cx="105" cy="120" r="52"/><circle cx="275" cy="120" r="42"/><circle cx="360" cy="120" r="42"/><circle cx="445" cy="120" r="42"/><circle cx="615" cy="120" r="52"/>',
+            '    <circle cx="105" cy="120" r="52"/><circle cx="290" cy="120" r="42"/><circle cx="430" cy="120" r="42"/><circle cx="615" cy="120" r="52"/>',
             '  </g>',
             '  <g fill="#14213d" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle">',
-            '    <text x="105" y="126">Sandbox</text><text x="275" y="126">Codex</text><text x="360" y="126">Kimi</text><text x="445" y="126">Grok</text><text x="615" y="126">Editors</text>',
+            '    <text x="105" y="126">Sandbox</text><text x="290" y="126">Codex</text><text x="430" y="126">Kimi</text><text x="615" y="126">Editors</text>',
             '  </g>',
             '</svg>',
             '',
@@ -188,13 +181,13 @@ function parseArguments(argv = []) {
     }
 
     if (!ALLOWED_MODES.has(mode)) {
-        throw new Error('Mode must be one of: codex, kimi, grok, all.');
+        throw new Error('Mode must be one of: codex, kimi, all.');
     }
     return { run, mode, help };
 }
 
 function selectedLanes(mode = 'all') {
-    return mode === 'all' ? ['codex', 'kimi', 'grok'] : [mode];
+    return mode === 'all' ? ['codex', 'kimi'] : [mode];
 }
 
 function createSandboxToolPayload(sessionId, fixtures = createFixtureFiles()) {
@@ -698,9 +691,11 @@ async function validateSandboxBundle(buffer, fixtures = createFixtureFiles()) {
     }
     const xmlRoot = xmlDocument.documentElement;
     const svgRoot = svgDocument.documentElement;
+    const xmlLanes = [...xmlDocument.querySelectorAll('lane')]
+        .map((element) => String(element.textContent || '').trim());
     if (xmlRoot?.localName !== 'sandbox-agent-attach-canary'
         || xmlRoot.getAttribute('contract') !== CANARY_VERSION
-        || xmlDocument.querySelectorAll('lane').length !== 3
+        || xmlLanes.join(',') !== 'codex,kimi'
         || xmlDocument.querySelectorAll('surface').length !== 2
         || svgRoot?.localName !== 'svg'
         || svgRoot.getAttribute('data-canary-version') !== CANARY_VERSION
@@ -1279,7 +1274,7 @@ async function runLive(lanes, options = {}) {
 
     try {
         emitProgress(runtime, 'canary_started', {
-            mode: lanes.length === 3 ? 'all' : lanes[0],
+            mode: lanes.length === 2 ? 'all' : lanes[0],
             lanes,
         });
         const auth = await client.requestJson('/api/auth/protected-check');
@@ -1367,7 +1362,7 @@ async function runLive(lanes, options = {}) {
 
         output = {
             version: CANARY_VERSION,
-            mode: lanes.length === 3 ? 'all' : lanes[0],
+            mode: lanes.length === 2 ? 'all' : lanes[0],
             execution: 'live',
             passed: true,
             authenticated: true,
@@ -1443,7 +1438,7 @@ function describeDryRun(lanes, env) {
     });
     return {
         version: CANARY_VERSION,
-        mode: lanes.length === 3 ? 'all' : lanes[0],
+        mode: lanes.length === 2 ? 'all' : lanes[0],
         execution: 'dry-run',
         passed: true,
         networkRequestsMade: 0,
@@ -1476,7 +1471,7 @@ async function runCanary(options = {}) {
     const parsed = parseArguments(options.argv || []);
     if (parsed.help) {
         return {
-            help: 'Usage: npm run canary:sandbox-agent-attach -- [--mode codex|kimi|grok|all] [--run]',
+            help: 'Usage: npm run canary:sandbox-agent-attach -- [--mode codex|kimi|all] [--run]',
         };
     }
     const env = options.env || process.env;
