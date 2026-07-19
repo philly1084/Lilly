@@ -792,7 +792,7 @@ describe('ManagedAppService', () => {
         }));
     });
 
-    test('generates app source files from the managed-app prompt before seeding the repo', async () => {
+    test('generates app source files and preserves artifact provenance through the build lifecycle', async () => {
         const store = {
             ensureAvailable: jest.fn(async () => {}),
             isAvailable: jest.fn(() => true),
@@ -886,8 +886,19 @@ describe('ManagedAppService', () => {
         });
         service.buildBuildEventsUrl = () => 'https://kimibuilt.demoserver2.buzz/api/integrations/gitea/build-events';
 
-        await service.createApp({
+        const sourceArtifact = {
+            id: 'artifact-launch-site',
+            filename: 'launch-site.zip',
+            format: 'zip',
+            sha256: 'a'.repeat(64),
+            sizeBytes: 4096,
+            fileCount: 4,
+        };
+        const result = await service.createApp({
             prompt: 'Create and deploy a managed app called launch-site with a sharp launch page and a CTA.',
+            metadata: {
+                sourceArtifact,
+            },
         }, 'user-1', {
             sessionId: 'session-1',
             model: 'gpt-5.4-mini',
@@ -915,6 +926,110 @@ describe('ManagedAppService', () => {
                 }),
             ]),
         }));
+        expect(result.app.metadata.sourceArtifact).toEqual(sourceArtifact);
+        expect(store.updateApp).toHaveBeenLastCalledWith(
+            'app-llm-1',
+            'user-1',
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    sourceArtifact,
+                }),
+            }),
+        );
+    });
+
+    test('repairs omitted source provenance before creating the repository', async () => {
+        let persistedApp = null;
+        const store = {
+            ensureAvailable: jest.fn(async () => {}),
+            isAvailable: jest.fn(() => true),
+            listApps: jest.fn(async () => []),
+            getAppBySlug: jest.fn(async () => null),
+            getAppByRepo: jest.fn(async () => null),
+            createApp: jest.fn(async (input) => {
+                const metadata = { ...(input.metadata || {}) };
+                delete metadata.sourceArtifact;
+                persistedApp = {
+                    id: 'app-source-proof',
+                    ...input,
+                    metadata,
+                };
+                return persistedApp;
+            }),
+            updateApp: jest.fn(async (_id, _ownerId, updates) => {
+                persistedApp = {
+                    ...persistedApp,
+                    ...updates,
+                    metadata: updates.metadata || persistedApp.metadata,
+                };
+                return persistedApp;
+            }),
+            createBuildRun: jest.fn(async (input) => ({
+                id: 'run-source-proof',
+                ...input,
+                buildStatus: 'queued',
+                deployStatus: 'pending',
+                verificationStatus: 'pending',
+                metadata: input.metadata || {},
+            })),
+        };
+        const giteaClient = {
+            isConfigured: jest.fn(() => true),
+            ensureOrganization: jest.fn(async () => ({ created: false })),
+            ensureRepository: jest.fn(async () => ({
+                repository: {
+                    html_url: 'https://gitlab.example.test/agent-apps/source-proof',
+                    clone_url: 'https://gitlab.example.test/agent-apps/source-proof.git',
+                    ssh_url: '',
+                },
+            })),
+            upsertFiles: jest.fn(async () => ({
+                commitSha: 'abcdef1234567890',
+                committedPaths: ['public/index.html'],
+            })),
+        };
+        const service = new ManagedAppService({
+            store,
+            giteaClient,
+            kubernetesClient: { isConfigured: () => true },
+        });
+        service.getEffectiveGiteaConfig = () => ({
+            baseURL: 'https://gitlab.example.test',
+            org: 'agent-apps',
+            registryHost: 'registry.gitlab.example.test',
+        });
+        service.getEffectiveManagedAppsConfig = () => ({
+            appBaseDomain: 'example.test',
+            namespacePrefix: 'app-',
+            defaultBranch: 'main',
+            defaultContainerPort: 80,
+        });
+        service.buildBuildEventsUrl = () => 'https://kimibuilt.example.test/api/integrations/gitlab/build-events';
+        service.broadcastLifecycleEvent = jest.fn(async () => {});
+
+        const sourceArtifact = {
+            id: 'artifact-source-proof',
+            filename: 'source-proof.zip',
+            format: 'zip',
+            sha256: 'b'.repeat(64),
+            sizeBytes: 2048,
+            fileCount: 4,
+        };
+        const result = await service.createApp({
+            slug: 'source-proof',
+            requestedAction: 'deploy',
+            deployRequested: true,
+            files: [{
+                path: 'public/index.html',
+                content: '<!doctype html><html><body><main>Proof</main></body></html>',
+            }],
+            metadata: { sourceArtifact },
+        }, 'user-1', { sessionId: 'session-1' });
+
+        expect(result.app.metadata.sourceArtifact).toEqual(sourceArtifact);
+        expect(store.updateApp.mock.invocationCallOrder[0])
+            .toBeLessThan(giteaClient.ensureOrganization.mock.invocationCallOrder[0]);
+        expect(giteaClient.upsertFiles).toHaveBeenCalledTimes(1);
     });
 
     test('recovers the persisted app from the store before creating the build run', async () => {
