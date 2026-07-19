@@ -50,6 +50,12 @@ describe('managed app scaffold', () => {
         expect(workflow.content).toContain('KIMIBUILT_BUILD_EVENTS_SECRET');
         expect(workflow.content).toContain('X-KimiBuilt-Webhook-Secret');
         expect(workflow.content).toContain('KIMIBUILT_BUILD_EVENTS_INSECURE');
+        expect(workflow.content).toContain('KimiBuilt build events URL must use HTTPS.');
+        expect(workflow.content).toContain("--write-out '%{http_code}'");
+        expect(workflow.content).toContain("grep -Eq '^2[0-9]{2}$'");
+        expect(workflow.content).toContain('expected a direct 2xx response and redirects are not accepted.');
+        expect(workflow.content).not.toContain('curl_flags=(-fsS');
+        expect(workflow.content).not.toContain('curl_flags+=(-L)');
         expect(workflow.content).toContain('"buildStatus":"$build_status"');
         expect(workflow.content).toContain('"imageDigest":"${IMAGE_DIGEST:-}"');
         expect(workflow.content).toContain('\n      {"repoOwner":"$GIT_PROVIDER_ORG"');

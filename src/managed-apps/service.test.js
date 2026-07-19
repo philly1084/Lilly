@@ -172,6 +172,29 @@ describe('ManagedAppService', () => {
         }
     });
 
+    test('buildBuildEventsUrl prefers the public environment URL over stale localhost settings', () => {
+        const service = new ManagedAppService();
+        const previousBaseUrl = settingsController.settings.api.baseURL;
+        const previousEnvironmentBaseUrl = process.env.API_BASE_URL;
+
+        settingsController.settings.api.baseURL = 'http://localhost:3000';
+        process.env.API_BASE_URL = 'https://lilly.example.test';
+        service.getEffectiveManagedAppsConfig = () => ({
+            webhookEndpointPath: '/api/integrations/gitlab/build-events',
+        });
+
+        try {
+            expect(service.buildBuildEventsUrl()).toBe('https://lilly.example.test/api/integrations/gitlab/build-events');
+        } finally {
+            settingsController.settings.api.baseURL = previousBaseUrl;
+            if (previousEnvironmentBaseUrl === undefined) {
+                delete process.env.API_BASE_URL;
+            } else {
+                process.env.API_BASE_URL = previousEnvironmentBaseUrl;
+            }
+        }
+    });
+
     test('progress does not reinterpret legacy runtime digest metadata as build provenance', () => {
         const service = new ManagedAppService();
         const app = {
