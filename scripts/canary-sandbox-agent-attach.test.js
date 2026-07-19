@@ -143,9 +143,7 @@ async function createLiveHarness(options = {}) {
         const outputRole = origin ? 'sandbox-source-bundle' : `${surface}-attached-bundle`;
         const provider = lane === 'kimi'
             ? { provider: 'kimi-code-cli', providerModel: 'k3' }
-            : (lane === 'grok'
-                ? { provider: 'grok-build-cli', providerModel: 'grok-build' }
-                : {});
+            : {};
         return {
             adapter: 'remote-cli-agent',
             success: true,
@@ -452,7 +450,7 @@ const LIVE_ENV = Object.freeze({
 });
 
 describe('sandbox-origin remote agent attach canary', () => {
-    test('defaults to a zero-network dry run with all three lanes and both surfaces', async () => {
+    test('defaults to a zero-network dry run with both active lanes and both surfaces', async () => {
         const fetchImpl = jest.fn(() => {
             throw new Error('dry run must not fetch');
         });
@@ -466,7 +464,7 @@ describe('sandbox-origin remote agent attach canary', () => {
             execution: 'dry-run',
             passed: true,
             networkRequestsMade: 0,
-            plannedAsyncRuns: 9,
+            plannedAsyncRuns: 6,
             sandbox: {
                 mode: 'project',
                 network: false,
@@ -480,9 +478,9 @@ describe('sandbox-origin remote agent attach canary', () => {
             'design/design.xml',
             'design/design.svg',
         ]);
-        expect(result.lanes.map((lane) => lane.lane)).toEqual(['codex', 'kimi', 'grok']);
+        expect(result.lanes.map((lane) => lane.lane)).toEqual(['codex', 'kimi']);
         expect(result.lanes.flatMap((lane) => lane.downstream.map((entry) => entry.surface)))
-            .toEqual(['canvas', 'notes', 'canvas', 'notes', 'canvas', 'notes']);
+            .toEqual(['canvas', 'notes', 'canvas', 'notes']);
         expect(result.lanes.every((lane) => lane.origin.adminMode === false)).toBe(true);
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(onProgress).not.toHaveBeenCalled();
@@ -523,7 +521,7 @@ describe('sandbox-origin remote agent attach canary', () => {
 
     test('parses explicit lane/run options and rejects unsupported arguments', () => {
         expect(parseArguments(['--run', '--mode=kimi'])).toEqual({ run: true, mode: 'kimi', help: false });
-        expect(parseArguments(['--mode', 'grok'])).toEqual({ run: false, mode: 'grok', help: false });
+        expect(() => parseArguments(['--mode', 'grok'])).toThrow('Mode must be one of: codex, kimi, all.');
         expect(() => parseArguments(['--mode', 'other'])).toThrow('Mode must be one of');
         expect(() => parseArguments(['--deploy'])).toThrow('Unsupported argument');
     });
@@ -612,7 +610,7 @@ describe('sandbox-origin remote agent attach canary', () => {
 
     test('requires exact provider, role, checksum, path, and compact result fields', () => {
         const plan = buildAgentPlan({
-            lane: 'grok',
+            lane: 'kimi',
             scenario: 'sandbox-origin',
             sessionId: 'session-source',
             sourceArtifactId: 'artifact-source',
@@ -624,10 +622,10 @@ describe('sandbox-origin remote agent attach canary', () => {
             adapter: 'remote-cli-agent',
             success: true,
             completionStatus: 'completed',
-            model: 'grok',
+            model: 'kimi-k3',
             transport: 'provider-agent',
-            provider: 'grok-build-cli',
-            providerModel: 'grok-build',
+            provider: 'kimi-code-cli',
+            providerModel: 'k3',
             artifactIds: ['artifact-result'],
             artifactQuality: { status: 'passed', blockers: [] },
             resultFiles: [{
@@ -647,7 +645,7 @@ describe('sandbox-origin remote agent attach canary', () => {
         }));
         expect(() => validateCompactAgentResult(plan, {
             ...valid,
-            providerModel: 'grok-other',
+            providerModel: 'kimi-other',
         })).toThrow('unexpected provider model');
         expect(() => validateCompactAgentResult(plan, {
             ...valid,
@@ -659,7 +657,7 @@ describe('sandbox-origin remote agent attach canary', () => {
         })).toThrow('forbidden field');
     });
 
-    test('proves the full sandbox, three-lane, Canvas/Notes attach, and attached-ID return flow', async () => {
+    test('proves the full sandbox, two-lane, Canvas/Notes attach, and attached-ID return flow', async () => {
         const harness = await createLiveHarness();
         const progress = [];
 
@@ -704,7 +702,7 @@ describe('sandbox-origin remote agent attach canary', () => {
             sha256: sha256(harness.state.bundle),
             sizeBytes: harness.state.bundle.length,
         });
-        expect(result.lanes).toHaveLength(3);
+        expect(result.lanes).toHaveLength(2);
         expect(result.lanes.every((lane) => (
             lane.sandboxOrigin.sha256 === result.sandboxSource.sha256
             && lane.attached.canvas.sha256 === result.sandboxSource.sha256
@@ -713,7 +711,7 @@ describe('sandbox-origin remote agent attach canary', () => {
             && lane.downstream.notes.sha256 === result.sandboxSource.sha256
         ))).toBe(true);
 
-        expect(harness.state.runRequests).toHaveLength(9);
+        expect(harness.state.runRequests).toHaveLength(6);
         expect(harness.state.runRequests.every((request) => (
             request.metadata.toolParams.adminMode === false
             && request.metadata.toolParams.artifactIds.length === 1
@@ -721,18 +719,18 @@ describe('sandbox-origin remote agent attach canary', () => {
         ))).toBe(true);
         const originRequests = harness.state.runRequests.filter((request) => request.metadata.scenario === 'sandbox-origin');
         const downstreamRequests = harness.state.runRequests.filter((request) => request.metadata.scenario === 'surface-return');
-        expect(originRequests).toHaveLength(3);
+        expect(originRequests).toHaveLength(2);
         expect(originRequests.every((request) => (
             request.sessionId === 'session-source'
             && request.metadata.toolParams.artifactIds[0] === 'artifact-sandbox-source'
         ))).toBe(true);
-        expect(downstreamRequests).toHaveLength(6);
+        expect(downstreamRequests).toHaveLength(4);
         expect(downstreamRequests.every((request) => {
             const sourceId = request.metadata.toolParams.artifactIds[0];
             const source = harness.state.artifacts.get(sourceId);
             return source?.direction === 'attached' && source.sessionId === request.sessionId;
         })).toBe(true);
-        expect(harness.state.attachRequests).toHaveLength(8);
+        expect(harness.state.attachRequests).toHaveLength(6);
         expect(harness.state.attachRequests.slice(0, 2)).toEqual([
             expect.objectContaining({
                 targetSessionId: 'session-source',
@@ -747,10 +745,10 @@ describe('sandbox-origin remote agent attach canary', () => {
         expect(harness.state.deletedWorkspaces).toEqual(['sandbox-agent-attach-canary-workspace']);
         expect(harness.state.workspaces.size).toBe(0);
         expect(harness.state.cancelRequests).toEqual([]);
-        expect(progress.filter((entry) => entry.event === 'run_started')).toHaveLength(9);
-        expect(progress.filter((entry) => entry.event === 'run_progress')).toHaveLength(9);
-        expect(progress.filter((entry) => entry.event === 'run_completed')).toHaveLength(9);
-        expect(progress.filter((entry) => entry.event === 'attachment_completed')).toHaveLength(6);
+        expect(progress.filter((entry) => entry.event === 'run_started')).toHaveLength(6);
+        expect(progress.filter((entry) => entry.event === 'run_progress')).toHaveLength(6);
+        expect(progress.filter((entry) => entry.event === 'run_completed')).toHaveLength(6);
+        expect(progress.filter((entry) => entry.event === 'attachment_completed')).toHaveLength(4);
         expect(progress.map((entry) => entry.event)).toEqual(expect.arrayContaining([
             'canary_started',
             'sandbox_source_verified',

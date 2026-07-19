@@ -10,7 +10,7 @@ const { validateResultArtifactSet } = require('../src/artifacts/artifact-quality
 
 const CANARY_VERSION = 'RemoteAgentArtifactLoopCanary/v1';
 const AUTHORING_CANARY_VERSION = 'RemoteAgentAuthoringCanary/v1';
-const ALLOWED_MODES = new Set(['codex', 'kimi', 'grok', 'all']);
+const ALLOWED_MODES = new Set(['codex', 'kimi', 'all']);
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SUCCESS_COMPLETION_STATUSES = new Set(['complete', 'completed', 'success', 'succeeded']);
 const SUCCESS_BUILD_STATUSES = new Set(['complete', 'completed', 'passed', 'success', 'succeeded']);
@@ -244,11 +244,6 @@ const LANE_DEFAULTS = Object.freeze({
         model: 'kimi-k3',
         transport: 'provider-agent',
     }),
-    grok: Object.freeze({
-        modelEnv: 'KIMIBUILT_CANARY_GROK_MODEL',
-        model: 'grok',
-        transport: 'provider-agent',
-    }),
 });
 
 function sha256(value) {
@@ -322,7 +317,7 @@ function parseArguments(argv = []) {
     }
 
     if (!ALLOWED_MODES.has(mode)) {
-        throw new Error('Mode must be one of: codex, kimi, grok, all.');
+        throw new Error('Mode must be one of: codex, kimi, all.');
     }
     if (pushToWeb && (!run || !authoring || !browserQa)) {
         throw new Error('--push-to-web requires --run --authoring --browser-qa.');
@@ -335,7 +330,7 @@ function parseArguments(argv = []) {
 }
 
 function selectedLanes(mode = 'all') {
-    return mode === 'all' ? ['codex', 'kimi', 'grok'] : [mode];
+    return mode === 'all' ? ['codex', 'kimi'] : [mode];
 }
 
 function buildLaneTask(lane, fixtures, options = {}) {
@@ -993,12 +988,6 @@ function validateCompactToolResult(plan, toolResult) {
     }
     if (plan.lane === 'kimi' && String(toolResult.providerModel || '').trim() !== 'k3') {
         throw new Error('The Kimi canary did not attest the resolved K3 provider model.');
-    }
-    if (plan.lane === 'grok' && provider !== 'grok-build-cli') {
-        throw new Error('The Grok canary did not return exact Grok provider evidence.');
-    }
-    if (plan.lane === 'grok' && String(toolResult.providerModel || '').trim() !== 'grok-build') {
-        throw new Error('The Grok canary did not attest the resolved Grok Build provider model.');
     }
     if (toolResult.artifactQuality?.status !== 'passed') {
         throw new Error(`The ${plan.lane} artifact quality gate did not pass.`);
@@ -2825,7 +2814,7 @@ async function runLive(plans, options = {}) {
 
     return {
         version: CANARY_VERSION,
-        mode: plans.length === 3 ? 'all' : plans[0].lane,
+        mode: plans.length === 2 ? 'all' : plans[0].lane,
         execution: 'live',
         passed: true,
         networkRequestsMade: client.networkRequestsMade,
@@ -2842,7 +2831,7 @@ async function runCanary(options = {}) {
     const parsed = parseArguments(options.argv || []);
     if (parsed.help) {
         return {
-            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|grok|all] [--authoring [--browser-qa [--push-to-web]]] [--run]',
+            help: 'Usage: npm run canary:remote-agent-artifact-loop -- [--mode codex|kimi|all] [--authoring [--browser-qa [--push-to-web]]] [--run]',
         };
     }
     const env = options.env || process.env;
