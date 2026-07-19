@@ -68,6 +68,16 @@ build-and-publish:
           echo "No KimiBuilt build events URL configured; cannot notify the managed app control plane." >&2
           return "$exit_code"
         fi
+        case "$target_url" in
+          https://*) ;;
+          *)
+            echo "KimiBuilt build events URL must use HTTPS." >&2
+            if [ "$exit_code" = "0" ]; then
+              return 1
+            fi
+            return "$exit_code"
+            ;;
+        esac
 
         payload_file="$(mktemp)"
         cat > "$payload_file" <<EOF
@@ -75,7 +85,7 @@ build-and-publish:
       EOF
 
         header_secret="\${KIMIBUILT_BUILD_EVENTS_SECRET:-}"
-        curl_flags=(-fsS -X POST -H "Content-Type: application/json" --data-binary "@$payload_file")
+        curl_flags=(-sS -X POST -H "Content-Type: application/json" --data-binary "@$payload_file")
         if [ -n "\${header_secret:-}" ]; then
           curl_flags+=(-H "X-KimiBuilt-Webhook-Secret: $header_secret")
         fi
@@ -83,11 +93,17 @@ build-and-publish:
           curl_flags+=(-k)
         fi
 
-        if curl "\${curl_flags[@]}" "$target_url"; then
-          return "$exit_code"
+        response_file="$(mktemp)"
+        http_status=""
+        if http_status="$(curl "\${curl_flags[@]}" --output "$response_file" --write-out '%{http_code}' "$target_url")"; then
+          if printf '%s' "$http_status" | grep -Eq '^2[0-9]{2}$'; then
+            return "$exit_code"
+          fi
+          echo "KimiBuilt notification returned HTTP $http_status; expected a direct 2xx response and redirects are not accepted." >&2
+        else
+          echo "KimiBuilt notification via curl failed." >&2
         fi
 
-        echo "KimiBuilt notification via curl failed." >&2
         if [ "$exit_code" = "0" ]; then
           return 1
         fi

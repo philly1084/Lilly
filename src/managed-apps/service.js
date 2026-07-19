@@ -2269,7 +2269,7 @@ class ManagedAppService {
     }
 
     getPublicApiBaseUrl() {
-        return normalizeManagedAppWebhookBaseUrl(settingsController.settings?.api?.baseURL || process.env.API_BASE_URL || '');
+        return normalizeManagedAppWebhookBaseUrl(process.env.API_BASE_URL || settingsController.settings?.api?.baseURL || '');
     }
 
     buildBuildEventsUrl() {
