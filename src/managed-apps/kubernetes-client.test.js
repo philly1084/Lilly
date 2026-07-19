@@ -130,6 +130,7 @@ describe('KubernetesClient', () => {
     test('normalizes only OCI sha256 digests from runtime image IDs', () => {
         expect(normalizeOciSha256Digest(`containerd://${TEST_IMAGE_DIGEST}`)).toBe(TEST_IMAGE_DIGEST);
         expect(normalizeOciSha256Digest(`docker-pullable://registry.example.test/team/app@${TEST_IMAGE_DIGEST}`)).toBe(TEST_IMAGE_DIGEST);
+        expect(normalizeOciSha256Digest(`registry.example.test/team/app@${TEST_IMAGE_DIGEST}`)).toBe(TEST_IMAGE_DIGEST);
         expect(normalizeOciSha256Digest('sha-abcdef123456')).toBe('');
         expect(normalizeOciSha256Digest('a'.repeat(64))).toBe('');
         expect(normalizeOciSha256Digest(`prefix ${TEST_IMAGE_DIGEST}`)).toBe('');
@@ -175,7 +176,9 @@ describe('KubernetesClient', () => {
 
     test('deployManagedApp uses SSH when the deployment target is ssh', async () => {
         const sshTool = createDeploySshTool({
-            inspectionStdout: buildInspectionStdout(),
+            inspectionStdout: buildInspectionStdout({
+                podImageID: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+            }),
         });
         const client = new KubernetesClient({
             managedAppsConfig: {
@@ -228,7 +231,7 @@ describe('KubernetesClient', () => {
             imageDigest: TEST_IMAGE_DIGEST,
             podStatus: expect.objectContaining({
                 image: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
-                imageID: `docker-pullable://registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
+                imageID: `registry.gitlab.demoserver2.buzz/agent-apps/demo@${TEST_IMAGE_DIGEST}`,
             }),
         }));
         expect(result.executionHost).toBe('deploy.example:22');

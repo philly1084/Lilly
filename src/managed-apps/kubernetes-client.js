@@ -23,6 +23,11 @@ function normalizeOciSha256Digest(value = '') {
         return normalized.toLowerCase();
     }
 
+    const imageRefDigest = extractOciSha256DigestFromImageRef(normalized);
+    if (imageRefDigest) {
+        return imageRefDigest;
+    }
+
     const imageIdMatch = normalized.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@\s]+@)?(sha256:[a-f0-9]{64})$/i);
     return imageIdMatch?.[1] ? imageIdMatch[1].toLowerCase() : '';
 }
