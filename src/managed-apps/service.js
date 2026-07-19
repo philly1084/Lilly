@@ -1794,6 +1794,36 @@ function mergeMetadataSection(base = {}, updates = {}) {
     };
 }
 
+function resolveSourceArtifactMetadata(...candidates) {
+    const sourceArtifact = candidates.find((candidate) => (
+        candidate
+        && typeof candidate === 'object'
+        && !Array.isArray(candidate)
+    ));
+    return sourceArtifact ? { ...sourceArtifact } : null;
+}
+
+function preserveSourceArtifactMetadata(metadata = {}, sourceArtifact = null) {
+    const normalizedMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+    const normalizedSourceArtifact = resolveSourceArtifactMetadata(sourceArtifact);
+    return normalizedSourceArtifact
+        ? {
+            ...normalizedMetadata,
+            sourceArtifact: normalizedSourceArtifact,
+        }
+        : normalizedMetadata;
+}
+
+function sourceArtifactMetadataMatches(actual = null, expected = null) {
+    if (!actual || !expected || typeof actual !== 'object' || typeof expected !== 'object') {
+        return false;
+    }
+    return String(actual.id || '') === String(expected.id || '')
+        && String(actual.sha256 || '') === String(expected.sha256 || '')
+        && Number(actual.sizeBytes) === Number(expected.sizeBytes)
+        && Number(actual.fileCount) === Number(expected.fileCount);
+}
+
 function normalizeManagedAppMetadata(metadata = {}, app = {}, options = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
     const deployConfig = options.deployConfig && typeof options.deployConfig === 'object'
@@ -3678,7 +3708,12 @@ class ManagedAppService {
                 ...blueprint,
                 sessionId,
             };
-        const provisioningMetadata = this.buildLifecycleMetadata(existing || {
+        const sourceArtifactMetadata = resolveSourceArtifactMetadata(
+            input?.metadata?.sourceArtifact,
+            mergedState?.metadata?.sourceArtifact,
+            existing?.metadata?.sourceArtifact,
+        );
+        const provisioningMetadata = preserveSourceArtifactMetadata(this.buildLifecycleMetadata(existing || {
             ...blueprint,
             ...mergedState,
         }, {
@@ -3696,7 +3731,7 @@ class ManagedAppService {
                 currentObjective: normalizeText(input.sourcePrompt || input.prompt || blueprint.sourcePrompt),
                 lastUserIntent: normalizeText(input.sourcePrompt || input.prompt || blueprint.sourcePrompt),
             },
-        });
+        }), sourceArtifactMetadata);
 
         const app = existing
             ? await this.store.updateApp(existing.id, normalizedOwnerId, {
@@ -3717,7 +3752,33 @@ class ManagedAppService {
             metadata: provisioningMetadata,
             status: 'provisioning',
         }, normalizedOwnerId);
-        const normalizedPersistedApp = this.normalizeAppRecord(persistedApp);
+        let normalizedPersistedApp = this.normalizeAppRecord(persistedApp);
+        if (sourceArtifactMetadata
+            && !sourceArtifactMetadataMatches(
+                normalizedPersistedApp?.metadata?.sourceArtifact,
+                sourceArtifactMetadata,
+            )) {
+            const sourceRepairedApp = await this.store.updateApp(
+                normalizedPersistedApp.id,
+                normalizedOwnerId,
+                {
+                    metadata: preserveSourceArtifactMetadata(
+                        normalizedPersistedApp.metadata,
+                        sourceArtifactMetadata,
+                    ),
+                },
+            );
+            normalizedPersistedApp = this.normalizeAppRecord(sourceRepairedApp);
+            if (!sourceArtifactMetadataMatches(
+                normalizedPersistedApp?.metadata?.sourceArtifact,
+                sourceArtifactMetadata,
+            )) {
+                const error = new Error('Managed app source provenance could not be persisted before repository creation.');
+                error.statusCode = 500;
+                error.code = 'MANAGED_APP_SOURCE_PROVENANCE_NOT_PERSISTED';
+                throw error;
+            }
+        }
 
         let repository = {
             html_url: normalizedPersistedApp.repoUrl,
@@ -3769,7 +3830,7 @@ class ManagedAppService {
             repoCloneUrl: normalizeText(repository.clone_url || normalizedPersistedApp.repoCloneUrl),
             repoSshUrl: normalizeText(repository.ssh_url || normalizedPersistedApp.repoSshUrl),
             status: nextStatus,
-            metadata: this.buildLifecycleMetadata({
+            metadata: preserveSourceArtifactMetadata(this.buildLifecycleMetadata({
                 ...normalizedPersistedApp,
                 repoOwner: effectiveRepoOwner,
                 repoName: effectiveRepoName,
@@ -3805,7 +3866,7 @@ class ManagedAppService {
                         ? deriveNextStepForLifecycle(existing ? 'updated' : 'created', { deployRequested })
                         : '',
                 },
-            }),
+            }), sourceArtifactMetadata),
         });
         const finalPersistedApp = (hasPersistedAppId(updatedApp) ? updatedApp : null)
             || (hasPersistedAppId(persistedApp) ? persistedApp : null)
@@ -3840,16 +3901,17 @@ class ManagedAppService {
 
         let finalApp = this.normalizeAppRecord(finalPersistedApp || updatedApp || persistedApp);
         if (buildRun) {
+            const lifecycleMetadata = preserveSourceArtifactMetadata(this.buildLifecycleMetadata(finalApp, {
+                input,
+                buildRun,
+                phase: existing ? 'updated' : 'created',
+                deployRequested,
+                repoState: {
+                    lastBuildRunId: buildRun.id,
+                },
+            }), sourceArtifactMetadata);
             const lifecycleUpdatedApp = await this.store.updateApp(finalApp.id, normalizedOwnerId, {
-                metadata: this.buildLifecycleMetadata(finalApp, {
-                    input,
-                    buildRun,
-                    phase: existing ? 'updated' : 'created',
-                    deployRequested,
-                    repoState: {
-                        lastBuildRunId: buildRun.id,
-                    },
-                }),
+                metadata: lifecycleMetadata,
             });
             finalApp = this.normalizeAppRecord(lifecycleUpdatedApp
                 ? {
@@ -3858,6 +3920,31 @@ class ManagedAppService {
                     metadata: lifecycleUpdatedApp.metadata || finalApp.metadata,
                 }
                 : finalApp);
+        }
+        if (sourceArtifactMetadata
+            && !sourceArtifactMetadataMatches(
+                finalApp?.metadata?.sourceArtifact,
+                sourceArtifactMetadata,
+            )) {
+            const sourcePreservedApp = await this.store.updateApp(finalApp.id, normalizedOwnerId, {
+                metadata: preserveSourceArtifactMetadata(finalApp.metadata, sourceArtifactMetadata),
+            });
+            finalApp = this.normalizeAppRecord(sourcePreservedApp
+                ? {
+                    ...finalApp,
+                    ...sourcePreservedApp,
+                    metadata: sourcePreservedApp.metadata || finalApp.metadata,
+                }
+                : finalApp);
+            if (!sourceArtifactMetadataMatches(
+                finalApp?.metadata?.sourceArtifact,
+                sourceArtifactMetadata,
+            )) {
+                const error = new Error('Managed app source provenance could not be persisted with the build lifecycle.');
+                error.statusCode = 500;
+                error.code = 'MANAGED_APP_SOURCE_PROVENANCE_NOT_PERSISTED';
+                throw error;
+            }
         }
         await this.broadcastLifecycleEvent(finalApp, buildRun, existing ? 'updated' : 'created');
 
