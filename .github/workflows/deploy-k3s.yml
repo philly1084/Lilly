@@ -217,6 +217,36 @@ jobs:
               --overwrite
           }
 
+          cleanup_configmap_keys_from_secret() {
+            if ! kubectl get secret kimibuilt-secrets -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # The backend imports kimibuilt-config before kimibuilt-secrets.
+            # Duplicate non-secret keys in the Secret therefore win and can
+            # silently preserve stale public URLs or integration paths. Keep
+            # these configuration-only values authoritative in the ConfigMap.
+            for key in \
+              API_BASE_URL \
+              KUBERNETES_IN_CLUSTER_ENABLED \
+              MANAGED_APPS_BASE_DOMAIN \
+              MANAGED_APPS_BUILD_EVENTS_PATH \
+              MANAGED_APPS_DEFAULT_BRANCH
+            do
+              if [ -z "$(kubectl get secret kimibuilt-secrets \
+                -n "${KUBE_NAMESPACE}" \
+                -o "jsonpath={.data.${key}}" 2>/dev/null || true)" ]; then
+                continue
+              fi
+
+              kubectl patch secret kimibuilt-secrets \
+                -n "${KUBE_NAMESPACE}" \
+                --type merge \
+                -p "{\"data\":{\"${key}\":null}}" >/dev/null
+              echo "${key}=removed-from-secret"
+            done
+          }
+
           cleanup_stale_kokoro_hotfix_mounts() {
             if ! kubectl get deployment kokoro-tts -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
               return 0
@@ -528,6 +558,7 @@ jobs:
           # Apply configmap
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/primary-async-runtime.yaml
+          cleanup_configmap_keys_from_secret
           cleanup_stale_backend_env
           cleanup_stale_kokoro_hotfix_mounts
           cleanup_stale_backend_config_hotfix_mount
