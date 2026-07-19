@@ -129,6 +129,8 @@ class CodeCLIApp {
         this.nextFileId = 1;
         this.selectedRemoteArtifactIds = new Set();
         this.webPushInFlightArtifactIds = new Set();
+        this.artifactHandoff = null;
+        this.artifactHandoffPromise = null;
         
         // Command queue
         this.commandQueue = [];
@@ -5906,6 +5908,123 @@ ${preview.replace(/```/g, '\\`\\`\\`')}
     }
     
     // ==================== Session Info ====================
+
+    readArtifactLineageFromLocation(search = window.location?.search || '') {
+        const params = new window.URLSearchParams(String(search || '').replace(/^\?/, ''));
+        const artifactId = String(params.get('artifactId') || '').trim();
+        const sourceArtifactId = String(params.get('sourceArtifactId') || artifactId).trim();
+        const parentArtifactId = String(params.get('parentArtifactId') || artifactId).trim();
+        const missionId = String(params.get('missionId') || '').trim();
+        const revision = Number(params.get('revision'));
+        if (!artifactId && !sourceArtifactId && !parentArtifactId && !missionId) {
+            return null;
+        }
+        return {
+            artifactId: artifactId || null,
+            sourceArtifactId: sourceArtifactId || null,
+            parentArtifactId: parentArtifactId || null,
+            missionId: missionId || null,
+            revision: Number.isInteger(revision) && revision > 0 ? revision : null,
+        };
+    }
+
+    updateArtifactHandoffLocation(handoff = null) {
+        if (!handoff?.artifact?.id || !window.history?.replaceState || !window.location?.href) {
+            return;
+        }
+        try {
+            const nextUrl = new window.URL(window.location.href);
+            nextUrl.searchParams.set('artifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('sourceArtifactId', handoff.sourceArtifactId);
+            nextUrl.searchParams.set('parentArtifactId', handoff.artifact.id);
+            nextUrl.searchParams.set('revision', String(handoff.artifact.revision || 1));
+            window.history.replaceState(
+                window.history.state,
+                '',
+                `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+            );
+        } catch (_error) {
+            // The destination session and stored artifact remain authoritative.
+        }
+    }
+
+    async ensureArtifactLineageAttached(lineage = null) {
+        const requestedLineage = lineage || this.readArtifactLineageFromLocation();
+        const sourceArtifactId = String(
+            requestedLineage?.sourceArtifactId
+            || requestedLineage?.artifactId
+            || this.artifactHandoff?.sourceArtifactId
+            || '',
+        ).trim();
+        if (!sourceArtifactId) {
+            return this.artifactHandoff;
+        }
+        if (this.artifactHandoff?.sourceArtifactId === sourceArtifactId) {
+            return this.artifactHandoff;
+        }
+        if (this.artifactHandoffPromise) {
+            return this.artifactHandoffPromise;
+        }
+
+        const createClient = window.KimiBuiltRemoteArtifactWorkflow?.createArtifactHandoffClient;
+        if (typeof createClient !== 'function') {
+            throw new Error('The artifact handoff client is unavailable.');
+        }
+
+        const targetSessionId = await api.ensureSession({
+            title: 'Codex and Kimi artifact handoff',
+            metadata: {
+                artifactHandoff: true,
+                sourceArtifactId,
+            },
+        });
+        if (!targetSessionId) {
+            throw new Error('Web CLI could not resolve an isolated destination session.');
+        }
+        this.updateSessionInfo();
+
+        const handoffClient = createClient({
+            baseUrl: window.location?.origin || '',
+            getSessionId: () => api.sessionId,
+            setSessionId: (sessionId) => api.setSessionId(sessionId),
+        });
+        this.artifactHandoffPromise = handoffClient.attachArtifact(sourceArtifactId, {
+            targetSessionId,
+            mode: 'chat',
+            taskType: 'chat',
+            clientSurface: 'web-cli',
+        }).then((handoff) => {
+            api.setSessionId(handoff.targetSessionId);
+            const attachedLineage = {
+                ...(requestedLineage || {}),
+                schemaVersion: 'ArtifactLineage/v1',
+                sourceArtifactId: handoff.sourceArtifactId,
+                artifactId: handoff.artifact.id,
+                parentArtifactId: handoff.artifact.id,
+                revision: Number(handoff.artifact.revision || 1),
+                sourceSurface: 'web-cli',
+            };
+            this.artifactHandoff = {
+                ...handoff,
+                lineage: attachedLineage,
+            };
+            this.syncArtifactsToSessionFiles([handoff.artifact], 'artifact-handoff');
+            if (!(this.selectedRemoteArtifactIds instanceof Set)) {
+                this.selectedRemoteArtifactIds = new Set();
+            }
+            this.selectedRemoteArtifactIds.add(handoff.artifact.id);
+            this.updateArtifactHandoffLocation(handoff);
+            this.updateSessionInfo();
+            const filename = String(handoff.artifact.filename || 'Source artifact').trim();
+            this.printSystem(
+                `${filename} is attached as exact agent context and selected for the next Codex/Kimi remote agent run.`,
+            );
+            return this.artifactHandoff;
+        }).finally(() => {
+            this.artifactHandoffPromise = null;
+        });
+        return this.artifactHandoffPromise;
+    }
     
     printStats() {
         const elapsed = Math.floor((Date.now() - this.sessionStartTime) / 1000);
@@ -5918,6 +6037,7 @@ Session Statistics:
     }
 
     async restoreSharedSession() {
+        const requestedLineage = this.readArtifactLineageFromLocation();
         try {
             const data = await api.getSessionState();
             const sessions = Array.isArray(data.sessions) ? data.sessions : [];
@@ -5930,18 +6050,29 @@ Session Statistics:
             ).trim();
 
             if (!activeSessionId) {
+                if (storedSessionId) {
+                    api.setSessionId(null);
+                }
                 this.updateSessionInfo();
-                return;
+            } else {
+                api.setSessionId(activeSessionId);
+                this.updateSessionInfo();
+                await this.renderPersistedSessionHistory(activeSessionId, {
+                    clear: false,
+                    intro: `Connected to isolated session ${activeSessionId.slice(0, 8)}...`,
+                });
             }
-
-            api.setSessionId(activeSessionId);
-            this.updateSessionInfo();
-            await this.renderPersistedSessionHistory(activeSessionId, {
-                clear: false,
-                intro: `Connected to isolated session ${activeSessionId.slice(0, 8)}...`,
-            });
         } catch (error) {
             console.warn('Failed to restore isolated session:', error);
+        }
+
+        if (requestedLineage?.sourceArtifactId || requestedLineage?.artifactId) {
+            try {
+                await this.ensureArtifactLineageAttached(requestedLineage);
+            } catch (error) {
+                console.warn('Failed to attach routed artifact:', error);
+                this.printError(`Artifact handoff failed: ${error.message}`);
+            }
         }
     }
 
@@ -8484,6 +8615,12 @@ Raw expert access remains available:
                     adminMode: true,
                     collectResultFiles: true,
                     artifactIds: selectedArtifactIds,
+                    ...(this.artifactHandoff?.lineage ? {
+                        metadata: {
+                            artifactLineage: this.artifactHandoff.lineage,
+                            source: 'web-cli-artifact-handoff',
+                        },
+                    } : {}),
                     ...(api.currentModel && api.currentModel !== 'auto' ? { model: api.currentModel } : {}),
                 });
                 const rawResult = invocation?.result?.data || invocation?.result?.result || invocation?.result || {};

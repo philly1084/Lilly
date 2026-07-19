@@ -39,6 +39,8 @@ function createHarness({ api = {}, windowOverrides = {} } = {}) {
     app.sessionFiles = [];
     app.nextFileId = 1;
     app.selectedRemoteArtifactIds = new Set();
+    app.artifactHandoff = null;
+    app.artifactHandoffPromise = null;
     app.printSystem = jest.fn();
     app.printError = jest.fn();
     app.printAI = jest.fn();
@@ -59,6 +61,155 @@ function createHarness({ api = {}, windowOverrides = {} } = {}) {
 }
 
 describe('web-cli remote artifact workflow', () => {
+    test('reads routed artifact lineage from the Web CLI URL', () => {
+        const { app } = createHarness();
+
+        expect(app.readArtifactLineageFromLocation(
+            '?artifactId=artifact-source-123456789&missionId=mission-1&revision=4',
+        )).toEqual({
+            artifactId: 'artifact-source-123456789',
+            sourceArtifactId: 'artifact-source-123456789',
+            parentArtifactId: 'artifact-source-123456789',
+            missionId: 'mission-1',
+            revision: 4,
+        });
+    });
+
+    test('attaches routed bytes into the Web CLI session and selects the destination artifact', async () => {
+        const api = {
+            sessionId: null,
+            ensureSession: jest.fn(async () => {
+                api.sessionId = 'web-cli-session-123456789';
+                return api.sessionId;
+            }),
+            setSessionId: jest.fn((sessionId) => {
+                api.sessionId = sessionId;
+            }),
+        };
+        const attachArtifact = jest.fn().mockResolvedValue({
+            targetSessionId: 'web-cli-session-123456789',
+            sourceArtifactId: 'artifact-source-123456789',
+            sha256: 'a'.repeat(64),
+            artifact: {
+                id: 'artifact-destination-123456789',
+                sessionId: 'web-cli-session-123456789',
+                filename: 'design-handoff.zip',
+                format: 'zip',
+                mimeType: 'application/zip',
+                sizeBytes: 2365,
+                revision: 1,
+                downloadUrl: '/api/artifacts/artifact-destination-123456789/download',
+            },
+        });
+        const createArtifactHandoffClient = jest.fn(() => ({ attachArtifact }));
+        const { app, dom } = createHarness({
+            api,
+            windowOverrides: {
+                KimiBuiltRemoteArtifactWorkflow: { createArtifactHandoffClient },
+            },
+        });
+        app.updateSessionInfo = jest.fn();
+
+        const handoff = await app.ensureArtifactLineageAttached({
+            artifactId: 'artifact-source-123456789',
+            sourceArtifactId: 'artifact-source-123456789',
+            missionId: 'mission-1',
+            revision: 4,
+        });
+
+        expect(api.ensureSession).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({
+                artifactHandoff: true,
+                sourceArtifactId: 'artifact-source-123456789',
+            }),
+        }));
+        expect(attachArtifact).toHaveBeenCalledWith(
+            'artifact-source-123456789',
+            {
+                targetSessionId: 'web-cli-session-123456789',
+                mode: 'chat',
+                taskType: 'chat',
+                clientSurface: 'web-cli',
+            },
+        );
+        expect(handoff.lineage).toEqual(expect.objectContaining({
+            schemaVersion: 'ArtifactLineage/v1',
+            sourceArtifactId: 'artifact-source-123456789',
+            artifactId: 'artifact-destination-123456789',
+            parentArtifactId: 'artifact-destination-123456789',
+            missionId: 'mission-1',
+            revision: 1,
+            sourceSurface: 'web-cli',
+        }));
+        expect(app.getSelectedRemoteArtifactIds()).toEqual(['artifact-destination-123456789']);
+        expect(dom.window.location.search).toContain('artifactId=artifact-destination-123456789');
+        expect(dom.window.location.search).toContain('sourceArtifactId=artifact-source-123456789');
+        expect(app.printSystem).toHaveBeenCalledWith(expect.stringContaining(
+            'selected for the next Codex/Kimi remote agent run',
+        ));
+    });
+
+    test('restores the scoped session before consuming a routed artifact', async () => {
+        const api = {
+            sessionId: null,
+            getSessionState: jest.fn().mockResolvedValue({
+                activeSessionId: 'web-cli-session-123456789',
+                sessions: [{ id: 'web-cli-session-123456789' }],
+            }),
+            setSessionId: jest.fn((sessionId) => {
+                api.sessionId = sessionId;
+            }),
+        };
+        const { app, dom } = createHarness({ api });
+        dom.window.history.replaceState(
+            null,
+            '',
+            '/web-cli/?artifactId=artifact-source-123456789&sourceArtifactId=artifact-source-123456789',
+        );
+        app.updateSessionInfo = jest.fn();
+        app.renderPersistedSessionHistory = jest.fn();
+        app.ensureArtifactLineageAttached = jest.fn().mockResolvedValue({});
+
+        await app.restoreSharedSession();
+
+        expect(api.setSessionId).toHaveBeenCalledWith('web-cli-session-123456789');
+        expect(app.renderPersistedSessionHistory).toHaveBeenCalledWith(
+            'web-cli-session-123456789',
+            expect.objectContaining({ clear: false }),
+        );
+        expect(app.ensureArtifactLineageAttached).toHaveBeenCalledWith(expect.objectContaining({
+            sourceArtifactId: 'artifact-source-123456789',
+        }));
+    });
+
+    test('clears a stale stored session before creating an artifact handoff destination', async () => {
+        const api = {
+            sessionId: 'stale-web-cli-session-123456789',
+            getSessionState: jest.fn().mockResolvedValue({
+                activeSessionId: null,
+                sessions: [],
+            }),
+            setSessionId: jest.fn((sessionId) => {
+                api.sessionId = sessionId;
+            }),
+        };
+        const { app, dom } = createHarness({ api });
+        dom.window.history.replaceState(
+            null,
+            '',
+            '/web-cli/?artifactId=artifact-source-123456789',
+        );
+        app.updateSessionInfo = jest.fn();
+        app.ensureArtifactLineageAttached = jest.fn().mockResolvedValue({});
+
+        await app.restoreSharedSession();
+
+        expect(api.setSessionId).toHaveBeenCalledWith(null);
+        expect(app.ensureArtifactLineageAttached).toHaveBeenCalledWith(expect.objectContaining({
+            sourceArtifactId: 'artifact-source-123456789',
+        }));
+    });
+
     test('uses stable persisted artifact ids for agent selection, never local file ids', () => {
         const { app } = createHarness();
         app.sessionFiles = [
@@ -116,6 +267,13 @@ describe('web-cli remote artifact workflow', () => {
         };
         app.sessionFiles = [{ id: 1, artifactId: 'artifact-input-123456789', filename: 'input.svg' }];
         app.selectedRemoteArtifactIds.add('artifact-input-123456789');
+        app.artifactHandoff = {
+            lineage: {
+                schemaVersion: 'ArtifactLineage/v1',
+                sourceArtifactId: 'artifact-source-123456789',
+                artifactId: 'artifact-input-123456789',
+            },
+        };
         app.setActiveVoxelTool = jest.fn();
         app.setStatus = jest.fn();
         app.recordVoxelToolUse = jest.fn();
@@ -143,6 +301,10 @@ describe('web-cli remote artifact workflow', () => {
             model: 'kimi-k3',
             collectResultFiles: true,
             cwd: '/opt/project',
+            metadata: {
+                artifactLineage: app.artifactHandoff.lineage,
+                source: 'web-cli-artifact-handoff',
+            },
         }));
         expect(app.printAI).toHaveBeenCalledWith(expect.stringContaining('artifact-result-123456789'));
         expect(app.finalizeLiveProgressCard).toHaveBeenCalledWith(expect.objectContaining({ phase: 'ready' }));
