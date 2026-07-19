@@ -56,20 +56,23 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
-  test('inherits the selected chat model for model-aware remote CLI routing', async () => {
+  test('inherits only active Codex or Kimi chat models for remote CLI routing', async () => {
     const { tool, runner } = buildTool();
 
     const result = await tool.execute({
       task: 'Build and verify the remote app.',
     }, {
-      model: 'grok-build',
+      model: 'gpt-5.6-sol',
     });
 
     expect(result.success).toBe(true);
     expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
       task: 'Build and verify the remote app.',
-      model: 'grok-build',
+      model: 'gpt-5.6-sol',
     }));
+
+    await tool.execute({ task: 'Build with the default active provider.' }, { model: 'grok-build' });
+    expect(runner.run).toHaveBeenLastCalledWith(expect.not.objectContaining({ model: 'grok-build' }));
   });
 
   test('stages selected session artifacts into the versioned runner handoff', async () => {

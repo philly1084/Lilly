@@ -80,10 +80,11 @@ class FileHandler {
      * Initialize external libraries
      */
     initLibraries() {
-        // Libraries are loaded via CDN in index.html
+        this.mammothLib = typeof mammoth !== 'undefined' ? mammoth : null;
+        this.pdfjsLib = typeof pdfjsLib !== 'undefined' ? pdfjsLib : null;
         this.librariesLoaded = {
-            mammoth: typeof mammoth !== 'undefined',
-            pdfjs: typeof pdfjsLib !== 'undefined',
+            mammoth: Boolean(this.mammothLib),
+            pdfjs: Boolean(this.pdfjsLib),
             hljs: typeof hljs !== 'undefined',
         };
     }
@@ -105,17 +106,20 @@ class FileHandler {
             script.onload = () => {
                 // Update library status after loading
                 if (src.includes('mammoth')) {
-                    this.librariesLoaded.mammoth = true;
-                } else if (src.includes('pdf.js')) {
-                    this.librariesLoaded.pdfjs = true;
-                } else if (src.includes('highlight.js')) {
-                    this.librariesLoaded.hljs = true;
+                    this.mammothLib = typeof mammoth !== 'undefined' ? mammoth : null;
+                    this.librariesLoaded.mammoth = Boolean(this.mammothLib);
+                } else if (src.includes('highlight')) {
+                    this.librariesLoaded.hljs = typeof hljs !== 'undefined';
                 }
                 resolve();
             };
             script.onerror = () => reject(new Error(`Failed to load ${src}`));
             document.head.appendChild(script);
         });
+    }
+
+    async loadModule(src) {
+        return import(src);
     }
 
     /**
@@ -214,7 +218,7 @@ class FileHandler {
         if (!this.librariesLoaded.mammoth) {
             this.app.printSystem('📦 Loading DOCX library...');
             try {
-                await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+                await this.loadScript('/api/sandbox-libraries/mammoth/mammoth.browser.min.js');
             } catch (error) {
                 this.app.printError('Failed to load DOCX library: ' + error.message);
                 return null;
@@ -222,8 +226,12 @@ class FileHandler {
         }
         
         try {
+            const mammothParser = this.mammothLib || (typeof mammoth !== 'undefined' ? mammoth : null);
+            if (!mammothParser) {
+                throw new Error('DOCX parser did not initialize');
+            }
             const arrayBuffer = await file.arrayBuffer();
-            const result = await mammoth.extractRawText({ arrayBuffer });
+            const result = await mammothParser.extractRawText({ arrayBuffer });
             
             this.displayImportedContent(file.name, result.value, 'document', {
                 messages: result.messages,
@@ -243,12 +251,9 @@ class FileHandler {
         if (!this.librariesLoaded.pdfjs) {
             this.app.printSystem('📦 Loading PDF library...');
             try {
-                await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
-                // Configure PDF.js worker
-                if (typeof pdfjsLib !== 'undefined') {
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-                    this.librariesLoaded.pdfjs = true;
-                }
+                this.pdfjsLib = await this.loadModule('/api/sandbox-libraries/pdfjs/pdf.min.mjs');
+                this.pdfjsLib.GlobalWorkerOptions.workerSrc = '/api/sandbox-libraries/pdfjs/pdf.worker.min.mjs';
+                this.librariesLoaded.pdfjs = true;
             } catch (error) {
                 this.app.printError('Failed to load PDF library: ' + error.message);
                 return null;
@@ -256,8 +261,12 @@ class FileHandler {
         }
         
         try {
+            const pdfParser = this.pdfjsLib || (typeof pdfjsLib !== 'undefined' ? pdfjsLib : null);
+            if (!pdfParser) {
+                throw new Error('PDF parser did not initialize');
+            }
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const pdf = await pdfParser.getDocument({ data: arrayBuffer }).promise;
             
             let fullText = '';
             const pageCount = pdf.numPages;

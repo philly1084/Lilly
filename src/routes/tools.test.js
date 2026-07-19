@@ -414,8 +414,8 @@ describe('/api/tools routes', () => {
         expect(remoteAgent).toBeDefined();
         expect(k3sDeploy).toBeDefined();
         expect(remoteAgent.description).toContain('Kimi CLI for Kimi models');
-        expect(remoteAgent.description).toContain('Grok Build for Grok models');
         expect(remoteAgent.description).toContain('Codex for OpenAI models');
+        expect(remoteAgent.description).not.toContain('Grok');
         expect(remoteAgent.support.notes.join('\n')).toContain('GIT_BRANCH');
         expect(remoteAgent.support.notes.join('\n')).toContain('/admin/remote-agent-tasks');
         expect(remoteAgent.runtime.runnerAvailable).toBe(true);

@@ -20,6 +20,28 @@ const DISALLOWED_DIRECT_PACKAGES = new Map([
 
 const LOCK_LICENSE_EXCEPTIONS = new Map([
   [
+    'node_modules/duck',
+    {
+      effectiveLicense: 'BSD-2-Clause',
+      reason: 'package metadata says BSD; the installed LICENSE text is the BSD 2-Clause license',
+    },
+  ],
+  [
+    'node_modules/elkjs',
+    {
+      effectiveLicense: 'EPL-2.0',
+      approved: true,
+      reason: 'reviewed unmodified Mermaid layout dependency under EPL-2.0; the package includes its full license text',
+    },
+  ],
+  [
+    'node_modules/khroma',
+    {
+      effectiveLicense: 'MIT',
+      reason: 'package metadata omits license, but the installed package license file is MIT',
+    },
+  ],
+  [
     'node_modules/png-js',
     {
       effectiveLicense: 'MIT',
@@ -38,6 +60,7 @@ const PERMISSIVE_LICENSES = new Set([
   'CC0-1.0',
   'ISC',
   'MIT',
+  'MIT-0',
   'Python-2.0',
   'Unlicense',
   'Unicode-3.0',
@@ -165,6 +188,10 @@ function auditPackageLicenses(packages = {}) {
 
     if (hasPattern(COPYLEFT_PATTERNS, license) && !hasPermissiveChoice(license)) {
       failures.push(`${packageName}: copyleft license expression "${license}"`);
+      continue;
+    }
+
+    if (exception?.approved === true) {
       continue;
     }
 

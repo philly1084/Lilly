@@ -25,7 +25,7 @@ function normalizeText(value = '') {
 
 function printUsage() {
   console.error([
-    'Usage: kimibuilt-ui-check <url> [--out ui-checks] [--wait selector] [--timeout ms] [--viewports desktop:1440x960,mobile:390x844] [--same-origin-only]',
+    'Usage: kimibuilt-ui-check <url> [--out ui-checks] [--wait selector] [--timeout ms] [--viewports desktop:1440x960,mobile:390x844] [--same-origin-only] [--authenticated-app]',
     '',
     'Captures Playwright screenshots and writes a JSON UI/UX check report with layout, image, error, and text-contrast checks.',
   ].join('\n'));
@@ -39,6 +39,7 @@ function parseArgs(argv = []) {
     timeout: 30000,
     fullPage: true,
     sameOriginOnly: false,
+    authenticatedApp: false,
     viewports: DEFAULT_VIEWPORTS,
   };
 
@@ -72,6 +73,10 @@ function parseArgs(argv = []) {
     }
     if (value === '--same-origin-only') {
       args.sameOriginOnly = true;
+      continue;
+    }
+    if (value === '--authenticated-app') {
+      args.authenticatedApp = true;
       continue;
     }
     if (value === '--viewports') {
@@ -191,7 +196,7 @@ function isInternalPreviewApiUrl(value = '') {
 }
 
 function resolveUiCheckAuthToken() {
-  return normalizeText(
+  const configured = normalizeText(
     process.env.KIMIBUILT_UI_CHECK_TOKEN
     || process.env.KIMIBUILT_UI_CHECK_AUTH_TOKEN
     || process.env.KIMIBUILT_FRONTEND_API_KEY
@@ -199,6 +204,29 @@ function resolveUiCheckAuthToken() {
     || process.env.OPENCODE_GATEWAY_API_KEY
     || '',
   );
+  if (configured) {
+    return configured;
+  }
+
+  const gatewayModulePaths = [
+    path.resolve(__dirname, '..', 'src', 'opencode', 'gateway'),
+    '/app/src/opencode/gateway',
+  ];
+  for (const modulePath of gatewayModulePaths) {
+    try {
+      const resolver = require(modulePath)?.resolveOpenCodeGatewayApiKey;
+      if (typeof resolver === 'function') {
+        const resolved = normalizeText(resolver());
+        if (resolved) {
+          return resolved;
+        }
+      }
+    } catch (_error) {
+      // Keep looking. Some standalone runner images do not include KimiBuilt source.
+    }
+  }
+
+  return '';
 }
 
 function buildAuthHeaders(url = '') {
@@ -247,7 +275,7 @@ function rewritePreviewUrlWithToken(url = '', previewToken = '') {
 async function resolveAuthenticatedPreviewUrl(url = '') {
   const authHeaders = buildAuthHeaders(url);
   if (Object.keys(authHeaders).length === 0) {
-    return { url, authHeaders: {} };
+    return { url, authHeaders: {}, authenticated: false };
   }
 
   try {
@@ -261,7 +289,7 @@ async function resolveAuthenticatedPreviewUrl(url = '') {
       cache: 'no-store',
     });
     if (!response.ok) {
-      return { url, authHeaders };
+      return { url, authHeaders, authenticated: true };
     }
 
     const data = await response.json().catch(() => ({}));
@@ -269,10 +297,83 @@ async function resolveAuthenticatedPreviewUrl(url = '') {
     return {
       url: rewritePreviewUrlWithToken(url, previewToken),
       authHeaders,
+      authenticated: true,
     };
   } catch (_error) {
-    return { url, authHeaders };
+    return { url, authHeaders, authenticated: true };
   }
+}
+
+async function resolveAuthenticatedAppUrl(url = '', fetchImpl = global.fetch) {
+  const apiKey = resolveUiCheckAuthToken();
+  if (!apiKey) {
+    throw new Error('Authenticated app checks require KIMIBUILT_UI_CHECK_TOKEN or KIMIBUILT_FRONTEND_API_KEY.');
+  }
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('Authenticated app checks require a fetch implementation.');
+  }
+
+  const parsed = new URL(url);
+  if (!getAuthCandidateOrigins().has(parsed.origin)) {
+    throw new Error('Authenticated app check refused an origin outside the configured KimiBuilt origins.');
+  }
+
+  const response = await fetchImpl(`${parsed.origin}/api/auth/ws-token`, {
+    method: 'GET',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+    },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`Authenticated app token exchange failed with HTTP ${response.status}.`);
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (data?.authRequired === false) {
+    return { url, authHeaders: {}, authenticated: true };
+  }
+
+  const token = normalizeText(data?.token || '');
+  if (!token) {
+    throw new Error('Authenticated app token exchange returned no short-lived token.');
+  }
+
+  return {
+    url,
+    authHeaders: {
+      authorization: `Bearer ${token}`,
+    },
+    authenticated: true,
+  };
+}
+
+async function resolveUiCheckTarget(url = '', options = {}) {
+  if (options.authenticatedApp === true) {
+    return resolveAuthenticatedAppUrl(url, options.fetchImpl || global.fetch);
+  }
+  return resolveAuthenticatedPreviewUrl(url);
+}
+
+function mergeSameOriginAuthHeaders(requestUrl = '', targetOrigin = '', requestHeaders = {}, authHeaders = {}) {
+  if (!authHeaders || Object.keys(authHeaders).length === 0) {
+    return null;
+  }
+
+  try {
+    if (new URL(requestUrl).origin !== normalizeOrigin(targetOrigin)) {
+      return null;
+    }
+  } catch (_error) {
+    return null;
+  }
+
+  return {
+    ...(requestHeaders || {}),
+    ...authHeaders,
+  };
 }
 
 function redactSensitiveUrl(value = '') {
@@ -656,7 +757,9 @@ async function run() {
     process.exit(args.help ? 0 : 2);
   }
 
-  const target = await resolveAuthenticatedPreviewUrl(args.url);
+  const target = await resolveUiCheckTarget(args.url, {
+    authenticatedApp: args.authenticatedApp,
+  });
   const targetOrigin = new URL(target.url).origin;
 
   const { chromium, moduleName } = loadPlaywright();
@@ -683,7 +786,6 @@ async function run() {
       const externalRequests = [];
       const context = await browser.newContext({
         ignoreHTTPSErrors: true,
-        ...(Object.keys(target.authHeaders || {}).length > 0 ? { extraHTTPHeaders: target.authHeaders } : {}),
         viewport: {
           width: viewport.width,
           height: viewport.height,
@@ -693,10 +795,10 @@ async function run() {
       });
       const page = await context.newPage();
 
-      if (args.sameOriginOnly) {
+      if (args.sameOriginOnly || Object.keys(target.authHeaders || {}).length > 0) {
         await page.route('**/*', async (route) => {
           const request = route.request();
-          if (isExternalHttpRequest(request.url(), targetOrigin)) {
+          if (args.sameOriginOnly && isExternalHttpRequest(request.url(), targetOrigin)) {
             externalRequests.push({
               url: request.url(),
               resourceType: request.resourceType(),
@@ -704,7 +806,13 @@ async function run() {
             await route.abort('blockedbyclient');
             return;
           }
-          await route.continue();
+          const headers = mergeSameOriginAuthHeaders(
+            request.url(),
+            targetOrigin,
+            request.headers(),
+            target.authHeaders,
+          );
+          await route.continue(headers ? { headers } : undefined);
         });
       }
 
@@ -818,7 +926,7 @@ async function run() {
     tool: 'kimibuilt-ui-check',
     url: redactSensitiveUrl(target.url),
     originalUrl: redactSensitiveUrl(args.url),
-    authenticated: Object.keys(target.authHeaders || {}).length > 0,
+    authenticated: target.authenticated === true,
     generatedAt: new Date().toISOString(),
     playwrightModule: moduleName,
     browserExecutable: executablePath || '',
@@ -852,9 +960,11 @@ module.exports = {
   hasCorsConsoleError,
   isAuthWallMetrics,
   isExternalHttpRequest,
+  mergeSameOriginAuthHeaders,
   normalizeUrl,
   parseArgs,
   redactSensitiveUrl,
+  resolveAuthenticatedAppUrl,
   rewritePreviewUrlWithToken,
   waitForClientReady,
 };

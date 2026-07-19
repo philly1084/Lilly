@@ -19,6 +19,7 @@ describe('sandbox libraries route', () => {
       expect.objectContaining({ id: 'chartjs', packageName: 'chart.js' }),
       expect.objectContaining({ id: 'force-graph-3d', packageName: '3d-force-graph' }),
       expect.objectContaining({ id: 'codemirror', category: 'code-viewing' }),
+      expect.objectContaining({ id: 'pdf-lib', packageName: 'pdf-lib' }),
       expect.objectContaining({ id: 'pdfjs', category: 'document-viewing' }),
     ]));
     expect(response.body.guidance).toContain('CodeMirror');
@@ -42,5 +43,22 @@ describe('sandbox libraries route', () => {
     expect(response.headers['content-type']).toContain('text/javascript');
     expect(response.headers['access-control-allow-origin']).toBe('*');
     expect(response.text).toContain('Chart');
+  });
+
+  test('serves the Web CLI document and syntax libraries from same-origin routes', async () => {
+    const [highlightResponse, pdfLibResponse, pdfjsResponse] = await Promise.all([
+      request(buildApp()).get('/api/sandbox-libraries/highlightjs/highlight.min.js'),
+      request(buildApp()).get('/api/sandbox-libraries/pdf-lib/pdf-lib.min.js'),
+      request(buildApp()).get('/api/sandbox-libraries/pdfjs/pdf.min.mjs'),
+    ]);
+
+    expect(highlightResponse.status).toBe(200);
+    expect(highlightResponse.headers['content-type']).toContain('text/javascript');
+    expect(highlightResponse.text).toContain('highlight');
+    expect(pdfLibResponse.status).toBe(200);
+    expect(pdfLibResponse.text).toContain('PDFDocument');
+    expect(pdfjsResponse.status).toBe(200);
+    expect(pdfjsResponse.headers['content-type']).toContain('text/javascript');
+    expect(pdfjsResponse.text).toContain('getDocument');
   });
 });

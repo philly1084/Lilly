@@ -6,7 +6,7 @@ Use this first when a task mentions remote servers, remote CLI, remote agents, k
 
 ## Remote Tool Decision Map
 
-Think of KimiBuilt remote access as one tool family with five lanes: `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`. The planner chooses the lane by intent, while `remote-cli-agent` uses the authenticated provider-task stream for Codex, Kimi, and Grok by default. Direct Codex `/run` + `/events` and MCP `remote_code_*` remain explicit compatibility transports.
+Think of KimiBuilt remote access as one tool family with five lanes: `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`. The planner chooses the lane by intent, while `remote-cli-agent` uses the authenticated provider-task stream for Codex and Kimi by default. Direct Codex `/run` + `/events` and MCP `remote_code_*` remain explicit compatibility transports.
 
 | User intent | Use | Do not use |
 |-------------|-----|------------|
@@ -89,9 +89,9 @@ GET /admin/remote-agent-tasks/:taskId/result-files
 
 Router implementation shape, as used by the `nuts` gateway:
 - `/admin/remote-agent-tasks` validates API-key or bearer auth, target/cwd roots, provider/model selection, and the optional `RemoteAgentHandoff/v1` contract before starting a provider session.
-- OpenAI/Codex models map to `codex-cli`, Kimi models map to `kimi-code-cli`, and Grok models map to `grok-build-cli`. The router owns target SSH, isolated file staging, progress events, and verified result collection.
+- OpenAI/Codex models map to `codex-cli` and Kimi models map to `kimi-code-cli`. Grok is not an active remote delivery provider. The router owns target SSH, isolated file staging, progress events, and verified result collection.
 - The returned same-origin stream URL carries a task-scoped token. Do not expose the privileged `/admin/remote-agent-tasks` mutation route through public ingress.
-- Preserve a returned provider `sessionId` for supported Codex or Grok continuation. Kimi starts a fresh bounded CLI session.
+- Preserve a returned provider `sessionId` for supported Codex continuation. Kimi starts a fresh bounded CLI session.
 - `RemoteAgentResultFiles/v1` returns only gateway-verified regular files with computed byte counts and SHA-256 hashes; KimiBuilt persists them into the active session with lineage.
 - If the CLI agent returns `SUPPORT_AGENT_REQUIRED` plus `SUPPORT_AGENT_CONTEXT`, run or ask a support agent for that bounded help request, then continue `remote-cli-agent` with the same provider `sessionId` (or direct-Codex `threadId`) and `supportAgentResponse`. Do not turn support-agent requests into user questions unless the support request itself needs user-only information.
 - In this lane, `localhost` and `127.0.0.1` are loopback inside the remote gateway runner, not the user's desktop and not the public app. Verify live remote work through the named public host, Kubernetes service DNS, or `kubectl` in the target namespace unless the task explicitly asks for a local dev-server check.

@@ -1912,6 +1912,25 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-center-boot-l
     }
 }
 
+.cli-shortcuts-list {
+    display: grid;
+    gap: 8px;
+    font-size: 0.875rem;
+}
+
+.cli-shortcuts-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0 5px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.cli-shortcuts-row--last {
+    border-bottom: 0;
+}
+
 body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) {
     --bg-primary: #f8fafc;
     --bg-secondary: #ffffff;

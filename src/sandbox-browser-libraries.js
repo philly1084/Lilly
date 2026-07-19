@@ -337,7 +337,7 @@ const LIBRARIES = Object.freeze([
   {
     id: 'highlightjs',
     label: 'highlight.js',
-    packageName: 'highlight.js',
+    packageName: '@highlightjs/cdn-assets',
     category: 'code-viewing',
     purpose: 'Syntax-highlighted code blocks for generated docs, reports, code viewers, and build logs.',
     globals: ['hljs'],
@@ -345,7 +345,7 @@ const LIBRARIES = Object.freeze([
     assets: [
       {
         publicPath: 'highlight.min.js',
-        packagePaths: ['lib/common.js', 'build/highlight.min.js'],
+        packagePaths: ['highlight.min.js'],
         type: 'script',
       },
       {
@@ -445,6 +445,28 @@ const LIBRARIES = Object.freeze([
     ],
   },
   {
+    id: 'pdf-lib',
+    label: 'PDF-Lib',
+    packageName: 'pdf-lib',
+    category: 'document-generation',
+    purpose: 'Browser-side PDF creation and modification for document and diagram exports.',
+    globals: ['PDFLib'],
+    aliases: ['pdflib', 'pdf lib', 'pdf generation'],
+    assets: [
+      {
+        publicPath: 'pdf-lib.min.js',
+        packagePaths: ['dist/pdf-lib.min.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<script src="/api/sandbox-libraries/pdf-lib/pdf-lib.min.js"></script>',
+    ],
+    cdn: [
+      'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
+    ],
+  },
+  {
     id: 'pdfjs',
     label: 'PDF.js',
     packageName: 'pdfjs-dist',
@@ -454,23 +476,22 @@ const LIBRARIES = Object.freeze([
     aliases: ['pdf.js', 'pdfjs', 'pdf viewer'],
     assets: [
       {
-        publicPath: 'pdf.min.js',
-        packagePaths: ['legacy/build/pdf.min.js', 'build/pdf.min.js'],
-        type: 'script',
+        publicPath: 'pdf.min.mjs',
+        packagePaths: ['legacy/build/pdf.min.mjs', 'build/pdf.min.mjs'],
+        type: 'module',
       },
       {
-        publicPath: 'pdf.worker.min.js',
-        packagePaths: ['legacy/build/pdf.worker.min.js', 'build/pdf.worker.min.js'],
-        type: 'script',
+        publicPath: 'pdf.worker.min.mjs',
+        packagePaths: ['legacy/build/pdf.worker.min.mjs', 'build/pdf.worker.min.mjs'],
+        type: 'module',
       },
     ],
     snippets: [
-      '<script src="/api/sandbox-libraries/pdfjs/pdf.min.js"></script>',
-      '<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="/api/sandbox-libraries/pdfjs/pdf.worker.min.js"}</script>',
+      '<script type="module">import * as pdfjsLib from "/api/sandbox-libraries/pdfjs/pdf.min.mjs"; pdfjsLib.GlobalWorkerOptions.workerSrc = "/api/sandbox-libraries/pdfjs/pdf.worker.min.mjs"; window.pdfjsLib = pdfjsLib;</script>',
     ],
     cdn: [
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.624/build/pdf.min.mjs',
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs',
     ],
   },
   {
@@ -710,7 +731,7 @@ function buildSandboxBrowserLibraryInstructions() {
   return [
     'Sandbox HTML/browser library defaults are available from local routes under `/api/sandbox-libraries/` when the npm packages are installed in the backend image.',
     'Use these local routes for generated HTML documents, dashboards, graph-heavy pages, and sandbox previews before reaching for external CDNs; keep designs static-safe and browser-runnable without a build step.',
-    'For code and document viewing sandboxes, prefer the viewer stack that matches the job: CodeMirror for editable source panes, highlight.js for static code blocks/logs, Marked for Markdown documents, PDF.js for PDF previews, Mammoth for DOCX import/preview, and docx.js only for explicit browser-side DOCX export prototypes.',
+    'For code and document sandboxes, prefer the library that matches the job: CodeMirror for editable source panes, highlight.js for static code blocks/logs, Marked for Markdown documents, PDF.js for PDF previews, PDF-Lib for PDF creation/modification, Mammoth for DOCX import/preview, and docx.js only for explicit browser-side DOCX export prototypes.',
     'Three.js module setup: add `<script type="importmap">{"imports":{"three":"/api/sandbox-libraries/three/three.module.js","three/addons/":"/api/sandbox-libraries/three/addons/"}}</script>`, then use `import * as THREE from "three"` inside a module script.',
     primarySnippets ? `Available local library paths in this runtime: ${primarySnippets}.` : '',
     fallbackSnippets ? `CDN fallback library paths when local routes are unavailable: ${fallbackSnippets}.` : '',

@@ -273,7 +273,7 @@ const TOOL_SUPPORT = {
   'remote-cli-agent': {
     status: 'requires_setup',
     notes: [
-      'Server-side Codex, Kimi, and Grok integration using the default gateway /admin/remote-agent-tasks stream and verified-result contract, with direct Codex and MCP retained only as explicit compatibility transports.',
+      'Server-side Codex and Kimi integration using the default gateway /admin/remote-agent-tasks stream and verified-result contract, with direct Codex and MCP retained only as explicit compatibility transports.',
       'Default setup uses REMOTE_CLI_AGENT_TRANSPORT=provider-agent plus REMOTE_CLI_CODEX_AGENT_BASE_URL or GATEWAY_URL, REMOTE_CLI_CODEX_AGENT_MODEL, and a trusted bearer key; the legacy MCP lane uses REMOTE_CLI_MCP_URL plus REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
       'Prefer for remote software author/build/deploy/verify loops; pass adminMode:true for scoped real deployment changes on the configured admin-capable runner lane.',
       'Before creating a new website/app/dashboard/service, GitLab project, namespace, or public host, inventory managed apps, GitLab projects, continuity/project registry facts, and live k3s resources; reuse matches and ask on ambiguity.',
