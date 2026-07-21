@@ -5401,10 +5401,47 @@ class ChatApp {
         return publicHost ? `https://${publicHost}` : '';
     }
 
+    buildManagedAppSourcePreviewUrl(project = {}) {
+        const sourceArtifactId = String(
+            project?.sourceArtifactId
+            || project?.sourceArtifact?.id
+            || project?.metadata?.sourceArtifact?.id
+            || '',
+        ).trim();
+        if (!sourceArtifactId) {
+            return '';
+        }
+
+        const expectedPrefix = `/api/artifacts/${encodeURIComponent(sourceArtifactId)}/`;
+        const candidates = [
+            project?.sourcePreviewUrl,
+            project?.previewUrl,
+            project?.sandboxUrl,
+            project?.artifactPreviewUrl,
+            project?.url,
+        ];
+        for (const value of candidates) {
+            const candidate = String(value || '').trim();
+            if (!candidate) continue;
+            try {
+                const parsed = new URL(candidate, window.location.origin);
+                if (parsed.origin !== window.location.origin) continue;
+                if (!parsed.pathname.startsWith(expectedPrefix)) continue;
+                const actionPath = parsed.pathname.slice(expectedPrefix.length);
+                if (!/^(?:preview|sandbox)(?:\/|$)/i.test(actionPath)) continue;
+                return `${parsed.pathname}${parsed.search}`;
+            } catch (_error) {
+                // Ignore malformed or cross-origin preview candidates.
+            }
+        }
+        return '';
+    }
+
     buildProjectViewportUrl(project = {}) {
         const projectType = String(project?.type || '').trim().toLowerCase();
         if (projectType === 'managed-app') {
-            return this.buildManagedAppLiveProjectUrl(project);
+            return this.buildManagedAppLiveProjectUrl(project)
+                || this.buildManagedAppSourcePreviewUrl(project);
         }
 
         const explicitUrl = String(
@@ -6109,13 +6146,13 @@ class ChatApp {
         switch (phase) {
             case 'created':
             case 'updated':
-                return `${appName} is queued for build${publicUrl ? ` and launch at ${publicUrl}` : ''}.`;
+                return `${appName} is queued for build. The local sandbox preview stays active until public HTTPS is verified.`;
             case 'built':
                 return `${appName} finished building. Waiting for deployment to start.`;
             case 'deploying':
-                return `${appName} is deploying${publicUrl ? ` to ${publicUrl}` : ''}.`;
+                return `${appName} is deploying${publicHost ? ` to ${publicHost}` : ''}. The local sandbox preview stays active until public HTTPS is verified.`;
             case 'tls_ready':
-                return `${appName} has a certificate${publicUrl ? ` for ${publicUrl}` : ''}. Waiting for the public endpoint.`;
+                return `${appName} has a certificate${publicHost ? ` for ${publicHost}` : ''}. Waiting for the public endpoint.`;
             case 'pending_https':
                 return `${appName} rollout finished, but the public endpoint is still warming up.`;
             case 'live':
@@ -6699,7 +6736,26 @@ class ChatApp {
             }
         }
 
-        const existingProject = this.getSessionActiveProject(normalizedSessionId);
+        const currentViewportProject = this.getSessionProjectForViewport(normalizedSessionId);
+        const currentProjectType = String(currentViewportProject?.type || '').trim().toLowerCase();
+        const eventSourceArtifact = event?.app?.metadata?.sourceArtifact && typeof event.app.metadata.sourceArtifact === 'object'
+            ? event.app.metadata.sourceArtifact
+            : null;
+        const eventSourceArtifactId = String(eventSourceArtifact?.id || '').trim();
+        const currentArtifactId = String(
+            currentViewportProject?.sourceArtifactId
+            || currentViewportProject?.sourceArtifact?.id
+            || currentViewportProject?.artifactId
+            || '',
+        ).trim();
+        const sourcePreviewProject = currentProjectType === 'sandbox'
+            && eventSourceArtifactId
+            && currentArtifactId === eventSourceArtifactId
+            ? currentViewportProject
+            : null;
+        const existingProject = currentProjectType === 'managed-app'
+            ? currentViewportProject
+            : sourcePreviewProject;
         const projectPublicHost = String(event?.app?.publicHost || existingProject?.targetPublicHost || existingProject?.publicHost || '').trim();
         const targetPublicHost = this.normalizeProjectHost(projectPublicHost);
         const targetPublicUrl = targetPublicHost ? `https://${targetPublicHost}` : '';
@@ -6729,6 +6785,20 @@ class ChatApp {
             progress: nextState.progressState,
         });
         const livePublicHost = livePublicUrl ? this.normalizeProjectHost(livePublicUrl) : '';
+        const sourceArtifactId = String(
+            eventSourceArtifactId
+            || existingProject?.sourceArtifactId
+            || existingProject?.sourceArtifact?.id
+            || '',
+        ).trim();
+        const sourcePreviewUrl = String(
+            existingProject?.sourcePreviewUrl
+            || existingProject?.previewUrl
+            || existingProject?.sandboxUrl
+            || existingProject?.artifactPreviewUrl
+            || existingProject?.url
+            || '',
+        ).trim();
         const projectState = {
             type: 'managed-app',
             key: progressKey,
@@ -6745,6 +6815,9 @@ class ChatApp {
             livePublicHost,
             livePublicUrl,
             publicVerificationObserved,
+            ...(sourceArtifactId ? { sourceArtifactId } : {}),
+            ...(eventSourceArtifact ? { sourceArtifact: eventSourceArtifact } : {}),
+            ...(sourcePreviewUrl ? { sourcePreviewUrl } : {}),
             nextStep: String(nextState.progressState?.nextStep || '').trim(),
             openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
             updatedAt: event?.timestamp || new Date().toISOString(),
