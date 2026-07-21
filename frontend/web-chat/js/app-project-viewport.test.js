@@ -268,6 +268,44 @@ describe('web-chat project viewport helpers', () => {
         })).toBe('');
     });
 
+    test('keeps a source-bound same-origin sandbox preview until managed app HTTPS is verified', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            phase: 'deploying',
+            publicHost: 'generated-slug.demoserver2.buzz',
+            publicUrl: 'https://generated-slug.demoserver2.buzz',
+            sourceArtifactId: 'artifact-source-12345678',
+            sourcePreviewUrl: '/api/artifacts/artifact-source-12345678/preview',
+        })).toBe('/api/artifacts/artifact-source-12345678/preview');
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            phase: 'live',
+            publicHost: 'generated-slug.demoserver2.buzz',
+            publicUrl: 'https://generated-slug.demoserver2.buzz',
+            publicVerificationObserved: true,
+            sourceArtifactId: 'artifact-source-12345678',
+            sourcePreviewUrl: '/api/artifacts/artifact-source-12345678/preview',
+        })).toBe('https://generated-slug.demoserver2.buzz');
+    });
+
+    test('rejects cross-origin and mismatched managed app source previews', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            sourceArtifactId: 'artifact-source-12345678',
+            sourcePreviewUrl: 'https://remote.example.test/api/artifacts/artifact-source-12345678/preview',
+        })).toBe('');
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            sourceArtifactId: 'artifact-source-12345678',
+            sourcePreviewUrl: '/api/artifacts/different-artifact/preview',
+        })).toBe('');
+    });
+
     test('uses the deployed managed app URL once public verification is observed', () => {
         const app = Object.create(loadChatAppPrototype());
 
@@ -622,6 +660,53 @@ describe('web-chat project viewport helpers', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    test('preserves the matching sandbox source while managed app deployment is pending', () => {
+        const context = loadChatAppContext();
+        const { app } = createManagedAppProgressHarness(context);
+        const session = context.sessionManager.sessions[0];
+        session.metadata.activeProject = {
+            type: 'sandbox',
+            artifactId: 'artifact-source-12345678',
+            previewUrl: '/api/artifacts/artifact-source-12345678/preview',
+            sandboxUrl: '/api/artifacts/artifact-source-12345678/sandbox',
+            viewportSize: 'wide',
+        };
+
+        app.applyManagedAppProgressEvent('session-1', buildManagedAppEvent({
+            phase: 'deploying',
+            app: {
+                metadata: {
+                    sourceArtifact: {
+                        id: 'artifact-source-12345678',
+                        sha256: 'a'.repeat(64),
+                    },
+                },
+            },
+        }));
+
+        expect(session.metadata.activeProject).toEqual(expect.objectContaining({
+            type: 'managed-app',
+            sourceArtifactId: 'artifact-source-12345678',
+            sourcePreviewUrl: '/api/artifacts/artifact-source-12345678/preview',
+            targetPublicHost: 'demo-site.demoserver2.buzz',
+        }));
+        expect(app.buildProjectViewportUrl(session.metadata.activeProject))
+            .toBe('/api/artifacts/artifact-source-12345678/preview');
+    });
+
+    test('does not expose the remote HTTPS target in progress copy before verification', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        const queued = app.buildManagedAppProgressDetail(buildManagedAppEvent({ phase: 'created' }));
+        const deploying = app.buildManagedAppProgressDetail(buildManagedAppEvent({ phase: 'deploying' }));
+        const live = app.buildManagedAppProgressDetail(buildManagedAppEvent({ phase: 'live' }));
+
+        expect(queued).toContain('local sandbox preview stays active');
+        expect(queued).not.toContain('https://');
+        expect(deploying).not.toContain('https://');
+        expect(live).toContain('https://demo-site.demoserver2.buzz');
     });
 
     test('renders managed app progress from streamed tool result batches', () => {
@@ -1097,6 +1182,7 @@ function buildManagedAppEvent(overrides = {}) {
             appName: 'Demo Site',
             sessionId: 'session-1',
             publicHost: 'demo-site.demoserver2.buzz',
+            ...(overrides.app || {}),
         },
         progressState: {
             phase,
