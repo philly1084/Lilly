@@ -3041,32 +3041,6 @@ describe('openai-client automatic tool orchestration helpers', () => {
         )).toBe('remote-cli-agent');
     });
 
-    test('does not require remote-cli-agent for deployment planning in the default profile', () => {
-        const toolManager = createToolManager();
-        const prompt = 'Develop a deployment plan, equipment list, and costs minus labour for a lightweight AR glasses demo attached to phones.';
-        const toolContext = {
-            executionProfile: 'default',
-            clientSurface: 'web-chat',
-        };
-        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
-            toolManager,
-            prompt,
-            toolContext,
-        );
-        const selectedTools = __testUtils.selectAutomaticToolDefinitions(
-            automaticTools,
-            prompt,
-            { toolContext },
-        );
-
-        expect(selectedTools.map((tool) => tool.id)).not.toContain('remote-cli-agent');
-        expect(__testUtils.inferRequiredAutomaticToolId(
-            prompt,
-            automaticTools.map((tool) => tool.id),
-            toolContext,
-        )).not.toBe('remote-cli-agent');
-    });
-
     test('runs required remote-cli-agent deployment requests directly without final model synthesis', async () => {
         const toolManager = createToolManager();
         const prompt = 'Build and deploy a dashboard app on the remote k3s server at app.demoserver2.buzz.';

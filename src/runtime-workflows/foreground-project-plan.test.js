@@ -7,7 +7,6 @@ const {
     advanceForegroundProjectPlan,
     inferForegroundProjectPlan,
     normalizeForegroundProjectPlan,
-    shouldResumeRemoteCliProject,
 } = require('./foreground-project-plan');
 
 function buildToolEvent(tool, params = {}, result = {}) {
@@ -169,57 +168,6 @@ describe('foreground project plan', () => {
                 }),
             ]),
         }));
-    });
-
-    test('resumes remote CLI work only when the follow-up matches the stored project context', () => {
-        const storedPlan = normalizeForegroundProjectPlan({
-            kind: FOREGROUND_PROJECT_PLAN_KIND,
-            status: 'active',
-            title: 'Project dashboard',
-            objective: 'Build and deploy the project dashboard.',
-            milestones: [{
-                id: 'deliver-requested-work',
-                title: 'Implement the dashboard changes',
-                status: 'in_progress',
-            }],
-        });
-        const priorAgentState = {
-            lastTask: 'Build and deploy the project dashboard.',
-            cwd: '/srv/apps/project-dashboard',
-        };
-
-        expect(shouldResumeRemoteCliProject(
-            'Make the cards tighter and change the accent color to blue.',
-            { storedPlan, priorAgentState },
-        )).toBe(true);
-        expect(shouldResumeRemoteCliProject(
-            'Continue the dashboard work and verify it live.',
-            { storedPlan, priorAgentState },
-        )).toBe(true);
-        expect(shouldResumeRemoteCliProject(
-            'Write better copy for the dashboard cards.',
-            { storedPlan, priorAgentState },
-        )).toBe(true);
-        expect(shouldResumeRemoteCliProject(
-            'Explain how photosynthesis works.',
-            { storedPlan, priorAgentState },
-        )).toBe(false);
-        expect(shouldResumeRemoteCliProject(
-            'Write a poem about the ocean.',
-            { storedPlan, priorAgentState },
-        )).toBe(false);
-        expect(shouldResumeRemoteCliProject(
-            'Make me a page about dolphins.',
-            { storedPlan, priorAgentState },
-        )).toBe(false);
-        expect(shouldResumeRemoteCliProject(
-            'Fix the parser tests in the local API repository.',
-            { storedPlan, priorAgentState },
-        )).toBe(false);
-        expect(shouldResumeRemoteCliProject(
-            'Start a new project about writing a local poem instead.',
-            { storedPlan, priorAgentState },
-        )).toBe(false);
     });
 
     test('advances a foreground project plan after successful tool work', () => {

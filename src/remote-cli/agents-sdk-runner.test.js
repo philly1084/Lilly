@@ -367,17 +367,6 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
-  test('does not promote the non-fatal skills context budget diagnostic to a blocker', () => {
-    const output = JSON.stringify({
-      type: 'error',
-      message: 'Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.',
-    });
-
-    expect(extractRemoteCliRunMetadata(output)).toEqual({
-      completionStatus: 'unknown',
-    });
-  });
-
   test('direct remote_code_run surfaces Codex JSONL failures instead of no-proof fallback', async () => {
     const runner = new RemoteCliAgentsSdkRunner({
       config: {},

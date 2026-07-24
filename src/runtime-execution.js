@@ -24,7 +24,6 @@ const {
     buildAuditSessionPatch,
     runAfterProcessAudit,
 } = require('./after-process-audit');
-const { shouldResumeRemoteCliProject } = require('./runtime-workflows/foreground-project-plan');
 
 const RECENT_TRANSCRIPT_LIMIT = config.memory.recentTranscriptLimit;
 const DEFAULT_EXECUTION_PROFILE = 'default';
@@ -412,13 +411,6 @@ function inferExecutionProfile(payload = {}) {
     );
     const stickyRemoteWorkflow = hasActiveRemoteWorkflowState(controlState);
     const stickyRemoteContext = stickyRemoteIntent || stickyRemoteTarget || stickyRemoteWorkflow;
-    const remoteCliProjectContinuation = String(controlState.lastToolIntent || '').trim().toLowerCase() === 'remote-cli-agent'
-        && Boolean(controlState?.remoteCliAgent)
-        && shouldResumeRemoteCliProject(text, {
-            storedPlan: controlState?.projectPlan || null,
-            priorAgentState: controlState.remoteCliAgent,
-            priorObjective: controlState?.lastRemoteObjective || '',
-        });
     const pageEditIntent = normalized
         ? [
             /\b(put|add|insert|place|append|prepend|move|drop|apply|write|turn|convert|use|set)\b[\s\S]{0,40}\b(on|into|to|in)\b[\s\S]{0,20}\b(page|note|document|doc)\b/,
@@ -473,7 +465,7 @@ function inferExecutionProfile(payload = {}) {
         return NOTES_EXECUTION_PROFILE;
     }
 
-    return (remoteBuildIntent || remoteContinuationIntent || stickyRemoteWorkIntent || stickyRemoteStatusIntent || stickyRemoteApprovalIntent || remoteCliProjectContinuation || remoteSoftwareCreationIntent || knownDeployDomainStatusIntent || deployedPublicDomainStatusIntent)
+    return (remoteBuildIntent || remoteContinuationIntent || stickyRemoteWorkIntent || stickyRemoteStatusIntent || stickyRemoteApprovalIntent || remoteSoftwareCreationIntent || knownDeployDomainStatusIntent || deployedPublicDomainStatusIntent)
         ? REMOTE_BUILD_EXECUTION_PROFILE
         : DEFAULT_EXECUTION_PROFILE;
 }

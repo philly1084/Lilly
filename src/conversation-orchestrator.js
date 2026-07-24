@@ -106,7 +106,6 @@ const {
 const {
     advanceForegroundProjectPlan,
     inferForegroundProjectPlan,
-    shouldResumeRemoteCliProject,
 } = require('./runtime-workflows/foreground-project-plan');
 const { formatProjectExecutionContext } = require('./workloads/project-plans');
 const { hasWorkloadIntent } = require('./workloads/natural-language');
@@ -6258,10 +6257,10 @@ function buildRemoteCliAgentJobContinuationParams({ priorAgentState = {}, object
     };
 }
 
-function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {}, forceContinuation = false } = {}) {
+function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {} } = {}) {
     const currentRequest = String(objective || '').trim();
     const priorTask = String(priorAgentState?.lastTask || '').trim();
-    if (!currentRequest || !priorTask || (!forceContinuation && !hasRemoteCliAgentContinuationIntent(currentRequest))) {
+    if (!currentRequest || !priorTask || !hasRemoteCliAgentContinuationIntent(currentRequest)) {
         return currentRequest;
     }
 
@@ -11780,7 +11779,6 @@ class ConversationOrchestrator extends EventEmitter {
         });
         const candidates = new Set();
         const remoteToolId = getPreferredRemoteToolId({ allowedToolIds });
-        const sessionControlState = getSessionControlState(session);
         const sessionIsolation = isSessionIsolationEnabled({
             sessionIsolation: toolContext?.sessionIsolation,
             metadata,
@@ -11791,7 +11789,7 @@ class ConversationOrchestrator extends EventEmitter {
             clientSurface: toolContext?.clientSurface || metadata?.clientSurface || metadata?.client_surface || '',
             memoryScope: toolContext?.memoryScope || metadata?.memoryScope || metadata?.memory_scope || '',
         }, session || null);
-        const activeTaskFrame = normalizeActiveTaskFrame(sessionControlState.activeTaskFrame);
+        const activeTaskFrame = normalizeActiveTaskFrame(getSessionControlState(session).activeTaskFrame);
         const userCheckpointPolicy = toolContext?.userCheckpointPolicy && typeof toolContext.userCheckpointPolicy === 'object'
             ? toolContext.userCheckpointPolicy
             : {};
@@ -11876,29 +11874,13 @@ class ConversationOrchestrator extends EventEmitter {
         const metadataPrefersManagedApp = getRemoteBuildMetadataPreference(metadata, toolContext);
         const metadataDisablesManagedApp = metadata?.preferManagedApp === false
             || toolMetadata.preferManagedApp === false;
-        const carriesRemoteCliAgentContext = (
+        const hasRemoteCliAgentContinuationPreference = (
             metadata?.stickyRemoteContext === true
             || toolMetadata.stickyRemoteContext === true
             || metadata?.remoteBuildContinuation === true
             || toolMetadata.remoteBuildContinuation === true
             || Boolean(metadata?.lastRemoteObjective || toolMetadata.lastRemoteObjective)
-            || Boolean(sessionControlState.remoteCliAgent)
-        ) && String(
-            sessionControlState.lastToolIntent
-            || metadata?.lastRemoteToolIntent
-            || toolMetadata.lastRemoteToolIntent
-            || '',
-        ).trim() === 'remote-cli-agent';
-        const hasRemoteCliAgentProjectContinuation = carriesRemoteCliAgentContext
-            && shouldResumeRemoteCliProject(objective, {
-                storedPlan: sessionControlState.projectPlan || null,
-                priorAgentState: sessionControlState.remoteCliAgent || null,
-                priorObjective: sessionControlState.lastRemoteObjective
-                    || metadata?.lastRemoteObjective
-                    || toolMetadata.lastRemoteObjective
-                    || '',
-            });
-        const hasRemoteCliAgentContinuationPreference = hasRemoteCliAgentProjectContinuation;
+        ) && String(metadata?.lastRemoteToolIntent || toolMetadata.lastRemoteToolIntent || '').trim() === 'remote-cli-agent';
         const explicitRemoteCliAgentWithoutManagedApp = hasExplicitRemoteCliAgentRequest && !hasManagedAppIntent;
         const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && allowedToolIds.includes('managed-app')
@@ -11992,7 +11974,7 @@ class ConversationOrchestrator extends EventEmitter {
         ).trim();
         const shouldBypassEndToEndWorkflow = shouldPreferRemoteWebsiteSource;
         const shouldUseRemoteCliAgentAuthoring = allowedToolIds.includes('remote-cli-agent')
-            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest || hasRemoteCliAgentProjectContinuation);
+            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest);
         const inferredWorkflowSeed = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && !shouldBypassEndToEndWorkflow
             && !shouldUseRemoteCliAgentAuthoring
@@ -12528,7 +12510,6 @@ class ConversationOrchestrator extends EventEmitter {
             },
             preferredRemoteToolId,
             prefersManagedAppForRemoteBuild,
-            remoteCliProjectContinuation: hasRemoteCliAgentProjectContinuation,
             sessionIsolation,
             projectKey,
             activeTaskFrame,
@@ -12781,8 +12762,7 @@ class ConversationOrchestrator extends EventEmitter {
                 )
                 || toolPolicy.preferredRemoteToolId === 'remote-cli-agent'
             )) {
-            const projectContinuation = toolPolicy.remoteCliProjectContinuation === true;
-            const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective) || projectContinuation;
+            const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective);
             const collectResultFiles = authoringIntent
                 || toolContext?.remoteAgentCollectResultFiles === true
                 || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
@@ -12795,7 +12775,6 @@ class ConversationOrchestrator extends EventEmitter {
             const task = buildRemoteCliAgentTaskForPrompt({
                 objective,
                 priorAgentState,
-                forceContinuation: projectContinuation,
             });
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState,
@@ -13010,8 +12989,7 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (normalizedStep.tool === 'remote-cli-agent') {
-            const sessionControlState = getSessionControlState(session);
-            const priorAgentState = sessionControlState.remoteCliAgent || {};
+            const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
             const cwd = String(
                 normalizedStep.params.cwd
                 || priorAgentState.cwd
@@ -13040,12 +13018,6 @@ class ConversationOrchestrator extends EventEmitter {
                 task: buildRemoteCliAgentTaskForPrompt({
                     objective: rawTask,
                     priorAgentState,
-                    forceContinuation: String(sessionControlState.lastToolIntent || '').trim() === 'remote-cli-agent'
-                        && shouldResumeRemoteCliProject(rawTask || objective, {
-                            storedPlan: sessionControlState.projectPlan || null,
-                            priorAgentState,
-                            priorObjective: sessionControlState.lastRemoteObjective || '',
-                        }),
                 }),
                 waitMs: Number(normalizedStep.params.waitMs || normalizedStep.params.wait_ms || 30000) || 30000,
                 ...(cwd ? { cwd } : {}),
