@@ -537,6 +537,53 @@ describe('runtime-execution', () => {
         })).toBe('remote-build');
     });
 
+    test('uses stored remote CLI project context without capturing unrelated follow-ups', () => {
+        const session = {
+            metadata: {
+                controlState: {
+                    lastToolIntent: 'remote-cli-agent',
+                    lastRemoteObjective: 'Build and deploy the project dashboard.',
+                    remoteCliAgent: {
+                        lastTask: 'Build and deploy the project dashboard.',
+                        sessionId: 'remote-project-session-1',
+                        cwd: '/srv/apps/project-dashboard',
+                    },
+                    projectPlan: {
+                        kind: 'foreground-project-plan',
+                        status: 'active',
+                        title: 'Project dashboard',
+                        objective: 'Build and deploy the project dashboard.',
+                        milestones: [{
+                            id: 'deliver-requested-work',
+                            title: 'Implement the dashboard changes',
+                            status: 'in_progress',
+                        }],
+                    },
+                },
+            },
+        };
+
+        expect(inferExecutionProfile({
+            input: 'Make the cards tighter and change the accent color to blue.',
+            session,
+        })).toBe('remote-build');
+
+        expect(inferExecutionProfile({
+            input: 'Explain how photosynthesis works.',
+            session,
+        })).toBe('default');
+
+        expect(inferExecutionProfile({
+            input: 'Fix the parser tests in the local API repository.',
+            session,
+        })).toBe('default');
+
+        expect(inferExecutionProfile({
+            input: 'Start a new project about writing a local poem instead.',
+            session,
+        })).toBe('default');
+    });
+
     test('keeps active deploy workflows in remote-build mode for yes-style continuation replies', () => {
         expect(inferExecutionProfile({
             input: 'Yes. We can continue the penguin research paper deployment for penguin.demoserver2.buzz.',

@@ -10531,6 +10531,96 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('continues an active remote CLI project only for a contextually related follow-up', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'remote-workbench', 'k3s-deploy', 'git-safe', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const session = {
+            metadata: {
+                controlState: {
+                    lastToolIntent: 'remote-cli-agent',
+                    lastRemoteObjective: 'Build and deploy the project dashboard.',
+                    remoteCliAgent: {
+                        lastTask: 'Build and deploy the project dashboard.',
+                        sessionId: 'remote-project-session-1',
+                        mcpSessionId: 'mcp-project-session-1',
+                        cwd: '/srv/apps/project-dashboard',
+                    },
+                    projectPlan: {
+                        kind: 'foreground-project-plan',
+                        status: 'active',
+                        title: 'Project dashboard',
+                        objective: 'Build and deploy the project dashboard.',
+                        milestones: [{
+                            id: 'deliver-requested-work',
+                            title: 'Implement the dashboard changes',
+                            status: 'in_progress',
+                        }],
+                    },
+                },
+            },
+        };
+        const objective = 'Make the cards tighter and change the accent color to blue.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            session,
+            toolManager: orchestrator.toolManager,
+            toolContext: {},
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: {},
+        });
+
+        expect(toolPolicy.remoteCliProjectContinuation).toBe(true);
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                cwd: '/srv/apps/project-dashboard',
+                sessionId: 'remote-project-session-1',
+                mcpSessionId: 'mcp-project-session-1',
+                collectResultFiles: true,
+            }),
+        }));
+        expect(directAction.params.task).toContain('Original task:\nBuild and deploy the project dashboard.');
+        expect(directAction.params.task).toContain(`Current user follow-up:\n${objective}`);
+
+        const unrelatedPolicy = orchestrator.buildToolPolicy({
+            objective: 'Explain how photosynthesis works.',
+            executionProfile: 'remote-build',
+            session,
+            toolManager: orchestrator.toolManager,
+            toolContext: {},
+        });
+
+        expect(unrelatedPolicy.remoteCliProjectContinuation).toBe(false);
+        expect(unrelatedPolicy.preferredRemoteToolId).not.toBe('remote-cli-agent');
+    });
+
     test('routes frontend-approved explicit remote-cli-agent builds away from managed-app', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
