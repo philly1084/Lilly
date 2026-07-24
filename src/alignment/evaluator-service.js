@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { createResponse } = require('../openai-client');
 const { extractResponseText } = require('../artifacts/artifact-service');
+const { isSuccessfulResult } = require('../agent-sdk/registry/UnifiedRegistry');
 const { parseLenientJson } = require('../utils/lenient-json');
 const settingsController = require('../routes/admin/settings.controller');
 const {
@@ -446,7 +447,7 @@ function summarizeToolUse(metadata = {}) {
             return;
         }
         counts.set(toolId, (counts.get(toolId) || 0) + 1);
-        if (event?.result?.success === false) {
+        if (!isSuccessfulResult(event?.result, true)) {
             failedTools.push(toolId);
         }
     });
@@ -628,7 +629,7 @@ function summarizeActualRoute(metadata = {}) {
         .filter(Boolean);
     const uniqueToolIds = Array.from(new Set(toolIds)).slice(0, 8);
     const artifacts = Array.isArray(source.artifacts) ? source.artifacts : [];
-    const failures = toolEvents.filter((event) => event?.result?.success === false).length;
+    const failures = toolEvents.filter((event) => !isSuccessfulResult(event?.result, true)).length;
     const decisionTrace = source.decisionTrace && typeof source.decisionTrace === 'object'
         ? source.decisionTrace
         : null;

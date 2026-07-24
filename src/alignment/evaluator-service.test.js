@@ -288,6 +288,32 @@ describe('alignment evaluator service', () => {
         expect(toolUse.summary).toContain('repeated=web-search');
     });
 
+    test.each([
+        ['false'],
+        ['0'],
+        ['no'],
+        ['off'],
+        [0],
+    ])('keeps compatible serialized tool failures visible to alignment review (%p)', (success) => {
+        const assistantMetadata = {
+            toolEvents: [{
+                toolCall: { function: { name: 'remote-command' } },
+                result: {
+                    success,
+                    toolId: 'remote-command',
+                    error: 'Permission denied',
+                },
+            }],
+        };
+
+        const toolUse = summarizeToolUse(assistantMetadata);
+        const route = summarizeActualRoute(assistantMetadata);
+
+        expect(toolUse.failedTools).toEqual(['remote-command']);
+        expect(toolUse.summary).toContain('failed=remote-command');
+        expect(route).toContain('failedTools=1');
+    });
+
     test('fallback feedback marks missing required tools', () => {
         const result = require('./evaluator-service').buildFallbackEvaluation({
             rating: 'down',
