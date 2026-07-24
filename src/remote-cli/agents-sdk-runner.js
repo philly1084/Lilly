@@ -476,11 +476,23 @@ function collectRemoteCliFailureMessages(value, messages = [], depth = 0) {
   return messages;
 }
 
+function isNonBlockingRemoteCliDiagnostic(message = '') {
+  const normalized = normalizeFailureMessage(message).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return /\bskill descriptions? (?:were|was|have been) shortened\b/.test(normalized)
+    && /\bskills? context budget\b/.test(normalized)
+    && /\b(?:can still see every skill|disable unused skills or plugins)\b/.test(normalized);
+}
+
 function detectRemoteCliExecutionBlocker(source = '') {
   const text = expandRemoteCliProofText(source);
   const messages = collectRemoteCliFailureMessages(text)
     .map((message) => normalizeFailureMessage(message))
     .filter(Boolean)
+    .filter((message) => !isNonBlockingRemoteCliDiagnostic(message))
     .filter((message) => !/^(?:error|failed|turn[._-]?failed)$/i.test(message));
 
   return Array.from(new Set(messages)).find(Boolean) || '';

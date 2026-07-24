@@ -4018,6 +4018,8 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         && hasRemoteSoftwareInspectionIntent(prompt);
     const remoteSoftwareAuthoringIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareAuthoringIntent(prompt);
+    const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
+        && hasRemoteSoftwareDeploymentIntent(prompt);
     const remoteBuildIncidentContinuationIntent = executionProfile === 'remote-build'
         && hasRemoteBuildIncidentContinuationIntent(prompt);
     const isDeferredWorkloadRun = options?.workloadRun === true
@@ -4081,7 +4083,7 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
     if (remoteCliAgentToolId
         && (
             explicitRemoteCliAgentIntent
-            || hasRemoteSoftwareDeploymentIntent(prompt)
+            || remoteSoftwareDeploymentIntent
             || remoteSoftwareAuthoringIntent
             || remoteSoftwareInspectionIntent
             || remoteBuildIncidentContinuationIntent
