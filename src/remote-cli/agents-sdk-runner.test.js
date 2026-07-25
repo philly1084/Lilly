@@ -86,6 +86,34 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(resolveProviderAgentContinuationSessionId(kimi, sessionId)).toBe('');
   });
 
+  test('honors a provider-agent wait beyond the old fourteen-minute cap', async () => {
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      fetchImpl: jest.fn(),
+    });
+    runner.executeProviderAgentRun = jest.fn(async ({ agentRunTimeoutMs }) => ({
+      agentRunTimeoutMs,
+    }));
+
+    await expect(runner.run({
+      task: 'Finish the long Kimi build and verification loop.',
+      model: 'kimi-k3',
+      agentRunTimeoutMs: 1800000,
+    })).resolves.toEqual({
+      agentRunTimeoutMs: 1800000,
+    });
+    expect(runner.executeProviderAgentRun).toHaveBeenCalledWith(expect.objectContaining({
+      agentRunTimeoutMs: 1800000,
+    }));
+  });
+
   test('keeps the MCP SDK as a production dependency for Docker optional-omit installs', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
     const packageLock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package-lock.json'), 'utf8'));
@@ -1306,6 +1334,82 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
     expect(result.verifyResults.join(' ')).toContain('was left active');
     expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(false);
+  });
+
+  test('reports a truthful provider timeout when the gateway task is no longer running', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
+        return {
+          ok: true,
+          status: 201,
+          async text() {
+            return JSON.stringify({
+              task: { id: 'task-timed-out', sessionId: 'session-timed-out' },
+              streamUrl: '/admin/remote-agent-tasks/task-timed-out/stream?token=safe-token',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-timed-out/stream?token=safe-token') {
+        return new Promise((resolve, reject) => {
+          options.signal.addEventListener('abort', () => {
+            const error = new Error('stream wait aborted');
+            error.name = 'AbortError';
+            reject(error);
+          }, { once: true });
+        });
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-timed-out') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: {
+                id: 'task-timed-out',
+                sessionId: 'session-timed-out',
+                status: 'terminated',
+              },
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-timed-out/cancel') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ success: true });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      fetchImpl,
+    });
+
+    let timeoutError = null;
+    try {
+      await runner.run({
+        task: 'Build and deploy the long-running site.',
+        model: 'kimi-k3',
+        agentRunTimeoutMs: 5,
+      });
+    } catch (error) {
+      timeoutError = error;
+    }
+    expect(timeoutError).toBeInstanceOf(Error);
+    expect(timeoutError.message).toBe('remote-cli-agent inner model wait exceeded 5ms.');
+    expect(timeoutError.message).not.toContain('direct remote_code_run fallback');
   });
 
   test('accepts Markdown-bold Codex proof markers split across events', async () => {

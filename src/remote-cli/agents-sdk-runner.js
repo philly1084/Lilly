@@ -17,6 +17,7 @@ const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
 const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
+const MAX_AGENT_RUN_TIMEOUT_MS = 3600000;
 const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 const DEFAULT_CODEX_AGENT_STALL_TIMEOUT_MS = 300000;
@@ -51,7 +52,7 @@ function sleep(ms = 0) {
 
 class RemoteCliAgentRunTimeoutError extends Error {
   constructor(timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
-    super(`remote-cli-agent inner model wait became stale after ${timeoutMs}ms; continuing with direct remote_code_run fallback.`);
+    super(`remote-cli-agent inner model wait exceeded ${timeoutMs}ms.`);
     this.name = 'RemoteCliAgentRunTimeoutError';
     this.code = 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
     this.timeoutMs = timeoutMs;
@@ -78,7 +79,7 @@ function isUnknownRemoteCliJobError(error = null) {
 async function withTimeout(promise, timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
   const normalizedTimeoutMs = normalizePositiveInteger(timeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, {
     min: 1,
-    max: 900000,
+    max: MAX_AGENT_RUN_TIMEOUT_MS,
   });
   let timer = null;
   try {
@@ -1913,7 +1914,7 @@ class RemoteCliAgentsSdkRunner {
       directRun: this.config.directRun !== false,
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
-      agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 }),
+      agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: MAX_AGENT_RUN_TIMEOUT_MS }),
       maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 240 }),
       statusPollIntervalMs: normalizePositiveInteger(this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 }),
     };
@@ -2095,7 +2096,7 @@ class RemoteCliAgentsSdkRunner {
       throw new Error('remote-cli-agent codex-agent transport requires cwd, workspacePath, or REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH.');
     }
 
-    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: MAX_AGENT_RUN_TIMEOUT_MS });
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller
       ? setTimeout(() => controller.abort(), timeoutMs)
@@ -2428,7 +2429,7 @@ class RemoteCliAgentsSdkRunner {
     }
     const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
     const apiKey = resolveCodexAgentApiKey(input, this.config);
-    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: MAX_AGENT_RUN_TIMEOUT_MS });
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     timer?.unref?.();
@@ -3031,7 +3032,7 @@ class RemoteCliAgentsSdkRunner {
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs ?? input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns ?? input.max_turns ?? this.config.maxTurns, 20, { min: 1, max: 80 });
-    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs ?? input.agent_run_timeout_ms ?? this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs ?? input.agent_run_timeout_ms ?? this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: MAX_AGENT_RUN_TIMEOUT_MS });
     const model = transport === 'provider-agent'
       ? normalizeText(providerSelection?.requestedModel)
       : transport === 'codex-agent'
@@ -3051,7 +3052,7 @@ class RemoteCliAgentsSdkRunner {
         cwd,
         task,
         selection: providerSelection,
-        agentRunTimeoutMs: Math.min(agentRunTimeoutMs, 840000),
+        agentRunTimeoutMs,
         sessionId,
         continuitySummary,
         onProgress: input.onProgress,
