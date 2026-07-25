@@ -490,8 +490,8 @@ class RemoteCliAgentTool extends ToolBase {
           },
           agentRunTimeoutMs: {
             type: 'integer',
-            default: 180000,
-            description: 'Maximum time to let the inner agent model run before falling back to direct remote_code_run.',
+            default: 1800000,
+            description: 'Maximum time to wait for the selected provider or Codex agent. Provider-agent tasks return resumable running state when the gateway keeps the task active; only the legacy MCP inner-agent lane uses direct remote_code_run fallback.',
           },
           remoteCodeModel: {
             type: 'string',

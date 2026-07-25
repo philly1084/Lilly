@@ -119,6 +119,18 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.maxStatusPolls).toBe(90);
   });
 
+  test('allows bounded provider-agent waits longer than the old fifteen-minute ceiling', () => {
+    process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS = '1800000';
+
+    let loaded = require('./config').config;
+    expect(loaded.remoteCliMcp.agentRunTimeoutMs).toBe(1800000);
+
+    jest.resetModules();
+    process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS = '9999999';
+    loaded = require('./config').config;
+    expect(loaded.remoteCliMcp.agentRunTimeoutMs).toBe(3600000);
+  });
+
   test('allows the legacy inner-agent remote CLI mode to be explicitly restored', () => {
     process.env.REMOTE_CLI_AGENT_DIRECT_RUN = 'false';
 

@@ -1110,7 +1110,7 @@ const config = {
         ),
         agentRunTimeoutMs: Math.max(
             1000,
-            Math.min(parseInt(process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS, 10) || 180000, 900000),
+            Math.min(parseInt(process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS, 10) || 180000, 3600000),
         ),
         maxStatusPolls: Math.max(
             1,
