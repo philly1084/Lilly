@@ -986,6 +986,132 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('checks an existing provider task by job id without starting or cancelling a duplicate task', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-running/transcript') {
+        expect(options).toMatchObject({
+          method: 'GET',
+          headers: {
+            Authorization: 'Bearer frontend-secret',
+          },
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: {
+                id: 'task-running',
+                sessionId: 'session-running',
+                status: 'running',
+              },
+              transcript: [{
+                type: 'output',
+                data: 'REMOTE_AGENT_PROGRESS=Building the site image.',
+              }],
+            });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentModel: 'gpt-5.6-sol',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Continue the existing site deployment.',
+      jobId: 'task-running',
+    });
+
+    expect(result).toMatchObject({
+      completionStatus: 'running',
+      remoteCodeJobId: 'task-running',
+      sessionId: 'session-running',
+      transport: 'provider-agent',
+    });
+    expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=running');
+    expect(result.finalOutput).toContain('REMOTE_CLI_JOB_ID=task-running');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('leaves a provider task running when the bounded stream wait expires', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
+        return {
+          ok: true,
+          status: 201,
+          async text() {
+            return JSON.stringify({
+              task: { id: 'task-long-running', sessionId: 'session-long-running' },
+              streamUrl: '/admin/remote-agent-tasks/task-long-running/stream?token=safe-token',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-long-running/stream?token=safe-token') {
+        return new Promise((resolve, reject) => {
+          options.signal.addEventListener('abort', () => {
+            const error = new Error('stream wait aborted');
+            error.name = 'AbortError';
+            reject(error);
+          }, { once: true });
+        });
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-long-running') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: {
+                id: 'task-long-running',
+                sessionId: 'session-long-running',
+                status: 'running',
+              },
+            });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentModel: 'gpt-5.6-sol',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Build and deploy the long-running site.',
+      agentRunTimeoutMs: 5,
+    });
+
+    expect(result).toMatchObject({
+      completionStatus: 'running',
+      remoteCodeJobId: 'task-long-running',
+      sessionId: 'session-long-running',
+      transport: 'provider-agent',
+    });
+    expect(result.verifyResults.join(' ')).toContain('was left active');
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(false);
+  });
+
   test('accepts Markdown-bold Codex proof markers split across events', async () => {
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
