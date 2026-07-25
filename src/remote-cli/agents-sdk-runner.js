@@ -2483,23 +2483,33 @@ class RemoteCliAgentsSdkRunner {
         );
         const statusBody = await this.readJsonResponse(statusResponse);
         if (!statusResponse?.ok) {
-          throw new Error(
-            normalizeText(statusBody?.error?.message || statusBody?.error || statusBody?.message)
-            || `${selection.providerLabel} remote-agent status failed with status ${statusResponse?.status || 'unknown'}.`,
-          );
+          if (statusResponse?.status === 404 || statusResponse?.status === 410) {
+            emitProgress(
+              `Starting a new ${selection.providerLabel} remote task because ${taskId} is no longer available.`,
+              { percent: 20, stage: 'starting' },
+            );
+            taskId = '';
+            shouldStartNewTask = true;
+          } else {
+            throw new Error(
+              normalizeText(statusBody?.error?.message || statusBody?.error || statusBody?.message)
+              || `${selection.providerLabel} remote-agent status failed with status ${statusResponse?.status || 'unknown'}.`,
+            );
+          }
         }
-        const existingTask = statusBody?.task && typeof statusBody.task === 'object'
-          ? statusBody.task
-          : statusBody;
-        const existingProviderId = normalizeText(existingTask?.providerId);
-        if (existingProviderId && existingProviderId !== selection.providerId) {
-          emitProgress(
-            `Starting a new ${selection.providerLabel} remote task because ${taskId} belongs to ${existingProviderId}.`,
-            { percent: 20, stage: 'starting' },
-          );
-          taskId = '';
-          shouldStartNewTask = true;
-        } else {
+        if (!shouldStartNewTask) {
+          const existingTask = statusBody?.task && typeof statusBody.task === 'object'
+            ? statusBody.task
+            : statusBody;
+          const existingProviderId = normalizeText(existingTask?.providerId);
+          if (existingProviderId && existingProviderId !== selection.providerId) {
+            emitProgress(
+              `Starting a new ${selection.providerLabel} remote task because ${taskId} belongs to ${existingProviderId}.`,
+              { percent: 20, stage: 'starting' },
+            );
+            taskId = '';
+            shouldStartNewTask = true;
+          } else {
           const transcriptResponse = await this.fetch(
             buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/transcript`),
             {
@@ -2576,6 +2586,7 @@ class RemoteCliAgentsSdkRunner {
             exitCode: taskStatus === 'completed' ? 0 : 1,
             status: taskStatus,
           };
+          }
         }
       }
       if (shouldStartNewTask) {

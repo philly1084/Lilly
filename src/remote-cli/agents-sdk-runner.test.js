@@ -1159,6 +1159,87 @@ describe('RemoteCliAgentsSdkRunner', () => {
     );
   });
 
+  test('starts a new Kimi task when a follow-up carries a stale missing job id', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-stale') {
+        return {
+          ok: false,
+          status: 404,
+          async text() {
+            return JSON.stringify({ error: 'Unknown remote agent task: task-stale' });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
+        const body = JSON.parse(options.body);
+        expect(body).toMatchObject({
+          providerId: 'kimi-code-cli',
+          model: 'k3',
+          targetId: 'k3s-prod',
+          cwd: '/opt/kimibuilt',
+        });
+        return {
+          ok: true,
+          status: 201,
+          async text() {
+            return JSON.stringify({
+              task: {
+                id: 'task-kimi-recovered',
+                sessionId: 'session-kimi-recovered',
+              },
+              streamUrl: '/admin/remote-agent-tasks/task-kimi-recovered/stream?token=safe-token',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks/task-kimi-recovered/stream?token=safe-token') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: output\n'
+                + 'data: {"type":"output","data":"WHAT_CHANGED=Kimi recovered the follow-up.\\nVERIFY_COMMANDS=pwd\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success recovered"}\n\n'
+                + 'event: exit\n'
+                + 'data: {"type":"exit","exitCode":0}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'provider-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Continue improving the Penguin site with Kimi.',
+      model: 'kimi-k3',
+      jobId: 'task-stale',
+    });
+
+    expect(result).toMatchObject({
+      transport: 'provider-agent',
+      providerId: 'kimi-code-cli',
+      completionStatus: 'complete',
+      remoteCodeJobId: 'task-kimi-recovered',
+      sessionId: 'session-kimi-recovered',
+      whatChanged: 'Kimi recovered the follow-up.',
+    });
+  });
+
   test('leaves a provider task running when the bounded stream wait expires', async () => {
     const fetchImpl = jest.fn(async (url, options = {}) => {
       if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
