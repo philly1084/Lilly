@@ -2466,11 +2466,12 @@ class RemoteCliAgentsSdkRunner {
 
     try {
       let handoffAcknowledgement = null;
+      let shouldStartNewTask = !requestedTaskId;
       if (requestedTaskId) {
         taskId = requestedTaskId;
         emitProgress(`Checking ${selection.providerLabel} remote task ${taskId}.`, { percent: 55, stage: 'status' });
-        const transcriptResponse = await this.fetch(
-          buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/transcript`),
+        const statusResponse = await this.fetch(
+          buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}`),
           {
             method: 'GET',
             headers: {
@@ -2480,67 +2481,104 @@ class RemoteCliAgentsSdkRunner {
             ...(controller ? { signal: controller.signal } : {}),
           },
         );
-        const transcriptBody = await this.readJsonResponse(transcriptResponse);
-        if (!transcriptResponse?.ok) {
+        const statusBody = await this.readJsonResponse(statusResponse);
+        if (!statusResponse?.ok) {
           throw new Error(
-            normalizeText(transcriptBody?.error?.message || transcriptBody?.error || transcriptBody?.message)
-            || `${selection.providerLabel} remote-agent status failed with status ${transcriptResponse?.status || 'unknown'}.`,
+            normalizeText(statusBody?.error?.message || statusBody?.error || statusBody?.message)
+            || `${selection.providerLabel} remote-agent status failed with status ${statusResponse?.status || 'unknown'}.`,
           );
         }
-        providerSessionId = normalizeText(transcriptBody?.task?.sessionId);
-        for (const entry of Array.isArray(transcriptBody?.transcript) ? transcriptBody.transcript : []) {
-          if (normalizeText(entry?.type) === 'output' && entry?.data) {
-            outputParts.push(String(entry.data));
+        const existingTask = statusBody?.task && typeof statusBody.task === 'object'
+          ? statusBody.task
+          : statusBody;
+        const existingProviderId = normalizeText(existingTask?.providerId);
+        if (existingProviderId && existingProviderId !== selection.providerId) {
+          emitProgress(
+            `Starting a new ${selection.providerLabel} remote task because ${taskId} belongs to ${existingProviderId}.`,
+            { percent: 20, stage: 'starting' },
+          );
+          taskId = '';
+          shouldStartNewTask = true;
+        } else {
+          const transcriptResponse = await this.fetch(
+            buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/transcript`),
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                Accept: 'application/json',
+              },
+              ...(controller ? { signal: controller.signal } : {}),
+            },
+          );
+          const transcriptBody = await this.readJsonResponse(transcriptResponse);
+          if (!transcriptResponse?.ok) {
+            throw new Error(
+              normalizeText(transcriptBody?.error?.message || transcriptBody?.error || transcriptBody?.message)
+              || `${selection.providerLabel} remote-agent status failed with status ${transcriptResponse?.status || 'unknown'}.`,
+            );
           }
-        }
-        const taskStatus = normalizeText(transcriptBody?.task?.status).toLowerCase();
-        markerStatus = readProviderAgentResultStatus(outputParts.join(''));
-        markerComplete = Boolean(markerStatus);
-        if (isRunningRemoteCodeStatus(taskStatus)) {
-          preserveRunningTask = true;
-          const finalOutput = buildRemoteCodeFinalText({
-            fragments: outputParts,
-            targetId,
-            cwd,
-            sessionId: providerSessionId,
-            jobId: taskId,
-            status: 'running',
-            fallbackWhatChanged: `${selection.providerLabel} remote task ${taskId} is still running.`,
-            fallbackVerifyCommand: `GET /admin/remote-agent-tasks/${taskId}/transcript`,
-            fallbackVerifyResult: `${selection.providerLabel} remote task ${taskId} remains running and was not cancelled.`,
-            transportLabel: 'provider-agent',
-            transportDescription: `${selection.providerLabel} via /admin/remote-agent-tasks`,
-          });
-          const runMetadata = extractRemoteCliRunMetadata(finalOutput);
-          const agentQuality = assessRemoteCliQuality(task, runMetadata);
-          const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
-          return {
-            finalOutput,
-            humanSummary: structuredResult.humanSummary,
-            structuredResult,
-            transport: 'provider-agent',
-            providerId: selection.providerId,
-            providerModel: selection.providerModel,
-            targetId,
-            cwd: runMetadata.workspace || cwd,
-            sessionId: runMetadata.sessionId || providerSessionId || null,
-            remoteCodeSessionId: runMetadata.sessionId || providerSessionId || null,
-            remoteCodeJobId: taskId,
-            whatChanged: runMetadata.whatChanged || null,
-            verifyCommands: runMetadata.verifyCommands || [],
-            verifyResults: runMetadata.verifyResults || [],
-            blocker: runMetadata.blocker || null,
-            completionStatus: 'running',
-            agentQuality,
-            model: selection.requestedModel,
-            apiMode: 'provider-agent',
+          providerSessionId = normalizeText(existingTask?.sessionId);
+          const transcript = Array.isArray(transcriptBody?.data)
+            ? transcriptBody.data
+            : Array.isArray(transcriptBody?.transcript)
+              ? transcriptBody.transcript
+              : [];
+          for (const entry of transcript) {
+            if (normalizeText(entry?.type) === 'output' && entry?.data) {
+              outputParts.push(String(entry.data));
+            }
+          }
+          const taskStatus = normalizeText(existingTask?.status).toLowerCase();
+          markerStatus = readProviderAgentResultStatus(outputParts.join(''));
+          markerComplete = Boolean(markerStatus);
+          if (isRunningRemoteCodeStatus(taskStatus)) {
+            preserveRunningTask = true;
+            const finalOutput = buildRemoteCodeFinalText({
+              fragments: outputParts,
+              targetId,
+              cwd,
+              sessionId: providerSessionId,
+              jobId: taskId,
+              status: 'running',
+              fallbackWhatChanged: `${selection.providerLabel} remote task ${taskId} is still running.`,
+              fallbackVerifyCommand: `GET /admin/remote-agent-tasks/${taskId}/transcript`,
+              fallbackVerifyResult: `${selection.providerLabel} remote task ${taskId} remains running and was not cancelled.`,
+              transportLabel: 'provider-agent',
+              transportDescription: `${selection.providerLabel} via /admin/remote-agent-tasks`,
+            });
+            const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+            const agentQuality = assessRemoteCliQuality(task, runMetadata);
+            const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
+            return {
+              finalOutput,
+              humanSummary: structuredResult.humanSummary,
+              structuredResult,
+              transport: 'provider-agent',
+              providerId: selection.providerId,
+              providerModel: selection.providerModel,
+              targetId,
+              cwd: runMetadata.workspace || cwd,
+              sessionId: runMetadata.sessionId || providerSessionId || null,
+              remoteCodeSessionId: runMetadata.sessionId || providerSessionId || null,
+              remoteCodeJobId: taskId,
+              whatChanged: runMetadata.whatChanged || null,
+              verifyCommands: runMetadata.verifyCommands || [],
+              verifyResults: runMetadata.verifyResults || [],
+              blocker: runMetadata.blocker || null,
+              completionStatus: 'running',
+              agentQuality,
+              model: selection.requestedModel,
+              apiMode: 'provider-agent',
+            };
+          }
+          terminalEvent = {
+            exitCode: taskStatus === 'completed' ? 0 : 1,
+            status: taskStatus,
           };
         }
-        terminalEvent = {
-          exitCode: taskStatus === 'completed' ? 0 : 1,
-          status: taskStatus,
-        };
-      } else {
+      }
+      if (shouldStartNewTask) {
         emitProgress(`Starting ${selection.providerLabel} for ${selection.requestedModel}.`, { percent: 20, stage: 'starting' });
         const startResponse = await this.fetch(buildCodexAgentUrl(baseUrl, '/admin/remote-agent-tasks'), {
           method: 'POST',
