@@ -17,6 +17,68 @@ const VALID_PROJECT_PLAN_STATUSES = new Set([
     COMPLETED_PROJECT_PLAN_STATUS,
     BLOCKED_PROJECT_PLAN_STATUS,
 ]);
+const REMOTE_CLI_CONTEXT_STOP_WORDS = new Set([
+    'about',
+    'agent',
+    'all',
+    'and',
+    'any',
+    'application',
+    'build',
+    'but',
+    'can',
+    'change',
+    'cli',
+    'complete',
+    'continue',
+    'could',
+    'create',
+    'current',
+    'deploy',
+    'finish',
+    'fix',
+    'for',
+    'from',
+    'have',
+    'into',
+    'just',
+    'less',
+    'make',
+    'more',
+    'not',
+    'only',
+    'our',
+    'out',
+    'please',
+    'project',
+    'remote',
+    'resume',
+    'same',
+    'some',
+    'task',
+    'test',
+    'that',
+    'the',
+    'their',
+    'there',
+    'these',
+    'this',
+    'those',
+    'update',
+    'would',
+    'with',
+    'work',
+    'you',
+    'your',
+]);
+const REMOTE_CLI_TOPIC_PATTERNS = Object.freeze({
+    frontend: /\b(?:accent|button|card|color|colour|dashboard|footer|frontend|header|hero|homepage|layout|mobile|navigation|page|responsive|sidebar|spacing|style|theme|typography|ui|ux|website)\b/,
+    deployment: /\b(?:certificate|cluster|deploy|deployment|dns|domain|https|ingress|k3s|kubernetes|live|pod|publish|release|rollout|route|server|tls)\b/,
+    backend: /\b(?:api|backend|database|endpoint|middleware|parser|queue|route|service|worker)\b/,
+    document: /\b(?:article|deck|document|docx|manual|markdown|pdf|presentation|proposal|report|slides|spreadsheet|workbook)\b/,
+    game: /\b(?:character|game|level|player|score|sprite)\b/,
+    data: /\b(?:chart|data|dataset|graph|map|table|visualization)\b/,
+});
 
 function normalizeText(value = '') {
     return String(value || '').trim();
@@ -74,6 +136,130 @@ function hasExplicitProjectResetIntent(text = '') {
         /\b(start over|restart|new project|different project|different task|switch to|switch gears|instead|forget that|drop that|change the plan|rewrite the plan|replace the plan|new direction|unrelated)\b/,
         /^(?:let'?s|lets)\s+(?:do|build|make|create|work on|switch to)\s+(?:something else|another|a different)\b/,
     ].some((pattern) => pattern.test(normalized));
+}
+
+function normalizeContextToken(value = '') {
+    const token = normalizeText(value).toLowerCase().replace(/^[._-]+|[._-]+$/g, '');
+    if (token.length > 5 && token.endsWith('ies')) {
+        return `${token.slice(0, -3)}y`;
+    }
+    if (token.length > 5 && token.endsWith('ing')) {
+        return token.slice(0, -3);
+    }
+    if (token.length > 4 && token.endsWith('ed')) {
+        return token.slice(0, -2);
+    }
+    if (token.length > 4 && token.endsWith('s')) {
+        return token.slice(0, -1);
+    }
+    return token;
+}
+
+function collectRemoteCliContextTokens(text = '') {
+    return new Set(
+        normalizeText(text)
+            .toLowerCase()
+            .match(/[a-z0-9][a-z0-9._-]{2,}/g)
+            ?.map(normalizeContextToken)
+            .filter((token) => token.length >= 3 && !REMOTE_CLI_CONTEXT_STOP_WORDS.has(token))
+        || [],
+    );
+}
+
+function collectRemoteCliContextTopics(text = '') {
+    const normalized = normalizeText(text).toLowerCase();
+    return new Set(
+        Object.entries(REMOTE_CLI_TOPIC_PATTERNS)
+            .filter(([, pattern]) => pattern.test(normalized))
+            .map(([topic]) => topic),
+    );
+}
+
+function buildRemoteCliContextText({
+    storedPlan = null,
+    priorAgentState = null,
+    priorObjective = '',
+} = {}) {
+    const normalizedPlan = normalizeForegroundProjectPlan(storedPlan);
+    const milestones = Array.isArray(normalizedPlan?.milestones) ? normalizedPlan.milestones : [];
+    return [
+        priorObjective,
+        priorAgentState?.lastTask,
+        priorAgentState?.whatChanged,
+        priorAgentState?.publicHost,
+        priorAgentState?.publicUrl,
+        priorAgentState?.gitRepo,
+        priorAgentState?.cwd,
+        normalizedPlan?.title,
+        normalizedPlan?.objective,
+        ...milestones.flatMap((milestone) => [milestone?.title, milestone?.notes]),
+    ].map(normalizeText).filter(Boolean).join('\n');
+}
+
+function hasDistinctNewRequestIntent(text = '') {
+    const normalized = normalizeText(text).toLowerCase();
+    return hasExplicitProjectResetIntent(normalized)
+        || /\b(?:new|another|different|fresh|unrelated)\b[\s\S]{0,50}\b(?:app|article|document|game|page|poem|project|report|site|story|task|website)\b/.test(normalized)
+        || /\b(?:app|article|document|game|page|poem|report|site|story|website)\b[\s\S]{0,24}\babout\b/.test(normalized)
+        || /^(?:please\s+)?(?:can|could|would)\s+you\s+(?:explain|research|summarize|tell me)\b/.test(normalized)
+        || /^(?:please\s+)?(?:explain|research|summarize|tell me)\b/.test(normalized)
+        || /^(?:please\s+)?make me\b/.test(normalized);
+}
+
+function hasRemoteCliFollowupAction(text = '') {
+    const normalized = normalizeText(text).toLowerCase();
+    return /\b(?:add|adjust|change|check|continue|deploy|edit|finish|fix|keep|make|polish|publish|redo|remove|replace|resume|retry|revise|ship|status|test|tighten|try again|update|verify|write)\b/.test(normalized)
+        || /\b(?:is|are|did|does|has|have)\b[\s\S]{0,30}\b(?:broken|complete|deployed|done|failing|fixed|live|ready|running|working)\b/.test(normalized);
+}
+
+function hasRemoteCliFollowupReference(text = '') {
+    const normalized = normalizeText(text).toLowerCase();
+    return /\b(?:it|its|that|those|these|same|existing|current|previous|prior)\b/.test(normalized)
+        || /\b(?:the|those|these)\s+(?:accent|app|button|buttons|card|cards|color|colour|dashboard|deployment|game|layout|page|project|site|style|theme|website)\b/.test(normalized);
+}
+
+function shouldResumeRemoteCliProject(objective = '', {
+    storedPlan = null,
+    priorAgentState = null,
+    priorObjective = '',
+} = {}) {
+    const normalizedObjective = normalizeText(objective);
+    if (!normalizedObjective || hasWorkloadIntent(normalizedObjective) || hasDistinctNewRequestIntent(normalizedObjective)) {
+        return false;
+    }
+
+    const contextText = buildRemoteCliContextText({
+        storedPlan,
+        priorAgentState,
+        priorObjective,
+    });
+    if (!contextText) {
+        return false;
+    }
+
+    if (
+        hasContinuationIntent(normalizedObjective)
+        || hasStructuredCheckpointResponse(normalizedObjective)
+        || /^(?:please\s+)?(?:use|try)\s+(?:the\s+)?remote[-_\s]+cli(?:[-_\s]+agent)?\b/i.test(normalizedObjective)
+        || /^(?:yes|yeah|yep|ok|okay|no|nope|not yet|skip)\b/i.test(normalizedObjective)
+    ) {
+        return true;
+    }
+
+    if (!hasRemoteCliFollowupAction(normalizedObjective)) {
+        return false;
+    }
+
+    const objectiveTokens = collectRemoteCliContextTokens(normalizedObjective);
+    const contextTokens = collectRemoteCliContextTokens(contextText);
+    if ([...objectiveTokens].some((token) => contextTokens.has(token))) {
+        return true;
+    }
+
+    const objectiveTopics = collectRemoteCliContextTopics(normalizedObjective);
+    const contextTopics = collectRemoteCliContextTopics(contextText);
+    return hasRemoteCliFollowupReference(normalizedObjective)
+        && [...objectiveTopics].some((topic) => contextTopics.has(topic));
 }
 
 function hasSkipInstruction(text = '') {
@@ -593,4 +779,6 @@ module.exports = {
     advanceForegroundProjectPlan,
     inferForegroundProjectPlan,
     normalizeForegroundProjectPlan,
+    shouldResumeRemoteCliProject,
+    shouldResumeStoredProjectPlan,
 };

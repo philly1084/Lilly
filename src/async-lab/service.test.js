@@ -233,6 +233,10 @@ describe('AsyncLabService', () => {
                 providerModel: 'k3',
                 model: 'kimi-k3',
                 transport: 'provider-agent',
+                finalOutput: `Deployment finished. token=${secretToken}`,
+                whatChanged: 'Published the website bundle.',
+                verifyCommands: ['curl -fsS https://demo.example.test/'],
+                verifyResults: ['HTTPS returned 200.'],
                 publicUrl: `https://demo.example.test/?X-Amz-Credential=${secretToken}&X-Amz-Signature=${secretToken}&X-Amz-Security-Token=${secretToken}&client_secret=${secretToken}&keyboard=compact&monkey=capuchin&view=1#view=1&key=${secretToken}`,
                 publicHost: 'demo.example.test',
                 artifactIds: ['artifact-html'],
@@ -320,6 +324,10 @@ describe('AsyncLabService', () => {
             providerModel: 'k3',
             model: 'kimi-k3',
             transport: 'provider-agent',
+            finalOutput: 'Deployment finished. token=[redacted]',
+            whatChanged: 'Published the website bundle.',
+            verifyCommands: ['curl -fsS https://demo.example.test/'],
+            verifyResults: ['HTTPS returned 200.'],
             publicUrl: 'https://demo.example.test/?keyboard=compact&monkey=capuchin&view=1',
             publicHost: 'demo.example.test',
             artifactIds: ['artifact-html', 'artifact-bundle'],
@@ -360,6 +368,62 @@ describe('AsyncLabService', () => {
         expect(toolResult.artifactQuality.warnings[0]).not.toHaveProperty('secret');
         expect(JSON.stringify(toolResult)).not.toContain(rawBase64);
         expect(JSON.stringify(toolResult)).not.toContain(secretToken);
+    });
+
+    test('bridges remote-agent progress callbacks into replayable async events', async () => {
+        const executeTool = jest.fn(async (_toolId, _params, context) => {
+            context.onProgress({
+                phase: 'executing',
+                percent: 60,
+                detail: 'Applied the Penguin deployment and started TLS verification.',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'verifying',
+                    transport: 'provider-agent',
+                    providerId: 'codex-cli',
+                    providerLabel: 'Codex CLI',
+                }],
+            });
+            return {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    completionStatus: 'completed',
+                    finalOutput: 'Penguin deployment verified.',
+                },
+            };
+        });
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+        });
+        const created = await service.createRun({
+            task: 'Deploy the Penguin site.',
+            adapter: 'remote-cli-agent',
+            targetKey: 'primary/main-server',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const events = await service.listEvents(created.run.id, 0);
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'tool_message',
+                source: 'remote-cli-agent',
+                payload: expect.objectContaining({
+                    message: 'Applied the Penguin deployment and started TLS verification.',
+                    phase: 'executing',
+                    percent: 60,
+                    stage: 'verifying',
+                    transport: 'provider-agent',
+                    providerId: 'codex-cli',
+                    providerLabel: 'Codex CLI',
+                }),
+            }),
+        ]));
+        expect(events.findIndex((event) => event.source === 'remote-cli-agent'))
+            .toBeLessThan(events.findIndex((event) => event.type === 'tool_completed'));
     });
 
     test('scrubs userinfo and encoded sensitive URL parameters from persisted free-form text', async () => {

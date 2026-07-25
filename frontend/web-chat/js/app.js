@@ -9036,8 +9036,15 @@ curl -fsSIL --max-time 20 "https://$host"`;
             'status',
             'completionStatus',
             'blocker',
+            'finalOutput',
+            'whatChanged',
             'model',
             'transport',
+            'targetId',
+            'cwd',
+            'sessionId',
+            'mcpSessionId',
+            'remoteCodeJobId',
             'publicHost',
             'siteBundleArtifactId',
             'providerModel',
@@ -9046,10 +9053,20 @@ curl -fsSIL --max-time 20 "https://$host"`;
         textFields.forEach((field) => {
             const value = normalizeAsyncResultText(
                 candidate[field],
-                ['blocker', 'error', 'resultFilesError'].includes(field) ? 1200 : 300,
+                ['blocker', 'error', 'resultFilesError', 'finalOutput', 'whatChanged'].includes(field) ? 1200 : 300,
             );
             if (value) normalized[field] = value;
         });
+        const verifyCommands = (Array.isArray(candidate.verifyCommands) ? candidate.verifyCommands : [])
+            .slice(0, 8)
+            .map((item) => normalizeAsyncResultText(item, 800))
+            .filter(Boolean);
+        if (verifyCommands.length > 0) normalized.verifyCommands = verifyCommands;
+        const verifyResults = (Array.isArray(candidate.verifyResults) ? candidate.verifyResults : [])
+            .slice(0, 8)
+            .map((item) => normalizeAsyncResultText(item, 1200))
+            .filter(Boolean);
+        if (verifyResults.length > 0) normalized.verifyResults = verifyResults;
         const provider = normalizeAsyncResultText(candidate.provider || candidate.providerId, 300);
         if (provider) normalized.provider = provider;
         const publicUrl = normalizeAsyncResultUrl(candidate.publicUrl);
@@ -9273,10 +9290,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
             || this.normalizeAsyncRemoteToolResult(current.metadata?.asyncRuntimeToolResult);
         const returnedArtifacts = this.buildAsyncRemoteMessageArtifacts(asyncToolResult);
         const progressState = this.buildAsyncRemoteProgressState(run, dedupedEvents);
+        const resultContent = progressState.terminal && asyncToolResult
+            ? this.formatRemoteAgentResult(asyncToolResult)
+            : '';
         const nextMessage = {
             ...current,
             ...(returnedArtifacts.length > 0 ? { artifacts: returnedArtifacts } : {}),
-            content: '',
+            content: resultContent,
             isStreaming: progressState.terminal !== true,
             progressState,
             metadata: {
@@ -9447,10 +9467,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const asyncToolResult = this.extractAsyncRemoteToolResult(run, events);
         const returnedArtifacts = this.buildAsyncRemoteMessageArtifacts(asyncToolResult);
         const progressState = this.buildAsyncRemoteProgressState(run, events);
+        const resultContent = progressState.terminal && asyncToolResult
+            ? this.formatRemoteAgentResult(asyncToolResult)
+            : '';
         const message = {
             id: uiHelpers.generateMessageId ? uiHelpers.generateMessageId() : `async-remote-${Date.now().toString(36)}`,
             role: 'assistant',
-            content: '',
+            content: resultContent,
             timestamp: new Date().toISOString(),
             isStreaming: progressState.terminal !== true,
             progressState,
@@ -9492,6 +9515,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const artifactLineage = metadata.artifactLineage && typeof metadata.artifactLineage === 'object'
             ? metadata.artifactLineage
             : null;
+        const activeProject = this.getSessionProjectForViewport(sessionManager.currentSessionId);
+        const activeProjectArtifactId = String(
+            activeProject?.sourceArtifactId
+            || activeProject?.sourceArtifact?.id
+            || activeProject?.artifactId
+            || '',
+        ).trim();
         return Array.from(new Set([
             ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
             ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
@@ -9501,6 +9531,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 ? window.artifactManager.getSelectedIds()
                 : []),
             ...(artifactLineage?.artifactId ? [artifactLineage.artifactId] : []),
+            ...(activeProjectArtifactId ? [activeProjectArtifactId] : []),
         ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
     }
 

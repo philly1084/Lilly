@@ -18,6 +18,7 @@ const {
     inferCompletionEvidenceFromToolEvent,
     isPromiseOnlyRuntimeResponseText,
     isSerializedToolCallWrapperText,
+    resolveRemoteObjectiveFromSession,
 } = require('./conversation-orchestrator');
 
 function buildResponse(text, id = 'resp_test') {
@@ -69,6 +70,39 @@ describe('runtime response completion guards', () => {
         expect(isPromiseOnlyRuntimeResponseText(
             'I’ll answer directly. Fable is an F#-to-JavaScript compiler, while Sol can refer to several unrelated projects.',
         )).toBe(false);
+    });
+});
+
+describe('remote CLI objective continuity', () => {
+    test('recovers the unfinished site request and checkpoint when the user gives a thin agent handoff', () => {
+        const resolved = resolveRemoteObjectiveFromSession(
+            'please use remote cli agent',
+            {
+                controlState: {
+                    lastRemoteObjective: 'Cinematic Antarctic',
+                    remoteCliAgent: {
+                        lastTask: 'Check whether the remote CLI service is working.',
+                    },
+                    userCheckpoint: {
+                        lastResponse: {
+                            summary: 'Which visual mood should guide it?: Cinematic Antarctic',
+                        },
+                    },
+                },
+            },
+            [
+                { role: 'user', content: 'lets put a site on there to test. something cool like a site on penguins' },
+                { role: 'assistant', content: 'Which visual mood should guide it?' },
+                { role: 'user', content: 'Cinematic Antarctic' },
+                { role: 'assistant', content: 'The remote CLI agent is unavailable.' },
+                { role: 'user', content: 'please use remote cli agent' },
+            ],
+        );
+
+        expect(resolved).toContain('Original unfinished request: lets put a site on there to test');
+        expect(resolved).toContain('Confirmed user checkpoint: Which visual mood should guide it?: Cinematic Antarctic');
+        expect(resolved).toContain('Current instruction: please use remote cli agent');
+        expect(resolved).not.toContain('Check whether the remote CLI service is working');
     });
 });
 
@@ -11306,6 +11340,169 @@ describe('ConversationOrchestrator', () => {
                 collectResultFiles: true,
             },
         });
+    });
+
+    test('keeps the original build objective when a related follow-up says to use remote cli agent', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            remoteDefaultWorkspace: '/opt/kimibuilt',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'git-safe', 'k3s-deploy', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = 'please use remote cli agent';
+        const session = {
+            metadata: {},
+            controlState: {
+                lastToolIntent: 'remote-cli-agent',
+                lastRemoteObjective: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+                remoteCliAgent: {
+                    lastTask: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+                    sessionId: 'remote-penguin-session',
+                    cwd: '/opt/kimibuilt',
+                },
+            },
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            session,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: {},
+        });
+
+        expect(toolPolicy.remoteCliProjectContinuation).toBe(true);
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                sessionId: 'remote-penguin-session',
+                cwd: '/opt/kimibuilt',
+            }),
+        }));
+        expect(directAction.params.task).toContain('Original task:');
+        expect(directAction.params.task).toContain('Build and deploy a cinematic Penguin research site');
+        expect(directAction.params.task).toContain('Current user follow-up:');
+        expect(directAction.params.task).toContain('please use remote cli agent');
+    });
+
+    test('hands the active sandbox source artifact to remote-cli-agent deployment requests', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            remoteDefaultWorkspace: '/srv/apps/kimibuilt',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'git-safe', 'k3s-deploy', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = 'Deploy this site to penguin.demoserver2.buzz and verify ingress and TLS.';
+        const session = {
+            metadata: {
+                activeProject: {
+                    type: 'sandbox',
+                    artifactId: 'artifact-penguin-site',
+                    previewUrl: '/api/artifacts/artifact-penguin-site/preview',
+                },
+            },
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            session,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: {},
+        });
+
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                artifactIds: ['artifact-penguin-site'],
+                collectResultFiles: true,
+                adminMode: true,
+            }),
+        }));
+    });
+
+    test('does not attach an active sandbox artifact to an explicitly new remote project', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn(() => null),
+            },
+        });
+        const normalizedStep = orchestrator.normalizePlannedStep({
+            tool: 'remote-cli-agent',
+            params: {
+                task: 'Build a new status dashboard site from scratch.',
+            },
+        }, {
+            objective: 'Build a new status dashboard site from scratch.',
+            executionProfile: 'remote-build',
+            session: {
+                metadata: {
+                    activeProject: {
+                        type: 'sandbox',
+                        artifactId: 'artifact-old-site',
+                        previewUrl: '/api/artifacts/artifact-old-site/preview',
+                    },
+                },
+            },
+        });
+
+        expect(normalizedStep.params.artifactIds).toBeUndefined();
     });
 
     test('continues explicit remote CLI agent work with prior remote sessions', () => {

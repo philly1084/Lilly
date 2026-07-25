@@ -404,6 +404,10 @@ function buildRemoteAgentResultSummary(result = {}) {
     const cwd = sanitizeResultText(source.cwd, 1000);
     const publicUrl = sanitizeResultUrl(source.publicUrl);
     const publicHost = sanitizeResultText(source.publicHost, 300);
+    const finalOutput = sanitizeResultText(source.finalOutput || source.output, SAFE_RESULT_TEXT_LIMIT);
+    const whatChanged = sanitizeResultText(source.whatChanged, SAFE_RESULT_TEXT_LIMIT);
+    const verifyCommands = compactStringList(source.verifyCommands, 8, 800);
+    const verifyResults = compactStringList(source.verifyResults, 8, SAFE_RESULT_TEXT_LIMIT);
     const resultFiles = (Array.isArray(source.resultFiles) ? source.resultFiles : [])
         .slice(0, SAFE_RESULT_ITEM_LIMIT)
         .map((file) => compactResultFileDescriptor(file))
@@ -450,6 +454,10 @@ function buildRemoteAgentResultSummary(result = {}) {
         ...(cwd ? { cwd } : {}),
         ...(publicUrl ? { publicUrl } : {}),
         ...(publicHost ? { publicHost } : {}),
+        ...(finalOutput ? { finalOutput } : {}),
+        ...(whatChanged ? { whatChanged } : {}),
+        ...(verifyCommands.length > 0 ? { verifyCommands } : {}),
+        ...(verifyResults.length > 0 ? { verifyResults } : {}),
         ...(artifactIds.length > 0 ? { artifactIds } : {}),
         ...(resultFiles.length > 0 ? { resultFiles } : {}),
         ...(siteBundleArtifactId ? { siteBundleArtifactId } : {}),
@@ -1181,6 +1189,43 @@ class AsyncLabService {
         const startedAt = Date.now();
         let result;
         const toolContext = await this.buildToolContext(run);
+        let progressEventChain = Promise.resolve();
+        if (adapter === 'remote-cli-agent') {
+            toolContext.onProgress = (progress = {}) => {
+                const toolEvents = Array.isArray(progress.toolEvents) ? progress.toolEvents : [];
+                const latestToolEvent = toolEvents[toolEvents.length - 1] || {};
+                const detail = sanitizeResultText(
+                    progress.detail
+                    || progress.reasoningSummary
+                    || latestToolEvent.detail
+                    || '',
+                    SAFE_RESULT_TEXT_LIMIT,
+                );
+                if (!detail) {
+                    return;
+                }
+                progressEventChain = progressEventChain
+                    .then(() => this.appendEvent(run.id, {
+                        type: 'tool_message',
+                        source: 'remote-cli-agent',
+                        status: 'running',
+                        payload: {
+                            adapter,
+                            targetKey: run.targetKey,
+                            message: detail,
+                            phase: sanitizeResultText(progress.phase, 80) || 'executing',
+                            percent: Math.max(0, Math.min(100, Number(progress.percent) || 0)),
+                            stage: sanitizeResultText(latestToolEvent.stage, 80) || 'in_progress',
+                            transport: sanitizeResultText(latestToolEvent.transport, 120),
+                            providerId: sanitizeResultText(latestToolEvent.providerId, 160),
+                            providerLabel: sanitizeResultText(latestToolEvent.providerLabel, 160),
+                        },
+                    }))
+                    .catch((error) => {
+                        console.warn('[AsyncLab] Failed to persist remote-agent progress:', error?.message || error);
+                    });
+            };
+        }
         try {
             result = await this.toolManager.executeTool(adapter, params, toolContext);
         } catch (error) {
@@ -1191,6 +1236,7 @@ class AsyncLabService {
                 duration: Math.max(0, Date.now() - startedAt),
             };
         }
+        await progressEventChain;
         const summary = this.summarizeToolResult(adapter, result, startedAt);
         if (adapter === 'remote-cli-agent') {
             try {

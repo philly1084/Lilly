@@ -7,6 +7,7 @@ const {
     advanceForegroundProjectPlan,
     inferForegroundProjectPlan,
     normalizeForegroundProjectPlan,
+    shouldResumeRemoteCliProject,
 } = require('./foreground-project-plan');
 
 function buildToolEvent(tool, params = {}, result = {}) {
@@ -27,6 +28,35 @@ function buildToolEvent(tool, params = {}, result = {}) {
 }
 
 describe('foreground project plan', () => {
+    test('continues a stored Penguin deployment when the user hands work to remote-cli-agent', () => {
+        expect(shouldResumeRemoteCliProject('please use remote cli agent', {
+            priorObjective: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+            priorAgentState: {
+                lastTask: 'Build and deploy the Penguin research site.',
+                cwd: '/opt/kimibuilt',
+            },
+        })).toBe(true);
+    });
+
+    test('continues related remote project corrections without explicit tool wording', () => {
+        expect(shouldResumeRemoteCliProject('fix the penguin site deployment and verify TLS', {
+            priorObjective: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+            priorAgentState: {
+                lastTask: 'Build and deploy the Penguin research site.',
+                publicHost: 'penguin.demoserver2.buzz',
+            },
+        })).toBe(true);
+    });
+
+    test('does not carry a stored remote project into an explicitly new site', () => {
+        expect(shouldResumeRemoteCliProject('use remote cli agent to build a new weather site', {
+            priorObjective: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+            priorAgentState: {
+                lastTask: 'Build and deploy the Penguin research site.',
+            },
+        })).toBe(false);
+    });
+
     test('creates an active foreground project plan for substantial project work', () => {
         const plan = inferForegroundProjectPlan({
             objective: 'Refactor the web chat UI, validate the result, and polish the final interaction flow.',

@@ -105,6 +105,7 @@ function buildAppHarness() {
 
     context.sessionManager = {
         currentSessionId: 'session-1',
+        sessions: [],
         addMessage: jest.fn((_sessionId, message) => {
             if (!message.id) {
                 message.id = `message-${renderedMessages.length + 1}`;
@@ -307,6 +308,30 @@ describe('web-chat remote CLI agent routing', () => {
                     'artifact-shared',
                     'artifact-gallery-2',
                 ],
+                collectResultFiles: true,
+            }),
+        );
+    });
+
+    test('automatically forwards the active sandbox source artifact to the remote agent', async () => {
+        const { app, context } = buildAppHarness();
+        context.sessionManager.sessions = [{
+            id: 'session-1',
+            metadata: {
+                activeProject: {
+                    type: 'sandbox',
+                    artifactId: 'artifact-active-site',
+                    previewUrl: '/api/artifacts/artifact-active-site/preview',
+                },
+            },
+        }];
+
+        await app.handleRemoteCommand('agent deploy this site to penguin.demoserver2.buzz');
+
+        expect(context.apiClient.invokeRemoteCliAgent).toHaveBeenCalledWith(
+            'deploy this site to penguin.demoserver2.buzz',
+            expect.objectContaining({
+                artifactIds: ['artifact-active-site'],
                 collectResultFiles: true,
             }),
         );
@@ -755,6 +780,10 @@ describe('web-chat remote CLI agent routing', () => {
                     toolResult: {
                         success: true,
                         completionStatus: 'completed',
+                        finalOutput: 'Deployment completed with structured proof.',
+                        whatChanged: 'Published the returned website bundle.',
+                        verifyCommands: ['curl -fsS https://demo.example.test/'],
+                        verifyResults: ['HTTPS returned 200.'],
                         provider: 'kimi',
                         model: 'kimi-k3',
                         transport: 'provider-agent',
@@ -820,6 +849,8 @@ describe('web-chat remote CLI agent routing', () => {
 
         expect(message.metadata.asyncRuntimeToolResult).toEqual(expect.objectContaining({
             completionStatus: 'completed',
+            finalOutput: 'Deployment completed with structured proof.',
+            whatChanged: 'Published the returned website bundle.',
             provider: 'kimi',
             siteBundleArtifactId: 'artifact-site-bundle',
             artifactQuality: {
@@ -843,6 +874,10 @@ describe('web-chat remote CLI agent routing', () => {
             bundleDownloadUrl: '/api/artifacts/artifact-site-bundle/bundle?keyboard=compact',
         }));
         expect(message.artifacts.every((artifact) => artifact.id && artifact.downloadUrl)).toBe(true);
+        expect(message.content).toContain('Remote CLI Agent Result');
+        expect(message.content).toContain('Published the returned website bundle.');
+        expect(message.content).toContain('curl -fsS https://demo.example.test/');
+        expect(message.content).toContain('Deployment completed with structured proof.');
         expect(renderedMessages.at(-1).artifacts).toEqual(message.artifacts);
     });
 

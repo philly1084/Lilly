@@ -836,7 +836,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
               const encoder = new TextEncoder();
               controller.enqueue(encoder.encode(
                 'event: output\n'
-                + `data: {"type":"output","data":"WORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Finished with ${providerLabel}.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nRESULT_FILES_MANIFEST=.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n`
+                + `data: {"type":"output","data":"REMOTE_AGENT_PLAN=Inspect the staged source and deploy safely.\\nREMOTE_AGENT_PROGRESS=Verified the staged source artifact.\\nWORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Finished with ${providerLabel}.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nRESULT_FILES_MANIFEST=.kimibuilt/agent-runs/11111111-2222-4333-8444-555555555555/output/manifest.json\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n`
                 + 'event: exit\n'
                 + 'data: {"type":"exit","exitCode":0}\n\n',
               ));
@@ -908,6 +908,17 @@ describe('RemoteCliAgentsSdkRunner', () => {
       resultFiles: verifiedResultFiles,
     });
     expect(progress.some((event) => event.toolEvents?.[0]?.providerId === providerId)).toBe(true);
+    expect(progress).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        detail: 'Verified the staged source artifact.',
+        toolEvents: [
+          expect.objectContaining({
+            providerId,
+            stage: 'output',
+          }),
+        ],
+      }),
+    ]));
   });
 
   test('uses the configured Codex provider when provider-agent has no explicit model', async () => {

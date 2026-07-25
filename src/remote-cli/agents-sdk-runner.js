@@ -2438,6 +2438,7 @@ class RemoteCliAgentsSdkRunner {
     let providerSessionId = '';
     let markerComplete = false;
     let markerStatus = '';
+    let lastProgressMarker = '';
     let terminalEvent = null;
     const handoff = input.handoff || null;
 
@@ -2525,8 +2526,19 @@ class RemoteCliAgentsSdkRunner {
               const text = String(event?.data || event?.text || '');
               if (text) {
                 outputParts.push(text);
-                emitProgress(`${selection.providerLabel} is working.`, { percent: 60, stage: 'output' });
-                markerStatus = readProviderAgentResultStatus(outputParts.join(''));
+                const accumulatedOutput = outputParts.join('');
+                const progressMarkers = readMarkerLines(accumulatedOutput, [
+                  'REMOTE_AGENT_PLAN',
+                  'REMOTE_AGENT_PROGRESS',
+                ]);
+                const progressMarker = normalizeOptionalProofValue(progressMarkers.at(-1) || '').slice(0, 500);
+                if (progressMarker && progressMarker !== lastProgressMarker) {
+                  lastProgressMarker = progressMarker;
+                  emitProgress(progressMarker, { percent: 60, stage: 'output' });
+                } else if (!lastProgressMarker && outputParts.length === 1) {
+                  emitProgress(`${selection.providerLabel} is working.`, { percent: 60, stage: 'output' });
+                }
+                markerStatus = readProviderAgentResultStatus(accumulatedOutput);
                 if (markerStatus) {
                   markerComplete = true;
                 }

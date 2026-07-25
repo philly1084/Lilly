@@ -598,6 +598,24 @@ describe('runtime-execution', () => {
         })).toBe('remote-build');
     });
 
+    test('keeps a related remote CLI handoff in remote-build mode without repeating the build brief', () => {
+        expect(inferExecutionProfile({
+            input: 'please use remote cli agent',
+            session: {
+                metadata: {
+                    controlState: {
+                        lastToolIntent: 'remote-cli-agent',
+                        lastRemoteObjective: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
+                        remoteCliAgent: {
+                            lastTask: 'Build and deploy the Penguin research site.',
+                            cwd: '/opt/kimibuilt',
+                        },
+                    },
+                },
+            },
+        })).toBe('remote-build');
+    });
+
     test('routes status-style follow-ups for active remote workflows through the executor in remote-build mode', async () => {
         const executeConversation = jest.fn().mockResolvedValue({
             success: true,

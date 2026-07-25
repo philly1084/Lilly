@@ -106,6 +106,7 @@ const {
 const {
     advanceForegroundProjectPlan,
     inferForegroundProjectPlan,
+    shouldResumeRemoteCliProject,
 } = require('./runtime-workflows/foreground-project-plan');
 const { formatProjectExecutionContext } = require('./workloads/project-plans');
 const { hasWorkloadIntent } = require('./workloads/natural-language');
@@ -3705,18 +3706,70 @@ function isRemoteApprovalOnlyTurn(text = '') {
     return !/\b(health|report|summary|status|state|check|inspect|diagnose|debug|deploy|restart|install|fix|repair|update|change|configure|build|logs?|kubectl|pod|service|ingress)\b/.test(normalized);
 }
 
+function isRemoteCliAgentHandoffOnlyTurn(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:use|try|call)\s+(?:the\s+)?remote[-_\s]+cli(?:[-_\s]+agent)?(?:\s+(?:please|instead|now))?[.!?]*$/.test(normalized);
+}
+
+function hasProjectAuthoringRequest(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return /\b(?:build|create|develop|generate|implement|launch|make|publish|put|ship)\b/.test(normalized)
+        && /\b(?:app|application|dashboard|demo|frontend|page|service|site|website)\b/.test(normalized);
+}
+
 function resolveRemoteObjectiveFromSession(rawObjective = '', session = null, recentMessages = []) {
-    if (!isRemoteApprovalOnlyTurn(rawObjective)) {
+    const agentHandoffOnly = isRemoteCliAgentHandoffOnlyTurn(rawObjective);
+    if (!isRemoteApprovalOnlyTurn(rawObjective) && !agentHandoffOnly) {
         return rawObjective;
     }
 
     const controlState = getSessionControlState(session);
     const storedObjective = String(controlState.lastRemoteObjective || '').trim();
-    if (storedObjective) {
+    if (storedObjective && !agentHandoffOnly) {
         return storedObjective;
+    }
+    if (storedObjective && hasProjectAuthoringRequest(storedObjective)) {
+        const checkpointSummary = String(controlState?.userCheckpoint?.lastResponse?.summary || '').trim();
+        return [
+            `Original unfinished request: ${storedObjective}`,
+            ...(checkpointSummary ? [`Confirmed user checkpoint: ${checkpointSummary}`] : []),
+            `Current instruction: ${rawObjective}`,
+        ].join('\n');
     }
 
     const transcript = Array.isArray(recentMessages) ? [...recentMessages] : [];
+    if (agentHandoffOnly) {
+        for (let index = transcript.length - 1; index >= 0; index -= 1) {
+            const message = transcript[index];
+            if (message?.role !== 'user') {
+                continue;
+            }
+
+            const candidate = normalizeMessageText(message.content || '').trim();
+            if (!candidate
+                || candidate === rawObjective
+                || isRemoteCliAgentHandoffOnlyTurn(candidate)
+                || !hasProjectAuthoringRequest(candidate)) {
+                continue;
+            }
+
+            const checkpointSummary = String(controlState?.userCheckpoint?.lastResponse?.summary || '').trim();
+            return [
+                `Original unfinished request: ${candidate}`,
+                ...(checkpointSummary ? [`Confirmed user checkpoint: ${checkpointSummary}`] : []),
+                `Current instruction: ${rawObjective}`,
+            ].join('\n');
+        }
+    }
+
     for (let index = transcript.length - 1; index >= 0; index -= 1) {
         const message = transcript[index];
         if (message?.role !== 'user') {
@@ -6257,10 +6310,10 @@ function buildRemoteCliAgentJobContinuationParams({ priorAgentState = {}, object
     };
 }
 
-function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {} } = {}) {
+function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {}, forceContinuation = false } = {}) {
     const currentRequest = String(objective || '').trim();
     const priorTask = String(priorAgentState?.lastTask || '').trim();
-    if (!currentRequest || !priorTask || !hasRemoteCliAgentContinuationIntent(currentRequest)) {
+    if (!currentRequest || !priorTask || (!forceContinuation && !hasRemoteCliAgentContinuationIntent(currentRequest))) {
         return currentRequest;
     }
 
@@ -6275,6 +6328,50 @@ function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {}
         '',
         'Continuity requirement: keep the same remote session/workspace when available, do not replace the task with a progress callback or status-card text, and keep working through authoring, build, deploy, and live verification unless a real blocker requires user input.',
     ].join('\n');
+}
+
+function shouldAttachActiveProjectArtifact(objective = '') {
+    const normalized = String(objective || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+    if (/\b(?:new|another|different|fresh)\b[\s\S]{0,40}\b(?:app|artifact|game|page|project|site|website)\b/.test(normalized)
+        || /\b(?:from scratch|start over)\b/.test(normalized)) {
+        return false;
+    }
+    return /\b(?:continue|deploy|finish|fix|improve|iterate|polish|publish|redeploy|refine|resume|retry|ship|update)\b/.test(normalized)
+        || /\b(?:bring|go|make|put|take)\b[\s\S]{0,30}\b(?:live|online|server)\b/.test(normalized)
+        || /\bbuild\b[\s\S]{0,40}\b(?:artifact|current|existing|selected|that|this)\b/.test(normalized);
+}
+
+function collectRemoteCliAgentArtifactIds({
+    objective = '',
+    session = null,
+    toolContext = {},
+    params = {},
+} = {}) {
+    const explicitArtifactIds = [
+        ...(Array.isArray(params?.artifactIds) ? params.artifactIds : []),
+        ...(Array.isArray(toolContext?.artifactIds) ? toolContext.artifactIds : []),
+    ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean);
+    if (explicitArtifactIds.length > 0) {
+        return Array.from(new Set(explicitArtifactIds));
+    }
+
+    const activeProject = session?.metadata?.activeProject;
+    const projectType = String(activeProject?.type || '').trim().toLowerCase();
+    if (!['managed-app', 'sandbox'].includes(projectType)
+        || !shouldAttachActiveProjectArtifact(objective)) {
+        return [];
+    }
+
+    const sourceArtifactId = String(
+        activeProject?.sourceArtifactId
+        || activeProject?.sourceArtifact?.id
+        || activeProject?.artifactId
+        || '',
+    ).trim();
+    return sourceArtifactId ? [sourceArtifactId] : [];
 }
 
 function hasManagedAppIntentText(text = '') {
@@ -11779,6 +11876,7 @@ class ConversationOrchestrator extends EventEmitter {
         });
         const candidates = new Set();
         const remoteToolId = getPreferredRemoteToolId({ allowedToolIds });
+        const sessionControlState = getSessionControlState(session);
         const sessionIsolation = isSessionIsolationEnabled({
             sessionIsolation: toolContext?.sessionIsolation,
             metadata,
@@ -11789,7 +11887,7 @@ class ConversationOrchestrator extends EventEmitter {
             clientSurface: toolContext?.clientSurface || metadata?.clientSurface || metadata?.client_surface || '',
             memoryScope: toolContext?.memoryScope || metadata?.memoryScope || metadata?.memory_scope || '',
         }, session || null);
-        const activeTaskFrame = normalizeActiveTaskFrame(getSessionControlState(session).activeTaskFrame);
+        const activeTaskFrame = normalizeActiveTaskFrame(sessionControlState.activeTaskFrame);
         const userCheckpointPolicy = toolContext?.userCheckpointPolicy && typeof toolContext.userCheckpointPolicy === 'object'
             ? toolContext.userCheckpointPolicy
             : {};
@@ -11874,13 +11972,29 @@ class ConversationOrchestrator extends EventEmitter {
         const metadataPrefersManagedApp = getRemoteBuildMetadataPreference(metadata, toolContext);
         const metadataDisablesManagedApp = metadata?.preferManagedApp === false
             || toolMetadata.preferManagedApp === false;
-        const hasRemoteCliAgentContinuationPreference = (
+        const carriesRemoteCliAgentContext = (
             metadata?.stickyRemoteContext === true
             || toolMetadata.stickyRemoteContext === true
             || metadata?.remoteBuildContinuation === true
             || toolMetadata.remoteBuildContinuation === true
             || Boolean(metadata?.lastRemoteObjective || toolMetadata.lastRemoteObjective)
-        ) && String(metadata?.lastRemoteToolIntent || toolMetadata.lastRemoteToolIntent || '').trim() === 'remote-cli-agent';
+            || Boolean(sessionControlState.remoteCliAgent)
+        ) && String(
+            sessionControlState.lastToolIntent
+            || metadata?.lastRemoteToolIntent
+            || toolMetadata.lastRemoteToolIntent
+            || '',
+        ).trim() === 'remote-cli-agent';
+        const hasRemoteCliAgentProjectContinuation = carriesRemoteCliAgentContext
+            && shouldResumeRemoteCliProject(objective, {
+                storedPlan: sessionControlState.projectPlan || null,
+                priorAgentState: sessionControlState.remoteCliAgent || null,
+                priorObjective: sessionControlState.lastRemoteObjective
+                    || metadata?.lastRemoteObjective
+                    || toolMetadata.lastRemoteObjective
+                    || '',
+            });
+        const hasRemoteCliAgentContinuationPreference = hasRemoteCliAgentProjectContinuation;
         const explicitRemoteCliAgentWithoutManagedApp = hasExplicitRemoteCliAgentRequest && !hasManagedAppIntent;
         const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && allowedToolIds.includes('managed-app')
@@ -11974,7 +12088,7 @@ class ConversationOrchestrator extends EventEmitter {
         ).trim();
         const shouldBypassEndToEndWorkflow = shouldPreferRemoteWebsiteSource;
         const shouldUseRemoteCliAgentAuthoring = allowedToolIds.includes('remote-cli-agent')
-            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest);
+            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest || hasRemoteCliAgentProjectContinuation);
         const inferredWorkflowSeed = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && !shouldBypassEndToEndWorkflow
             && !shouldUseRemoteCliAgentAuthoring
@@ -12510,6 +12624,7 @@ class ConversationOrchestrator extends EventEmitter {
             },
             preferredRemoteToolId,
             prefersManagedAppForRemoteBuild,
+            remoteCliProjectContinuation: hasRemoteCliAgentProjectContinuation,
             sessionIsolation,
             projectKey,
             activeTaskFrame,
@@ -12762,7 +12877,8 @@ class ConversationOrchestrator extends EventEmitter {
                 )
                 || toolPolicy.preferredRemoteToolId === 'remote-cli-agent'
             )) {
-            const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective);
+            const projectContinuation = toolPolicy.remoteCliProjectContinuation === true;
+            const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective) || projectContinuation;
             const collectResultFiles = authoringIntent
                 || toolContext?.remoteAgentCollectResultFiles === true
                 || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
@@ -12775,10 +12891,16 @@ class ConversationOrchestrator extends EventEmitter {
             const task = buildRemoteCliAgentTaskForPrompt({
                 objective,
                 priorAgentState,
+                forceContinuation: projectContinuation,
             });
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState,
                 objective,
+            });
+            const remoteAgentArtifactIds = collectRemoteCliAgentArtifactIds({
+                objective,
+                session,
+                toolContext,
             });
             return finalizeAction({
                 tool: 'remote-cli-agent',
@@ -12792,8 +12914,8 @@ class ConversationOrchestrator extends EventEmitter {
                     ...(cwd ? { cwd } : {}),
                     ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
                     ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
-                    ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
-                    ...(collectResultFiles ? { collectResultFiles: true } : {}),
+                    ...(remoteAgentArtifactIds.length > 0 ? { artifactIds: remoteAgentArtifactIds } : {}),
+                    ...(collectResultFiles || remoteAgentArtifactIds.length > 0 ? { collectResultFiles: true } : {}),
                     ...jobContinuationParams,
                 },
             });
@@ -12989,7 +13111,8 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (normalizedStep.tool === 'remote-cli-agent') {
-            const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
+            const sessionControlState = getSessionControlState(session);
+            const priorAgentState = sessionControlState.remoteCliAgent || {};
             const cwd = String(
                 normalizedStep.params.cwd
                 || priorAgentState.cwd
@@ -13013,16 +13136,32 @@ class ConversationOrchestrator extends EventEmitter {
                 objective: rawTask || objective,
                 params: normalizedStep.params,
             });
+            const remoteAgentArtifactIds = collectRemoteCliAgentArtifactIds({
+                objective: rawTask || objective,
+                session,
+                toolContext,
+                params: normalizedStep.params,
+            });
             normalizedStep.params = {
                 ...normalizedStep.params,
                 task: buildRemoteCliAgentTaskForPrompt({
                     objective: rawTask,
                     priorAgentState,
+                    forceContinuation: String(sessionControlState.lastToolIntent || '').trim() === 'remote-cli-agent'
+                        && shouldResumeRemoteCliProject(rawTask || objective, {
+                            storedPlan: sessionControlState.projectPlan || null,
+                            priorAgentState,
+                            priorObjective: sessionControlState.lastRemoteObjective || '',
+                        }),
                 }),
                 waitMs: Number(normalizedStep.params.waitMs || normalizedStep.params.wait_ms || 30000) || 30000,
                 ...(cwd ? { cwd } : {}),
                 ...(normalizedStep.params.sessionId || priorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || priorAgentState.sessionId } : {}),
                 ...(normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId } : {}),
+                ...(remoteAgentArtifactIds.length > 0 ? {
+                    artifactIds: remoteAgentArtifactIds,
+                    collectResultFiles: true,
+                } : {}),
                 ...jobContinuationParams,
             };
             delete normalizedStep.params.wait_ms;
@@ -15308,6 +15447,7 @@ module.exports = {
     inferCompletionEvidenceFromToolEvent,
     isPromiseOnlyRuntimeResponseText,
     isSerializedToolCallWrapperText,
+    resolveRemoteObjectiveFromSession,
     normalizeExecutionProfile,
     DEFAULT_EXECUTION_PROFILE,
     REMOTE_BUILD_EXECUTION_PROFILE,
