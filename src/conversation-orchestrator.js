@@ -6875,6 +6875,24 @@ function resolvePreferredRemoteCliWorkspacePath({ session = null, toolContext = 
     ).trim();
 }
 
+function resolvePreferredRemoteCliTargetId({
+    session = null,
+    toolContext = {},
+    explicitTargetId = '',
+} = {}) {
+    const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
+    return String(
+        explicitTargetId
+        || toolContext?.remoteCliTargetId
+        || toolContext?.remoteTargetId
+        || toolContext?.metadata?.remoteCliTargetId
+        || toolContext?.metadata?.remoteTargetId
+        || priorAgentState.targetId
+        || session?.metadata?.activeProject?.remoteCliAgent?.targetId
+        || '',
+    ).trim();
+}
+
 function hasArchitectureDesignIntent(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -12883,6 +12901,10 @@ class ConversationOrchestrator extends EventEmitter {
                 || toolContext?.remoteAgentCollectResultFiles === true
                 || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
+            const targetId = resolvePreferredRemoteCliTargetId({
+                session,
+                toolContext,
+            });
             const cwd = String(priorAgentState.cwd || '').trim()
                 || resolvePreferredRemoteCliWorkspacePath({
                     session,
@@ -12911,6 +12933,7 @@ class ConversationOrchestrator extends EventEmitter {
                     task,
                     waitMs: 30000,
                     adminMode: true,
+                    ...(targetId ? { targetId } : {}),
                     ...(cwd ? { cwd } : {}),
                     ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
                     ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
@@ -13113,6 +13136,11 @@ class ConversationOrchestrator extends EventEmitter {
         if (normalizedStep.tool === 'remote-cli-agent') {
             const sessionControlState = getSessionControlState(session);
             const priorAgentState = sessionControlState.remoteCliAgent || {};
+            const targetId = resolvePreferredRemoteCliTargetId({
+                session,
+                toolContext,
+                explicitTargetId: normalizedStep.params.targetId,
+            });
             const cwd = String(
                 normalizedStep.params.cwd
                 || priorAgentState.cwd
@@ -13155,6 +13183,7 @@ class ConversationOrchestrator extends EventEmitter {
                         }),
                 }),
                 waitMs: Number(normalizedStep.params.waitMs || normalizedStep.params.wait_ms || 30000) || 30000,
+                ...(targetId ? { targetId } : {}),
                 ...(cwd ? { cwd } : {}),
                 ...(normalizedStep.params.sessionId || priorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || priorAgentState.sessionId } : {}),
                 ...(normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId } : {}),

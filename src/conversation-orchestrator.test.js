@@ -11248,6 +11248,7 @@ describe('ConversationOrchestrator', () => {
                     lastTask: 'Build a cool and amazing Calan calendar app from the ground up and deploy it to calan.demoserver2.buzz.',
                     sessionId: 'remote-code-session-1',
                     mcpSessionId: 'mcp-session-1',
+                    targetId: 'k3s-secondary',
                     cwd: '/srv/apps/calan-calendar',
                 },
             },
@@ -11270,6 +11271,7 @@ describe('ConversationOrchestrator', () => {
             params: expect.objectContaining({
                 sessionId: 'remote-code-session-1',
                 mcpSessionId: 'mcp-session-1',
+                targetId: 'k3s-secondary',
                 cwd: '/srv/apps/calan-calendar',
             }),
         }));
@@ -11380,6 +11382,7 @@ describe('ConversationOrchestrator', () => {
                 remoteCliAgent: {
                     lastTask: 'Build and deploy a cinematic Penguin research site at penguin.demoserver2.buzz.',
                     sessionId: 'remote-penguin-session',
+                    targetId: 'k3s-secondary',
                     cwd: '/opt/kimibuilt',
                 },
             },
@@ -11402,6 +11405,7 @@ describe('ConversationOrchestrator', () => {
             tool: 'remote-cli-agent',
             params: expect.objectContaining({
                 sessionId: 'remote-penguin-session',
+                targetId: 'k3s-secondary',
                 cwd: '/opt/kimibuilt',
             }),
         }));
@@ -11726,6 +11730,7 @@ describe('ConversationOrchestrator', () => {
                         lastTask: 'Repair the live Tetris game.',
                         sessionId: 'remote-session-2',
                         mcpSessionId: 'mcp-session-2',
+                        targetId: 'k3s-secondary',
                         remoteCodeJobId: 'rcli_tetris_2',
                         cwd: '/srv/apps/my-app',
                         completionStatus: 'blocked',
@@ -11738,6 +11743,7 @@ describe('ConversationOrchestrator', () => {
         expect(normalizedStep.params).toEqual(expect.objectContaining({
             sessionId: 'remote-session-2',
             mcpSessionId: 'mcp-session-2',
+            targetId: 'k3s-secondary',
             jobId: 'rcli_tetris_2',
             cwd: '/srv/apps/my-app',
         }));
