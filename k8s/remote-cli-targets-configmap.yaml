@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-openai-cli-gateway-targets
+  namespace: n8n-openai-gateway
+  labels:
+    app: n8n-openai-cli-gateway
+    app.kubernetes.io/managed-by: kimibuilt-github-actions
+data:
+  targets.yaml: |
+    remoteCliTargets:
+      - targetId: k3s-primary
+        description: Primary KimiBuilt k3s host via Codex wrapper
+        host: 168.119.176.121
+        user: root
+        port: 22
+        allowedCwds:
+          - /srv/apps
+          - /opt/agent-apps
+          - /opt/kimibuilt
+          - /srv/gitlab
+        defaultCwd: /opt/kimibuilt
+        opencodeExecutable: /usr/local/bin/codex-remote-run
+        timeoutMs: 1800000
+      - targetId: k3s-secondary
+        description: Secondary demoserver2 k3s host via Codex wrapper
+        host: 162.55.163.199
+        user: root
+        port: 22
+        allowedCwds:
+          - /srv/apps
+          - /opt/agent-apps
+          - /opt/kimibuilt
+          - /srv/gitlab
+        defaultCwd: /opt/kimibuilt
+        opencodeExecutable: /usr/local/bin/codex-remote-run
+        timeoutMs: 1800000
+      - targetId: k3s-prod
+        description: Legacy alias for the primary KimiBuilt k3s host
+        host: 168.119.176.121
+        user: root
+        port: 22
+        allowedCwds:
+          - /srv/apps
+          - /opt/agent-apps
+          - /opt/kimibuilt
+          - /srv/gitlab
+        defaultCwd: /opt/kimibuilt
+        opencodeExecutable: /usr/local/bin/codex-remote-run
+        timeoutMs: 1800000
+      - targetId: prod
+        description: Legacy alias for the primary KimiBuilt k3s host
+        host: 168.119.176.121
+        user: root
+        port: 22
+        allowedCwds:
+          - /srv/apps
+          - /opt/agent-apps
+          - /opt/kimibuilt
+          - /srv/gitlab
+        defaultCwd: /opt/kimibuilt
+        opencodeExecutable: /usr/local/bin/codex-remote-run
+        timeoutMs: 1800000
