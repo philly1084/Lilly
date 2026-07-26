@@ -46,6 +46,19 @@ function normalizeText(value = '') {
   return String(value || '').trim();
 }
 
+function parseRemoteCliJson(value = '') {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return parseLenientJson(text);
+  }
+}
+
 function sleep(ms = 0) {
   const delay = Number(ms) || 0;
   return delay > 0 ? new Promise((resolve) => setTimeout(resolve, delay)) : Promise.resolve();
@@ -269,13 +282,13 @@ function collectCodexJsonlTextFragments(value = '', depth = 0) {
     if (!trimmed || !trimmed.startsWith('{')) {
       continue;
     }
-    const parsed = parseLenientJson(trimmed);
+    const parsed = parseRemoteCliJson(trimmed);
     if (parsed) {
       visit(parsed);
     }
   }
 
-  const parsedWhole = parseLenientJson(text);
+  const parsedWhole = parseRemoteCliJson(text);
   if (parsedWhole) {
     visit(parsedWhole);
   }

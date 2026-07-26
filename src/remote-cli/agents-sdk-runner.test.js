@@ -486,7 +486,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
               'REMOTE_AGENT_RESULT=live-token-exchange:/srv/apps/my-app',
               'WHAT_CHANGED=none',
               'VERIFY_COMMANDS=pwd',
-              'VERIFY_RESULTS=/srv/apps/my-app',
+              'VERIFY_RESULTS=HTTPS title “Penguin” was live at /srv/apps/my-app',
               'PUBLIC_URL=not_available',
               'BLOCKER=none',
             ].join('\n'),
@@ -497,7 +497,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
     expect(extractRemoteCliRunMetadata(output)).toMatchObject({
       verifyCommands: ['pwd'],
-      verifyResults: ['/srv/apps/my-app'],
+      verifyResults: ['HTTPS title “Penguin” was live at /srv/apps/my-app'],
       completionStatus: 'complete',
     });
   });
