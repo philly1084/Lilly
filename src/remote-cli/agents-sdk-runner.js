@@ -553,10 +553,26 @@ function hasUiProofEvidence(metadata = {}) {
     || /\b(?:kimibuilt-ui-check|playwright|chromium|browser|screenshot|captureScreenshot|ui check|visual qa|visual verification)\b/i.test(evidenceText);
 }
 
+function isExplicitReadOnlyUiResult(task = '', metadata = {}) {
+  const normalizedTask = normalizeText(task).toLowerCase();
+  const normalizedWhatChanged = normalizeText(metadata.whatChanged).toLowerCase();
+  const changedFiles = Array.isArray(metadata.changedFiles)
+    ? metadata.changedFiles.map((value) => normalizeText(value)).filter(Boolean)
+    : [];
+  const explicitlyReadOnlyTask = /\bread[-\s]?only\b/.test(normalizedTask)
+    || /\bdo not\b.{0,160}\b(?:edit|modify|change|write|deploy|restart|create|delete|replace|publish)\b/.test(normalizedTask);
+  const verifiedReadOnlyOutcome = /\b(?:no changes?|nothing (?:was )?changed|read[-\s]?only|verification only|inventory(?: and continuity recovery)? only|discovery only)\b/.test(normalizedWhatChanged);
+
+  return explicitlyReadOnlyTask
+    && verifiedReadOnlyOutcome
+    && changedFiles.length === 0;
+}
+
 function applyUiProofRequirement(metadata = {}, task = '') {
   const completionStatus = normalizeText(metadata.completionStatus);
   if (!hasUiProofRequiredIntent(task)
     || hasUiProofEvidence(metadata)
+    || isExplicitReadOnlyUiResult(task, metadata)
     || completionStatus === 'blocked'
     || completionStatus === 'running') {
     return metadata;
@@ -3481,6 +3497,7 @@ module.exports = {
   summarizeRemoteCliError,
   isStaleMcpSessionError,
   hasRemoteSoftwareDeploymentIntent,
+  applyUiProofRequirement,
   resolveAdminMode,
   resolveProviderAgentContinuationSessionId,
   resolveProviderAgentSelection,
