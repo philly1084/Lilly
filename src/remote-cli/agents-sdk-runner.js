@@ -2422,6 +2422,7 @@ class RemoteCliAgentsSdkRunner {
     agentRunTimeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS,
     sessionId = '',
     continuitySummary = '',
+    adminMode = false,
     onProgress = null,
   } = {}) {
     if (!selection) {
@@ -2613,6 +2614,7 @@ class RemoteCliAgentsSdkRunner {
             ...(selection.providerModel ? { model: selection.providerModel } : {}),
             ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
             ...(handoff ? { handoff } : {}),
+            ...(adminMode ? { adminMode: true } : {}),
           }),
           ...(controller ? { signal: controller.signal } : {}),
         });
@@ -3055,6 +3057,7 @@ class RemoteCliAgentsSdkRunner {
         agentRunTimeoutMs,
         sessionId,
         continuitySummary,
+        adminMode,
         onProgress: input.onProgress,
       });
     }

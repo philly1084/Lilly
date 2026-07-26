@@ -818,6 +818,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           targetId: 'k3s-prod',
           cwd: '/opt/kimibuilt',
           handoff,
+          adminMode: true,
         });
         if (continuationSessionId) {
           expect(body.sessionId).toBe(continuationSessionId);
@@ -917,6 +918,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       task: 'Fix the selected remote app and verify it.',
       transport: 'provider-agent',
       model: selectedModel,
+      adminMode: true,
       ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
       handoff,
       onProgress: (event) => progress.push(event),
