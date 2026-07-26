@@ -2224,8 +2224,24 @@ function hasExplicitK3sDeployIntent(prompt = '') {
         return false;
     }
 
-    return /\b(deploy|rollout|apply|set image|update image|sync)\b[\s\S]{0,60}\b(k3s|k8s|kubernetes|kubectl|manifest|deployment|helm)\b/i.test(text)
-        || /\b(k3s|k8s|kubernetes|kubectl)\b[\s\S]{0,60}\b(deploy|rollout|apply|set image|manifest|deployment|sync)\b/i.test(text);
+    const clusterCue = /\b(k3s|k8s|kubernetes|kubectl|manifest|deployment|helm)\b/i;
+    const mutationCue = /\b(deploy|redeploy|rollout|apply|set image|update image|sync)\b/gi;
+    return [...text.matchAll(mutationCue)].some((match) => {
+        const mutationIndex = Number(match.index) || 0;
+        const clausePrefix = text
+            .slice(Math.max(0, mutationIndex - 100), mutationIndex)
+            .split(/[.!?;\n]/)
+            .at(-1);
+        if (/\b(?:do not|don't|dont|never)\b/i.test(clausePrefix)) {
+            return false;
+        }
+
+        const nearbyContext = text.slice(
+            Math.max(0, mutationIndex - 60),
+            Math.min(text.length, mutationIndex + match[0].length + 60),
+        );
+        return clusterCue.test(nearbyContext);
+    });
 }
 
 function hasExplicitRemoteWorkbenchIntent(prompt = '') {
