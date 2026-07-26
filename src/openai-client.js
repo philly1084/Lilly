@@ -11,6 +11,7 @@ const settingsController = require('./routes/admin/settings.controller');
 const {
     hasExplicitImageGenerationIntent,
     normalizeReasoningEffort,
+    resolveSshRequestContext,
 } = require('./ai-route-utils');
 const {
     applyResearchFreshnessDefaults,
@@ -5632,6 +5633,35 @@ function getRemoteCliAgentStateFromToolContext(toolContext = {}) {
     return candidates.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry)) || {};
 }
 
+function resolveRemoteCliTargetForDirectMode(prompt = '', priorAgentState = {}) {
+    const explicitSshTarget = resolveSshRequestContext(prompt).explicitTarget || null;
+    const normalizedHost = String(explicitSshTarget?.host || '').trim().toLowerCase().replace(/\.$/, '');
+    const explicitTargetId = String(
+        normalizedHost
+            ? config.remoteCliMcp?.targetHostMap?.[normalizedHost]
+            : '',
+    ).trim();
+    const priorTargetId = String(priorAgentState?.targetId || '').trim();
+    const hasPriorState = Boolean(
+        priorTargetId
+        || priorAgentState?.cwd
+        || priorAgentState?.sessionId
+        || priorAgentState?.remoteCodeSessionId
+        || priorAgentState?.mcpSessionId
+        || priorAgentState?.remoteCodeJobId,
+    );
+    const resetPriorContinuity = Boolean(
+        explicitTargetId
+        && hasPriorState
+        && (!priorTargetId || priorTargetId !== explicitTargetId),
+    );
+
+    return {
+        targetId: explicitTargetId || priorTargetId,
+        resetPriorContinuity,
+    };
+}
+
 function buildDirectToolResponse(toolEvent, model = null, toolEvents = [], metadata = {}) {
     const normalizedToolEvents = Array.isArray(toolEvents) && toolEvents.length > 0
         ? toolEvents
@@ -5829,20 +5859,33 @@ async function runDirectRequiredToolAction({
     const priorRemoteCliAgentState = requiredToolId === 'remote-cli-agent'
         ? getRemoteCliAgentStateFromToolContext(toolContext)
         : {};
+    const remoteCliTargetSelection = requiredToolId === 'remote-cli-agent'
+        ? resolveRemoteCliTargetForDirectMode(prompt, priorRemoteCliAgentState)
+        : { targetId: '', resetPriorContinuity: false };
+    const reusablePriorRemoteCliAgentState = remoteCliTargetSelection.resetPriorContinuity
+        ? {}
+        : priorRemoteCliAgentState;
+    const remoteCliCwd = requiredToolId === 'remote-cli-agent'
+        ? String(
+            reusablePriorRemoteCliAgentState.cwd
+            || (remoteCliTargetSelection.targetId ? config.remoteCliMcp?.defaultCwd : '')
+            || '',
+        ).trim()
+        : '';
     const params = requiredToolId === 'remote-cli-agent'
         ? {
             task: buildRemoteCliAgentTaskForDirectMode(prompt, priorRemoteCliAgentState),
             waitMs: 30000,
             adminMode: hasRemoteSoftwareDeploymentIntent(prompt)
                 || normalizeExecutionProfile(toolContext?.executionProfile) === REMOTE_BUILD_EXECUTION_PROFILE,
-            ...(priorRemoteCliAgentState.targetId ? { targetId: priorRemoteCliAgentState.targetId } : {}),
-            ...(priorRemoteCliAgentState.cwd ? { cwd: priorRemoteCliAgentState.cwd } : {}),
-            ...(priorRemoteCliAgentState.sessionId || priorRemoteCliAgentState.remoteCodeSessionId
-                ? { sessionId: priorRemoteCliAgentState.sessionId || priorRemoteCliAgentState.remoteCodeSessionId }
+            ...(remoteCliTargetSelection.targetId ? { targetId: remoteCliTargetSelection.targetId } : {}),
+            ...(remoteCliCwd ? { cwd: remoteCliCwd } : {}),
+            ...(reusablePriorRemoteCliAgentState.sessionId || reusablePriorRemoteCliAgentState.remoteCodeSessionId
+                ? { sessionId: reusablePriorRemoteCliAgentState.sessionId || reusablePriorRemoteCliAgentState.remoteCodeSessionId }
                 : {}),
-            ...(priorRemoteCliAgentState.mcpSessionId ? { mcpSessionId: priorRemoteCliAgentState.mcpSessionId } : {}),
-            ...(shouldReuseRemoteCliAgentJobIdForDirectMode(priorRemoteCliAgentState, prompt)
-                ? { jobId: priorRemoteCliAgentState.remoteCodeJobId }
+            ...(reusablePriorRemoteCliAgentState.mcpSessionId ? { mcpSessionId: reusablePriorRemoteCliAgentState.mcpSessionId } : {}),
+            ...(shouldReuseRemoteCliAgentJobIdForDirectMode(reusablePriorRemoteCliAgentState, prompt)
+                ? { jobId: reusablePriorRemoteCliAgentState.remoteCodeJobId }
                 : {}),
         }
         : requiredToolId === 'image-generate'
