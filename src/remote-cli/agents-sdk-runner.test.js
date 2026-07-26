@@ -15,6 +15,7 @@ const {
   buildRemoteCliDiagnostics,
   isStaleMcpSessionError,
   resolveAdminMode,
+  applyUiProofRequirement,
   resolveProviderAgentContinuationSessionId,
   resolveProviderAgentSelection,
   resolveRemoteCliTargetId,
@@ -45,6 +46,42 @@ function buildVerifiedResultFiles(handoff, {
 }
 
 describe('RemoteCliAgentsSdkRunner', () => {
+  test('does not demand UI-change proof for explicit read-only old-project recovery', () => {
+    const metadata = {
+      completionStatus: 'complete',
+      whatChanged: 'No changes; read-only inventory and continuity recovery only.',
+      changedFiles: [],
+      verifyResults: [
+        'Recovered /opt/kimibuilt/managed-sites/penguin and verified its deployment is 2/2 ready.',
+        'HTTPS returned 200.',
+      ],
+      publicUrl: 'https://penguin.demoserver2.buzz/',
+    };
+
+    expect(applyUiProofRequirement(metadata, [
+      'Recover the old Penguin website from server and Kubernetes inventory.',
+      'Do not edit, deploy, restart, create, or delete anything.',
+    ].join(' '))).toBe(metadata);
+  });
+
+  test('still demands UI-change proof when a read-only request changed files', () => {
+    const metadata = {
+      completionStatus: 'complete',
+      whatChanged: 'No changes; read-only inventory only.',
+      changedFiles: ['frontend/index.html'],
+      verifyResults: ['HTTPS returned 200.'],
+      publicUrl: 'https://example.test/',
+    };
+
+    expect(applyUiProofRequirement(
+      metadata,
+      'Inspect the website read-only and do not edit anything.',
+    )).toMatchObject({
+      completionStatus: 'blocked',
+      blocker: 'Missing browser/Playwright or kimibuilt-ui-check evidence for a UI-affecting remote task.',
+    });
+  });
+
   test('maps selected Codex and Kimi models to their matching gateway CLI providers', () => {
     expect(resolveProviderAgentSelection('kimi-k2.7-code')).toMatchObject({
       providerId: 'kimi-code-cli',
