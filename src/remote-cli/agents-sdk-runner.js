@@ -12,6 +12,7 @@ const {
   buildRemoteAgentHandoffPrompt,
   normalizeRelativeWorkspacePath,
 } = require('./agent-handoff');
+const { normalizeRemoteCliTargetIdCandidate } = require('./target-selection');
 
 const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
@@ -324,8 +325,8 @@ function isUnsafeRemoteCliTargetId(value = '') {
 }
 
 function resolveRemoteCliTargetId(value = '', fallback = 'prod') {
-  const normalized = normalizeText(value);
-  const fallbackCandidate = normalizeText(fallback);
+  const normalized = normalizeRemoteCliTargetIdCandidate(value);
+  const fallbackCandidate = normalizeRemoteCliTargetIdCandidate(fallback);
   const safeFallback = fallbackCandidate && !isUnsafeRemoteCliTargetId(fallbackCandidate)
     ? fallbackCandidate
     : 'prod';
@@ -1799,6 +1800,7 @@ function buildRemoteCliInstructions({
     'If GitLab is not configured or not reachable and the user did not require GitLab observability, deliberately fall back to a local git repo plus the direct BuildKit/kubectl runner path. Say the fallback is source-controlled locally and name what is missing for GitLab automation.',
     'Before committing in a fresh remote workspace, set repo-local git user.name and user.email if they are missing.',
     'For follow-up edits, inspect git status, git remote -v, git log, and the current source files first. Patch the existing source, preserve prior content/assets unless explicitly replacing them, commit the change, then rebuild/redeploy.',
+    'When the user refers to an old, previous, existing, or lost project/job and saved task continuity is missing or stale, do not stop at a missing job ID and do not create a duplicate. Inventory matching git workspaces, managed-site directories, managed-app records when reachable, GitLab projects/remotes, Kubernetes namespaces/deployments/services/ingresses/ConfigMaps, and the requested public host. Recover the owning source/workspace from that evidence, then continue from the recovered project and report the recovered target, workspace, repo, deployment, and public URL.',
     'Use live Kubernetes resources, mounted files, or ConfigMaps as diagnostics or recovery input only; do not leave them as the only editable source of truth for a deployed site.',
     adminMode ? 'Admin runner mode is enabled for this task because the user asked for real remote software change/deployment. You may use the configured admin-capable CLI runner or remote target for repository edits, builds, image pushes, Kubernetes apply/rollout, ingress, TLS, and verification that are directly required by the task.' : '',
     adminMode ? 'Keep admin use narrow: stay inside the owning workspace, namespace, domain, and deployment path; do not mutate Kubernetes Secrets, wipe data, force-push, perform broad package upgrades, or change unrelated host services unless the user explicitly approved that exact action.' : '',

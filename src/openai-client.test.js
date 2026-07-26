@@ -3164,6 +3164,65 @@ describe('openai-client automatic tool orchestration helpers', () => {
         }
     });
 
+    test('recovers an old project target from its domain when saved job continuity is incomplete', async () => {
+        const originalTargetHostMap = config.remoteCliMcp.targetHostMap;
+        const originalDefaultTargetId = config.remoteCliMcp.defaultTargetId;
+        const originalDefaultCwd = config.remoteCliMcp.defaultCwd;
+        config.remoteCliMcp.targetHostMap = {
+            '168.119.176.121': 'k3s-primary',
+            '162.55.163.199': 'k3s-secondary',
+            'demoserver2.buzz': 'k3s-secondary',
+            'demosever2.buzz': 'k3s-secondary',
+        };
+        config.remoteCliMcp.defaultTargetId = 'k3s-prod';
+        config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const toolManager = createToolManager();
+            const prompt = "I have this penguin app on penguin.demosever2.buzz. Find the old job id and continue to fix the site.";
+
+            await __testUtils.runDirectRequiredToolAction({
+                toolManager,
+                requiredToolId: 'remote-cli-agent',
+                selectedTools: [{ id: 'remote-cli-agent' }],
+                prompt,
+                toolContext: {
+                    executionProfile: 'remote-build',
+                    clientSurface: 'web-chat',
+                    remoteCliAgent: {
+                        cwd: '/opt/kimibuilt',
+                        lastTask: [
+                            'Continue the prior remote-cli-agent task to completion.',
+                            '',
+                            'Original task:',
+                            'Build and deploy the Penguin site.',
+                            '',
+                            'Current user follow-up:',
+                            'try again',
+                        ].join('\n'),
+                        lastFailure: {
+                            reason: 'Unknown remote agent target: undefined',
+                        },
+                    },
+                },
+                model: 'gpt-5.6-sol',
+            });
+
+            const params = toolManager.executeTool.mock.calls[0][1];
+            expect(params).toEqual(expect.objectContaining({
+                targetId: 'k3s-secondary',
+                cwd: '/opt/kimibuilt',
+            }));
+            expect(params.task).toContain('Project recovery requirement:');
+            expect(params.task).toContain('Build and deploy the Penguin site.');
+            expect((params.task.match(/Original task:/g) || [])).toHaveLength(1);
+        } finally {
+            config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.remoteCliMcp.defaultTargetId = originalDefaultTargetId;
+            config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
+    });
+
     test('passes prior remote-cli-agent continuity into direct required tool mode', async () => {
         const toolManager = createToolManager();
         const prompt = 'go ahead and apply the patch';

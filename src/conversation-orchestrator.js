@@ -130,6 +130,11 @@ const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
 const { hasSelfReflectionUpdateIntentText } = require('./self-reflection-intent');
 const { normalizeBrowserReachableUrl } = require('./agent-sdk/tools/categories/web/internal-url');
 const {
+    normalizeRemoteCliTargetIdCandidate,
+    resolveConfiguredRemoteCliTargetForHost,
+    resolveConfiguredRemoteCliTargetFromText,
+} = require('./remote-cli/target-selection');
+const {
     inferSurfaceFinisher,
     scorePerceivedIntelligence,
 } = require('./perceived-intelligence-harness');
@@ -6881,12 +6886,10 @@ function resolvePreferredRemoteCliWorkspacePath({
 }
 
 function resolveConfiguredRemoteCliTargetIdForHost(host = '') {
-    const normalizedHost = String(host || '').trim().toLowerCase().replace(/\.$/, '');
-    if (!normalizedHost) {
-        return '';
-    }
-
-    return String(config.remoteCliMcp?.targetHostMap?.[normalizedHost] || '').trim();
+    return resolveConfiguredRemoteCliTargetForHost(
+        host,
+        config.remoteCliMcp?.targetHostMap || {},
+    );
 }
 
 function resolvePreferredRemoteCliTarget({
@@ -6898,19 +6901,29 @@ function resolvePreferredRemoteCliTarget({
     const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
     const explicitSshTarget = resolveSshRequestContext(objective, session).explicitTarget || null;
     const explicitSshTargetId = resolveConfiguredRemoteCliTargetIdForHost(explicitSshTarget?.host);
-    const targetId = String(
+    const projectTargetId = resolveConfiguredRemoteCliTargetFromText([
+        objective,
+        session?.metadata?.activeProject?.publicHost,
+        session?.metadata?.activeProject?.publicUrl,
+        priorAgentState.publicHost,
+        priorAgentState.publicUrl,
+        priorAgentState.lastTask,
+    ].filter(Boolean).join('\n'), config.remoteCliMcp?.targetHostMap || {});
+    const targetId = normalizeRemoteCliTargetIdCandidate(
         explicitSshTargetId
-        || explicitTargetId
-        || toolContext?.remoteCliTargetId
-        || toolContext?.remoteTargetId
-        || toolContext?.metadata?.remoteCliTargetId
-        || toolContext?.metadata?.remoteTargetId
-        || priorAgentState.targetId
-        || session?.metadata?.activeProject?.remoteCliAgent?.targetId
-        || '',
-    ).trim();
-    const selectedExplicitTargetId = explicitSshTargetId || String(explicitTargetId || '').trim();
-    const priorTargetId = String(priorAgentState.targetId || '').trim();
+        || projectTargetId
+        || normalizeRemoteCliTargetIdCandidate(explicitTargetId)
+        || normalizeRemoteCliTargetIdCandidate(toolContext?.remoteCliTargetId)
+        || normalizeRemoteCliTargetIdCandidate(toolContext?.remoteTargetId)
+        || normalizeRemoteCliTargetIdCandidate(toolContext?.metadata?.remoteCliTargetId)
+        || normalizeRemoteCliTargetIdCandidate(toolContext?.metadata?.remoteTargetId)
+        || normalizeRemoteCliTargetIdCandidate(priorAgentState.targetId)
+        || normalizeRemoteCliTargetIdCandidate(session?.metadata?.activeProject?.remoteCliAgent?.targetId),
+    );
+    const selectedExplicitTargetId = explicitSshTargetId
+        || projectTargetId
+        || normalizeRemoteCliTargetIdCandidate(explicitTargetId);
+    const priorTargetId = normalizeRemoteCliTargetIdCandidate(priorAgentState.targetId);
     const hasPriorContinuity = Boolean(
         priorAgentState.sessionId
         || priorAgentState.remoteCodeSessionId

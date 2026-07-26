@@ -62,6 +62,11 @@ const {
 } = require('./podcast/podcast-intent');
 const { extractArtifactsFromToolEvents } = require('./runtime-artifacts');
 const { RELATIONSHIP_CALCULATION_TOOL_ID } = require('./pii');
+const {
+    normalizeRemoteCliTargetIdCandidate,
+    resolveConfiguredRemoteCliTargetForHost,
+    resolveConfiguredRemoteCliTargetFromText,
+} = require('./remote-cli/target-selection');
 const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
 const MODEL_TOOL_RESULT_CHAR_LIMIT = Math.max(
@@ -5571,9 +5576,18 @@ function summarizeRemoteCliAgentDirectResult(data = {}) {
 
 function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {}) {
     const currentRequest = String(prompt || '').trim();
-    const priorTask = String(priorAgentState?.lastTask || '').trim();
+    const priorTask = unwrapRemoteCliAgentDirectTask(priorAgentState?.lastTask);
+    const needsProjectRecovery = hasRemoteCliProjectRecoveryIntent(currentRequest);
+    const projectRecoveryRequirement = needsProjectRecovery
+        ? [
+            '',
+            'Project recovery requirement: if the saved remote job or session is missing, expired, or unavailable, do not block and do not create a duplicate project.',
+            'Inventory matching git workspaces, managed-site directories, managed-app/GitLab records when reachable, and live Kubernetes namespaces, deployments, services, ingresses, and ConfigMaps using the project name, domain, repo, namespace, or purpose.',
+            'Recover the owning source/workspace from that evidence, continue the requested repair, and return the recovered target, workspace, repo, deployment, public URL, and any still-valid job/session ID.',
+        ].join('\n')
+        : '';
     if (!currentRequest || !priorTask || !hasRemoteCliAgentContinuationIntent(currentRequest)) {
-        return currentRequest;
+        return [currentRequest, projectRecoveryRequirement].filter(Boolean).join('\n');
     }
 
     return [
@@ -5586,7 +5600,28 @@ function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {})
         currentRequest,
         '',
         'Continuity requirement: keep the same remote session/workspace when available, do not replace the task with a progress callback or status-card text, and keep working through authoring, build, deploy, and live verification unless a real blocker requires user input.',
+        projectRecoveryRequirement,
     ].join('\n');
+}
+
+function unwrapRemoteCliAgentDirectTask(value = '') {
+    let task = String(value || '').trim();
+    for (let depth = 0; depth < 6; depth += 1) {
+        const wrapped = task.match(/\bOriginal task:\s*([\s\S]*?)\n\s*Current user follow-up:/i);
+        const original = String(wrapped?.[1] || '').trim();
+        if (!original || original === task) {
+            break;
+        }
+        task = original;
+    }
+    return task;
+}
+
+function hasRemoteCliProjectRecoveryIntent(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return /\b(?:old|older|previous|existing|lost|missing|prior)\b[\s\S]{0,80}\b(?:project|app|site|job|workspace|repo|deployment)\b/.test(normalized)
+        || /\bfind\b[\s\S]{0,80}\b(?:old|previous|existing|job id|project|workspace|repo)\b/.test(normalized)
+        || /\b(?:recover|rediscover|locate)\b[\s\S]{0,80}\b(?:project|app|site|job|workspace|repo|deployment)\b/.test(normalized);
 }
 
 function shouldReuseRemoteCliAgentJobIdForDirectMode(priorAgentState = {}, prompt = '') {
@@ -5623,25 +5658,43 @@ function shouldReuseRemoteCliAgentJobIdForDirectMode(priorAgentState = {}, promp
 
 function getRemoteCliAgentStateFromToolContext(toolContext = {}) {
     const metadata = getToolContextMetadata(toolContext);
+    const activeProject = (
+        toolContext?.activeProject
+        || metadata?.activeProject
+        || null
+    );
     const candidates = [
-        toolContext?.remoteCliAgent,
-        toolContext?.controlState?.remoteCliAgent,
-        metadata?.remoteCliAgent,
+        activeProject?.remoteCliAgent,
         metadata?.controlState?.remoteCliAgent,
+        metadata?.remoteCliAgent,
+        toolContext?.controlState?.remoteCliAgent,
+        toolContext?.remoteCliAgent,
     ];
-
-    return candidates.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry)) || {};
+    const merged = Object.assign(
+        {},
+        ...candidates.filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry)),
+    );
+    return {
+        ...merged,
+        publicHost: merged.publicHost || activeProject?.publicHost || '',
+        publicUrl: merged.publicUrl || activeProject?.publicUrl || activeProject?.livePublicUrl || '',
+        cwd: merged.cwd || activeProject?.workspace || activeProject?.cwd || '',
+    };
 }
 
 function resolveRemoteCliTargetForDirectMode(prompt = '', priorAgentState = {}) {
     const explicitSshTarget = resolveSshRequestContext(prompt).explicitTarget || null;
-    const normalizedHost = String(explicitSshTarget?.host || '').trim().toLowerCase().replace(/\.$/, '');
-    const explicitTargetId = String(
-        normalizedHost
-            ? config.remoteCliMcp?.targetHostMap?.[normalizedHost]
-            : '',
-    ).trim();
-    const priorTargetId = String(priorAgentState?.targetId || '').trim();
+    const targetHostMap = config.remoteCliMcp?.targetHostMap || {};
+    const explicitSshTargetId = resolveConfiguredRemoteCliTargetForHost(explicitSshTarget?.host, targetHostMap);
+    const projectTargetId = resolveConfiguredRemoteCliTargetFromText([
+        prompt,
+        priorAgentState?.publicHost,
+        priorAgentState?.publicUrl,
+        priorAgentState?.lastTask,
+    ].filter(Boolean).join('\n'), targetHostMap);
+    const explicitTargetId = explicitSshTargetId || projectTargetId;
+    const priorTargetId = normalizeRemoteCliTargetIdCandidate(priorAgentState?.targetId);
+    const fallbackTargetId = normalizeRemoteCliTargetIdCandidate(config.remoteCliMcp?.defaultTargetId) || 'prod';
     const hasPriorState = Boolean(
         priorTargetId
         || priorAgentState?.cwd
@@ -5657,7 +5710,7 @@ function resolveRemoteCliTargetForDirectMode(prompt = '', priorAgentState = {}) 
     );
 
     return {
-        targetId: explicitTargetId || priorTargetId,
+        targetId: explicitTargetId || priorTargetId || fallbackTargetId,
         resetPriorContinuity,
     };
 }

@@ -174,6 +174,9 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(resolveRemoteCliTargetId('https://github.com/example/app.git', 'prod')).toBe('prod');
     expect(resolveRemoteCliTargetId('remote-projects/kimibuilt', 'k3s-prod')).toBe('k3s-prod');
     expect(resolveRemoteCliTargetId('/opt/kimibuilt', 'k3s-prod')).toBe('k3s-prod');
+    expect(resolveRemoteCliTargetId('undefined', 'k3s-prod')).toBe('k3s-prod');
+    expect(resolveRemoteCliTargetId('null', 'k3s-prod')).toBe('k3s-prod');
+    expect(resolveRemoteCliTargetId('undefined', 'undefined')).toBe('prod');
     expect(resolveRemoteCliTargetId('', 'github.com')).toBe('prod');
     expect(resolveRemoteCliTargetId('staging', 'prod')).toBe('staging');
   });
