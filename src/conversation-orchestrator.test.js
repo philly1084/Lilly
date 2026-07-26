@@ -11350,6 +11350,74 @@ describe('ConversationOrchestrator', () => {
         }
     });
 
+    test('recovers a remote project target from a configured public-domain suffix', () => {
+        const originalTargetHostMap = config.config.remoteCliMcp.targetHostMap;
+        const originalDefaultTargetId = config.config.remoteCliMcp.defaultTargetId;
+        const originalDefaultCwd = config.config.remoteCliMcp.defaultCwd;
+        config.config.remoteCliMcp.targetHostMap = {
+            '168.119.176.121': 'k3s-primary',
+            '162.55.163.199': 'k3s-secondary',
+            'demoserver2.buzz': 'k3s-secondary',
+            'demosever2.buzz': 'k3s-secondary',
+        };
+        config.config.remoteCliMcp.defaultTargetId = 'k3s-prod';
+        config.config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const orchestrator = new ConversationOrchestrator({
+                llmClient: {
+                    createResponse: jest.fn(),
+                    complete: jest.fn(),
+                },
+                toolManager: {
+                    getTool: jest.fn((toolId) => (
+                        ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read']
+                            .includes(toolId)
+                            ? { id: toolId, description: toolId }
+                            : null
+                    )),
+                },
+            });
+            const objective = 'Use remote cli agent to find the old Penguin project at penguin.demosever2.buzz and continue fixing it.';
+            const session = {
+                metadata: {
+                    remoteCliAgent: {
+                        cwd: '/opt/kimibuilt',
+                        lastTask: 'Build and deploy the Penguin site.',
+                        lastFailure: {
+                            reason: 'Unknown remote agent target: undefined',
+                        },
+                    },
+                },
+                controlState: {},
+            };
+            const toolPolicy = orchestrator.buildToolPolicy({
+                objective,
+                executionProfile: 'remote-build',
+                toolManager: orchestrator.toolManager,
+                session,
+            });
+            const directAction = orchestrator.buildDirectAction({
+                objective,
+                session,
+                toolPolicy,
+                toolContext: {},
+            });
+
+            expect(directAction).toEqual(expect.objectContaining({
+                tool: 'remote-cli-agent',
+                params: expect.objectContaining({
+                    targetId: 'k3s-secondary',
+                    cwd: '/opt/kimibuilt',
+                }),
+            }));
+        } finally {
+            config.config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.config.remoteCliMcp.defaultTargetId = originalDefaultTargetId;
+            config.config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
+    });
+
     test('planned remote-cli steps honor the current SSH host over a stale planned target', () => {
         const originalTargetHostMap = config.config.remoteCliMcp.targetHostMap;
         const originalDefaultCwd = config.config.remoteCliMcp.defaultCwd;
