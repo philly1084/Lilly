@@ -69,6 +69,30 @@ function parseOptionalStringList(value) {
         .filter(Boolean);
 }
 
+function parseOptionalStringMap(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return {};
+    }
+
+    return Object.fromEntries(
+        normalized
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+            .map((entry) => {
+                const separator = entry.indexOf('=');
+                if (separator <= 0) {
+                    return null;
+                }
+                const key = entry.slice(0, separator).trim().toLowerCase();
+                const mappedValue = entry.slice(separator + 1).trim();
+                return key && mappedValue ? [key, mappedValue] : null;
+            })
+            .filter(Boolean),
+    );
+}
+
 function parseIntegerWithDefault(value, fallback, { min = 0 } = {}) {
     const parsed = parseInt(value, 10);
     if (!Number.isFinite(parsed)) {
@@ -1094,6 +1118,7 @@ const config = {
             parseInt(process.env.REMOTE_CLI_MCP_TIMEOUT_MS, 10) || 60000,
         ),
         defaultTargetId: process.env.REMOTE_CLI_DEFAULT_TARGET_ID || 'prod',
+        targetHostMap: parseOptionalStringMap(process.env.REMOTE_CLI_TARGET_HOST_MAP),
         defaultCwd: process.env.REMOTE_CLI_DEFAULT_CWD
             || process.env.OPENCODE_REMOTE_DEFAULT_WORKSPACE
             || process.env.KIMIBUILT_DEPLOY_TARGET_DIR

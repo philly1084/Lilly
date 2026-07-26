@@ -6863,26 +6863,44 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
     };
 }
 
-function resolvePreferredRemoteCliWorkspacePath({ session = null, toolContext = {} } = {}) {
+function resolvePreferredRemoteCliWorkspacePath({
+    session = null,
+    toolContext = {},
+    includeSessionState = true,
+} = {}) {
     return String(
         toolContext?.remoteWorkspacePath
         || toolContext?.workspacePath
-        || session?.metadata?.remoteWorkingState?.workspacePath
-        || session?.metadata?.lastRemoteWorkspacePath
+        || (includeSessionState ? session?.metadata?.remoteWorkingState?.workspacePath : '')
+        || (includeSessionState ? session?.metadata?.lastRemoteWorkspacePath : '')
+        || config.remoteCliMcp.defaultCwd
         || config.deploy.defaultTargetDirectory
         || config.deploy.defaultRepositoryPath
         || '',
     ).trim();
 }
 
-function resolvePreferredRemoteCliTargetId({
+function resolveConfiguredRemoteCliTargetIdForHost(host = '') {
+    const normalizedHost = String(host || '').trim().toLowerCase().replace(/\.$/, '');
+    if (!normalizedHost) {
+        return '';
+    }
+
+    return String(config.remoteCliMcp?.targetHostMap?.[normalizedHost] || '').trim();
+}
+
+function resolvePreferredRemoteCliTarget({
     session = null,
     toolContext = {},
     explicitTargetId = '',
+    objective = '',
 } = {}) {
     const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
-    return String(
-        explicitTargetId
+    const explicitSshTarget = resolveSshRequestContext(objective, session).explicitTarget || null;
+    const explicitSshTargetId = resolveConfiguredRemoteCliTargetIdForHost(explicitSshTarget?.host);
+    const targetId = String(
+        explicitSshTargetId
+        || explicitTargetId
         || toolContext?.remoteCliTargetId
         || toolContext?.remoteTargetId
         || toolContext?.metadata?.remoteCliTargetId
@@ -6891,6 +6909,25 @@ function resolvePreferredRemoteCliTargetId({
         || session?.metadata?.activeProject?.remoteCliAgent?.targetId
         || '',
     ).trim();
+    const selectedExplicitTargetId = explicitSshTargetId || String(explicitTargetId || '').trim();
+    const priorTargetId = String(priorAgentState.targetId || '').trim();
+    const hasPriorContinuity = Boolean(
+        priorAgentState.sessionId
+        || priorAgentState.remoteCodeSessionId
+        || priorAgentState.mcpSessionId
+        || priorAgentState.remoteCodeJobId,
+    );
+    const resetPriorContinuity = Boolean(
+        selectedExplicitTargetId
+        && hasPriorContinuity
+        && (!priorTargetId || priorTargetId !== selectedExplicitTargetId),
+    );
+
+    return {
+        targetId,
+        explicitSshTarget,
+        resetPriorContinuity,
+    };
 }
 
 function hasArchitectureDesignIntent(text = '') {
@@ -12901,14 +12938,19 @@ class ConversationOrchestrator extends EventEmitter {
                 || toolContext?.remoteAgentCollectResultFiles === true
                 || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
-            const targetId = resolvePreferredRemoteCliTargetId({
+            const targetSelection = resolvePreferredRemoteCliTarget({
                 session,
                 toolContext,
+                objective,
             });
-            const cwd = String(priorAgentState.cwd || '').trim()
+            const reusablePriorAgentState = targetSelection.resetPriorContinuity
+                ? {}
+                : priorAgentState;
+            const cwd = String(reusablePriorAgentState.cwd || '').trim()
                 || resolvePreferredRemoteCliWorkspacePath({
                     session,
                     toolContext,
+                    includeSessionState: !targetSelection.resetPriorContinuity,
                 });
             const task = buildRemoteCliAgentTaskForPrompt({
                 objective,
@@ -12916,7 +12958,7 @@ class ConversationOrchestrator extends EventEmitter {
                 forceContinuation: projectContinuation,
             });
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
-                priorAgentState,
+                priorAgentState: reusablePriorAgentState,
                 objective,
             });
             const remoteAgentArtifactIds = collectRemoteCliAgentArtifactIds({
@@ -12933,10 +12975,10 @@ class ConversationOrchestrator extends EventEmitter {
                     task,
                     waitMs: 30000,
                     adminMode: true,
-                    ...(targetId ? { targetId } : {}),
+                    ...(targetSelection.targetId ? { targetId: targetSelection.targetId } : {}),
                     ...(cwd ? { cwd } : {}),
-                    ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
-                    ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
+                    ...(reusablePriorAgentState.sessionId ? { sessionId: reusablePriorAgentState.sessionId } : {}),
+                    ...(reusablePriorAgentState.mcpSessionId ? { mcpSessionId: reusablePriorAgentState.mcpSessionId } : {}),
                     ...(remoteAgentArtifactIds.length > 0 ? { artifactIds: remoteAgentArtifactIds } : {}),
                     ...(collectResultFiles || remoteAgentArtifactIds.length > 0 ? { collectResultFiles: true } : {}),
                     ...jobContinuationParams,
@@ -13136,17 +13178,32 @@ class ConversationOrchestrator extends EventEmitter {
         if (normalizedStep.tool === 'remote-cli-agent') {
             const sessionControlState = getSessionControlState(session);
             const priorAgentState = sessionControlState.remoteCliAgent || {};
-            const targetId = resolvePreferredRemoteCliTargetId({
+            const targetSelection = resolvePreferredRemoteCliTarget({
                 session,
                 toolContext,
                 explicitTargetId: normalizedStep.params.targetId,
+                objective,
             });
+            const reusablePriorAgentState = targetSelection.resetPriorContinuity
+                ? {}
+                : priorAgentState;
+            if (targetSelection.resetPriorContinuity) {
+                delete normalizedStep.params.sessionId;
+                delete normalizedStep.params.session_id;
+                delete normalizedStep.params.mcpSessionId;
+                delete normalizedStep.params.mcp_session_id;
+                delete normalizedStep.params.jobId;
+                delete normalizedStep.params.job_id;
+                delete normalizedStep.params.remoteCodeJobId;
+                delete normalizedStep.params.remote_code_job_id;
+            }
             const cwd = String(
                 normalizedStep.params.cwd
-                || priorAgentState.cwd
+                || reusablePriorAgentState.cwd
                 || resolvePreferredRemoteCliWorkspacePath({
                     session,
                     toolContext,
+                    includeSessionState: !targetSelection.resetPriorContinuity,
                 })
                 || '',
             ).trim();
@@ -13160,7 +13217,7 @@ class ConversationOrchestrator extends EventEmitter {
                 || '',
             ).trim();
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
-                priorAgentState,
+                priorAgentState: reusablePriorAgentState,
                 objective: rawTask || objective,
                 params: normalizedStep.params,
             });
@@ -13183,10 +13240,10 @@ class ConversationOrchestrator extends EventEmitter {
                         }),
                 }),
                 waitMs: Number(normalizedStep.params.waitMs || normalizedStep.params.wait_ms || 30000) || 30000,
-                ...(targetId ? { targetId } : {}),
+                ...(targetSelection.targetId ? { targetId: targetSelection.targetId } : {}),
                 ...(cwd ? { cwd } : {}),
-                ...(normalizedStep.params.sessionId || priorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || priorAgentState.sessionId } : {}),
-                ...(normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId } : {}),
+                ...(normalizedStep.params.sessionId || reusablePriorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || reusablePriorAgentState.sessionId } : {}),
+                ...(normalizedStep.params.mcpSessionId || reusablePriorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || reusablePriorAgentState.mcpSessionId } : {}),
                 ...(remoteAgentArtifactIds.length > 0 ? {
                     artifactIds: remoteAgentArtifactIds,
                     collectResultFiles: true,

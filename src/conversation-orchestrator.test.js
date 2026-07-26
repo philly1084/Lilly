@@ -11282,6 +11282,134 @@ describe('ConversationOrchestrator', () => {
         expect(directAction.params.task).toContain('do not replace the task with a progress callback');
     });
 
+    test('explicit SSH host overrides a saved remote-cli target and clears stale continuity', () => {
+        const originalTargetHostMap = config.config.remoteCliMcp.targetHostMap;
+        const originalDefaultCwd = config.config.remoteCliMcp.defaultCwd;
+        config.config.remoteCliMcp.targetHostMap = {
+            '162.55.163.199': 'k3s-secondary',
+        };
+        config.config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const orchestrator = new ConversationOrchestrator({
+                llmClient: {
+                    createResponse: jest.fn(),
+                    complete: jest.fn(),
+                },
+                toolManager: {
+                    getTool: jest.fn((toolId) => (
+                        ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read']
+                            .includes(toolId)
+                            ? { id: toolId, description: toolId }
+                            : null
+                    )),
+                },
+            });
+            const objective = 'SSH into root@162.55.163.199 and use remote cli agent again to verify the Penguin site at penguin.demoserver2.buzz.';
+            const session = {
+                metadata: {},
+                controlState: {
+                    lastToolIntent: 'remote-cli-agent',
+                    remoteCliAgent: {
+                        lastTask: 'Build and deploy the Penguin site.',
+                        sessionId: 'remote-primary-session',
+                        mcpSessionId: 'mcp-primary-session',
+                        remoteCodeJobId: 'ragent_primary_job',
+                        targetId: 'k3s-prod',
+                        cwd: '/opt/kimibuilt',
+                        completionStatus: 'blocked',
+                    },
+                },
+            };
+            const toolPolicy = orchestrator.buildToolPolicy({
+                objective,
+                executionProfile: 'remote-build',
+                toolManager: orchestrator.toolManager,
+                session,
+            });
+            const directAction = orchestrator.buildDirectAction({
+                objective,
+                session,
+                toolPolicy,
+                toolContext: {},
+            });
+
+            expect(directAction).toEqual(expect.objectContaining({
+                tool: 'remote-cli-agent',
+                params: expect.objectContaining({
+                    targetId: 'k3s-secondary',
+                    cwd: '/opt/kimibuilt',
+                }),
+            }));
+            expect(directAction.params.sessionId).toBeUndefined();
+            expect(directAction.params.mcpSessionId).toBeUndefined();
+            expect(directAction.params.jobId).toBeUndefined();
+        } finally {
+            config.config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
+    });
+
+    test('planned remote-cli steps honor the current SSH host over a stale planned target', () => {
+        const originalTargetHostMap = config.config.remoteCliMcp.targetHostMap;
+        const originalDefaultCwd = config.config.remoteCliMcp.defaultCwd;
+        config.config.remoteCliMcp.targetHostMap = {
+            '162.55.163.199': 'k3s-secondary',
+        };
+        config.config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const orchestrator = new ConversationOrchestrator({
+                llmClient: {
+                    createResponse: jest.fn(),
+                    complete: jest.fn(),
+                },
+                toolManager: {
+                    getTool: jest.fn(() => null),
+                },
+            });
+            const objective = 'SSH into root@162.55.163.199 and continue the Penguin site verification.';
+            const normalizedStep = orchestrator.normalizePlannedStep({
+                tool: 'remote-cli-agent',
+                params: {
+                    task: 'Continue the Penguin site verification.',
+                    targetId: 'k3s-prod',
+                    sessionId: 'remote-primary-session',
+                    mcpSessionId: 'mcp-primary-session',
+                    jobId: 'ragent_primary_job',
+                },
+            }, {
+                objective,
+                executionProfile: 'remote-build',
+                session: {
+                    metadata: {},
+                    controlState: {
+                        lastToolIntent: 'remote-cli-agent',
+                        remoteCliAgent: {
+                            lastTask: 'Build and deploy the Penguin site.',
+                            sessionId: 'remote-primary-session',
+                            mcpSessionId: 'mcp-primary-session',
+                            remoteCodeJobId: 'ragent_primary_job',
+                            targetId: 'k3s-prod',
+                            cwd: '/opt/kimibuilt',
+                        },
+                    },
+                },
+            });
+
+            expect(normalizedStep.params).toEqual(expect.objectContaining({
+                targetId: 'k3s-secondary',
+                cwd: '/opt/kimibuilt',
+            }));
+            expect(normalizedStep.params.sessionId).toBeUndefined();
+            expect(normalizedStep.params.mcpSessionId).toBeUndefined();
+            expect(normalizedStep.params.jobId).toBeUndefined();
+        } finally {
+            config.config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
+    });
+
     test('routes remote software deployment requests to remote-cli-agent with admin runner mode', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

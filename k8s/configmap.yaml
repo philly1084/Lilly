@@ -33,6 +33,9 @@ data:
   REMOTE_CLI_MCP_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp"
   REMOTE_CLI_MCP_NAME: "remote-cli"
   REMOTE_CLI_DEFAULT_TARGET_ID: "k3s-prod"
+  # Translate explicit SSH hosts in Web Chat into the gateway's canonical
+  # target IDs so a saved primary session cannot override a secondary request.
+  REMOTE_CLI_TARGET_HOST_MAP: "168.119.176.121=k3s-primary,162.55.163.199=k3s-secondary"
   REMOTE_CLI_DEFAULT_CWD: "/opt/kimibuilt"
   REMOTE_CLI_AGENT_MODEL: "gpt-5.4"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"

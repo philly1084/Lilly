@@ -170,7 +170,7 @@ function hasDifferentExplicitProjectAnchor(task = '', prior = {}) {
   return false;
 }
 
-function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
+function shouldReusePriorRemoteCliAgentState(task = '', prior = {}, params = {}) {
   if (!prior || typeof prior !== 'object') {
     return false;
   }
@@ -182,6 +182,11 @@ function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
     && !prior.targetId) {
     return false;
   }
+  const requestedTargetId = normalizeLower(params.targetId);
+  const priorTargetId = normalizeLower(prior.targetId);
+  if (requestedTargetId && requestedTargetId !== priorTargetId) {
+    return false;
+  }
   if (hasDifferentExplicitProjectAnchor(task, prior)) {
     return false;
   }
@@ -191,7 +196,7 @@ function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
 function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
   const prior = getRemoteCliAgentStateFromContext(context);
   const task = firstNonEmptyText(params.task, params.prompt, params.message);
-  if (!shouldReusePriorRemoteCliAgentState(task, prior)) {
+  if (!shouldReusePriorRemoteCliAgentState(task, prior, params)) {
     return { state: prior, reused: false };
   }
 
@@ -341,7 +346,7 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
     context?.metadata?.requestedModel,
     context?.metadata?.model,
   );
-  const supportedHeaderModel = /(?:^|[\/_-])(?:gpt|codex|openai|kimi)(?:[\/_-]|$)|^o[134](?:[\/_-]|$)|moonshot/i.test(selectedHeaderModel)
+  const supportedHeaderModel = /(?:^|[\/_-])(?:gpt|codex|openai|kimi)(?:[\/_-]|$)|^o[134](?:[\/_-]|$)|^k3(?:[\/_-]|$)|moonshot/i.test(selectedHeaderModel)
     ? selectedHeaderModel
     : '';
   applyAlias(

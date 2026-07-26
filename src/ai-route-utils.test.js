@@ -1377,6 +1377,7 @@ describe('ai-route-utils', () => {
             username: 'root',
             port: null,
         });
+        expect(sshContext.explicitTarget).toEqual(sshContext.target);
         expect(sshContext.command).toBe('hostname && uptime && (df -h / || true) && (free -m || true)');
         expect(sshContext.directParams).toEqual({
             host: '162.55.163.199',
