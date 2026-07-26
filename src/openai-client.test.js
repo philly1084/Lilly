@@ -1,4 +1,5 @@
 const { __testUtils } = require('./openai-client');
+const { config } = require('./config');
 const settingsController = require('./routes/admin/settings.controller');
 
 function createToolManager() {
@@ -3073,6 +3074,94 @@ describe('openai-client automatic tool orchestration helpers', () => {
             }),
             expect.any(Object),
         );
+    });
+
+    test('maps an explicit SSH host to the remote-cli target in direct Web Chat mode', async () => {
+        const originalTargetHostMap = config.remoteCliMcp.targetHostMap;
+        const originalDefaultCwd = config.remoteCliMcp.defaultCwd;
+        config.remoteCliMcp.targetHostMap = {
+            '162.55.163.199': 'k3s-secondary',
+        };
+        config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const toolManager = createToolManager();
+            const prompt = 'Use remote cli agent. SSH into root@162.55.163.199 and verify the Penguin site read-only.';
+
+            await __testUtils.runDirectRequiredToolAction({
+                toolManager,
+                requiredToolId: 'remote-cli-agent',
+                selectedTools: [{ id: 'remote-cli-agent' }],
+                prompt,
+                toolContext: {
+                    executionProfile: 'remote-build',
+                    clientSurface: 'web-chat',
+                },
+                model: 'gpt-5.6-sol',
+            });
+
+            expect(toolManager.executeTool).toHaveBeenCalledWith(
+                'remote-cli-agent',
+                expect.objectContaining({
+                    task: prompt,
+                    targetId: 'k3s-secondary',
+                    cwd: '/opt/kimibuilt',
+                }),
+                expect.any(Object),
+            );
+        } finally {
+            config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
+    });
+
+    test('drops direct Web Chat continuity when an explicit SSH host changes target', async () => {
+        const originalTargetHostMap = config.remoteCliMcp.targetHostMap;
+        const originalDefaultCwd = config.remoteCliMcp.defaultCwd;
+        config.remoteCliMcp.targetHostMap = {
+            '162.55.163.199': 'k3s-secondary',
+        };
+        config.remoteCliMcp.defaultCwd = '/opt/kimibuilt';
+
+        try {
+            const toolManager = createToolManager();
+            const prompt = 'SSH into root@162.55.163.199 and use remote cli agent again to verify the Penguin site.';
+
+            await __testUtils.runDirectRequiredToolAction({
+                toolManager,
+                requiredToolId: 'remote-cli-agent',
+                selectedTools: [{ id: 'remote-cli-agent' }],
+                prompt,
+                toolContext: {
+                    executionProfile: 'remote-build',
+                    clientSurface: 'web-chat',
+                    remoteCliAgent: {
+                        lastTask: 'Build and deploy the Penguin site.',
+                        targetId: 'k3s-prod',
+                        cwd: '/opt/kimibuilt',
+                        sessionId: 'remote-primary-session',
+                        mcpSessionId: 'mcp-primary-session',
+                        remoteCodeJobId: 'ragent_primary_job',
+                        completionStatus: 'blocked',
+                        blocker: 'Gateway connected to the wrong host.',
+                    },
+                },
+                model: 'gpt-5.6-sol',
+            });
+
+            const params = toolManager.executeTool.mock.calls[0][1];
+            expect(params).toEqual(expect.objectContaining({
+                task: expect.stringContaining('Original task:'),
+                targetId: 'k3s-secondary',
+                cwd: '/opt/kimibuilt',
+            }));
+            expect(params.sessionId).toBeUndefined();
+            expect(params.mcpSessionId).toBeUndefined();
+            expect(params.jobId).toBeUndefined();
+        } finally {
+            config.remoteCliMcp.targetHostMap = originalTargetHostMap;
+            config.remoteCliMcp.defaultCwd = originalDefaultCwd;
+        }
     });
 
     test('passes prior remote-cli-agent continuity into direct required tool mode', async () => {

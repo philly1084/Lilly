@@ -103,6 +103,9 @@ jobs:
           npm test -- --runInBand --coverage=false --runTestsByPath \
             src/conversation-orchestrator.test.js \
             --testNamePattern='routes explicit assisted remote CLI authoring requests to remote-cli-agent instead of the end-to-end workflow|explicit SSH host overrides a saved remote-cli target and clears stale continuity|planned remote-cli steps honor the current SSH host over a stale planned target'
+          npm test -- --runInBand --coverage=false --runTestsByPath \
+            src/openai-client.test.js \
+            --testNamePattern='maps an explicit SSH host to the remote-cli target in direct Web Chat mode|drops direct Web Chat continuity when an explicit SSH host changes target'
 
       - name: Run release gate
         run: npm run release:gate
