@@ -3014,6 +3014,36 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('does not preflight k3s deployment for a negated read-only remote-agent request', () => {
+        const toolManager = createToolManager();
+        const prompt = [
+            'Use remote-cli-agent to recover the old Penguin project.',
+            'Return Kubernetes deployment evidence.',
+            'Do not edit, deploy, restart, create, or delete anything.',
+        ].join(' ');
+        const toolContext = {
+            executionProfile: 'remote-build',
+            clientSurface: 'web-chat',
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
+            toolManager,
+            prompt,
+            { toolContext },
+        );
+        const preflightActions = __testUtils.buildDeterministicPreflightActions(
+            automaticTools,
+            prompt,
+            toolContext,
+        );
+
+        expect(preflightActions.map((action) => action.toolId)).not.toContain('k3s-deploy');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+    });
+
     test('routes Codex help document requests to remote-cli-agent instead of local document-only flow', () => {
         const toolManager = createToolManager();
         const prompt = 'Ask Codex for help creating a deeper PDF document and synthesis package.';
