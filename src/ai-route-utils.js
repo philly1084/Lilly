@@ -1787,6 +1787,7 @@ function resolveSshRequestContext(text = '', session = null) {
 
     return {
         explicitIntent,
+        explicitTarget,
         continuation: continuation || retryLikeExplicitContinuation,
         shouldTreatAsSsh: explicitIntent || continuation || retryLikeExplicitContinuation,
         effectivePrompt,

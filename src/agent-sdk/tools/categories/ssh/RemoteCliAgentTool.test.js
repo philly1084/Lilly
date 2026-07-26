@@ -56,7 +56,7 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
-  test('inherits only active Codex or Kimi chat models for remote CLI routing', async () => {
+  test('inherits active Codex or Kimi chat models, including bare k3, for remote CLI routing', async () => {
     const { tool, runner } = buildTool();
 
     const result = await tool.execute({
@@ -70,6 +70,9 @@ describe('RemoteCliAgentTool', () => {
       task: 'Build and verify the remote app.',
       model: 'gpt-5.6-sol',
     }));
+
+    await tool.execute({ task: 'Build with Kimi K3.' }, { model: 'k3' });
+    expect(runner.run).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'k3' }));
 
     await tool.execute({ task: 'Build with the default active provider.' }, { model: 'grok-build' });
     expect(runner.run).toHaveBeenLastCalledWith(expect.not.objectContaining({ model: 'grok-build' }));
@@ -589,6 +592,39 @@ describe('RemoteCliAgentTool', () => {
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('/srv/apps/calan-calendar/ui-checks/desktop.png');
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('UI check passed.');
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('Updated the calendar UI.');
+  });
+
+  test('does not reuse prior sessions or jobs when the requested target changes', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Continue the Penguin deployment on the corrected server.',
+      targetId: 'k3s-secondary',
+      cwd: '/opt/kimibuilt',
+    }, {
+      session: {
+        controlState: {
+          remoteCliAgent: {
+            sessionId: 'remote-primary-session',
+            mcpSessionId: 'mcp-primary-session',
+            remoteCodeJobId: 'ragent_primary_job',
+            targetId: 'k3s-prod',
+            cwd: '/opt/kimibuilt',
+            publicHost: 'penguin.demoserver2.buzz',
+          },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      targetId: 'k3s-secondary',
+      cwd: '/opt/kimibuilt',
+    }));
+    const observedParams = runner.run.mock.calls[0][0];
+    expect(observedParams.sessionId).toBeUndefined();
+    expect(observedParams.mcpSessionId).toBeUndefined();
+    expect(observedParams.jobId).toBeUndefined();
   });
 
   test('does not blindly reuse prior remote context when the task names a different domain', async () => {
