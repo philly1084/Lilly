@@ -5590,9 +5590,15 @@ function summarizeRemoteCliAgentDirectResult(data = {}) {
     return lines.join(' ');
 }
 
+function normalizeRemoteCliProjectDomainAliases(value = '') {
+    return String(value || '').replace(/\bdemosever2\.buzz\b/gi, 'demoserver2.buzz');
+}
+
 function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {}) {
-    const currentRequest = String(prompt || '').trim();
-    const priorTask = unwrapRemoteCliAgentDirectTask(priorAgentState?.lastTask);
+    const currentRequest = normalizeRemoteCliProjectDomainAliases(prompt).trim();
+    const priorTask = normalizeRemoteCliProjectDomainAliases(
+        unwrapRemoteCliAgentDirectTask(priorAgentState?.lastTask),
+    ).trim();
     const needsProjectRecovery = hasRemoteCliProjectRecoveryIntent(currentRequest);
     const projectRecoveryRequirement = needsProjectRecovery
         ? [
