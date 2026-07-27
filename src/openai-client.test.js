@@ -3245,6 +3245,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
             }));
             expect(params.task).toContain('Project recovery requirement:');
             expect(params.task).toContain('Build and deploy the Penguin site.');
+            expect(params.task).toContain('penguin.demoserver2.buzz');
+            expect(params.task).not.toContain('penguin.demosever2.buzz');
             expect((params.task.match(/Original task:/g) || [])).toHaveLength(1);
         } finally {
             config.remoteCliMcp.targetHostMap = originalTargetHostMap;
