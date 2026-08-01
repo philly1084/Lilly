@@ -39,6 +39,16 @@ function getRequestOriginCandidates(req = {}) {
     return candidates;
 }
 
+function isOpaqueSandboxPreviewRequest(req = {}) {
+    const method = String(req.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+        return false;
+    }
+    const requestPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+    return /^\/api\/sandbox-workspaces\/[a-zA-Z0-9_-]+\/preview(?:-access\/[^/]+)?(?:\/|$)/.test(requestPath)
+        || /^\/api\/sandbox-libraries\//.test(requestPath);
+}
+
 function buildCorsOptions(securityConfig = config.security, req = null) {
     const allowedOrigins = new Set(
         (securityConfig?.allowedOrigins || [])
@@ -58,6 +68,7 @@ function buildCorsOptions(securityConfig = config.security, req = null) {
                 allowedOrigins.has('*')
                 || allowedOrigins.has(normalizedOrigin)
                 || requestOriginCandidates.has(normalizedOrigin)
+                || (normalizedOrigin === 'null' && isOpaqueSandboxPreviewRequest(req || {}))
             ) {
                 return callback(null, true);
             }
@@ -132,5 +143,6 @@ module.exports = {
     buildCorsOptions,
     createRateLimit,
     getRequestOriginCandidates,
+    isOpaqueSandboxPreviewRequest,
     isToolInvokePath,
 };

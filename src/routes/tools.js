@@ -245,6 +245,17 @@ function buildK3sFeedbackReadiness(runner = null) {
 }
 
 function buildToolRuntime(toolId, options = {}) {
+  if (toolId === 'game-studio') {
+    return {
+      configured: config.gameStudio?.enabled === true,
+      provider: 'lilly-engine',
+      engineVersion: '0.1.0',
+      projectSchema: 'LillyProject/v1',
+      commandSchema: 'LillyCommand/v1',
+      persistenceAvailable: Boolean(options.gameStudioService?.initialized),
+      publishing: 'managed-app-gitlab-k3s',
+    };
+  }
   if (toolId === 'remote-cli-agent') {
     const publicConfig = remoteCliAgentsSdkRunner.getPublicConfig();
     const runner = remoteRunnerService.getHealthyRunner('', { requiredProfile: 'deploy' });
@@ -658,6 +669,10 @@ function isToolVisibleByRuntime(toolId, runtime = null, support = null) {
     return Boolean(support?.runtime?.ready || runtime?.configured);
   }
 
+  if (toolId === 'game-studio') {
+    return Boolean(runtime?.configured);
+  }
+
   if (toolId === 'k3s-deploy') {
     return Boolean(support?.runtime?.ready || runtime?.configured);
   }
@@ -683,7 +698,7 @@ async function buildFrontendToolCatalog({ req, category = null, sessionId = null
     const docMetadata = await getToolDocMetadata(tool.id);
     const runtime = reconcileRuntimeWithSupport(
       tool.id,
-      buildToolRuntime(tool.id, { managedAppService }),
+      buildToolRuntime(tool.id, { managedAppService, gameStudioService: req.app?.locals?.gameStudioService || null }),
       docMetadata.support,
     );
     const support = reconcileSupportWithRuntime(tool.id, docMetadata.support, runtime);
@@ -757,6 +772,7 @@ function buildToolExecutionContext(toolManager, req, sessionId = null, session =
     now,
     toolManager,
     managedAppService: req.app?.locals?.managedAppService || null,
+    gameStudioService: req.app?.locals?.gameStudioService || null,
     tools: {
       get: (toolId) => toolManager.getTool(toolId),
     },

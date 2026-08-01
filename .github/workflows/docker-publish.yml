@@ -39,6 +39,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build and verify Lilly Game Studio
+        run: |
+          npm run build:game-studio:all
+          node --check src/game-studio/service.js
+          node --check src/game-studio/player-bundle.js
+          node --check src/routes/game-studio.js
+          node --check src/agent-sdk/tools/categories/design/GameStudioTool.js
+          node --check bin/lilly-game-studio-smoke.js
+          npm run test:game-studio
+          npm test -- --runInBand --coverage=false --runTestsByPath \
+            src/middleware/security.test.js \
+            src/sandbox-browser-libraries.test.js \
+            src/routes/sandbox-libraries.test.js
+
       - name: Verify remote agent artifact handoff
         run: |
           node --check src/remote-cli/agent-handoff.js
@@ -116,11 +130,14 @@ jobs:
           tar -czf "dist/kimibuilt-${GITHUB_SHA}.tar.gz" \
             src \
             frontend \
+            packages \
             k8s \
             bin/kimibuilt-ui-check.js \
+            bin/lilly-game-studio-smoke.js \
             scripts/canary-remote-agent-artifact-loop.js \
             scripts/canary-sandbox-agent-attach.js \
             docs/remote-agent-artifact-handoff.md \
+            docs/game-studio \
             package.json \
             package-lock.json \
             Dockerfile \

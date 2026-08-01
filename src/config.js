@@ -665,6 +665,12 @@ const config = {
         dataDir: persistenceDataDir,
     },
 
+    gameStudio: {
+        enabled: parseOptionalBoolean(process.env.GAME_STUDIO_ENABLED) ?? false,
+        experimentalWebGPU: parseOptionalBoolean(process.env.GAME_STUDIO_WEBGPU_EXPERIMENTAL) ?? false,
+        publishBaseDomain: process.env.GAME_STUDIO_PUBLISH_BASE_DOMAIN || 'demoserver2.buzz',
+    },
+
     artifacts: {
         browserPath: process.env.ARTIFACT_BROWSER_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || '',
         browserArgs: process.env.ARTIFACT_BROWSER_ARGS || '',

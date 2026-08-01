@@ -1,0 +1,76 @@
+import { useEffect, useState } from 'react';
+import { COMPONENT_DEFINITIONS } from '../../../../packages/lilly-engine/core/src';
+import type { LillyComponent, LillyComponentType, Vec3 } from '../types';
+import { currentEntity, useStudioStore } from '../store';
+import { Icon } from './Icon';
+
+function NumberField({ label, value, onCommit, step = 0.1 }: { label: string; value: number; onCommit(value: number): void; step?: number }) {
+  const [draft, setDraft] = useState(String(Number(value.toFixed(3))));
+  useEffect(() => setDraft(String(Number(value.toFixed(3)))), [value]);
+  return <label className="number-field"><span>{label}</span><input type="number" value={draft} step={step} onChange={(event) => setDraft(event.target.value)} onBlur={() => { const parsed = Number(draft); if (Number.isFinite(parsed) && parsed !== value) onCommit(parsed); else setDraft(String(value)); }}/></label>;
+}
+
+function VectorEditor({ label, value, onCommit }: { label: string; value: Vec3; onCommit(value: Vec3): void }) {
+  return <div className="property-row vector-row"><span className="property-label">{label}</span><div className="vector-fields">{(['x', 'y', 'z'] as const).map((axis) => <NumberField key={axis} label={axis.toUpperCase()} value={Number(value?.[axis] || 0)} onCommit={(next) => onCommit({ ...value, [axis]: next })}/>)}</div></div>;
+}
+
+function ComponentBody({ component, onChange }: { component: LillyComponent; onChange(next: LillyComponent): void }) {
+  const data = component.data as Record<string, unknown>;
+  if (component.type === 'Transform') return <>
+    <VectorEditor label="Position" value={data.position as Vec3} onCommit={(value) => onChange({ ...component, data: { ...data, position: value } })}/>
+    <VectorEditor label="Rotation" value={data.rotation as Vec3} onCommit={(value) => onChange({ ...component, data: { ...data, rotation: value } })}/>
+    <VectorEditor label="Scale" value={data.scale as Vec3} onCommit={(value) => onChange({ ...component, data: { ...data, scale: value } })}/>
+  </>;
+  if (component.type === 'MeshRenderer') {
+    const material = (data.material || {}) as Record<string, unknown>;
+    return <>
+      <div className="property-row"><span className="property-label">Geometry</span><select value={String(data.geometry || 'box')} onChange={(event) => onChange({ ...component, data: { ...data, geometry: event.target.value } })}><option>box</option><option>sphere</option><option>capsule</option><option>cylinder</option><option>octahedron</option><option>torus</option></select></div>
+      <div className="property-row"><span className="property-label">Color</span><div className="color-input"><input type="color" value={String(material.color || '#8ea7c4')} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, color: event.target.value } } })}/><code>{String(material.color || '#8ea7c4')}</code></div></div>
+      <div className="property-row"><span className="property-label">Roughness</span><input className="range" type="range" min="0" max="1" step="0.05" value={Number(material.roughness ?? 0.65)} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, roughness: Number(event.target.value) } } })}/><span className="range-value">{Number(material.roughness ?? 0.65).toFixed(2)}</span></div>
+    </>;
+  }
+  if (component.type === 'Light') return <>
+    <div className="property-row"><span className="property-label">Type</span><select value={String(data.kind || 'directional')} onChange={(event) => onChange({ ...component, data: { ...data, kind: event.target.value } })}><option>directional</option><option>point</option><option>spot</option><option>hemisphere</option></select></div>
+    <div className="property-row"><span className="property-label">Color</span><input type="color" value={String(data.color || '#ffffff')} onChange={(event) => onChange({ ...component, data: { ...data, color: event.target.value } })}/></div>
+    <div className="property-row"><span className="property-label">Intensity</span><NumberField label="" value={Number(data.intensity || 0)} step={0.5} onCommit={(value) => onChange({ ...component, data: { ...data, intensity: value } })}/></div>
+  </>;
+  if (component.type === 'RigidBody') return <>
+    <div className="property-row"><span className="property-label">Body type</span><select value={String(data.bodyType || 'dynamic')} onChange={(event) => onChange({ ...component, data: { ...data, bodyType: event.target.value } })}><option value="dynamic">Dynamic</option><option value="fixed">Fixed</option><option value="kinematic-position">Kinematic</option></select></div>
+    <div className="property-row"><span className="property-label">Mass</span><NumberField label="kg" value={Number(data.mass || 1)} onCommit={(value) => onChange({ ...component, data: { ...data, mass: value } })}/></div>
+  </>;
+  if (component.type === 'Collider') return <>
+    <div className="property-row"><span className="property-label">Shape</span><select value={String(data.shape || 'box')} onChange={(event) => onChange({ ...component, data: { ...data, shape: event.target.value } })}><option>box</option><option>sphere</option><option>capsule</option><option>cylinder</option></select></div>
+    <label className="check-row"><input type="checkbox" checked={data.sensor === true} onChange={(event) => onChange({ ...component, data: { ...data, sensor: event.target.checked } })}/><span>Is trigger</span></label>
+  </>;
+  if (component.type === 'Blueprint') return <div className="property-row"><span className="property-label">Graph</span><code className="asset-reference">{String(data.graphId || 'Not assigned')}</code></div>;
+  if (component.type === 'Script') return <><div className="property-row"><span className="property-label">Sandbox</span><span className="security-pill">Opaque origin</span></div><div className="capability-list">{(data.capabilities as string[] || []).map((capability) => <code key={capability}>{capability}</code>)}</div></>;
+  return <pre className="component-json">{JSON.stringify(data, null, 2)}</pre>;
+}
+
+function ComponentCard({ component, entityId }: { component: LillyComponent; entityId: string }) {
+  const [open, setOpen] = useState(true);
+  const { setComponent, removeComponent } = useStudioStore();
+  return <section className="component-card">
+    <header><button type="button" className="component-title" onClick={() => setOpen((value) => !value)}><span>{open ? '▾' : '▸'}</span><Icon name={component.type === 'Blueprint' ? 'blueprint' : component.type === 'Script' ? 'code' : component.type === 'Light' ? 'light' : 'cube'} size={14}/><strong>{component.type}</strong></button><button type="button" className="icon-button subtle" onClick={() => removeComponent(entityId, component.type)} disabled={component.type === 'Transform'} title="Remove component"><Icon name="dots" size={14}/></button></header>
+    {open && <div className="component-content"><ComponentBody component={component} onChange={(next) => setComponent(entityId, next)}/></div>}
+  </section>;
+}
+
+export function Inspector() {
+  const current = useStudioStore((state) => state.current);
+  const selectedEntityId = useStudioStore((state) => state.selectedEntityId);
+  const entity = currentEntity(current, selectedEntityId);
+  const { renameEntity, addComponent } = useStudioStore();
+  const [name, setName] = useState(entity?.name || '');
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => setName(entity?.name || ''), [entity?.id, entity?.name]);
+  if (!entity) return <aside className="inspector-panel studio-panel"><div className="panel-heading"><div><span className="panel-kicker">Properties</span><strong>Inspector</strong></div></div><div className="panel-empty tall"><Icon name="cube" size={28}/><strong>No entity selected</strong><span>Select an entity in the hierarchy or viewport.</span></div></aside>;
+  const available = (Object.keys(COMPONENT_DEFINITIONS) as LillyComponentType[]).filter((type) => !entity.components.some((component) => component.type === type));
+  return <aside className="inspector-panel studio-panel">
+    <div className="panel-heading"><div><span className="panel-kicker">Properties</span><strong>Inspector</strong></div><button type="button" className="icon-button"><Icon name="dots"/></button></div>
+    <div className="entity-header"><div className="entity-avatar"><Icon name="cube"/></div><div><input className="entity-name-input" value={name} onChange={(event) => setName(event.target.value)} onBlur={() => { if (name.trim() && name.trim() !== entity.name) renameEntity(entity.id, name.trim()); else setName(entity.name); }}/><small>{entity.id}</small></div></div>
+    <div className="tag-list">{entity.tags.map((tag) => <span key={tag}>{tag}</span>)}<button type="button">+ tag</button></div>
+    <div className="component-scroll">{entity.components.map((component) => <ComponentCard key={component.type} component={component} entityId={entity.id}/>)}</div>
+    <div className="add-component-wrap"><button type="button" className="add-component-button" onClick={() => setAddOpen((value) => !value)}><Icon name="add"/>Add component</button>{addOpen && <div className="add-component-menu surface-popover"><div className="menu-label">Component registry</div>{available.map((type) => <button key={type} type="button" onClick={() => { addComponent(entity.id, { type, enabled: true, data: structuredClone(COMPONENT_DEFINITIONS[type].defaults) }); setAddOpen(false); }}><span>{type}</span><small>{type === 'Script' ? 'Sandboxed' : 'Lilly Engine'}</small></button>)}</div>}</div>
+  </aside>;
+}

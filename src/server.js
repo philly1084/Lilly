@@ -53,6 +53,7 @@ const giteaIntegrationsRouter = require('./routes/integrations-gitea');
 const gitlabIntegrationsRouter = require('./routes/integrations-gitlab');
 const providerSessionsRouter = require('./routes/provider-sessions');
 const remoteAgentTasksRouter = require('./routes/remote-agent-tasks');
+const gameStudioRouter = require('./routes/game-studio');
 const DashboardController = require('./routes/admin/dashboard.controller');
 const { getToolManager } = require('./agent-sdk/tools');
 const { setDashboardController } = require('./admin/runtime-monitor');
@@ -105,6 +106,7 @@ app.use(helmet({
 }));
 app.use((req, res, next) => cors(buildCorsOptions(config.security, req))(req, res, next));
 app.use(express.json({ limit: '10mb' }));
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 const loginRateLimit = createRateLimit({
     name: 'login',
@@ -374,10 +376,22 @@ registerFrontendEntryHtmlRoutes(app, '/canvas', path.join(frontendPath, 'canvas-
     text: '#111827',
     accent: '#7c3aed',
 });
+if (config.gameStudio.enabled) {
+    registerFrontendEntryHtmlRoutes(app, '/game-studio', path.join(frontendPath, 'game-studio', 'dist', 'index.html'), {
+        label: 'Lilly Game Studio',
+        fullPath: `/game-studio/index.html?${FRONTEND_FULL_ENTRY_QUERY}=1`,
+        background: '#070b10',
+        text: '#e6edf4',
+        accent: '#38bdf8',
+    });
+}
 app.use('/web-chat', express.static(path.join(frontendPath, 'web-chat'), buildFrontendStaticOptions()));
 app.use('/web-cli', express.static(path.join(frontendPath, 'web-cli'), buildFrontendStaticOptions()));
 app.use('/notes', express.static(path.join(frontendPath, 'notes-notion'), buildFrontendStaticOptions()));
 app.use('/canvas', express.static(path.join(frontendPath, 'canvas-excalidraw'), buildFrontendStaticOptions()));
+if (config.gameStudio.enabled) {
+    app.use('/game-studio', express.static(path.join(frontendPath, 'game-studio', 'dist'), buildFrontendStaticOptions()));
+}
 app.use('/podcast-video', express.static(path.join(frontendPath, 'podcast-video'), buildFrontendStaticOptions()));
 app.use('/admin', express.static(path.join(frontendPath, 'agent-dashboard'), buildFrontendStaticOptions()));
 app.use('/async-lab', express.static(path.join(frontendPath, 'async-lab'), buildFrontendStaticOptions()));
@@ -447,6 +461,10 @@ app.get('/', (_req, res) => {
             <h3>Canvas</h3>
             <p>Visual canvas with Lilly drawing tools</p>
         </a>
+        ${config.gameStudio.enabled ? `<a href="/game-studio/" class="card" style="border-color: #38bdf8;">
+            <h3>Lilly Game Studio</h3>
+            <p>3D browser engine, Blueprints, playtests, builds, and publishing</p>
+        </a>` : ''}
         <a href="/podcast-video/" class="card">
             <h3>Podcast Wave</h3>
             <p>Turn podcast audio into waveform MP4</p>
@@ -506,6 +524,7 @@ app.use('/api/podcast', podcastRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/artifacts', artifactsRouter);
 app.use('/api/sandbox-workspaces', sandboxWorkspacesRouter);
+app.use('/api/game-studio', gameStudioRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/templates', templatesRouter);
 app.use('/api/design-resources', designResourcesRouter);
@@ -685,6 +704,18 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             agentRunService,
         });
         app.locals.managedAppService = new ManagedAppService();
+        if (config.gameStudio.enabled) {
+            const { GameStudioService } = require('./game-studio/service');
+            app.locals.gameStudioService = new GameStudioService({
+                complete: openaiClient.complete,
+                managedAppService: app.locals.managedAppService,
+            });
+            await app.locals.gameStudioService.initialize();
+            console.log('[Boot] Lilly Game Studio enabled');
+        } else {
+            app.locals.gameStudioService = null;
+            console.log('[Boot] Lilly Game Studio standby');
+        }
         app.locals.agentWorkloadRunner = new AgentWorkloadRunner({
             workloadService: app.locals.agentWorkloadService,
         });

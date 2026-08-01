@@ -61,6 +61,7 @@ const BASE_SHARED_TOOL_IDS = Object.freeze([
     'skill-create',
     'skill-update',
     'code-sandbox',
+    'game-studio',
     ...PROMOTED_LOCAL_TOOL_IDS,
 ]);
 
