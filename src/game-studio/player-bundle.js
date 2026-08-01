@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 
-const PLAYER_JAVASCRIPT = String.raw`import * as THREE from '/api/sandbox-libraries/three/three.module.js';
+const PLAYER_JAVASCRIPT = String.raw`import * as THREE from './vendor/three.module.js';
 
 const canvas = document.querySelector('#game-canvas');
 const loading = document.querySelector('#loading');
@@ -357,15 +357,24 @@ async function hashFile(filePath) {
 
 async function writeImmutableBuild({ directory, project, graphIr }) {
   await fs.mkdir(directory, { recursive: false });
+  const threeBuildDirectory = path.dirname(require.resolve('three'));
+  const [threeModule, threeCore] = await Promise.all([
+    fs.readFile(path.join(threeBuildDirectory, 'three.module.js'), 'utf8'),
+    fs.readFile(path.join(threeBuildDirectory, 'three.core.js'), 'utf8'),
+  ]);
   const files = [
     ['index.html', buildIndexHtml(project)],
     ['player.js', PLAYER_JAVASCRIPT],
+    ['vendor/three.module.js', threeModule],
+    ['vendor/three.core.js', threeCore],
     ['project.json', `${JSON.stringify(project, null, 2)}\n`],
     ['blueprints.json', `${JSON.stringify(graphIr, null, 2)}\n`],
     ['build-manifest.json', `${JSON.stringify({ schema: 'LillyPlayerBundle/v1', projectId: project.id, revision: project.revision, engineVersion: project.engineVersion, generatedAt: new Date().toISOString() }, null, 2)}\n`],
   ];
   for (const [relativePath, content] of files) {
-    await fs.writeFile(path.join(directory, relativePath), content, { encoding: 'utf8', flag: 'wx' });
+    const targetPath = path.join(directory, relativePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, content, { encoding: 'utf8', flag: 'wx' });
   }
   return Promise.all(files.map(async ([relativePath]) => ({ path: relativePath, ...await hashFile(path.join(directory, relativePath)) })));
 }
