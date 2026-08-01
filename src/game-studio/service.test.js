@@ -94,6 +94,35 @@ describe('GameStudioService', () => {
     await expect(fs.writeFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'overwrite', { flag: 'wx' })).rejects.toMatchObject({ code: 'EEXIST' });
   });
 
+  test('publishes immutable player files under the managed-app public root', async () => {
+    const created = await service.createProject({ name: 'Published Arena', slug: 'published-arena' }, 'phil');
+    const build = await service.createBuild(created.project.id, { projectRevision: 1 }, 'phil');
+    const createApp = jest.fn(async () => ({
+      app: { id: 'managed-app-1', slug: 'published-arena', status: 'building' },
+      buildRun: { id: 'build-run-1' },
+    }));
+    const managedAppService = { isAvailable: () => true, createApp };
+
+    const published = await service.publishBuild(build.id, {
+      publicHost: 'published-arena.demoserver2.buzz',
+    }, 'phil', managedAppService);
+
+    const input = createApp.mock.calls[0][0];
+    expect(input.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+      'public/index.html',
+      'public/player.js',
+      'public/project.json',
+      'public/blueprints.json',
+      'public/build-manifest.json',
+    ]));
+    expect(input.files).not.toEqual(expect.arrayContaining([expect.objectContaining({ path: 'index.html' })]));
+    expect(input.files.find((file) => file.path === 'public/index.html').content).toContain('id="game-canvas"');
+    expect(published).toMatchObject({
+      build: { status: 'published', publicUrl: 'https://published-arena.demoserver2.buzz' },
+      previewPreservedUntilHttpsVerified: true,
+    });
+  });
+
   test('rolls an earlier snapshot forward as a new revision', async () => {
     const created = await service.createProject({ name: 'Rollback' }, 'phil');
     await service.applyCommands(created.project.id, {

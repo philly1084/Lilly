@@ -498,7 +498,10 @@ class GameStudioService {
     }
     const deployer = managedAppService || this.managedAppService;
     if (!deployer?.isAvailable?.()) throw Object.assign(new Error('Publishing requires the configured PostgreSQL and managed-app/GitLab deployment lane'), { statusCode: 503, code: 'PUBLISH_LANE_UNAVAILABLE', previewUrl: build.previewUrl });
-    const files = await Promise.all(build.files.map(async (file) => ({ path: file.path, content: await fs.readFile(path.join(this.buildRoot, build.workspaceId, file.path), 'utf8') })));
+    const files = await Promise.all(build.files.map(async (file) => ({
+      path: `public/${String(file.path).replace(/^public\//, '')}`,
+      content: await fs.readFile(path.join(this.buildRoot, build.workspaceId, file.path), 'utf8'),
+    })));
     const publicHost = String(input.publicHost || `${projectResult.project.slug}.demoserver2.buzz`).trim().toLowerCase();
     if (!/^[a-z0-9-]+\.demoserver2\.buzz$/.test(publicHost)) throw Object.assign(new Error('Game Studio publishes to a concrete *.demoserver2.buzz host'), { statusCode: 400, code: 'INVALID_PUBLIC_HOST' });
     const managedResult = await deployer.createApp({
