@@ -53,7 +53,7 @@ class ManagedAppStore {
         };
     }
 
-    mapBuildRun(row = {}) {
+    mapBuildRun(row = null) {
         if (!row) {
             return null;
         }
