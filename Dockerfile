@@ -17,7 +17,22 @@ RUN set -eux; \
   npm cache clean --force
 
 # ================================
-# Stage 2: BuildKit client
+# Stage 2: Lilly Engine and editor build
+# ================================
+FROM node:24-bookworm-slim AS game-studio-builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* .npmrc ./
+# Vite/Rollup ships its platform binary as an optional dependency. The build
+# stage must retain optional packages even though the runtime stage omits them.
+RUN npm ci
+COPY packages/ ./packages/
+COPY frontend/game-studio/ ./frontend/game-studio/
+RUN npm run build:game-studio:all
+
+# ================================
+# Stage 3: BuildKit client
 # ================================
 FROM docker.io/moby/buildkit:v0.17.2 AS buildkit
 
@@ -115,9 +130,12 @@ COPY scripts/canary-remote-agent-artifact-loop.js ./scripts/canary-remote-agent-
 COPY scripts/canary-sandbox-agent-attach.js ./scripts/canary-sandbox-agent-attach.js
 COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
+COPY packages/ ./packages/
+COPY --from=game-studio-builder /app/packages/lilly-engine/dist ./packages/lilly-engine/dist
 # Keep remote CLI runner code on a distinct layer; stale copies produce misleading timeout text.
 COPY src/remote-cli/ ./src/remote-cli/
 COPY frontend/ ./frontend/
+COPY --from=game-studio-builder /app/frontend/game-studio/dist ./frontend/game-studio/dist
 COPY data/skills/ ./data/skills/
 COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
 COPY data/piper/voices/manifest.json ./data/piper/voices/manifest.json

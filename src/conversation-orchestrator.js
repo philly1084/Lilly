@@ -1933,6 +1933,12 @@ function buildScoredCandidateToolMap({
         allowedToolIds.map((toolId) => [toolId, { score: 0, reasons: [] }]),
     );
     const normalizedPrompt = String(prompt || '').toLowerCase();
+    const normalizedGameObjective = `${normalizedPrompt} ${String(objective || '').toLowerCase()}`;
+    const hasGameTarget = /\b(game|gameplay|level|scene|player controller|blueprint|collectible|enemy|boss|arena)\b/.test(normalizedGameObjective);
+    const hasDisposableGameIntent = /\b(disposable|throwaway|quick prototype|tiny prototype|one-off|sketch|code sandbox|sandbox only)\b/.test(normalizedGameObjective);
+    const hasDurableGameStudioIntent = hasGameTarget
+        && !hasDisposableGameIntent
+        && /\b(build|create|make|edit|develop|author|project|studio|engine|save|playtest|publish|deploy|rollback|blueprint|component|scene|level)\b/.test(normalizedGameObjective);
     const hasStructuredRemoteWorkbenchIntent = /\b(remote workbench|repo-map|repo map|changed files?|grep|read file|write file|apply patch|focused test|remote build|remote test|deployment logs?|rollout|deploy verify|deployment verification)\b/.test(normalizedPrompt);
     const groundedResearch = hasGroundedResearchToolResult(toolEvents);
     const classificationConfidence = Number(classification?.confidence || 0);
@@ -2107,6 +2113,13 @@ function buildScoredCandidateToolMap({
         adjustCandidateToolScore(scoreMap, 'code-sandbox', 0.95, 'The active role pipeline requires a previewable sandbox project for website, dashboard, app, or game output.');
         adjustCandidateToolScore(scoreMap, DOCUMENT_WORKFLOW_TOOL_ID, 1.05, 'The active role pipeline should build the deliverable through the document workflow with sandbox output.');
         adjustCandidateToolScore(scoreMap, 'web-scrape', 0.45, 'The QA role can use Playwright browser screenshots for desktop and mobile UI self-checks.');
+    }
+    if (hasDurableGameStudioIntent) {
+        adjustCandidateToolScore(scoreMap, 'game-studio', 1.85, 'Durable game authoring belongs in Lilly Game Studio with saved scenes, revision-safe commands, Blueprints, playtests, and immutable builds.');
+        adjustCandidateToolScore(scoreMap, 'code-sandbox', -1.15, 'Keep code-sandbox for explicitly disposable game prototypes rather than durable Game Studio projects.');
+        adjustCandidateToolScore(scoreMap, DOCUMENT_WORKFLOW_TOOL_ID, -0.7, 'A durable game project should mutate Lilly project contracts instead of generating a prompt-only frontend artifact.');
+    } else if (hasGameTarget && hasDisposableGameIntent) {
+        adjustCandidateToolScore(scoreMap, 'code-sandbox', 1.1, 'The user explicitly asked for a disposable game prototype.');
     }
     if (workflowNeedsRepoLane && remoteToolId) {
         adjustCandidateToolScore(scoreMap, remoteToolId, 1.05, 'Repository work in remote-build mode should use the remote CLI lane.');
@@ -9456,7 +9469,7 @@ function buildPlannerPolicyPacks({
             ? [
                 'Use `document-workflow generate-suite` with `buildMode:"sandbox"` or `useSandbox:true` for previewable website/dashboard/front-end/game/multi-step app artifacts so the builder produces a sandbox project instead of only a template. Treat this as a Symphony build-review-iterate loop, not a one-shot template export.',
                 `For sandbox website/dashboard/front-end/game artifacts, require the builder to follow this frontend quality bar:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
-                'Treat listed controls and effects as examples, not requirements. The plan should let the builder create a Unity-like agent build workbench when the user wants a structured CLI/build flow: phases, commands, hook points, scripts/functions, object factories, QA gates, and repair/redesign decisions.',
+                'Route durable game projects to the `game-studio` tool and LillyProject/v1 contracts. Use `code-sandbox` only for explicitly disposable prototypes. Lilly Game Studio owns scenes, components, typed Blueprints, revision-safe commands, playtests, immutable builds, publishing, and rollback.',
                 'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus complete previewable `files` or non-empty `code`. `params.prompt` alone is invalid because `code-sandbox` persists supplied files; it does not generate React/Vite code from a prompt. Use `document-workflow generate-suite` with `buildMode:"sandbox"` when generation from a prompt is needed. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
                 'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
                 'After fallback or screenshot evidence, explicitly choose repair, redesign, ask, or ready. Use repair for broken implementation or missing assets when the visual direction is sound; use redesign when the output still feels generic, samey, cheap, or mismatched. Communicate that decision in the next step or final response.',

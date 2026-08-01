@@ -71,7 +71,7 @@ describe('agent role frontend sandbox detection', () => {
     expect(promptText).toContain('iteration pass after the first render');
     expect(promptText).toContain('metadata.handoff');
     expect(promptText).toContain('<frontend_agent_build_workbench>');
-    expect(promptText).toContain('Unity-like mental model');
+    expect(promptText).toContain('Lilly Game Studio model');
     expect(promptText).toContain('metadata.handoff.buildWorkbench');
     expect(promptText).toContain('scripts/functions');
     expect(promptText).toContain('<frontend_repair_redesign_gate>');

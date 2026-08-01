@@ -226,6 +226,7 @@ const { DockerExecTool } = require('./categories/ssh/DockerExecTool');
 const { K3sDeployTool } = require('./categories/ssh/K3sDeployTool');
 const { RemoteCliAgentTool } = require('./categories/ssh/RemoteCliAgentTool');
 const { GitLocalTool } = require('./categories/system/GitLocalTool');
+const { GameStudioTool } = require('./categories/design/GameStudioTool');
 
 function normalizeCandidateUrl(value = '') {
   let candidate = String(value || '').trim();
@@ -5189,6 +5190,7 @@ class ToolManager {
 
     const systemToolInstances = [
       new GitLocalTool(),
+      new GameStudioTool(),
     ];
 
     const skillTools = [

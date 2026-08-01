@@ -45,6 +45,19 @@ describe('sandbox libraries route', () => {
     expect(response.text).toContain('Chart');
   });
 
+  test('serves the complete installed Three.js module pair', async () => {
+    const [moduleResponse, coreResponse] = await Promise.all([
+      request(buildApp()).get('/api/sandbox-libraries/three/three.module.js'),
+      request(buildApp()).get('/api/sandbox-libraries/three/three.core.js'),
+    ]);
+
+    expect(moduleResponse.status).toBe(200);
+    expect(moduleResponse.text).toContain("from './three.core.js'");
+    expect(coreResponse.status).toBe(200);
+    expect(coreResponse.headers['content-type']).toContain('text/javascript');
+    expect(coreResponse.text).toContain('Vector3');
+  });
+
   test('serves the Web CLI document and syntax libraries from same-origin routes', async () => {
     const [highlightResponse, pdfLibResponse, pdfjsResponse] = await Promise.all([
       request(buildApp()).get('/api/sandbox-libraries/highlightjs/highlight.min.js'),

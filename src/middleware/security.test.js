@@ -76,6 +76,33 @@ describe('security middleware', () => {
         expect(response.headers['access-control-allow-origin']).toBe('https://kimibuilt.secdevsolutions.help');
     });
 
+    test('allows opaque-origin reads only for isolated sandbox preview assets', async () => {
+        const app = express();
+        app.use((req, res, next) => cors(buildCorsOptions({ allowedOrigins: [] }, req))(req, res, next));
+        app.get('/api/sandbox-workspaces/game-r1/preview/player.js', (_req, res) => res.type('js').send('export {};'));
+        app.get('/api/sandbox-libraries/three/three.module.js', (_req, res) => res.type('js').send('export {};'));
+        app.post('/api/chat', (_req, res) => res.json({ ok: true }));
+        app.use((err, _req, res, _next) => res.status(err.statusCode || 500).json({ code: err.code }));
+
+        const preview = await request(app)
+            .get('/api/sandbox-workspaces/game-r1/preview/player.js')
+            .set('Origin', 'null')
+            .expect(200);
+        expect(preview.headers['access-control-allow-origin']).toBe('null');
+
+        const library = await request(app)
+            .get('/api/sandbox-libraries/three/three.module.js')
+            .set('Origin', 'null')
+            .expect(200);
+        expect(library.headers['access-control-allow-origin']).toBe('null');
+
+        const api = await request(app)
+            .post('/api/chat')
+            .set('Origin', 'null')
+            .expect(403);
+        expect(api.body.code).toBe('cors_origin_denied');
+    });
+
     test('rate limits repeated login attempts', async () => {
         const app = express();
         app.post('/api/auth/login', createRateLimit({

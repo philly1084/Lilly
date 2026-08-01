@@ -51,7 +51,7 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('metadata.handoff');
         expect(instructions).toContain('metadata.buildPipeline');
         expect(instructions).toContain('buildWorkbench');
-        expect(instructions).toContain('Unity-like surface');
+        expect(instructions).toContain('Lilly-style structured surface');
         expect(instructions).toContain('script/function hook');
         expect(instructions).toContain('fallbackGate');
         expect(instructions).toContain('repair|redesign|ask|ready');

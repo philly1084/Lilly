@@ -1,0 +1,7 @@
+{
+  "name": "@lilly/engine-blueprints",
+  "version": "0.1.0",
+  "private": true,
+  "main": "../dist/blueprints/src/index.js",
+  "types": "../dist/blueprints/src/index.d.ts"
+}

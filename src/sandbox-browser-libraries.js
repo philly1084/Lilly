@@ -64,6 +64,11 @@ const LIBRARIES = Object.freeze([
         type: 'module',
       },
       {
+        publicPath: 'three.core.js',
+        packagePaths: ['build/three.core.js'],
+        type: 'module',
+      },
+      {
         publicPrefix: 'addons/',
         packagePrefix: 'examples/jsm/',
         type: 'module',

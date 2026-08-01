@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "core/src/**/*.ts",
+    "renderer-three/src/**/*.ts",
+    "physics-rapier/src/**/*.ts",
+    "blueprints/src/**/*.ts",
+    "runtime/src/**/*.ts"
+  ]
+}

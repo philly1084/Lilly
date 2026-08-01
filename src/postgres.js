@@ -547,6 +547,80 @@ class PostgresManager {
         await this.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_app_build_runs_external_run_id ON managed_app_build_runs(external_run_id) WHERE external_run_id IS NOT NULL');
         await this.query('CREATE INDEX IF NOT EXISTS idx_managed_app_build_runs_commit_sha ON managed_app_build_runs(app_id, commit_sha)');
 
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS game_studio_projects (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                current_revision INTEGER NOT NULL DEFAULT 1,
+                engine_version TEXT NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+        await this.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_game_studio_projects_owner_slug ON game_studio_projects(owner_id, slug)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_game_studio_projects_owner_updated ON game_studio_projects(owner_id, updated_at DESC)');
+
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS game_studio_revisions (
+                project_id TEXT NOT NULL REFERENCES game_studio_projects(id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL,
+                owner_id TEXT NOT NULL,
+                snapshot JSONB NOT NULL,
+                commands JSONB NOT NULL DEFAULT '[]'::jsonb,
+                inverse_commands JSONB NOT NULL DEFAULT '[]'::jsonb,
+                source TEXT NOT NULL DEFAULT 'editor',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (project_id, revision)
+            )
+        `);
+
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS game_studio_builds (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES game_studio_projects(id) ON DELETE CASCADE,
+                owner_id TEXT NOT NULL,
+                project_revision INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                tests JSONB NOT NULL DEFAULT '[]'::jsonb,
+                files JSONB NOT NULL DEFAULT '[]'::jsonb,
+                preview_url TEXT NOT NULL DEFAULT '',
+                public_url TEXT NOT NULL DEFAULT '',
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                published_at TIMESTAMPTZ NULL
+            )
+        `);
+        await this.query('CREATE INDEX IF NOT EXISTS idx_game_studio_builds_project_created ON game_studio_builds(project_id, created_at DESC)');
+
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS game_studio_ai_runs (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES game_studio_projects(id) ON DELETE CASCADE,
+                owner_id TEXT NOT NULL,
+                base_revision INTEGER NOT NULL,
+                prompt TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'proposed',
+                commands JSONB NOT NULL DEFAULT '[]'::jsonb,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS game_studio_events (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES game_studio_projects(id) ON DELETE CASCADE,
+                event_type TEXT NOT NULL,
+                payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+        await this.query('CREATE INDEX IF NOT EXISTS idx_game_studio_events_project_created ON game_studio_events(project_id, created_at DESC)');
+
             this.initialized = true;
             this.unavailableReason = null;
             this.lastError = null;
