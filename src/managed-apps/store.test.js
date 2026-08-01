@@ -124,6 +124,16 @@ describe('ManagedAppStore', () => {
         expect(postgres.query.mock.calls[0][0]).toContain('INSERT INTO managed_app_build_runs');
     });
 
+    test('returns null when an external build run id has no persisted match', async () => {
+        postgres.query.mockResolvedValueOnce({ rows: [] });
+
+        await expect(store.getBuildRunByExternalRunId('89')).resolves.toBeNull();
+        expect(postgres.query).toHaveBeenCalledWith(
+            'SELECT * FROM managed_app_build_runs WHERE external_run_id = $1 LIMIT 1',
+            ['89'],
+        );
+    });
+
     test('updates repo owner and repo name for an existing app', async () => {
         postgres.query
             .mockResolvedValueOnce({
