@@ -1,5 +1,5 @@
 const { BLUEPRINT_SCHEMA, createArenaProject } = require('../../dist/core/src');
-const { GRAPH_IR_SCHEMA, canConnectPins, compileBlueprint, validateBlueprint } = require('../../dist/blueprints/src');
+const { BlueprintExecutor, GRAPH_IR_SCHEMA, canConnectPins, compileBlueprint, validateBlueprint } = require('../../dist/blueprints/src');
 
 describe('Lilly Blueprint compiler', () => {
   test('compiles the canary win condition to validated IR', () => {
@@ -7,8 +7,35 @@ describe('Lilly Blueprint compiler', () => {
     expect(validateBlueprint(graph)).toEqual([]);
     const ir = compileBlueprint(graph);
     expect(ir.schema).toBe(GRAPH_IR_SCHEMA);
-    expect(ir.entrypoints).toEqual(expect.arrayContaining([expect.objectContaining({ event: 'custom' })]));
+    expect(ir.entrypoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'encounter.cleared' }),
+      expect.objectContaining({ event: 'exit.reached' }),
+    ]));
     expect(ir.instructions).toHaveLength(graph.nodes.length);
+  });
+
+  test('secure-and-exit unlocks on encounter progress but completes only on exit', () => {
+    const project = createArenaProject({
+      id: 'secure-blueprint',
+      prompt: 'A compact vault with two combat encounters and three guardians',
+      seed: 'secure-blueprint-seed',
+    });
+    const recipe = project.levelRecipes[0];
+    const messages = [];
+    const executor = new BlueprintExecutor(compileBlueprint(project.blueprints[0]), {
+      entity: { setEnabled() {}, move() {}, destroy() {} },
+      physics: { force() {}, impulse() {} },
+      presentation: { hud(message) { messages.push(message); }, audio() {}, particles() {} },
+      debug: { log() {} },
+    });
+
+    executor.emit('encounter.cleared');
+    expect(messages).toEqual([]);
+    executor.emit('encounter.cleared');
+    expect(messages).toContain('Exit beacon unlocked!');
+    expect(messages).not.toContain(`${recipe.name} secured!`);
+    executor.emit('exit.reached');
+    expect(messages).toContain(`${recipe.name} secured!`);
   });
 
   test('typed pins reject invalid data connections', () => {

@@ -199,6 +199,8 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
   const latest = useRef(simulation.getState());
   const keys = useRef(new Set<string>());
   const attackHeld = useRef(false);
+  const attackQueued = useRef(false);
+  const accumulator = useRef(0);
   const lastStep = useRef(stepToken);
   const previousPlayState = useRef(playState);
   const updateCounter = useRef(0);
@@ -227,9 +229,19 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
   useEffect(() => {
     const down = (event: KeyboardEvent) => keys.current.add(event.code);
     const up = (event: KeyboardEvent) => keys.current.delete(event.code);
+    const release = () => {
+      keys.current.clear();
+      attackHeld.current = false;
+      attackQueued.current = false;
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', release);
+    };
   }, []);
 
   useEffect(() => {
@@ -239,7 +251,9 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
       syncObjects(resetState);
       onState(resetState);
       attackHeld.current = false;
+      attackQueued.current = false;
     }
+    accumulator.current = 0;
     previousPlayState.current = playState;
   }, [playState, simulation]);
 
@@ -248,37 +262,50 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
     const shouldStep = playState === 'playing' || stepToken !== lastStep.current;
     if (!shouldStep) return;
     if (playState === 'paused') lastStep.current = stepToken;
-    const delta = playState === 'playing' ? Math.min(0.05, frameDelta) : fixedStep;
     const playerObject = runtimeObjects.current.get(playerEntity.id);
     if (!playerObject) return;
     const binding = project.inputMap.find((entry) => entry.action === 'Move');
     const [forward = 'KeyW', backward = 'KeyS', left = 'KeyA', right = 'KeyD'] = binding?.keys || [];
     const pressed = (code: string) => keys.current.has(code) || touchKeys.has(code);
     const direction = new THREE.Vector3(Number(pressed(right)) - Number(pressed(left)), 0, Number(pressed(backward)) - Number(pressed(forward)));
-    if (direction.lengthSq() > 0) {
-      direction.normalize();
-      const distance = delta * 6;
-      const nextX = playerObject.position.x + direction.x * distance;
-      if (canStand(world, nextX, playerObject.position.z, latest.current.gates)) playerObject.position.x = nextX;
-      const nextZ = playerObject.position.z + direction.z * distance;
-      if (canStand(world, playerObject.position.x, nextZ, latest.current.gates)) playerObject.position.z = nextZ;
-      playerObject.rotation.y = Math.atan2(direction.x, direction.z);
-    }
+    if (direction.lengthSq() > 0) direction.normalize();
     const attackKeys = project.inputMap.find((entry) => entry.action === 'Attack')?.keys || ['Space', 'Enter'];
     const attacking = touchAttack || attackKeys.some((code) => keys.current.has(code));
-    const state = simulation.step(delta, {
-      playerPosition: { x: playerObject.position.x, y: playerObject.position.y, z: playerObject.position.z },
-      attackPressed: attacking && !attackHeld.current,
-      canOccupy: (position, enemyId) => canStand(world, position.x, position.z, latest.current.gates, 0.4, enemyId),
-    });
+    if (attacking && !attackHeld.current) attackQueued.current = true;
     attackHeld.current = attacking;
-    simulation.drainEvents().forEach((event) => {
-      if (event.type === 'player-respawned') playerObject.position.set(event.position.x, event.position.y, event.position.z);
-      if (event.type === 'player-attacked') playerObject.userData.attackPulse = 0.14;
-    });
+    accumulator.current = playState === 'playing'
+      ? Math.min(0.25, accumulator.current + Math.min(0.05, frameDelta))
+      : fixedStep;
+    let steps = 0;
+    let state = latest.current;
+    while (accumulator.current + Number.EPSILON >= fixedStep && steps < 8) {
+      if (direction.lengthSq() > 0) {
+        const distance = fixedStep * 6;
+        const nextX = playerObject.position.x + direction.x * distance;
+        if (canStand(world, nextX, playerObject.position.z, state.gates)) playerObject.position.x = nextX;
+        const nextZ = playerObject.position.z + direction.z * distance;
+        if (canStand(world, playerObject.position.x, nextZ, state.gates)) playerObject.position.z = nextZ;
+        playerObject.rotation.y = Math.atan2(direction.x, direction.z);
+      }
+      state = simulation.step(fixedStep, {
+        playerPosition: { x: playerObject.position.x, y: playerObject.position.y, z: playerObject.position.z },
+        attackPressed: attackQueued.current,
+        canOccupy: (position, enemyId) => canStand(world, position.x, position.z, state.gates, 0.4, enemyId),
+      });
+      attackQueued.current = false;
+      latest.current = state;
+      simulation.drainEvents().forEach((event) => {
+        if (event.type === 'player-respawned') playerObject.position.set(event.position.x, event.position.y, event.position.z);
+        if (event.type === 'player-attacked') playerObject.userData.attackPulse = 0.14;
+      });
+      accumulator.current -= fixedStep;
+      steps += 1;
+    }
+    if (steps === 8) accumulator.current = 0;
+    if (!steps) return;
     syncObjects(state);
-    updateCounter.current += 1;
-    if (updateCounter.current % 5 === 0 || playState === 'paused') onState(state);
+    updateCounter.current += steps;
+    if (updateCounter.current % 5 < steps || playState === 'paused') onState(state);
   });
   return null;
 }
@@ -346,6 +373,14 @@ export function Viewport() {
       setTouchAttack(false);
     }
   }, [playState]);
+  useEffect(() => {
+    const releaseTouchInput = () => {
+      setTouchKeys(new Set());
+      setTouchAttack(false);
+    };
+    window.addEventListener('blur', releaseTouchInput);
+    return () => window.removeEventListener('blur', releaseTouchInput);
+  }, []);
   if (!scene || !current) return <main className="viewport-panel"><div className="viewport-empty"><Icon name="cube" size={34}/><strong>No entry scene</strong><span>Create or select a scene to start authoring.</span></div></main>;
   const cleared = gameplayState?.encounters.filter((entry) => entry.cleared).length || 0;
   const encounters = gameplayState?.encounters.length || design?.metrics.encounterCount || 0;
@@ -395,7 +430,11 @@ export function Viewport() {
         type="button"
         data-pressed={touchAttack}
         aria-label="Attack"
-        onPointerDown={(event) => { event.preventDefault(); setTouchAttack(true); }}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_error) { /* Pointer capture is optional. */ }
+          setTouchAttack(true);
+        }}
         onPointerUp={() => setTouchAttack(false)}
         onPointerCancel={() => setTouchAttack(false)}
         onLostPointerCapture={() => setTouchAttack(false)}

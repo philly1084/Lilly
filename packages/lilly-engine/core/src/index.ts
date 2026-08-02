@@ -513,53 +513,81 @@ function restoreLevelSnapshot(project: LillyProject, scene: LillyScene, snapshot
   }
 }
 
+function generatedObjectiveGraph(recipe: LillyLevelRecipe, graphId: string): LillyBlueprint {
+  const eventPins = [{ id: 'exec-out', name: 'Then', kind: 'exec' as const, direction: 'output' as const }];
+  const actionPins = [
+    { id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const },
+    { id: 'exec-out', name: 'Then', kind: 'exec' as const, direction: 'output' as const },
+  ];
+  const branchPins = [
+    { id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const },
+    { id: 'true', name: 'True', kind: 'exec' as const, direction: 'output' as const },
+    { id: 'condition', name: 'Condition', kind: 'data' as const, direction: 'input' as const, dataType: 'boolean' as const },
+  ];
+  const variables = [
+    { id: 'score', name: 'Score', dataType: 'number' as const, defaultValue: 0 },
+    { id: 'exitReached', name: 'Exit Reached', dataType: 'boolean' as const, defaultValue: false },
+    { id: 'encountersCleared', name: 'Encounters Cleared', dataType: 'number' as const, defaultValue: 0 },
+  ];
+  const hudWin = {
+    id: 'hud-win',
+    type: 'presentation.hud-message',
+    label: 'Complete Expedition',
+    position: { x: 760, y: 270 },
+    pins: [{ id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const }],
+    config: { message: `${recipe.name} secured!` },
+  };
+  if (recipe.objective === 'reach-exit') {
+    return {
+      schema: BLUEPRINT_SCHEMA,
+      id: graphId,
+      name: 'Expedition Win Condition',
+      variables,
+      nodes: [
+        { id: 'event-exit', type: 'event.custom', label: 'On Exit Reached', position: { x: 40, y: 270 }, pins: eventPins, config: { eventName: 'exit.reached' } },
+        hudWin,
+      ],
+      edges: [{ id: 'exit-win', sourceNodeId: 'event-exit', sourcePinId: 'exec-out', targetNodeId: 'hud-win', targetPinId: 'exec-in' }],
+    };
+  }
+  const secure = recipe.objective === 'secure-and-exit';
+  const progressVariable = secure ? 'encountersCleared' : 'score';
+  const progressTarget = secure ? recipe.gameplay.encounterCount : recipe.gameplay.pickupCount;
+  const progressEvent = secure ? 'encounter.cleared' : 'pickup.collected';
+  const progressLabel = secure ? 'On Encounter Cleared' : 'On Pickup';
+  const addLabel = secure ? 'Add Encounter Clear' : 'Add Score';
+  return {
+    schema: BLUEPRINT_SCHEMA,
+    id: graphId,
+    name: 'Expedition Win Condition',
+    variables,
+    nodes: [
+      { id: 'event-progress', type: 'event.custom', label: progressLabel, position: { x: 40, y: 70 }, pins: eventPins, config: { eventName: progressEvent } },
+      { id: 'add-progress', type: 'variable.add', label: addLabel, position: { x: 270, y: 70 }, pins: actionPins, config: { variableId: progressVariable, amount: 1 } },
+      { id: 'branch-unlock', type: 'flow.branch', label: 'Progress complete?', position: { x: 500, y: 70 }, pins: branchPins, config: { expression: `${progressVariable} >= ${progressTarget}` } },
+      { id: 'hud-unlock', type: 'presentation.hud-message', label: 'Unlock Exit', position: { x: 760, y: 70 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const }], config: { message: 'Exit beacon unlocked!' } },
+      { id: 'event-exit', type: 'event.custom', label: 'On Exit Reached', position: { x: 40, y: 270 }, pins: eventPins, config: { eventName: 'exit.reached' } },
+      { id: 'branch-win', type: 'flow.branch', label: 'Exit unlocked?', position: { x: 500, y: 270 }, pins: branchPins, config: { expression: `${progressVariable} >= ${progressTarget}` } },
+      hudWin,
+    ],
+    edges: [
+      { id: 'progress-add', sourceNodeId: 'event-progress', sourcePinId: 'exec-out', targetNodeId: 'add-progress', targetPinId: 'exec-in' },
+      { id: 'progress-check', sourceNodeId: 'add-progress', sourcePinId: 'exec-out', targetNodeId: 'branch-unlock', targetPinId: 'exec-in' },
+      { id: 'progress-unlock', sourceNodeId: 'branch-unlock', sourcePinId: 'true', targetNodeId: 'hud-unlock', targetPinId: 'exec-in' },
+      { id: 'exit-check', sourceNodeId: 'event-exit', sourcePinId: 'exec-out', targetNodeId: 'branch-win', targetPinId: 'exec-in' },
+      { id: 'exit-win', sourceNodeId: 'branch-win', sourcePinId: 'true', targetNodeId: 'hud-win', targetPinId: 'exec-in' },
+    ],
+  };
+}
+
 function updateGeneratedObjective(project: LillyProject, scene: LillyScene, recipe: LillyLevelRecipe) {
   const graph = findObjectiveGraph(project, scene);
   if (graph) {
-    graph.nodes.forEach((node) => {
-      if (node.type === 'event.custom') {
-        node.label = recipe.objective === 'secure-and-exit'
-          ? 'On Encounter Cleared'
-          : recipe.objective === 'reach-exit'
-            ? 'On Exit Reached'
-            : 'On Pickup';
-        node.config = {
-          ...(node.config || {}),
-          eventName: recipe.objective === 'secure-and-exit'
-            ? 'encounter.cleared'
-            : recipe.objective === 'reach-exit'
-              ? 'exit.reached'
-              : 'pickup.collected',
-        };
-      }
-      if (node.type === 'variable.add' || node.type === 'variable.set') {
-        node.type = recipe.objective === 'reach-exit' ? 'variable.set' : 'variable.add';
-        node.label = recipe.objective === 'secure-and-exit' ? 'Add Encounter Clear' : recipe.objective === 'reach-exit' ? 'Mark Exit Reached' : 'Add Score';
-        node.config = {
-          ...(node.config || {}),
-          variableId: recipe.objective === 'secure-and-exit' ? 'encountersCleared' : recipe.objective === 'reach-exit' ? 'exitReached' : 'score',
-          ...(recipe.objective === 'reach-exit' ? { value: true } : { amount: 1 }),
-        };
-      }
-      if (node.type === 'flow.branch') {
-        node.label = recipe.objective === 'reach-exit'
-          ? 'Exit reached?'
-          : recipe.objective === 'secure-and-exit'
-            ? 'Area secured?'
-            : `Score = ${recipe.gameplay.pickupCount}?`;
-        node.config = {
-          ...(node.config || {}),
-          expression: recipe.objective === 'reach-exit'
-            ? 'exitReached === true'
-            : recipe.objective === 'secure-and-exit'
-              ? `encountersCleared >= ${recipe.gameplay.encounterCount}`
-              : `score >= ${recipe.gameplay.pickupCount}`,
-        };
-      }
-      if (node.type === 'presentation.hud-message') {
-        node.config = { ...(node.config || {}), message: `${recipe.name} secured!` };
-      }
-    });
+    const next = generatedObjectiveGraph(recipe, graph.id);
+    graph.name = next.name;
+    graph.variables = next.variables;
+    graph.nodes = next.nodes;
+    graph.edges = next.edges;
   }
   const rulesEntity = scene.entities.find((entity) => entity.tags.includes('gameplay'));
   const anchor = rulesEntity ? getComponent(rulesEntity, 'UIAnchor') : null;
@@ -926,27 +954,7 @@ export function createProceduralProject(input: {
       ],
     }],
     blueprints: [
-      {
-        schema: BLUEPRINT_SCHEMA,
-        id: graphId,
-        name: 'Expedition Win Condition',
-        variables: [
-          { id: 'score', name: 'Score', dataType: 'number', defaultValue: 0 },
-          { id: 'exitReached', name: 'Exit Reached', dataType: 'boolean', defaultValue: false },
-          { id: 'encountersCleared', name: 'Encounters Cleared', dataType: 'number', defaultValue: 0 },
-        ],
-        nodes: [
-          { id: 'event-pickup', type: 'event.custom', label: recipe.objective === 'secure-and-exit' ? 'On Encounter Cleared' : recipe.objective === 'reach-exit' ? 'On Exit Reached' : 'On Pickup', position: { x: 40, y: 80 }, pins: [{ id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }], config: { eventName: recipe.objective === 'secure-and-exit' ? 'encounter.cleared' : recipe.objective === 'reach-exit' ? 'exit.reached' : 'pickup.collected' } },
-          { id: 'add-score', type: recipe.objective === 'reach-exit' ? 'variable.set' : 'variable.add', label: recipe.objective === 'secure-and-exit' ? 'Add Encounter Clear' : recipe.objective === 'reach-exit' ? 'Mark Exit Reached' : 'Add Score', position: { x: 280, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }], config: recipe.objective === 'secure-and-exit' ? { variableId: 'encountersCleared', amount: 1 } : recipe.objective === 'reach-exit' ? { variableId: 'exitReached', value: true } : { variableId: 'score', amount: 1 } },
-          { id: 'branch-win', type: 'flow.branch', label: recipe.objective === 'secure-and-exit' ? 'Area secured?' : recipe.objective === 'reach-exit' ? 'Exit reached?' : `Score = ${pickupCount}?`, position: { x: 510, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'true', name: 'True', kind: 'exec', direction: 'output' }, { id: 'condition', name: 'Condition', kind: 'data', direction: 'input', dataType: 'boolean' }], config: { expression: recipe.objective === 'secure-and-exit' ? `encountersCleared >= ${recipe.gameplay.encounterCount}` : recipe.objective === 'reach-exit' ? 'exitReached === true' : `score >= ${pickupCount}` } },
-          { id: 'hud-win', type: 'presentation.hud-message', label: 'Unlock Exit', position: { x: 760, y: 20 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }], config: { message: 'Exit beacon unlocked!' } },
-        ],
-        edges: [
-          { id: 'e1', sourceNodeId: 'event-pickup', sourcePinId: 'exec-out', targetNodeId: 'add-score', targetPinId: 'exec-in' },
-          { id: 'e2', sourceNodeId: 'add-score', sourcePinId: 'exec-out', targetNodeId: 'branch-win', targetPinId: 'exec-in' },
-          { id: 'e3', sourceNodeId: 'branch-win', sourcePinId: 'true', targetNodeId: 'hud-win', targetPinId: 'exec-in' },
-        ],
-      },
+      generatedObjectiveGraph(recipe, graphId),
       {
         schema: BLUEPRINT_SCHEMA,
         id: 'player-controller',

@@ -148,7 +148,7 @@ async function run() {
       await page.locator('.node-menu button').filter({ hasText: /^Delay/ }).click();
       const delayNode = page.locator('.react-flow__node').filter({ hasText: /^Delay/ }).last();
       await delayNode.waitFor({ state: 'visible' });
-      const source = page.locator('.react-flow__node').filter({ hasText: /Area secured\?|Score = 5\?/ }).locator('.react-flow__handle.source').first();
+      const source = page.locator('.react-flow__node').filter({ hasText: /Progress complete\?|Exit unlocked\?|Score = 5\?/ }).locator('.react-flow__handle.source').first();
       const target = delayNode.locator('.react-flow__handle.target').first();
       await connectHandles(page, source, target);
       await page.waitForFunction((count) => document.querySelectorAll('.react-flow__edge').length > count, initialEdgeCount, { timeout: 5000 });
