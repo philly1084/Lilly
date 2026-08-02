@@ -39,6 +39,18 @@ describe('GameStudioService', () => {
     await expect(fs.access(service.revisionPath(result.project.id, 1))).resolves.toBeUndefined();
   });
 
+  test('bounds every immutable build workspace and file below the shared sandbox root', () => {
+    expect(service.buildWorkspaceDirectory('game-studio-safe-r1-12345678')).toBe(
+      path.join(service.buildRoot, 'game-studio-safe-r1-12345678'),
+    );
+    expect(() => service.buildWorkspaceDirectory('..')).toThrow(
+      expect.objectContaining({ code: 'BUILD_WORKSPACE_PATH_INVALID' }),
+    );
+    expect(() => service.buildWorkspaceFilePath('game-studio-safe-r1-12345678', '../index.html')).toThrow(
+      expect.objectContaining({ code: 'BUILD_FILE_PATH_INVALID' }),
+    );
+  });
+
   test('imports a compatible web bundle explicitly without silently converting it', async () => {
     const result = await service.createProject({
       name: 'Imported Three Game',

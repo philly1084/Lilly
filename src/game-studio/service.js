@@ -8,7 +8,7 @@ const { randomUUID } = require('crypto');
 
 const { config } = require('../config');
 const { postgres } = require('../postgres');
-const { SANDBOX_ROOT } = require('../sandbox-workspace-storage');
+const { SANDBOX_ROOT, resolveSandboxWorkspacePath } = require('../sandbox-workspace-storage');
 const { parseLenientJson } = require('../utils/lenient-json');
 const { normalizeFrontendBundle } = require('../frontend-bundles');
 const {
@@ -143,6 +143,28 @@ class GameStudioService {
   projectDirectory(projectId) { return path.join(this.root, 'projects', projectId); }
   revisionPath(projectId, revision) { return path.join(this.projectDirectory(projectId), 'revisions', `${revision}.json`); }
   currentPath(projectId) { return path.join(this.projectDirectory(projectId), 'current.json'); }
+
+  buildWorkspaceDirectory(workspaceId) {
+    const directory = resolveSandboxWorkspacePath(workspaceId, this.buildRoot);
+    if (!directory) {
+      throw Object.assign(new Error('Build workspace escaped the configured sandbox root'), {
+        code: 'BUILD_WORKSPACE_PATH_INVALID',
+      });
+    }
+    return directory;
+  }
+
+  buildWorkspaceFilePath(workspaceId, filePath) {
+    const directory = this.buildWorkspaceDirectory(workspaceId);
+    const targetPath = path.resolve(directory, String(filePath || ''));
+    const relative = path.relative(directory, targetPath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw Object.assign(new Error('Build file escaped its immutable workspace'), {
+        code: 'BUILD_FILE_PATH_INVALID',
+      });
+    }
+    return targetPath;
+  }
 
   async ensureInitialized() {
     if (!this.initialized) await this.initialize();
@@ -699,7 +721,7 @@ class GameStudioService {
       if (playtest.status !== 'passed') throw Object.assign(new Error('Build blocked by failed project or Blueprint validation'), { statusCode: 422, code: 'PLAYTEST_FAILED', tests: playtest.tests });
       const id = randomUUID();
       const workspaceId = `game-studio-${slugify(project.slug)}-r${project.revision}-${id.slice(0, 8)}`;
-      const directory = path.join(this.buildRoot, workspaceId);
+      const directory = this.buildWorkspaceDirectory(workspaceId);
       const files = await writeImmutableBuild({
         directory,
         project,
@@ -751,7 +773,7 @@ class GameStudioService {
       }
       const sourceHash = playtest.compiledModules?.sourceHash || '00000000';
       const workspaceId = `game-studio-editor-${project.id}-r${project.revision}-${sourceHash}-${PLAYER_RUNTIME_HASH}`;
-      const directory = path.join(this.buildRoot, workspaceId);
+      const directory = this.buildWorkspaceDirectory(workspaceId);
       const manifestPath = path.join(directory, 'build-manifest.json');
       let cached = false;
       if (await pathExists(manifestPath)) {
@@ -815,7 +837,7 @@ class GameStudioService {
     if (!deployer?.isAvailable?.()) throw Object.assign(new Error('Publishing requires the configured PostgreSQL and managed-app/GitLab deployment lane'), { statusCode: 503, code: 'PUBLISH_LANE_UNAVAILABLE', previewUrl: build.previewUrl });
     const files = await Promise.all(build.files.map(async (file) => ({
       path: `public/${String(file.path).replace(/^public\//, '')}`,
-      content: await fs.readFile(path.join(this.buildRoot, build.workspaceId, file.path), 'utf8'),
+      content: await fs.readFile(this.buildWorkspaceFilePath(build.workspaceId, file.path), 'utf8'),
     })));
     const publicHost = String(input.publicHost || `${projectResult.project.slug}.demoserver2.buzz`).trim().toLowerCase();
     if (!/^[a-z0-9-]+\.demoserver2\.buzz$/.test(publicHost)) throw Object.assign(new Error('Game Studio publishes to a concrete *.demoserver2.buzz host'), { statusCode: 400, code: 'INVALID_PUBLIC_HOST' });
