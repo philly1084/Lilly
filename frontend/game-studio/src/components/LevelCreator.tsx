@@ -5,19 +5,19 @@ import { Icon } from './Icon';
 const QUICK_IDEAS = [
   {
     label: 'Neon run',
-    prompt: 'Build a compact neon ruin with six readable rooms, glowing cores, two memorable landmarks, and a balanced set of pulse traps.',
+    prompt: 'Build a compact neon ruin with six readable rooms, two fair guardian encounters, four enemies, glowing cores, checkpoints, and a strong exit beacon.',
   },
   {
     label: 'Forest temple',
-    prompt: 'Create a calm verdant temple expedition with winding rooms, golden relics, clear paths, and only a few gentle hazards.',
+    prompt: 'Create a calm verdant temple expedition with winding rooms, one guardian encounter, two enemies, a checkpoint, golden relics, and clear paths.',
   },
   {
     label: 'Frost escape',
-    prompt: 'Make a challenging frozen vault where the player races through a long route to reach the exit beacon.',
+    prompt: 'Make a challenging frozen vault with two locked combat rooms, four guardians, recovery checkpoints, and a final exit beacon.',
   },
   {
     label: 'Surprise me',
-    prompt: 'Surprise me with a distinctive, readable third-person level with a strong landmark, a fair challenge curve, and a satisfying exit.',
+    prompt: 'Surprise me with a distinctive third-person action level, fair guardian encounters, readable checkpoints, a strong landmark, and a satisfying exit.',
   },
 ];
 
@@ -66,7 +66,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
 
   return <div className={`level-creator${compact ? ' compact' : ''}`}>
     <div className="creator-intro">
-      <div><span className="panel-kicker">AI level builder</span><strong>Describe the game space</strong></div>
+      <div><span className="panel-kicker">AI game builder</span><strong>Describe the game you want</strong></div>
       {savedRecipe && <span className="creator-seed" title="Saved deterministic seed">seed {savedRecipe.seed}</span>}
     </div>
     <label className="creator-prompt" htmlFor={compact ? 'mobile-level-prompt' : 'level-prompt'}>
@@ -76,7 +76,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
         value={prompt}
         onChange={(event) => { setPrompt(event.target.value); setSeed(''); }}
         rows={compact ? 2 : 4}
-        placeholder="A mossy temple with a winding route, three traps, and an exit high above the spawn..."
+        placeholder="A mossy temple with two guardian encounters, three traps, checkpoints, and an exit high above the spawn..."
       />
     </label>
     <div className="creator-ideas" aria-label="Level idea starters">
@@ -92,7 +92,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
       onClick={() => propose()}
       disabled={!prompt.trim() || isThinking || aiStatus === 'applying'}
     >
-      {isThinking ? <><span className="spinner-small"/>Designing a playable route...</> : <><Icon name="spark"/>Generate level</>}
+      {isThinking ? <><span className="spinner-small"/>Directing a playable game...</> : <><Icon name="spark"/>Generate game</>}
     </button>
 
     {aiStatus === 'error' && <div className="creator-error"><strong>That design could not be generated.</strong><span>Try a shorter description or open Console for the validation message.</span></div>}
@@ -104,11 +104,11 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
       </div>
       <div className="proposal-metrics">
         <span><strong>{level.metrics.roomCount}</strong> rooms</span>
-        <span><strong>{level.metrics.pickupCount}</strong> cores</span>
-        <span><strong>{level.metrics.hazardCount}</strong> hazards</span>
-        <span><strong>{level.metrics.landmarkCount}</strong> landmarks</span>
+        <span><strong>{level.metrics.encounterCount}</strong> encounters</span>
+        <span><strong>{level.metrics.enemyCount}</strong> guardians</span>
+        <span><strong>{level.metrics.checkpointCount}</strong> checkpoints</span>
       </div>
-      <div className="proposal-proof"><span>Spawn-to-exit path valid</span><code>{level.checksum}</code></div>
+      <div className="proposal-proof"><span>Route and encounter grammar valid</span><code>{level.checksum}</code></div>
       <div className="proposal-actions">
         <button type="button" onClick={() => {
           const nextSeed = randomSeed();

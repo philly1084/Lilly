@@ -132,6 +132,7 @@ COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
 COPY packages/ ./packages/
 COPY --from=game-studio-builder /app/packages/lilly-engine/dist ./packages/lilly-engine/dist
+COPY --from=game-studio-builder /app/packages/lilly-engine/browser-dist ./packages/lilly-engine/browser-dist
 # Keep remote CLI runner code on a distinct layer; stale copies produce misleading timeout text.
 COPY src/remote-cli/ ./src/remote-cli/
 COPY frontend/ ./frontend/

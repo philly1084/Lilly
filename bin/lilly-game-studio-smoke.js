@@ -87,7 +87,7 @@ async function run() {
     method: 'POST',
     body: JSON.stringify({
       name: projectName,
-      prompt: 'A compact neon ruin with 7 readable rooms, 5 energy cores, fair pulse traps, and a clear exit beacon.',
+      prompt: 'A compact neon ruin with 7 readable rooms, two fair combat encounters, four guardians, checkpoints, 5 energy cores, pulse traps, and a clear exit beacon.',
       seed: 'browser-canary-seed',
     }),
   });
@@ -148,7 +148,7 @@ async function run() {
       await page.locator('.node-menu button').filter({ hasText: /^Delay/ }).click();
       const delayNode = page.locator('.react-flow__node').filter({ hasText: /^Delay/ }).last();
       await delayNode.waitFor({ state: 'visible' });
-      const source = page.locator('.react-flow__node').filter({ hasText: 'Score = 5?' }).locator('.react-flow__handle.source').first();
+      const source = page.locator('.react-flow__node').filter({ hasText: /Area secured\?|Score = 5\?/ }).locator('.react-flow__handle.source').first();
       const target = delayNode.locator('.react-flow__handle.target').first();
       await connectHandles(page, source, target);
       await page.waitForFunction((count) => document.querySelectorAll('.react-flow__edge').length > count, initialEdgeCount, { timeout: 5000 });
@@ -158,9 +158,9 @@ async function run() {
 
     await record('ai-command-review-and-apply', async () => {
       await page.getByRole('button', { name: 'Create', exact: true }).click();
-      await page.locator('#level-prompt').fill('Build a hard ember foundry with 8 rooms, 4 cores, 6 traps, strong landmarks, and a clear exit.');
+      await page.locator('#level-prompt').fill('Build a hard ember foundry with 8 rooms, two combat encounters, four guardians, checkpoints, 4 cores, 6 traps, and a clear exit.');
       const proposalResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/ai-runs$/.test(new URL(response.url()).pathname));
-      await page.getByRole('button', { name: 'Generate level', exact: true }).click();
+      await page.getByRole('button', { name: 'Generate game', exact: true }).click();
       assert((await proposalResponse).ok(), 'AI level proposal request failed');
       const director = page.locator('.ai-panel');
       await director.getByText('Ready to apply', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
@@ -171,7 +171,7 @@ async function run() {
 
     await record('play-pause-step', async () => {
       await page.getByTitle(/^Play/).click();
-      await page.getByText('Simulation running', { exact: true }).waitFor({ state: 'visible' });
+      await page.getByText(/Simulation running/).waitFor({ state: 'visible' });
       await page.getByTitle(/^Pause/).click();
       await page.getByText('Paused — step to advance', { exact: true }).waitFor({ state: 'visible' });
       await page.getByTitle(/^Step/).click();
@@ -194,6 +194,9 @@ async function run() {
         return null;
       });
       assert(control?.passed === true, `Player control test failed: ${JSON.stringify(control)}`);
+      const combat = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.combatTest?.() || null);
+      assert(combat?.passed === true && combat?.cleared === true && combat?.checkpoint === true && combat?.gatesOpen === true, `Player combat/checkpoint test failed: ${JSON.stringify(combat)}`);
+      await page.locator('.build-preview-wrap').screenshot({ path: path.join(args.outDir, 'lilly-generated-player.png') });
       await frame.getByRole('button', { name: 'Save', exact: true }).click();
       await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible' });
       const storedSave = await page.evaluate((id) => localStorage.getItem(`lilly:${id}:save`), projectId);
@@ -235,9 +238,9 @@ async function run() {
       }, projectId);
       await mobilePage.goto(args.url, { waitUntil: 'domcontentloaded' });
       await mobilePage.locator('.mobile-creator.open').waitFor({ state: 'visible' });
-      await mobilePage.locator('#mobile-level-prompt').fill('Make a calm verdant temple with 6 rooms, 3 relics, and 2 gentle traps.');
+      await mobilePage.locator('#mobile-level-prompt').fill('Make a calm verdant temple with 6 rooms, one guardian encounter, two enemies, a checkpoint, 3 relics, and 2 gentle traps.');
       const mobileProposal = mobilePage.waitForResponse((response) => response.request().method() === 'POST' && /\/ai-runs$/.test(new URL(response.url()).pathname));
-      await mobilePage.locator('.mobile-creator').getByRole('button', { name: 'Generate level', exact: true }).click();
+      await mobilePage.locator('.mobile-creator').getByRole('button', { name: 'Generate game', exact: true }).click();
       assert((await mobileProposal).ok(), 'Mobile AI level proposal request failed');
       await mobilePage.getByText('Ready to apply', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
       await waitForCommand(mobilePage, () => mobilePage.getByRole('button', { name: 'Use this level', exact: true }).click());
@@ -249,6 +252,10 @@ async function run() {
       await mobilePage.waitForTimeout(250);
       assert(await touchUp.getAttribute('data-pressed') === 'true', 'Touch movement did not enter pressed state');
       await touchUp.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', isPrimary: true });
+      const touchAttack = mobilePage.locator('.editor-touch-action');
+      await touchAttack.dispatchEvent('pointerdown', { pointerId: 8, pointerType: 'touch', isPrimary: true });
+      assert(await touchAttack.getAttribute('data-pressed') === 'true', 'Touch attack did not enter pressed state');
+      await touchAttack.dispatchEvent('pointerup', { pointerId: 8, pointerType: 'touch', isPrimary: true });
       await mobilePage.screenshot({ path: path.join(args.outDir, 'lilly-game-studio-mobile.png'), fullPage: false });
       await mobileContext.close();
     });

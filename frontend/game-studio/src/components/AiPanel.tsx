@@ -9,7 +9,7 @@ export function AiPanel() {
   return <aside className="ai-panel level-director-panel">
     <header>
       <div className="ai-mark"><Icon name="spark"/></div>
-      <div><span className="panel-kicker">Project-aware creator</span><strong>Lilly AI Level Director</strong></div>
+      <div><span className="panel-kicker">Project-aware creator</span><strong>Lilly AI Game Director</strong></div>
       <button type="button" className="icon-button" onClick={() => setAiOpen(false)} aria-label="Close AI Director"><Icon name="close"/></button>
     </header>
     <div className="ai-context">
@@ -18,10 +18,11 @@ export function AiPanel() {
       <div>
         <small>{design?.metrics.roomCount || 0} rooms</small>
         <small>{design?.metrics.pathCount || 0} paths</small>
+        <small>{design?.metrics.enemyCount || 0} guardians</small>
         <small>{design?.checksum || 'hand-authored'}</small>
       </div>
     </div>
     <LevelCreatorBody/>
-    <footer><Icon name="lock" size={13}/><span>Every world is previewed as a revision-safe command. Lilly validates the seed, route, hierarchy, and components before anything is saved.</span></footer>
+    <footer><Icon name="lock" size={13}/><span>Every game is previewed as a revision-safe command. Lilly validates the seed, route, encounter grammar, hierarchy, and components before anything is saved.</span></footer>
   </aside>;
 }

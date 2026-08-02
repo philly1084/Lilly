@@ -1,0 +1,7 @@
+{
+  "name": "@lilly-engine/gameplay",
+  "version": "0.3.0",
+  "private": true,
+  "main": "../dist/gameplay/src/index.js",
+  "types": "../dist/gameplay/src/index.d.ts"
+}

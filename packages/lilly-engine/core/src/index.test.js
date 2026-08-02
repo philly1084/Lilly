@@ -9,6 +9,7 @@ const {
   createArenaProject,
   createLevelRecipeFromPrompt,
   generateLevel,
+  upgradeProject,
   validateGeneratedLevel,
   validateProject,
 } = require('../../dist/core/src');
@@ -95,6 +96,54 @@ describe('Lilly engine core contracts', () => {
     expect(first.design.connections).toHaveLength(first.design.rooms.length - 1);
   });
 
+  test('generates validated room combat with stable enemies, gates, and checkpoints', () => {
+    const project = createArenaProject({
+      id: 'combat-contract',
+      prompt: 'A compact neon ruin with two combat encounters and four guardians',
+      seed: 'combat-contract-seed',
+    });
+    const design = project.generatedLevels[0];
+    const scene = project.scenes[0];
+    expect(design.metrics).toMatchObject({ encounterCount: 2, enemyCount: 4, checkpointCount: 2 });
+    expect(design.encounters).toHaveLength(2);
+    expect(validateProject(project)).toEqual([]);
+    for (const encounter of design.encounters) {
+      expect(encounter.enemyIds.length).toBeGreaterThan(0);
+      expect(encounter.gateIds.length).toBeGreaterThan(0);
+      expect(scene.entities.find((entity) => entity.id === encounter.checkpointId)?.components).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'Checkpoint', data: expect.objectContaining({ encounterId: encounter.id }) }),
+      ]));
+      encounter.enemyIds.forEach((id) => expect(scene.entities.find((entity) => entity.id === id)?.components).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'Health' }),
+        expect.objectContaining({ type: 'Combatant' }),
+        expect.objectContaining({ type: 'EnemyBrain' }),
+      ])));
+    }
+  });
+
+  test('does not mistake the guardian adjective in an encounter count for the enemy count', () => {
+    const recipe = createLevelRecipeFromPrompt({
+      projectId: 'combat-language',
+      sceneId: 'arena',
+      prompt: 'A temple with one guardian encounter and two enemies',
+      seed: 'combat-language-seed',
+    });
+    expect(recipe.gameplay).toMatchObject({ encounterCount: 1, enemyCount: 2 });
+  });
+
+  test('upgrades pre-encounter generated topology without invalidating peaceful projects', () => {
+    const project = createArenaProject({ id: 'legacy-topology', prompt: 'A peaceful frost vault with no enemies', seed: 'legacy-topology-seed' });
+    const legacy = JSON.parse(JSON.stringify(project));
+    delete legacy.generatedLevels[0].encounters;
+    delete legacy.generatedLevels[0].metrics.encounterCount;
+    delete legacy.generatedLevels[0].metrics.enemyCount;
+    delete legacy.generatedLevels[0].metrics.checkpointCount;
+    const upgraded = upgradeProject(legacy);
+    expect(upgraded.generatedLevels[0].encounters).toEqual([]);
+    expect(upgraded.generatedLevels[0].metrics).toMatchObject({ encounterCount: 0, enemyCount: 0, checkpointCount: 0 });
+    expect(validateProject(upgraded)).toEqual([]);
+  });
+
   test('connects a branched room to the actual adjacent parent when the latest room is trapped', () => {
     const recipe = createLevelRecipeFromPrompt({
       projectId: 'branched-path',
@@ -137,7 +186,7 @@ describe('Lilly engine core contracts', () => {
     history.record([forward], applied.inverses);
 
     expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
-    expect(applied.project.engineVersion).toBe('0.2.0');
+    expect(applied.project.engineVersion).toBe('0.3.0');
     const undone = history.undo(applied.project);
     expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
     expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);
