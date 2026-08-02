@@ -90,7 +90,12 @@ describe('GameStudioService', () => {
     expect(build.schema).toBe('LillyBuild/v1');
     expect(build.status).toBe('success');
     expect(build.previewUrl).toContain('/api/sandbox-workspaces/');
-    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'project.json', 'blueprints.json']));
+    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'vendor/three.module.js', 'vendor/three.core.js', 'project.json', 'blueprints.json']));
+    await expect(fs.readFile(path.join(service.buildRoot, build.workspaceId, 'player.js'), 'utf8')).resolves.toContain("from './vendor/three.module.js'");
+    const threeModuleStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.module.js'));
+    expect(threeModuleStat.size).toBeGreaterThan(500000);
+    const threeCoreStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.core.js'));
+    expect(threeCoreStat.size).toBeGreaterThan(1000000);
     await expect(fs.writeFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'overwrite', { flag: 'wx' })).rejects.toMatchObject({ code: 'EEXIST' });
   });
 
@@ -111,6 +116,8 @@ describe('GameStudioService', () => {
     expect(input.files.map((file) => file.path)).toEqual(expect.arrayContaining([
       'public/index.html',
       'public/player.js',
+      'public/vendor/three.module.js',
+      'public/vendor/three.core.js',
       'public/project.json',
       'public/blueprints.json',
       'public/build-manifest.json',
