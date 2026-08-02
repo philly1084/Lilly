@@ -19,6 +19,7 @@
     "physics-rapier/src/**/*.ts",
     "blueprints/src/**/*.ts",
     "gameplay/src/**/*.ts",
+    "modules/src/**/*.ts",
     "runtime/src/**/*.ts"
   ]
 }

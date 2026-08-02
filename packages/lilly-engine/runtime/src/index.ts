@@ -116,22 +116,33 @@ export class SaveStorage {
 }
 
 export const SCRIPT_SANDBOX_CAPABILITIES = Object.freeze([
+  'clock.read',
+  'random.read',
+  'input.read',
+  'entity.query',
   'entity.read',
   'entity.write',
+  'entity.spawn',
+  'entity.destroy',
   'physics.force',
+  'physics.impulse',
   'physics.raycast',
   'events.emit',
   'hud.write',
   'audio.play',
+  'particles.emit',
+  'save.read',
+  'save.write',
 ]);
 
 export function createScriptSandboxPolicy() {
   return {
     iframeSandbox: 'allow-scripts',
     opaqueOrigin: true,
-    parentMessaging: 'LillyScriptBridge/v1',
+    parentMessaging: 'LillyModuleSandboxMessage/v1',
     capabilities: SCRIPT_SANDBOX_CAPABILITIES,
     denied: ['dom', 'cookies', 'credentials', 'filesystem', 'network', 'parent-window'],
-    executionBudgetMs: 8,
+    isolation: ['opaque-origin-iframe', 'disposable-worker', 'content-security-policy'],
+    executionBudgetMs: 200,
   };
 }

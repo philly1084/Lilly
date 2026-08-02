@@ -156,6 +156,29 @@ async function run() {
       await page.getByText('Graph valid', { exact: true }).waitFor({ state: 'visible' });
     });
 
+    await record('agent-module-author-compile-and-spec', async () => {
+      await page.getByRole('button', { name: /^Code & Modules/ }).click();
+      const sourceWrite = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/files$/.test(new URL(response.url()).pathname));
+      const inputWrite = page.waitForResponse((response) => response.request().method() === 'POST' && /\/commands$/.test(new URL(response.url()).pathname));
+      await page.getByRole('button', { name: 'New mechanic package', exact: true }).click();
+      assert((await sourceWrite).ok(), 'Agent mechanic package did not persist');
+      assert((await inputWrite).ok(), 'Agent mechanic input action did not persist');
+      await page.getByText('mechanic-1.system.ts', { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      const compileResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/compile$/.test(new URL(response.url()).pathname));
+      await page.getByRole('button', { name: 'Compile', exact: true }).click();
+      const compiled = await compileResponse;
+      assert(compiled.ok(), `Agent module compile failed with HTTP ${compiled.status()}`);
+      const compileBody = await compiled.json();
+      assert(compileBody.valid === true && compileBody.systems?.length === 1, `Unexpected compile report: ${JSON.stringify(compileBody)}`);
+      const testResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/mechanic-tests$/.test(new URL(response.url()).pathname));
+      await page.getByRole('button', { name: /^Run specs/ }).click();
+      const tested = await testResponse;
+      assert(tested.ok(), `Agent mechanic specs failed with HTTP ${tested.status()}`);
+      const testBody = await tested.json();
+      assert(testBody.status === 'passed' && testBody.passed === 1, `Unexpected mechanic test report: ${JSON.stringify(testBody)}`);
+      await page.getByRole('button', { name: /Run specs 1\/1/ }).waitFor({ state: 'visible' });
+    });
+
     await record('ai-command-review-and-apply', async () => {
       await page.getByRole('button', { name: 'Create', exact: true }).click();
       await page.locator('#level-prompt').fill('Build a hard ember foundry with 8 rooms, two combat encounters, four guardians, checkpoints, 4 cores, 6 traps, and a clear exit.');
@@ -171,11 +194,42 @@ async function run() {
 
     await record('play-pause-step', async () => {
       await page.getByTitle(/^Play/).click();
-      await page.getByText(/Simulation running/).waitFor({ state: 'visible' });
+      await page.getByText(/Simulation running/).waitFor({ state: 'visible', timeout: 30000 });
+      const editorFrame = page.frameLocator('.exact-play-preview iframe');
+      await editorFrame.locator('#game-canvas').waitFor({ state: 'visible', timeout: 30000 });
+      const runningState = await editorFrame.locator('body').evaluate(async () => {
+        for (let attempt = 0; attempt < 150; attempt += 1) {
+          const state = window.__LILLY_GAME__?.getState?.();
+          if (state?.systemCount > 0) return state;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return null;
+      });
+      assert(runningState?.systemCount === 1 && runningState?.moduleSourceHash, `Editor Play did not load the exact module bundle: ${JSON.stringify(runningState)}`);
+      await page.locator('.viewport-panel').screenshot({ path: path.join(args.outDir, 'lilly-editor-exact-play.png') });
       await page.getByTitle(/^Pause/).click();
       await page.getByText('Paused — step to advance', { exact: true }).waitFor({ state: 'visible' });
+      const pausedState = await editorFrame.locator('body').evaluate(async () => {
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          const state = window.__LILLY_GAME__?.getState?.();
+          if (state?.editorPaused === true) return state;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return window.__LILLY_GAME__?.getState?.() || null;
+      });
+      assert(pausedState?.editorPaused === true, `Exact editor player did not pause: ${JSON.stringify(pausedState)}`);
       await page.getByTitle(/^Step/).click();
       assert(await page.locator('.viewport-panel.mode-paused').isVisible(), 'Step did not leave the editor in paused play mode');
+      const steppedState = await editorFrame.locator('body').evaluate(async (before) => {
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          const state = window.__LILLY_GAME__?.getState?.();
+          if ((state?.editorCompletedSteps || 0) > before) return state;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return window.__LILLY_GAME__?.getState?.() || null;
+      }, pausedState.editorCompletedSteps || 0);
+      assert(steppedState?.editorPaused === true && steppedState?.editorCompletedSteps > (pausedState.editorCompletedSteps || 0), `Exact editor player did not advance one paused step: ${JSON.stringify(steppedState)}`);
+      report.editorPlayProof = { runningState, pausedState, steppedState };
       await page.getByTitle('Stop play mode').click();
     });
 
@@ -196,6 +250,11 @@ async function run() {
       assert(control?.passed === true, `Player control test failed: ${JSON.stringify(control)}`);
       const combat = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.combatTest?.() || null);
       assert(combat?.passed === true && combat?.cleared === true && combat?.checkpoint === true && combat?.gatesOpen === true, `Player combat/checkpoint test failed: ${JSON.stringify(combat)}`);
+      const authoredModule = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.moduleTest?.() || null);
+      assert(authoredModule?.passed === true && authoredModule?.systems?.length === 1, `Agent module runtime test failed: ${JSON.stringify(authoredModule)}`);
+      const collision = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.collisionTest?.() || null);
+      assert(collision?.passed === true && collision?.detected === true && collision?.handled === true, `Agent collision lifecycle test failed: ${JSON.stringify(collision)}`);
+      report.runtimeProof = { control, combat, authoredModule, collision };
       await page.locator('.build-preview-wrap').screenshot({ path: path.join(args.outDir, 'lilly-generated-player.png') });
       await frame.getByRole('button', { name: 'Save', exact: true }).click();
       await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible' });
@@ -246,16 +305,36 @@ async function run() {
       await waitForCommand(mobilePage, () => mobilePage.getByRole('button', { name: 'Use this level', exact: true }).click());
       await mobilePage.screenshot({ path: path.join(args.outDir, 'lilly-game-studio-mobile-create.png'), fullPage: false });
       await mobilePage.locator('.mobile-creator .creator-actions').getByRole('button', { name: 'Play', exact: true }).click();
-      await mobilePage.locator('.editor-touch-controls').waitFor({ state: 'visible' });
-      const touchUp = mobilePage.locator('.editor-touch-controls .touch-up');
-      await touchUp.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', isPrimary: true });
+      const mobileFrame = mobilePage.frameLocator('.exact-play-preview iframe');
+      await mobileFrame.locator('#game-canvas').waitFor({ state: 'visible', timeout: 30000 });
+      const mobileBefore = await mobileFrame.locator('body').evaluate(async () => {
+        for (let attempt = 0; attempt < 150; attempt += 1) {
+          const state = window.__LILLY_GAME__?.getState?.();
+          if (state) return state;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return null;
+      });
+      assert(mobileBefore, 'Exact mobile player did not finish initializing');
+      await mobileFrame.locator('.touch-controls').waitFor({ state: 'visible' });
+      const touchUp = mobileFrame.locator('.touch-controls .touch-up');
+      const movePressed = await touchUp.evaluate((element) => {
+        element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true }));
+        return element.getAttribute('data-pressed');
+      });
+      assert(movePressed === 'true', 'Touch movement did not enter pressed state');
       await mobilePage.waitForTimeout(250);
-      assert(await touchUp.getAttribute('data-pressed') === 'true', 'Touch movement did not enter pressed state');
-      await touchUp.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', isPrimary: true });
-      const touchAttack = mobilePage.locator('.editor-touch-action');
-      await touchAttack.dispatchEvent('pointerdown', { pointerId: 8, pointerType: 'touch', isPrimary: true });
-      assert(await touchAttack.getAttribute('data-pressed') === 'true', 'Touch attack did not enter pressed state');
-      await touchAttack.dispatchEvent('pointerup', { pointerId: 8, pointerType: 'touch', isPrimary: true });
+      await touchUp.evaluate((element) => element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true })));
+      const mobileAfter = await mobileFrame.locator('body').evaluate(() => window.__LILLY_GAME__?.getState?.() || null);
+      assert(mobileAfter?.playerPosition?.[2] < mobileBefore.playerPosition[2] - 0.01, `Touch movement did not move the exact player: ${JSON.stringify({ mobileBefore, mobileAfter })}`);
+      const touchAttack = mobileFrame.locator('.touch-action');
+      const attackPressed = await touchAttack.evaluate((element) => {
+        element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 8, pointerType: 'touch', isPrimary: true }));
+        return element.getAttribute('data-pressed');
+      });
+      assert(attackPressed === 'true', 'Touch attack did not enter pressed state');
+      await touchAttack.evaluate((element) => element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 8, pointerType: 'touch', isPrimary: true })));
+      report.mobilePlayProof = { before: mobileBefore.playerPosition, after: mobileAfter.playerPosition, moduleSourceHash: mobileAfter.moduleSourceHash };
       await mobilePage.screenshot({ path: path.join(args.outDir, 'lilly-game-studio-mobile.png'), fullPage: false });
       await mobileContext.close();
     });

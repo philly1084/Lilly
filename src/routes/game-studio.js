@@ -33,6 +33,50 @@ router.get('/blueprints/registry', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/contracts', async (req, res, next) => {
+  try {
+    if (!ensureAvailable(req, res)) return;
+    const core = require('../../packages/lilly-engine/dist/core/src');
+    const modules = require('../../packages/lilly-engine/dist/modules/src');
+    res.json({
+      schema: 'LillyGameStudioContracts/v1',
+      engineVersion: core.ENGINE_VERSION,
+      contracts: {
+        project: core.PROJECT_SCHEMA,
+        scene: core.SCENE_SCHEMA,
+        entity: core.ENTITY_SCHEMA,
+        blueprint: core.BLUEPRINT_SCHEMA,
+        command: core.COMMAND_SCHEMA,
+        sourceFile: core.SOURCE_FILE_SCHEMA,
+        module: core.GAME_MODULE_SCHEMA,
+        mechanic: core.MECHANIC_SCHEMA,
+        prefab: core.PREFAB_SCHEMA,
+        mechanicTest: core.MECHANIC_TEST_SCHEMA,
+        moduleBundle: modules.MODULE_BUNDLE_SCHEMA,
+      },
+      sourceFileTypes: [
+        { extension: '.module.json', kind: 'module-manifest', purpose: 'Package metadata, dependencies, capabilities, and exported files' },
+        { extension: '.mechanic.json', kind: 'mechanic', purpose: 'Player verbs, inputs, events, state schemas, and composing systems' },
+        { extension: '.system.ts', kind: 'system', purpose: 'Typed lifecycle code executed inside the capability sandbox' },
+        { extension: '.prefab.json', kind: 'prefab', purpose: 'Reusable versioned entity hierarchies' },
+        { extension: '.spec.json', kind: 'test', purpose: 'Deterministic mechanic events and assertions' },
+        { extension: '.blueprint.json', kind: 'blueprint', purpose: 'Typed visual graph source' },
+        { extension: '.scene.json', kind: 'scene', purpose: 'Scene source and import/export interchange' },
+      ],
+      capabilities: modules.SCRIPT_CAPABILITIES,
+      runtimeTypeDeclarations: modules.LILLY_RUNTIME_TYPE_DECLARATIONS,
+      sandbox: {
+        schema: 'LillyModuleSandboxPolicy/v1',
+        execution: 'opaque-origin iframe plus disposable worker',
+        network: 'denied',
+        dom: 'denied',
+        storage: 'capability bridge only',
+        deterministicApis: ['ctx.delta', 'ctx.frame', 'ctx.elapsed', 'ctx.random()', 'ctx.input'],
+      },
+    });
+  } catch (error) { next(error); }
+});
+
 router.get('/projects', async (req, res, next) => {
   try {
     const gameStudio = ensureAvailable(req, res);
@@ -57,6 +101,76 @@ router.get('/projects/:id', async (req, res, next) => {
     const result = await gameStudio.getProject(req.params.id, ownerId(req));
     if (!result) return notFound(res);
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/files', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.listSourceFiles(req.params.id, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/files/content', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.readSourceFile(req.params.id, req.query.path, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.put('/projects/:id/files', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.writeSourceFiles(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.delete('/projects/:id/files', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.deleteSourceFiles(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/compile', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.compileProjectModules(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/mechanic-tests', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.runMechanicTestSuite(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/prefab-instances', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.instantiatePrefab(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.status(201).json(result);
   } catch (error) { next(error); }
 });
 
@@ -115,6 +229,16 @@ router.post('/projects/:id/playtests', async (req, res, next) => {
     const gameStudio = ensureAvailable(req, res);
     if (!gameStudio) return;
     const result = await gameStudio.runPlaytest(req.params.id, req.body || {}, ownerId(req));
+    if (!result) return notFound(res);
+    res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/editor-preview', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.createEditorPreview(req.params.id, req.body || {}, ownerId(req));
     if (!result) return notFound(res);
     res.status(201).json(result);
   } catch (error) { next(error); }

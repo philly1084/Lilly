@@ -3,10 +3,12 @@ const {
   ENTITY_SCHEMA,
   PROJECT_SCHEMA,
   SCENE_SCHEMA,
+  SOURCE_FILE_SCHEMA,
   FixedStepClock,
   CommandHistory,
   applyCommandBatch,
   createArenaProject,
+  createBlankProject,
   createLevelRecipeFromPrompt,
   generateLevel,
   upgradeProject,
@@ -37,6 +39,15 @@ describe('Lilly engine core contracts', () => {
     expect(validateProject(project)).toEqual([]);
   });
 
+  test('creates a blank project that agents can build from scratch in versioned files', () => {
+    const project = createBlankProject({ id: 'blank-agent-game', name: 'Agent Game' });
+    expect(project.engineVersion).toBe('0.4.0');
+    expect(project.files).toEqual([]);
+    expect(project.levelRecipes).toEqual([]);
+    expect(project.scenes).toEqual([expect.objectContaining({ id: 'main', entities: [expect.objectContaining({ id: 'world' })] })]);
+    expect(validateProject(project)).toEqual([]);
+  });
+
   test('applies a command batch transactionally and advances one revision', () => {
     const project = createArenaProject({ id: 'commands' });
     const result = applyCommandBatch(project, [
@@ -49,6 +60,118 @@ describe('Lilly engine core contracts', () => {
     expect(result.project.scenes[0].entities.find((entity) => entity.id === 'player').name).toBe('Pilot');
     expect(project.revision).toBe(1);
     expect(result.inverses).toHaveLength(2);
+  });
+
+  test('writes and deletes module source files transactionally with undo data', () => {
+    const project = createBlankProject({ id: 'source-commands' });
+    const file = {
+      schema: SOURCE_FILE_SCHEMA,
+      path: 'modules/traversal/dash.system.ts',
+      kind: 'system',
+      language: 'typescript',
+      content: "import { defineSystem } from '@lilly/engine-runtime'; export default defineSystem({ id: 'dash' });",
+      enabled: true,
+    };
+    const written = applyCommandBatch(project, [command(project, 'file.upsert', { path: file.path }, { file })], project.revision);
+    expect(written.project.files).toEqual([file]);
+    expect(written.inverses[0]).toMatchObject({ operation: 'file.delete', target: { path: file.path } });
+    const deleted = applyCommandBatch(written.project, [command(written.project, 'file.delete', { path: file.path })], written.project.revision);
+    expect(deleted.project.files).toEqual([]);
+    expect(deleted.inverses[0]).toMatchObject({ operation: 'file.upsert', payload: { file } });
+  });
+
+  test('creates scenes, replaces input actions, and instantiates a source prefab as stable entities', () => {
+    const project = createBlankProject({ id: 'composition' });
+    const prefab = {
+      schema: SOURCE_FILE_SCHEMA,
+      path: 'modules/combat/projectile.prefab.json',
+      kind: 'prefab',
+      language: 'json',
+      enabled: true,
+      content: JSON.stringify({
+        schema: 'LillyPrefab/v1',
+        id: 'projectile',
+        moduleId: 'combat',
+        name: 'Projectile',
+        rootEntityId: 'root',
+        entities: [
+          { schema: ENTITY_SCHEMA, id: 'root', name: 'Projectile', parentId: null, enabled: true, tags: ['projectile'], components: [
+            { type: 'Transform', enabled: true, data: { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+            { type: 'MeshRenderer', enabled: true, data: { geometry: 'sphere', material: { color: '#ffffff', roughness: 0.35 } } },
+          ] },
+          { schema: ENTITY_SCHEMA, id: 'trail', name: 'Trail', parentId: 'root', enabled: true, tags: ['fx'], components: [] },
+        ],
+      }),
+    };
+    const scene = { schema: SCENE_SCHEMA, id: 'arena-two', name: 'Arena Two', environment: { background: '#000', ambientIntensity: 1 }, entities: [{ schema: ENTITY_SCHEMA, id: 'root-two', name: 'Root', parentId: null, enabled: true, tags: ['root'], components: [] }], blueprintGraphIds: [] };
+    const result = applyCommandBatch(project, [
+      command(project, 'file.upsert', { path: prefab.path }, { file: prefab }),
+      command(project, 'scene.create', {}, { scene }),
+      command(project, 'input.replace', {}, { inputMap: [{ action: 'Fire', kind: 'button', keys: ['Mouse0'] }] }),
+      command(project, 'prefab.instantiate', { sceneId: 'main', path: prefab.path, prefabId: 'projectile', instanceId: 'shot-1' }, {
+        parentId: 'world',
+        config: {
+          position: { x: 4, y: -1, z: -5 },
+          entities: {
+            root: { name: 'Charged Shot', tags: ['projectile', 'charged'], components: { MeshRenderer: { material: { color: '#ff33aa' } } } },
+            trail: { enabled: false },
+          },
+        },
+      }),
+    ], project.revision);
+    expect(result.project.scenes.map((entry) => entry.id)).toEqual(['main', 'arena-two']);
+    expect(result.project.inputMap).toEqual([{ action: 'Fire', kind: 'button', keys: ['Mouse0'] }]);
+    expect(result.project.scenes[0].entities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'shot-1:root', name: 'Charged Shot', parentId: 'world', tags: expect.arrayContaining(['charged', 'prefab:projectile', 'instance:shot-1']) }),
+      expect.objectContaining({ id: 'shot-1:trail', parentId: 'shot-1:root', enabled: false }),
+    ]));
+    const root = result.project.scenes[0].entities.find((entry) => entry.id === 'shot-1:root');
+    expect(root.components.find((entry) => entry.type === 'Transform').data.position).toEqual({ x: 5, y: 1, z: -2 });
+    expect(root.components.find((entry) => entry.type === 'MeshRenderer').data.material).toEqual({ color: '#ff33aa', roughness: 0.35 });
+    expect(validateProject(result.project)).toEqual([]);
+  });
+
+  test('rejects ambiguous, unknown, invalid, and unsafe prefab instance overrides', () => {
+    const project = createBlankProject({ id: 'prefab-config-guards' });
+    const file = {
+      schema: SOURCE_FILE_SCHEMA,
+      path: 'modules/world/marker.prefab.json',
+      kind: 'prefab',
+      language: 'json',
+      enabled: true,
+      content: JSON.stringify({
+        schema: 'LillyPrefab/v1',
+        id: 'marker',
+        moduleId: 'world',
+        name: 'Marker',
+        rootEntityId: 'root',
+        entities: [{
+          schema: ENTITY_SCHEMA,
+          id: 'root',
+          name: 'Marker',
+          parentId: null,
+          enabled: true,
+          tags: ['marker'],
+          components: [{ type: 'Transform', enabled: true, data: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }],
+        }],
+      }),
+    };
+    const written = applyCommandBatch(project, [command(project, 'file.upsert', { path: file.path }, { file })], project.revision).project;
+    let instanceSequence = 0;
+    const instantiate = (target, config) => applyCommandBatch(written, [command(written, 'prefab.instantiate', {
+      sceneId: 'main',
+      path: file.path,
+      instanceId: `guard-${instanceSequence += 1}`,
+      ...target,
+    }, { parentId: 'world', config })], written.revision);
+
+    expect(() => instantiate({ prefabId: 'not-marker' }, {})).toThrow(/does not match source id/);
+    expect(() => instantiate({}, { entities: { missing: { name: 'Nope' } } })).toThrow(/unknown entity missing/);
+    expect(() => instantiate({}, { entities: { root: { components: { MeshRenderer: { material: { color: '#fff' } } } } } })).toThrow(/does not contain component MeshRenderer/);
+    expect(() => instantiate({}, { entities: { root: { components: { Transform: { scale: { x: 0, y: 1, z: 1 } } } } } })).toThrow(/non-zero finite Vector3/);
+    const unsafe = JSON.parse('{"entities":{"root":{"components":{"Transform":{"__proto__":{"polluted":true}}}}}}');
+    expect(() => instantiate({}, unsafe)).toThrow(/__proto__ is not allowed/);
+    expect({}.polluted).toBeUndefined();
   });
 
   test('rejects stale revisions before modifying project state', () => {
@@ -186,7 +309,7 @@ describe('Lilly engine core contracts', () => {
     history.record([forward], applied.inverses);
 
     expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
-    expect(applied.project.engineVersion).toBe('0.3.0');
+    expect(applied.project.engineVersion).toBe('0.4.0');
     const undone = history.undo(applied.project);
     expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
     expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);

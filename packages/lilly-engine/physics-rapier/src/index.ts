@@ -21,6 +21,7 @@ export class RapierPhysicsAdapter {
   readonly world: RAPIER.World;
   private bodies = new Map<string, RAPIER.RigidBody>();
   private colliderEntities = new Map<number, string>();
+  private colliderSensors = new Map<number, boolean>();
   private eventQueue = new RAPIER.EventQueue(true);
 
   private constructor(gravity: Vec3) {
@@ -35,13 +36,15 @@ export class RapierPhysicsAdapter {
   loadScene(scene: LillyScene) {
     this.bodies.clear();
     this.colliderEntities.clear();
+    this.colliderSensors.clear();
     scene.entities.forEach((entity) => this.addEntity(entity));
   }
 
   addEntity(entity: LillyEntity) {
     const transform = component(entity, 'Transform')?.data || {};
     const position = vector(transform.position, { x: 0, y: 0, z: 0 });
-    const rigidBody = component(entity, 'RigidBody')?.data || {};
+    const rigidBodyComponent = component(entity, 'RigidBody');
+    const rigidBody = rigidBodyComponent?.data || { bodyType: 'fixed' };
     const collider = component(entity, 'Collider')?.data || null;
     if (!collider && !rigidBody) return null;
     let descriptor: RAPIER.RigidBodyDesc;
@@ -72,6 +75,7 @@ export class RapierPhysicsAdapter {
       colliderDescriptor.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
       const createdCollider = this.world.createCollider(colliderDescriptor, body);
       this.colliderEntities.set(createdCollider.handle, entity.id);
+      this.colliderSensors.set(createdCollider.handle, collider.sensor === true);
     }
     return body;
   }
@@ -83,7 +87,10 @@ export class RapierPhysicsAdapter {
     this.eventQueue.drainCollisionEvents((handleA, handleB, started) => {
       const entityA = this.colliderEntities.get(handleA);
       const entityB = this.colliderEntities.get(handleB);
-      if (entityA && entityB) events.push({ type: started ? 'collision-start' : 'collision-end', entityA, entityB });
+      if (entityA && entityB) {
+        const trigger = this.colliderSensors.get(handleA) === true || this.colliderSensors.get(handleB) === true;
+        events.push({ type: trigger ? (started ? 'trigger-start' : 'trigger-end') : (started ? 'collision-start' : 'collision-end'), entityA, entityB });
+      }
     });
     return events;
   }
@@ -105,5 +112,5 @@ export class RapierPhysicsAdapter {
     return { entityId: this.colliderEntities.get(hit.collider.handle) || null, timeOfImpact: hit.timeOfImpact };
   }
 
-  dispose() { this.world.free(); this.bodies.clear(); this.colliderEntities.clear(); }
+  dispose() { this.world.free(); this.bodies.clear(); this.colliderEntities.clear(); this.colliderSensors.clear(); }
 }

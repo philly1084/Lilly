@@ -19,7 +19,7 @@
         "build:game-studio:all": "npm run build:lilly-engine && npm run build:game-studio",
         "dev:game-studio": "vite --config frontend/game-studio/vite.config.ts",
         "smoke:game-studio": "node bin/lilly-game-studio-smoke.js",
-    "test:game-studio": "npm run build:lilly-engine && jest --runInBand --runTestsByPath packages/lilly-engine/core/src/index.test.js packages/lilly-engine/blueprints/src/index.test.js packages/lilly-engine/gameplay/src/index.test.js src/game-studio/service.test.js src/routes/game-studio.test.js src/orchestration/agent-roles.test.js src/routes/canvas.test.js src/tool-execution-profiles.test.js",
+    "test:game-studio": "npm run build:lilly-engine && jest --runInBand --runTestsByPath packages/lilly-engine/core/src/index.test.js packages/lilly-engine/blueprints/src/index.test.js packages/lilly-engine/gameplay/src/index.test.js packages/lilly-engine/modules/src/index.test.js src/game-studio/service.test.js src/routes/game-studio.test.js src/orchestration/agent-roles.test.js src/routes/canvas.test.js src/tool-execution-profiles.test.js",
         "ingress": "node bin/kimibuilt-ingress.js",
         "runner": "node bin/kimibuilt-runner.js",
         "dev": "nodemon src/server.js",
@@ -107,6 +107,7 @@
         "roughjs": "^4.6.6",
         "sharp": "^0.34.5",
         "three": "^0.184.0",
+        "typescript": "^5.7.3",
         "uuid": "^14.0.0",
         "vis-network": "^10.1.0",
         "ws": "^8.21.0",
@@ -120,7 +121,6 @@
         "jest": "^29.7.0",
         "nodemon": "^3.1.9",
         "supertest": "^7.0.0",
-        "typescript": "^5.7.3",
         "vite": "^6.1.0"
     }
 }

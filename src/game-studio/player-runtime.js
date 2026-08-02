@@ -27,11 +27,21 @@ let gameplay;
 let gameplayState;
 let levelDesign;
 let levelRecipe;
+let moduleBundle;
+let moduleHost;
+let moduleRuntimeState = { states: {}, saves: {} };
+let moduleDispatchPending = false;
+let activeCollisionPairs = new Map();
+let moduleSpawnSequence = 0;
 let pickupCount = 0;
 let totalPickups = 0;
 let won = false;
 let hazardCooldown = 0;
 let attackHeld = false;
+let editorPaused = false;
+let editorStepRequests = 0;
+let editorCompletedSteps = 0;
+let visualElapsed = 0;
 let audioContext;
 let fixedStep = 1 / 60;
 let accumulator = 0;
@@ -45,6 +55,8 @@ const obstacles = [];
 const walkableAreas = [];
 const particles = [];
 const objectMap = new Map();
+const runtimeColliders = new Map();
+const pendingModuleCollisions = [];
 const enemyObjects = new Map();
 const gateObjects = new Map();
 const checkpointObjects = new Map();
@@ -64,6 +76,121 @@ function vector(value, fallback = { x: 0, y: 0, z: 0 }) {
     Number(value?.y ?? fallback.y),
     Number(value?.z ?? fallback.z),
   );
+}
+
+function moduleWorldSnapshot() {
+  const sceneData = project?.scenes?.find((entry) => entry.id === project.entryScene);
+  return {
+    playerId: player?.userData?.entityId || 'player',
+    entities: (sceneData?.entities || []).map((entity) => {
+      const object = objectMap.get(entity.id);
+      return {
+        id: entity.id,
+        name: entity.name,
+        tags: entity.tags,
+        enabled: entity.enabled !== false && object?.visible !== false,
+        position: object ? { x: object.position.x, y: object.position.y, z: object.position.z } : null,
+        components: entity.components,
+      };
+    }),
+  };
+}
+
+function moduleInputSnapshot(overrides = null) {
+  if (overrides) return overrides;
+  const buttons = {};
+  const axes = {};
+  for (const binding of project?.inputMap || []) {
+    if (binding.kind === 'button') buttons[binding.action] = actionPressed(binding.action, binding.keys || []);
+    else if (binding.kind === 'axis2d') {
+      const [up, down, left, right] = binding.keys || [];
+      axes[binding.action] = {
+        x: Number(Boolean(right) && pressed(right)) - Number(Boolean(left) && pressed(left)),
+        y: Number(Boolean(up) && pressed(up)) - Number(Boolean(down) && pressed(down)),
+      };
+    }
+  }
+  return { buttons, axes };
+}
+
+function emitModuleInputEvent() {
+  if (!moduleHost) return;
+  moduleHost.emit('input', {
+    delta: 0,
+    input: moduleInputSnapshot(),
+    world: moduleWorldSnapshot(),
+  }).catch(showRuntimeError);
+}
+
+function createModuleHost(bundle) {
+  if (!bundle?.systems?.length) return Promise.resolve(null);
+  const iframe = document.createElement('iframe');
+  iframe.hidden = true;
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.src = './module-sandbox.html';
+  document.body.appendChild(iframe);
+  const pending = new Map();
+  let sequence = 0;
+  let settled = false;
+  let readyResolve;
+  let readyReject;
+  const readyPromise = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const readyTimer = setTimeout(() => readyReject(new Error('Agent module sandbox did not become ready')), 3000);
+  const onMessage = (event) => {
+    if (event.source !== iframe.contentWindow) return;
+    const message = event.data;
+    if (!message || message.schema !== 'LillyModuleSandboxResult/v1') return;
+    if (message.type === 'ready') {
+      settled = true;
+      clearTimeout(readyTimer);
+      readyResolve(message);
+      return;
+    }
+    const request = pending.get(message.requestId);
+    if (message.requestId) pending.delete(message.requestId);
+    if (message.type === 'error') {
+      const error = Object.assign(new Error(message.error?.message || 'Agent module sandbox failed'), { code: message.error?.code || 'MODULE_RUNTIME_ERROR' });
+      if (!settled) {
+        settled = true;
+        clearTimeout(readyTimer);
+        readyReject(error);
+      }
+      request?.reject(error);
+      if (!request) showRuntimeError(error);
+      return;
+    }
+    if (message.type === 'result') {
+      moduleRuntimeState = { states: message.result?.states || {}, saves: message.result?.saves || {} };
+      applyModuleActions(message.result?.actions || []);
+      request?.resolve(message.result);
+    }
+  };
+  addEventListener('message', onMessage);
+  const dispatch = (type, event = '', payload = {}) => {
+    const requestId = `module-${++sequence}`;
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject });
+      iframe.contentWindow.postMessage({ schema: 'LillyModuleSandboxMessage/v1', type, event, payload, requestId, ...(type === 'restore' ? payload : {}) }, '*');
+    });
+  };
+  return readyPromise.then((ready) => ({
+    sourceHash: ready.sourceHash,
+    systems: ready.systems,
+    emit: (event, payload = {}) => dispatch('dispatch', event, payload),
+    restore: (snapshot = {}) => dispatch('restore', '', snapshot),
+    reset: () => dispatch('reset'),
+    dispose() {
+      removeEventListener('message', onMessage);
+      iframe.remove();
+      for (const request of pending.values()) request.reject(new Error('Module sandbox disposed'));
+      pending.clear();
+    },
+  })).catch((error) => {
+    removeEventListener('message', onMessage);
+    iframe.remove();
+    throw error;
+  });
 }
 
 function geometry(kind = 'box') {
@@ -129,6 +256,92 @@ function makeObject(entity) {
   return object;
 }
 
+function spawnModulePrefab(prefabId, options = {}) {
+  const prefab = moduleBundle?.prefabs?.find((entry) => entry.id === prefabId);
+  if (!prefab || !Array.isArray(prefab.entities)) return [];
+  const sceneData = project.scenes.find((entry) => entry.id === project.entryScene);
+  const requested = String(options.instanceId || `runtime-${++moduleSpawnSequence}`).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 80);
+  const instanceId = requested || `runtime-${moduleSpawnSequence}`;
+  const idMap = new Map(prefab.entities.map((entity) => [entity.id, `${instanceId}:${entity.id}`]));
+  const parentId = options.parentId && objectMap.has(options.parentId) ? options.parentId : null;
+  const offset = vector(options.position || { x: 0, y: 0, z: 0 });
+  const entities = prefab.entities.map((sourceEntity) => {
+    const entity = JSON.parse(JSON.stringify(sourceEntity));
+    entity.id = idMap.get(sourceEntity.id);
+    entity.parentId = sourceEntity.id === prefab.rootEntityId
+      ? parentId
+      : (sourceEntity.parentId ? idMap.get(sourceEntity.parentId) || parentId : parentId);
+    entity.tags = [...new Set([...(entity.tags || []), `prefab:${prefab.id}`, `instance:${instanceId}`])];
+    const transform = component(entity, 'Transform');
+    if (sourceEntity.id === prefab.rootEntityId && transform?.data.position) {
+      transform.data.position = {
+        x: Number(transform.data.position.x || 0) + offset.x,
+        y: Number(transform.data.position.y || 0) + offset.y,
+        z: Number(transform.data.position.z || 0) + offset.z,
+      };
+    }
+    return entity;
+  });
+  entities.forEach((entity) => objectMap.set(entity.id, makeObject(entity)));
+  entities.forEach((entity) => {
+    const object = objectMap.get(entity.id);
+    const parent = entity.parentId ? objectMap.get(entity.parentId) : null;
+    (parent || scene).add(object);
+    registerCollisionRole(entity, object);
+    if (object.userData.assetId) loadAssetObject(entity, object).catch(showRuntimeError);
+  });
+  sceneData.entities.push(...entities);
+  return entities.map((entity) => entity.id);
+}
+
+function applyModuleActions(actions) {
+  const sceneData = project?.scenes?.find((entry) => entry.id === project.entryScene);
+  for (const action of actions) {
+    const object = action.entityId ? objectMap.get(action.entityId) : null;
+    if (action.type === 'physics.impulse' || action.type === 'physics.force') {
+      const value = vector(action.value);
+      const multiplier = action.type === 'physics.force' ? fixedStep : 1;
+      if (object === player) playerVelocity.addScaledVector(value, multiplier);
+      else if (object) object.position.addScaledVector(value, multiplier);
+    } else if (action.type === 'physics.raycast') {
+      const raycaster = new THREE.Raycaster(vector(action.origin), vector(action.direction).normalize(), 0, Math.max(0, Number(action.maxDistance || 100)));
+      const hit = raycaster.intersectObjects([...objectMap.values()], true).find((entry) => entry.object?.userData?.entityId !== action.systemId) || null;
+      moduleHost?.emit('event', {
+        event: { name: 'physics.raycast-result', payload: { request: action, hit: hit ? { entityId: hit.object.userData.entityId || '', distance: hit.distance, point: hit.point.toArray() } : null } },
+        world: moduleWorldSnapshot(),
+        input: moduleInputSnapshot(),
+      }).catch(showRuntimeError);
+    } else if (action.type === 'entity.patch' && sceneData) {
+      const entity = sceneData.entities.find((entry) => entry.id === action.entityId);
+      if (!entity) continue;
+      let target = component(entity, action.component);
+      if (!target && action.component === 'State') {
+        target = { type: 'State', enabled: true, data: { schemaId: action.values?.schemaId || 'module-state', values: {} } };
+        entity.components.push(target);
+      }
+      if (!target) continue;
+      target.data = { ...target.data, ...(action.values || {}) };
+      if (target.type === 'Transform' && object) {
+        if (target.data.position) object.position.copy(vector(target.data.position));
+        if (target.data.rotation) object.rotation.set(Number(target.data.rotation.x || 0), Number(target.data.rotation.y || 0), Number(target.data.rotation.z || 0));
+        if (target.data.scale) object.scale.copy(vector(target.data.scale, { x: 1, y: 1, z: 1 }));
+      }
+    } else if (action.type === 'entity.spawn') {
+      spawnModulePrefab(action.prefabId, action.options || {});
+    } else if (action.type === 'entity.destroy' && object) {
+      removeRuntimeEntityTree(action.entityId);
+    } else if (action.type === 'hud.message') {
+      objective.textContent = String(action.text || '');
+      setStatus(String(action.options?.status || 'Mechanic'), action.options?.state || 'playing');
+    } else if (action.type === 'audio.play') {
+      playTone(Number(action.options?.frequency || 620), Number(action.options?.duration || 0.16));
+    } else if (action.type === 'particles.emit') {
+      const target = objectMap.get(action.entityId) || player;
+      if (target) burst(target.position, action.options?.color || '#67e8f9', Number(action.options?.count || 18));
+    }
+  }
+}
+
 async function loadAssetObject(entity, object) {
   const assetId = object.userData.assetId;
   if (!assetId) return;
@@ -148,6 +361,7 @@ async function loadAssetObject(entity, object) {
 function registerCollisionRole(entity, object) {
   const collider = component(entity, 'Collider');
   if (!collider) return;
+  runtimeColliders.set(entity.id, { entity, object, collider });
   const transform = component(entity, 'Transform')?.data || {};
   const size = vector(collider.data.size, transform.scale || { x: 1, y: 1, z: 1 });
   if (entity.tags.includes('ground')) {
@@ -169,6 +383,137 @@ function registerCollisionRole(entity, object) {
     });
   }
   if (entity.tags.includes('hazard')) hazards.push({ object, radius: Math.max(0.6, size.x / 2) });
+}
+
+function objectVisibleInWorld(object) {
+  let cursor = object;
+  while (cursor) {
+    if (cursor.visible === false) return false;
+    cursor = cursor.parent;
+  }
+  return true;
+}
+
+function runtimeColliderBounds(entry) {
+  if (!entry?.object?.parent || !objectVisibleInWorld(entry.object)) return null;
+  const center = new THREE.Vector3();
+  entry.object.getWorldPosition(center);
+  const size = vector(entry.collider.data.size, { x: 1, y: 1, z: 1 });
+  const half = {
+    x: Math.max(0.005, Math.abs(size.x) / 2),
+    y: Math.max(0.005, Math.abs(size.y) / 2),
+    z: Math.max(0.005, Math.abs(size.z) / 2),
+  };
+  if (entry.collider.data.shape === 'sphere') {
+    const radius = Math.max(half.x, half.y, half.z);
+    half.x = radius;
+    half.y = radius;
+    half.z = radius;
+  }
+  return {
+    entry,
+    center,
+    minX: center.x - half.x,
+    maxX: center.x + half.x,
+    minY: center.y - half.y,
+    maxY: center.y + half.y,
+    minZ: center.z - half.z,
+    maxZ: center.z + half.z,
+  };
+}
+
+function collisionPairKey(entityA, entityB) {
+  const [first, second] = entityA < entityB ? [entityA, entityB] : [entityB, entityA];
+  return `${first.length}:${first}${second}`;
+}
+
+function isFixedCollider(entry) {
+  const body = component(entry.entity, 'RigidBody');
+  return !body || body.data.bodyType === 'fixed';
+}
+
+function collisionPayload(left, right, phase) {
+  const [entityA, entityB] = left.entry.entity.id < right.entry.entity.id ? [left, right] : [right, left];
+  const trigger = entityA.entry.collider.data.sensor === true || entityB.entry.collider.data.sensor === true;
+  return {
+    type: trigger ? 'trigger' : 'collision',
+    phase,
+    entityA: entityA.entry.entity.id,
+    entityB: entityB.entry.entity.id,
+    tagsA: [...(entityA.entry.entity.tags || [])],
+    tagsB: [...(entityB.entry.entity.tags || [])],
+    positionA: { x: entityA.center.x, y: entityA.center.y, z: entityA.center.z },
+    positionB: { x: entityB.center.x, y: entityB.center.y, z: entityB.center.z },
+  };
+}
+
+function scanCollisionTransitions() {
+  const bounds = [...runtimeColliders.values()]
+    .map(runtimeColliderBounds)
+    .filter(Boolean)
+    .sort((left, right) => left.minX - right.minX || left.entry.entity.id.localeCompare(right.entry.entity.id));
+  const nextPairs = new Map();
+  const transitions = [];
+  for (let leftIndex = 0; leftIndex < bounds.length; leftIndex += 1) {
+    const left = bounds[leftIndex];
+    for (let rightIndex = leftIndex + 1; rightIndex < bounds.length; rightIndex += 1) {
+      const right = bounds[rightIndex];
+      if (right.minX > left.maxX) break;
+      if (left.maxY < right.minY || left.minY > right.maxY || left.maxZ < right.minZ || left.minZ > right.maxZ) continue;
+      const leftSensor = left.entry.collider.data.sensor === true;
+      const rightSensor = right.entry.collider.data.sensor === true;
+      if (!leftSensor && !rightSensor && isFixedCollider(left.entry) && isFixedCollider(right.entry)) continue;
+      const key = collisionPairKey(left.entry.entity.id, right.entry.entity.id);
+      const active = collisionPayload(left, right, 'start');
+      nextPairs.set(key, active);
+      if (!activeCollisionPairs.has(key)) transitions.push(active);
+    }
+  }
+  for (const [key, prior] of activeCollisionPairs) {
+    if (!nextPairs.has(key)) transitions.push({ ...prior, phase: 'end' });
+  }
+  activeCollisionPairs = nextPairs;
+  return transitions;
+}
+
+function queueModuleCollisions(transitions) {
+  if (!transitions.length) return;
+  pendingModuleCollisions.push(...transitions);
+  if (pendingModuleCollisions.length > 512) {
+    pendingModuleCollisions.splice(0, pendingModuleCollisions.length - 512);
+    console.warn('[LillyPlayer] Collision event queue was capped at 512 transitions');
+  }
+}
+
+function removeRuntimeEntityTree(entityId) {
+  const sceneData = project?.scenes?.find((entry) => entry.id === project.entryScene);
+  if (!sceneData) return [];
+  const removed = new Set([entityId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const entity of sceneData.entities) {
+      if (entity.parentId && removed.has(entity.parentId) && !removed.has(entity.id)) {
+        removed.add(entity.id);
+        changed = true;
+      }
+    }
+  }
+  for (const id of removed) {
+    const object = objectMap.get(id);
+    object?.removeFromParent();
+    objectMap.delete(id);
+    runtimeColliders.delete(id);
+    enemyObjects.delete(id);
+    gateObjects.delete(id);
+    checkpointObjects.delete(id);
+  }
+  for (let index = pickups.length - 1; index >= 0; index -= 1) if (removed.has(pickups[index].id)) pickups.splice(index, 1);
+  for (let index = hazards.length - 1; index >= 0; index -= 1) if (removed.has(hazards[index].object.userData.entityId)) hazards.splice(index, 1);
+  for (let index = obstacles.length - 1; index >= 0; index -= 1) if (removed.has(obstacles[index].entityId)) obstacles.splice(index, 1);
+  sceneData.entities = sceneData.entities.filter((entry) => !removed.has(entry.id));
+  activeCollisionPairs = new Map([...activeCollisionPairs].filter(([, pair]) => !removed.has(pair.entityA) && !removed.has(pair.entityB)));
+  return [...removed];
 }
 
 async function setupScene() {
@@ -470,6 +815,31 @@ function takeHazardDamage() {
   processGameplayEvents(gameplay.drainEvents());
 }
 
+async function dispatchModuleSimulationStep(delta) {
+  if (!moduleHost || moduleDispatchPending) return;
+  moduleDispatchPending = true;
+  const collisionBatch = pendingModuleCollisions.splice(0, pendingModuleCollisions.length);
+  try {
+    await moduleHost.emit('fixed-update', {
+      delta,
+      input: moduleInputSnapshot(),
+      world: moduleWorldSnapshot(),
+    });
+    for (const collision of collisionBatch) {
+      await moduleHost.emit('collision', {
+        delta: 0,
+        input: moduleInputSnapshot(),
+        world: moduleWorldSnapshot(),
+        collision,
+      });
+    }
+  } catch (error) {
+    showRuntimeError(error);
+  } finally {
+    moduleDispatchPending = false;
+  }
+}
+
 function simulate(delta) {
   hazardCooldown = Math.max(0, hazardCooldown - delta);
   const input = movementInput();
@@ -494,6 +864,8 @@ function simulate(delta) {
     if (hazard.object.position.distanceTo(player.position) < hazard.radius + playerRadius) takeHazardDamage();
   });
   evaluateGoal();
+  queueModuleCollisions(scanCollisionTransitions());
+  dispatchModuleSimulationStep(delta);
 }
 
 function animateWorld(elapsed, delta) {
@@ -539,14 +911,24 @@ function animateWorld(elapsed, delta) {
 
 function frame() {
   const frameDelta = clock.getDelta();
-  const schedule = scheduleGameplaySteps(accumulator, frameDelta, fixedStep);
-  accumulator = schedule.accumulatorSeconds;
-  for (let stepIndex = 0; stepIndex < schedule.steps; stepIndex += 1) {
-    simulate(fixedStep);
+  let renderDelta = 0;
+  if (!editorPaused) {
+    const schedule = scheduleGameplaySteps(accumulator, frameDelta, fixedStep);
+    accumulator = schedule.accumulatorSeconds;
+    for (let stepIndex = 0; stepIndex < schedule.steps; stepIndex += 1) simulate(fixedStep);
+    renderDelta = Math.min(GAMEPLAY_MAX_FRAME_DELTA_SECONDS, Math.max(0, frameDelta));
+  } else {
+    accumulator = 0;
+    if (editorStepRequests > 0) {
+      editorStepRequests -= 1;
+      simulate(fixedStep);
+      editorCompletedSteps += 1;
+      renderDelta = fixedStep;
+    }
   }
-  const delta = Math.min(GAMEPLAY_MAX_FRAME_DELTA_SECONDS, Math.max(0, frameDelta));
-  animateWorld(clock.elapsedTime, delta);
-  updateParticles(delta);
+  visualElapsed += renderDelta;
+  animateWorld(visualElapsed, renderDelta);
+  updateParticles(renderDelta);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -554,6 +936,8 @@ function frame() {
 function reset(fullReset = true) {
   player.position.copy(playerSpawn);
   playerVelocity.set(0, 0, 0);
+  activeCollisionPairs.clear();
+  pendingModuleCollisions.length = 0;
   won = false;
   attackHeld = false;
   hazardCooldown = 0.8;
@@ -564,6 +948,11 @@ function reset(fullReset = true) {
   }
   scoreValue.textContent = String(pickupCount);
   updateObjective();
+  if (moduleHost && fullReset) {
+    moduleHost.reset()
+      .then(() => moduleHost.emit('start', { delta: 0, input: moduleInputSnapshot(), world: moduleWorldSnapshot() }))
+      .catch(showRuntimeError);
+  }
 }
 
 function saveSnapshot() {
@@ -574,11 +963,12 @@ function saveSnapshot() {
     pickupCount,
     hiddenPickupIds: pickups.filter(({ object }) => !object.visible).map(({ id }) => id),
     gameplay: gameplay.serialize(),
+    modules: moduleRuntimeState,
     won,
   };
 }
 
-function applySaveSnapshot(snapshot) {
+function applySaveSnapshot(snapshot, restoreModules = true) {
   if (!snapshot || !Array.isArray(snapshot.position) || snapshot.position.length !== 3) return false;
   if (snapshot.levelChecksum && levelDesign?.checksum && snapshot.levelChecksum !== levelDesign.checksum) return false;
   if (snapshot.schema === 'LillyPlayerSave/v2' && snapshot.gameplay && !gameplay.restore(snapshot.gameplay)) return false;
@@ -591,6 +981,7 @@ function applySaveSnapshot(snapshot) {
   pickups.forEach(({ id, object }) => { object.visible = !hiddenIds.has(id); });
   syncGameplay(gameplay.getState());
   won = snapshot.won === true && objectiveRequirementsMet();
+  if (restoreModules && snapshot.modules && moduleHost) moduleHost.restore(snapshot.modules).catch(showRuntimeError);
   scoreValue.textContent = String(pickupCount);
   updateObjective();
   return true;
@@ -653,13 +1044,21 @@ function setupTouchControls() {
     setupHoldButton(button, (event) => {
       touchPointers.set(event.pointerId, code);
       touchKeys.add(code);
+      emitModuleInputEvent();
     }, (event) => {
       const releasedCode = touchPointers.get(event.pointerId) || code;
       touchPointers.delete(event.pointerId);
       if (![...touchPointers.values()].includes(releasedCode)) touchKeys.delete(releasedCode);
+      emitModuleInputEvent();
     });
   });
-  setupHoldButton(attackButton, () => touchActions.add('Attack'), () => touchActions.delete('Attack'));
+  setupHoldButton(attackButton, () => {
+    touchActions.add('Attack');
+    emitModuleInputEvent();
+  }, () => {
+    touchActions.delete('Attack');
+    emitModuleInputEvent();
+  });
 }
 
 function resize() {
@@ -681,9 +1080,13 @@ function showRuntimeError(error) {
 
 window.addEventListener('keydown', (event) => {
   keys.add(event.code);
+  if (!event.repeat) emitModuleInputEvent();
   if (actionCodes('Reset', ['KeyR']).includes(event.code)) reset(true);
 });
-window.addEventListener('keyup', (event) => keys.delete(event.code));
+window.addEventListener('keyup', (event) => {
+  keys.delete(event.code);
+  emitModuleInputEvent();
+});
 window.addEventListener('blur', () => {
   keys.clear();
   touchKeys.clear();
@@ -694,6 +1097,16 @@ window.addEventListener('blur', () => {
 window.addEventListener('resize', resize);
 window.addEventListener('message', (event) => {
   const message = event.data;
+  if (event.source === window.parent && message?.schema === 'LillyEditorPlayerControl/v1' && (!message.projectId || message.projectId === project?.id)) {
+    if (message.type === 'play') editorPaused = false;
+    if (message.type === 'pause') editorPaused = true;
+    if (message.type === 'step') {
+      editorPaused = true;
+      editorStepRequests = Math.min(8, editorStepRequests + 1);
+    }
+    if (message.type === 'reset') reset(true);
+    return;
+  }
   if (!message || message.schema !== 'LillyPlayerStorage/v1' || message.projectId !== project?.id) return;
   if (message.type === 'load-result' && message.ok && message.state) applySaveSnapshot(message.state);
   if (message.type === 'save-result') {
@@ -767,19 +1180,106 @@ function runCombatTest() {
   return { passed: started && cleared && checkpoint && gatesOpen, started, cleared, checkpoint, gatesOpen, encounterId: spec.id };
 }
 
+async function runModuleTest(requestedAction = '') {
+  if (!moduleHost) return { passed: true, skipped: true, reason: 'No agent-authored systems in this build' };
+  const snapshot = saveSnapshot();
+  const beforeVelocity = playerVelocity.toArray();
+  const mechanicInputs = (moduleBundle?.mechanics || []).flatMap((mechanic) => mechanic.inputs || []);
+  const action = requestedAction || mechanicInputs.find((entry) => !['Move', 'Attack', 'Reset'].includes(entry)) || mechanicInputs[0] || 'Ability1';
+  playerVelocity.set(0, 0, 0);
+  const result = await moduleHost.emit('fixed-update', {
+    delta: fixedStep,
+    input: { buttons: { [action]: true, Dash: true, Ability1: true }, axes: { Move: { x: 1, y: 0 } } },
+    world: moduleWorldSnapshot(),
+  });
+  const capabilityActions = result.actions || [];
+  const passed = capabilityActions.length > 0;
+  playerVelocity.fromArray(beforeVelocity);
+  applySaveSnapshot(snapshot, false);
+  if (snapshot.modules) await moduleHost.restore(snapshot.modules);
+  return {
+    passed,
+    input: action,
+    sourceHash: moduleBundle?.sourceHash || null,
+    systems: moduleHost.systems,
+    actions: capabilityActions,
+  };
+}
+
+async function runModuleCollisionTest() {
+  if (!moduleHost) return { passed: true, skipped: true, reason: 'No agent-authored systems in this build' };
+  const playerCollider = runtimeColliders.get(player?.userData?.entityId || 'player');
+  const target = [...runtimeColliders.values()].find((entry) => (
+    entry.entity.id !== playerCollider?.entity.id
+    && entry.collider.data.sensor === true
+    && objectVisibleInWorld(entry.object)
+  ));
+  if (!playerCollider || !target) return { passed: true, skipped: true, reason: 'No player-to-trigger collision pair is available' };
+  for (let attempt = 0; moduleDispatchPending && attempt < 100; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  if (moduleDispatchPending) return { passed: false, code: 'MODULE_DISPATCH_BUSY', reason: 'Module sandbox remained busy during collision proof' };
+  const snapshot = saveSnapshot();
+  moduleDispatchPending = true;
+  try {
+    const targetPosition = new THREE.Vector3();
+    target.object.getWorldPosition(targetPosition);
+    player.position.copy(targetPosition);
+    activeCollisionPairs.clear();
+    const transitions = scanCollisionTransitions();
+    const collision = transitions.find((entry) => (
+      entry.phase === 'start'
+      && [entry.entityA, entry.entityB].includes(playerCollider.entity.id)
+      && [entry.entityA, entry.entityB].includes(target.entity.id)
+    ));
+    if (!collision) return { passed: false, detected: false, playerId: playerCollider.entity.id, targetId: target.entity.id };
+    const result = await moduleHost.emit('collision', {
+      delta: 0,
+      input: moduleInputSnapshot(),
+      world: moduleWorldSnapshot(),
+      collision,
+    });
+    const actions = result.actions || [];
+    return {
+      passed: actions.length > 0,
+      detected: true,
+      handled: actions.length > 0,
+      collision,
+      actions,
+      states: result.states || {},
+    };
+  } finally {
+    applySaveSnapshot(snapshot, false);
+    if (snapshot.modules) await moduleHost.restore(snapshot.modules);
+    playerVelocity.set(0, 0, 0);
+    activeCollisionPairs.clear();
+    pendingModuleCollisions.length = 0;
+    moduleDispatchPending = false;
+  }
+}
+
 async function start() {
   try {
-    project = await fetch('./project.json').then((response) => {
-      if (!response.ok) throw new Error('Project data failed to load');
-      return response.json();
-    });
+    [project, moduleBundle] = await Promise.all([
+      fetch('./project.json').then((response) => {
+        if (!response.ok) throw new Error('Project data failed to load');
+        return response.json();
+      }),
+      fetch('./modules.json').then((response) => {
+        if (!response.ok) throw new Error('Agent module bundle failed to load');
+        return response.json();
+      }),
+    ]);
     await setupScene();
     setupTouchControls();
     reset(true);
+    moduleHost = await createModuleHost(moduleBundle);
+    if (moduleHost) {
+      await moduleHost.emit('start', { delta: 0, input: moduleInputSnapshot(), world: moduleWorldSnapshot() });
+      setStatus(`${moduleHost.systems.length} systems ready`, 'success');
+    }
     restoreSave();
     loading.hidden = true;
     window.__LILLY_GAME__ = {
-      schema: 'LillyPlayerDebug/v2',
+      schema: 'LillyPlayerDebug/v3',
       getState: () => ({
         pickupCount,
         totalPickups,
@@ -794,9 +1294,17 @@ async function start() {
         encounterCount: gameplayState.encounters.length,
         enemiesRemaining: gameplayState.enemies.filter((entry) => entry.health > 0).length,
         checkpointId: gameplayState.checkpoint.id,
+        moduleSourceHash: moduleBundle?.sourceHash || null,
+        moduleCount: moduleBundle?.modules?.length || 0,
+        systemCount: moduleBundle?.systems?.length || 0,
+        editorPaused,
+        pendingEditorSteps: editorStepRequests,
+        editorCompletedSteps,
       }),
       controlTest: runControlTest,
       combatTest: runCombatTest,
+      moduleTest: runModuleTest,
+      collisionTest: runModuleCollisionTest,
       saveSnapshot,
       reset: () => reset(true),
     };

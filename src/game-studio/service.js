@@ -17,6 +17,7 @@ const {
   PROJECT_SCHEMA,
   applyCommandBatch,
   createArenaProject,
+  createBlankProject,
   createLevelRecipeFromPrompt,
   deepClone,
   generateLevel,
@@ -31,7 +32,12 @@ const {
   validateBlueprint,
 } = require('../../packages/lilly-engine/dist/blueprints/src');
 const { GameplaySimulation } = require('../../packages/lilly-engine/dist/gameplay/src');
-const { writeImmutableBuild } = require('./player-bundle');
+const {
+  assertModuleBundleValid,
+  compileModuleBundle,
+} = require('../../packages/lilly-engine/dist/modules/src');
+const { PLAYER_RUNTIME_HASH, writeImmutableBuild } = require('./player-bundle');
+const { runMechanicTests } = require('./module-runner');
 
 const INDEX_SCHEMA = 'LillyGameStudioIndex/v1';
 const AI_RUN_SCHEMA = 'LillyAiRun/v1';
@@ -243,7 +249,10 @@ class GameStudioService {
     const slug = slugify(input.slug || name);
     const imported = input.project?.schema === PROJECT_SCHEMA ? upgradeProject(deepClone(input.project)) : null;
     const importedBundle = normalizeImportBundle(input.importBundle);
-    const project = upgradeProject(imported || createArenaProject({ id, name, slug, prompt: input.prompt, seed: input.seed }));
+    const template = input.template === 'blank' ? 'blank' : 'expedition';
+    const project = upgradeProject(imported || (template === 'blank'
+      ? createBlankProject({ id, name, slug })
+      : createArenaProject({ id, name, slug, prompt: input.prompt, seed: input.seed })));
     project.id = id;
     project.name = name;
     project.slug = slug;
@@ -270,7 +279,7 @@ class GameStudioService {
       engineVersion: project.engineVersion,
       createdAt,
       updatedAt: createdAt,
-      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : 'template:ai-procedural-expedition'),
+      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : `template:${template === 'blank' ? 'blank-agent-project' : 'ai-procedural-expedition'}`),
       importedBundle: importedBundle ? {
         schema: 'LillyImportedBundle/v1',
         entry: importedBundle.entry,
@@ -321,13 +330,28 @@ class GameStudioService {
 
   describeProject(metadata, project, index) {
     const blueprintIssues = project.blueprints.flatMap((graph) => validateBlueprint(graph).map((issue) => ({ ...issue, graphId: graph.id })));
+    const moduleBundle = compileModuleBundle(project.files || []);
+    const moduleIssues = moduleBundle.diagnostics;
     return {
       metadata,
       project,
       validation: {
-        valid: !validateProject(project).some((issue) => issue.severity === 'error') && !blueprintIssues.some((issue) => issue.severity === 'error'),
+        valid: !validateProject(project).some((issue) => issue.severity === 'error')
+          && !blueprintIssues.some((issue) => issue.severity === 'error')
+          && !moduleIssues.some((issue) => issue.severity === 'error'),
         projectIssues: validateProject(project),
         blueprintIssues,
+        moduleIssues,
+      },
+      moduleSummary: {
+        schema: moduleBundle.schema,
+        sourceHash: moduleBundle.sourceHash,
+        loadOrder: moduleBundle.loadOrder,
+        modules: moduleBundle.modules.map((module) => ({ id: module.id, name: module.name, version: module.version, sourcePath: module.sourcePath, capabilities: module.capabilities })),
+        systems: moduleBundle.systems.map((system) => ({ moduleId: system.moduleId, path: system.path, sourceHash: system.sourceHash })),
+        mechanics: moduleBundle.mechanics.map((mechanic) => ({ id: mechanic.id, moduleId: mechanic.moduleId, name: mechanic.name, sourcePath: mechanic.sourcePath, inputs: mechanic.inputs, events: mechanic.events })),
+        prefabs: moduleBundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath })),
+        tests: moduleBundle.tests.map((test) => ({ id: test.id, moduleId: test.moduleId, name: test.name, sourcePath: test.sourcePath })),
       },
       builds: index.builds.filter((build) => build.projectId === project.id).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
       aiRuns: index.aiRuns.filter((run) => run.projectId === project.id).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))).slice(0, 20),
@@ -374,6 +398,107 @@ class GameStudioService {
       await this.emit(projectId, 'commands.applied', { baseRevision, revision: applied.project.revision, commandIds: commands.map((command) => command.commandId), source: input.source || 'editor' });
       return { ...this.describeProject(metadata, applied.project, index), commandBatch: { schema: 'LillyCommandBatch/v1', baseRevision, revision: applied.project.revision, commands, inverses: applied.inverses } };
     });
+  }
+
+  async listSourceFiles(projectId, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    return {
+      schema: 'LillySourceTree/v1',
+      projectId,
+      revision: result.project.revision,
+      files: result.project.files.map((file) => ({
+        schema: file.schema,
+        path: file.path,
+        kind: file.kind,
+        language: file.language,
+        enabled: file.enabled,
+        sizeBytes: Buffer.byteLength(file.content, 'utf8'),
+      })),
+      moduleSummary: result.moduleSummary,
+      diagnostics: result.validation.moduleIssues,
+    };
+  }
+
+  async readSourceFile(projectId, filePath, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    const normalized = String(filePath || '').replace(/\\/g, '/').replace(/^\.\//, '');
+    const file = result.project.files.find((entry) => entry.path === normalized);
+    if (!file) throw Object.assign(new Error(`Source file ${normalized} was not found`), { statusCode: 404, code: 'SOURCE_FILE_NOT_FOUND' });
+    return { schema: 'LillySourceFileRead/v1', projectId, revision: result.project.revision, file };
+  }
+
+  async writeSourceFiles(projectId, input = {}, ownerId = '') {
+    const files = Array.isArray(input.files) ? input.files : [];
+    if (files.length === 0) throw Object.assign(new Error('write-files requires at least one source file'), { statusCode: 400, code: 'SOURCE_FILES_REQUIRED' });
+    if (files.length > 100) throw Object.assign(new Error('A source mutation batch is limited to 100 files'), { statusCode: 400, code: 'SOURCE_FILE_BATCH_LIMIT' });
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-file-api',
+      commands: files.map((file) => ({ operation: 'file.upsert', target: { path: file.path }, payload: { file } })),
+    }, ownerId);
+  }
+
+  async deleteSourceFiles(projectId, input = {}, ownerId = '') {
+    const paths = Array.isArray(input.paths) ? input.paths : (input.path ? [input.path] : []);
+    if (paths.length === 0) throw Object.assign(new Error('delete-files requires at least one source path'), { statusCode: 400, code: 'SOURCE_PATHS_REQUIRED' });
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-file-api',
+      commands: paths.map((filePath) => ({ operation: 'file.delete', target: { path: filePath }, payload: {} })),
+    }, ownerId);
+  }
+
+  async compileProjectModules(projectId, input = {}, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    if (input.revision != null && Number(input.revision) !== result.project.revision) {
+      throw Object.assign(new Error('Compile revision no longer matches the saved project revision'), { statusCode: 409, code: 'COMPILE_REVISION_CONFLICT', currentRevision: result.project.revision });
+    }
+    const bundle = compileModuleBundle(result.project.files || []);
+    return {
+      schema: bundle.schema,
+      projectId,
+      projectRevision: result.project.revision,
+      sourceHash: bundle.sourceHash,
+      valid: !bundle.diagnostics.some((entry) => entry.severity === 'error'),
+      loadOrder: bundle.loadOrder,
+      modules: bundle.modules.map((module) => ({ id: module.id, name: module.name, version: module.version, sourcePath: module.sourcePath, capabilities: module.capabilities, dependencies: module.dependencies })),
+      systems: bundle.systems.map((system) => ({ moduleId: system.moduleId, path: system.path, sourceHash: system.sourceHash })),
+      mechanics: bundle.mechanics.map((mechanic) => ({ id: mechanic.id, moduleId: mechanic.moduleId, name: mechanic.name, sourcePath: mechanic.sourcePath, inputs: mechanic.inputs, events: mechanic.events })),
+      prefabs: bundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath, entityCount: prefab.entities.length })),
+      tests: bundle.tests.map((test) => ({ id: test.id, moduleId: test.moduleId, name: test.name, sourcePath: test.sourcePath, assertionCount: test.assertions.length })),
+      diagnostics: bundle.diagnostics,
+    };
+  }
+
+  async runMechanicTestSuite(projectId, input = {}, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    if (input.revision != null && Number(input.revision) !== result.project.revision) {
+      throw Object.assign(new Error('Mechanic test revision no longer matches the saved project revision'), { statusCode: 409, code: 'MECHANIC_TEST_REVISION_CONFLICT', currentRevision: result.project.revision });
+    }
+    const bundle = compileModuleBundle(result.project.files || []);
+    try { assertModuleBundleValid(bundle); }
+    catch (error) { error.statusCode = 422; throw error; }
+    const run = runMechanicTests(bundle, { testIds: input.testIds, executionBudgetMs: input.executionBudgetMs });
+    const report = { ...run, projectId, projectRevision: result.project.revision, createdAt: now() };
+    await this.writeJsonAtomic(path.join(this.projectDirectory(projectId), 'mechanic-tests', `${randomUUID()}.json`), report);
+    await this.emit(projectId, 'mechanic-tests.completed', { status: report.status, passed: report.passed, failed: report.failed, sourceHash: report.sourceHash });
+    return report;
+  }
+
+  async instantiatePrefab(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-prefab-api',
+      commands: [{
+        operation: 'prefab.instantiate',
+        target: { sceneId: input.sceneId, path: input.path, prefabId: input.prefabId, instanceId: input.instanceId },
+        payload: { path: input.path, instanceId: input.instanceId, parentId: input.parentId || null, config: input.config || {} },
+      }],
+    }, ownerId);
   }
 
   async rollback(projectId, input = {}, ownerId = '') {
@@ -432,6 +557,24 @@ class GameStudioService {
     const compiledGraphs = [];
     if (!blueprintIssues.length) project.blueprints.forEach((graph) => compiledGraphs.push(compileBlueprint(graph)));
     tests.push({ name: 'Blueprint compilation', status: compiledGraphs.length === project.blueprints.length ? 'passed' : 'failed', details: `${compiledGraphs.length}/${project.blueprints.length} graphs compiled` });
+    const compiledModules = compileModuleBundle(project.files || []);
+    const moduleErrors = compiledModules.diagnostics.filter((issue) => issue.severity === 'error');
+    tests.push({
+      name: 'Agent module compilation and capability policy',
+      status: moduleErrors.length ? 'failed' : 'passed',
+      details: moduleErrors.length
+        ? moduleErrors.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
+        : `${compiledModules.modules.length} modules, ${compiledModules.systems.length} typed systems, ${compiledModules.mechanics.length} mechanics, ${compiledModules.prefabs.length} prefabs`,
+    });
+    let mechanicTestRun = { schema: 'LillyMechanicTestRun/v1', sourceHash: compiledModules.sourceHash, status: 'passed', tests: [], passed: 0, failed: 0 };
+    if (!moduleErrors.length) mechanicTestRun = runMechanicTests(compiledModules, { executionBudgetMs: input.executionBudgetMs });
+    tests.push({
+      name: 'Agent-authored mechanic specifications',
+      status: mechanicTestRun.status,
+      details: compiledModules.tests.length
+        ? `${mechanicTestRun.passed}/${compiledModules.tests.length} deterministic mechanic tests passed`
+        : 'No mechanic specifications authored; module runtime remains optional',
+    });
     const scene = getScene(project);
     const levelIssues = [];
     const deterministicFailures = [];
@@ -535,6 +678,8 @@ class GameStudioService {
       status: tests.every((test) => test.status === 'passed') ? 'passed' : 'failed',
       tests,
       compiledGraphs,
+      compiledModules,
+      mechanicTestRun,
       fixedSteps,
       createdAt: now(),
     };
@@ -554,7 +699,13 @@ class GameStudioService {
       const id = randomUUID();
       const workspaceId = `game-studio-${slugify(project.slug)}-r${project.revision}-${id.slice(0, 8)}`;
       const directory = path.join(this.buildRoot, workspaceId);
-      const files = await writeImmutableBuild({ directory, project, graphIr: playtest.compiledGraphs, projectDirectory: this.projectDirectory(projectId) });
+      const files = await writeImmutableBuild({
+        directory,
+        project,
+        graphIr: playtest.compiledGraphs,
+        moduleBundle: playtest.compiledModules,
+        projectDirectory: this.projectDirectory(projectId),
+      });
       const build = {
         schema: BUILD_SCHEMA,
         id,
@@ -582,6 +733,67 @@ class GameStudioService {
       }
       await this.emit(projectId, 'build.completed', { id, status: build.status, revision: project.revision, previewUrl: build.previewUrl });
       return build;
+    });
+  }
+
+  async createEditorPreview(projectId, input = {}, ownerId = '') {
+    return this.withProjectLock(projectId, async () => {
+      const result = await this.getProject(projectId, ownerId);
+      if (!result) return null;
+      const { project } = result;
+      if (input.projectRevision != null && Number(input.projectRevision) !== project.revision) {
+        throw Object.assign(new Error('Editor preview revision no longer matches the saved project revision'), { statusCode: 409, code: 'EDITOR_PREVIEW_REVISION_CONFLICT', currentRevision: project.revision });
+      }
+      const playtest = await this.runPlaytest(projectId, input, ownerId);
+      if (playtest.status !== 'passed') {
+        throw Object.assign(new Error('Editor Play is blocked by failed project, module, Blueprint, or mechanic validation'), { statusCode: 422, code: 'EDITOR_PREVIEW_PLAYTEST_FAILED', tests: playtest.tests });
+      }
+      const sourceHash = playtest.compiledModules?.sourceHash || '00000000';
+      const workspaceId = `game-studio-editor-${project.id}-r${project.revision}-${sourceHash}-${PLAYER_RUNTIME_HASH}`;
+      const directory = path.join(this.buildRoot, workspaceId);
+      const manifestPath = path.join(directory, 'build-manifest.json');
+      let cached = false;
+      if (await pathExists(manifestPath)) {
+        try {
+          const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+          cached = manifest?.schema === 'LillyPlayerBundle/v2'
+            && manifest.projectId === project.id
+            && Number(manifest.revision) === project.revision
+            && String(manifest.moduleSourceHash || '00000000') === sourceHash
+            && manifest.playerRuntimeHash === PLAYER_RUNTIME_HASH;
+        } catch (_error) {
+          cached = false;
+        }
+      }
+      if (!cached) {
+        if (await pathExists(directory)) {
+          const relative = path.relative(this.buildRoot, directory);
+          if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Object.assign(new Error('Editor preview workspace escaped the build root'), { code: 'EDITOR_PREVIEW_PATH_INVALID' });
+          await fs.rm(directory, { recursive: true, force: true });
+        }
+        await writeImmutableBuild({
+          directory,
+          project,
+          graphIr: playtest.compiledGraphs,
+          moduleBundle: playtest.compiledModules,
+          projectDirectory: this.projectDirectory(projectId),
+        });
+      }
+      const preview = {
+        schema: 'LillyEditorPreview/v1',
+        projectId,
+        projectRevision: project.revision,
+        moduleSourceHash: sourceHash,
+        playerRuntimeHash: PLAYER_RUNTIME_HASH,
+        workspaceId,
+        previewUrl: `/api/sandbox-workspaces/${encodeURIComponent(workspaceId)}/preview/`,
+        sandboxUrl: `/api/sandbox-workspaces/${encodeURIComponent(workspaceId)}/sandbox`,
+        cached,
+        tests: playtest.tests,
+        createdAt: now(),
+      };
+      await this.emit(projectId, 'editor-preview.ready', { revision: project.revision, sourceHash, workspaceId, cached });
+      return preview;
     });
   }
 
@@ -685,7 +897,7 @@ class GameStudioService {
       try {
         const prompt = mode === 'level'
           ? `You are Lilly's game director. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit, reach-exit, or secure-and-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30; encounterCount 0-4; enemyCount 0-4. Combat encounters must fit non-spawn/non-goal rooms, enemyCount must be at least encounterCount, and zero encounters require zero enemies. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
-          : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, project.set-settings, level.generate. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, entityCount: scene.entities.length, blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
+          : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of scene.create, scene.delete, scene.rename, entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, blueprint.delete, file.upsert, file.delete, prefab.instantiate, input.replace, project.set-entry-scene, project.set-settings, level.generate. For original mechanics, prefer small versioned .module.json, .mechanic.json, .system.ts, .prefab.json, and .spec.json files through file.upsert rather than hiding behavior in scene data. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, sceneIds: project.scenes.map((entry) => entry.id), entityCount: scene.entities.length, sourcePaths: project.files.map((file) => file.path), blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
         const response = await this.complete(prompt);
         const parsed = parseLenientJson(String(response || ''));
         if (mode === 'level' && parsed?.recipe) {
@@ -718,7 +930,7 @@ class GameStudioService {
     let preview;
     try { preview = applyCommandBatch(project, commands, baseRevision); }
     catch (error) { error.statusCode ||= 422; throw error; }
-    const affected = commands.map((command) => ({ operation: command.operation, sceneId: command.target.sceneId || null, entityId: command.target.entityId || command.payload.entity?.id || null, graphId: command.target.graphId || null, recipeId: command.payload.recipe?.id || null }));
+    const affected = commands.map((command) => ({ operation: command.operation, sceneId: command.target.sceneId || null, entityId: command.target.entityId || command.payload.entity?.id || null, graphId: command.target.graphId || null, recipeId: command.payload.recipe?.id || null, path: command.target.path || command.payload.file?.path || null }));
     const previewLevel = preview.project.generatedLevels.find((design) => design.sceneId === scene.id) || null;
     const previewRecipe = previewLevel ? preview.project.levelRecipes.find((recipe) => recipe.id === previewLevel.recipeId) || null : null;
     const run = {
@@ -768,8 +980,17 @@ class GameStudioService {
   async executeToolAction(action, params = {}, context = {}) {
     const ownerId = String(context.userId || context.ownerId || '').trim();
     switch (action) {
+      case 'create-project': return this.createProject(params, ownerId);
+      case 'list-projects': return { projects: await this.listProjects(ownerId) };
       case 'inspect-project': return this.getProject(params.projectId, ownerId);
       case 'inspect-scene': return this.inspectScene(params.projectId, params.sceneId, ownerId);
+      case 'list-files': return this.listSourceFiles(params.projectId, ownerId);
+      case 'read-file': return this.readSourceFile(params.projectId, params.path, ownerId);
+      case 'write-files': return this.writeSourceFiles(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'delete-files': return this.deleteSourceFiles(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'compile-project': return this.compileProjectModules(params.projectId, params, ownerId);
+      case 'run-mechanic-tests': return this.runMechanicTestSuite(params.projectId, params, ownerId);
+      case 'instantiate-prefab': return this.instantiatePrefab(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'generate-level': return this.createAiRun(params.projectId, { ...params, mode: 'level' }, ownerId);
       case 'apply-commands': return this.applyCommands(params.projectId, params, ownerId);
       case 'edit-blueprint': {

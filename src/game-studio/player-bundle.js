@@ -6,7 +6,16 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const PLAYER_JAVASCRIPT = fsSync.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8');
+const MODULE_SANDBOX_JAVASCRIPT = fsSync.readFileSync(path.join(__dirname, 'module-sandbox-runtime.js'), 'utf8');
 const GAMEPLAY_JAVASCRIPT = fsSync.readFileSync(path.join(__dirname, '../../packages/lilly-engine/browser-dist/index.js'), 'utf8');
+const PLAYER_RUNTIME_HASH = crypto.createHash('sha256')
+  .update(PLAYER_JAVASCRIPT)
+  .update(MODULE_SANDBOX_JAVASCRIPT)
+  .update(GAMEPLAY_JAVASCRIPT)
+  .update(buildIndexHtml.toString())
+  .update(String(require('three').REVISION || 'unknown'))
+  .digest('hex')
+  .slice(0, 12);
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -53,7 +62,7 @@ function buildIndexHtml(project) {
   </style>
 </head>
 <body>
-  <canvas id="game-canvas" aria-label="${title} game viewport"></canvas>
+  <canvas id="game-canvas" tabindex="0" aria-label="${title} game viewport"></canvas>
   <div class="hud">
     <div class="hud-row">
       <div class="panel">
@@ -89,7 +98,25 @@ async function hashFile(filePath) {
   };
 }
 
-async function writeImmutableBuild({ directory, project, graphIr, projectDirectory = '' }) {
+function buildModuleSandboxHtml(moduleBundle) {
+  const serialized = JSON.stringify(moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], diagnostics: [] })
+    .replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; worker-src blob:; connect-src 'none'; img-src 'none'; media-src 'none'; style-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>Lilly module sandbox</title>
+</head>
+<body>
+  <script>globalThis.__LILLY_MODULE_BUNDLE__ = ${serialized};</script>
+  <script>${MODULE_SANDBOX_JAVASCRIPT.replace(/<\/script/gi, '<\\/script')}</script>
+</body>
+</html>`;
+}
+
+async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, projectDirectory = '' }) {
+  moduleBundle = moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], diagnostics: [] };
   await fs.mkdir(directory, { recursive: false });
   const threeBuildDirectory = path.dirname(require.resolve('three'));
   const [threeModule, threeCore, gltfLoader, bufferGeometryUtils, skeletonUtils] = await Promise.all([
@@ -104,6 +131,8 @@ async function writeImmutableBuild({ directory, project, graphIr, projectDirecto
     ['index.html', buildIndexHtml(project)],
     ['player.js', PLAYER_JAVASCRIPT],
     ['gameplay.js', GAMEPLAY_JAVASCRIPT],
+    ['module-sandbox.html', buildModuleSandboxHtml(moduleBundle)],
+    ['modules.json', `${JSON.stringify(moduleBundle, null, 2)}\n`],
     ['vendor/three.module.js', threeModule],
     ['vendor/three.core.js', threeCore],
     ['vendor/addons/loaders/GLTFLoader.js', gltfLoader],
@@ -112,11 +141,16 @@ async function writeImmutableBuild({ directory, project, graphIr, projectDirecto
     ['project.json', `${JSON.stringify(project, null, 2)}\n`],
     ['blueprints.json', `${JSON.stringify(graphIr, null, 2)}\n`],
     ['build-manifest.json', `${JSON.stringify({
-      schema: 'LillyPlayerBundle/v1',
+      schema: 'LillyPlayerBundle/v2',
       projectId: project.id,
       revision: project.revision,
       engineVersion: project.engineVersion,
       levelChecksum: levelDesign?.checksum || null,
+      moduleSourceHash: moduleBundle?.sourceHash || null,
+      playerRuntimeHash: PLAYER_RUNTIME_HASH,
+      moduleCount: moduleBundle?.modules?.length || 0,
+      systemCount: moduleBundle?.systems?.length || 0,
+      mechanicTestCount: moduleBundle?.tests?.length || 0,
       generatedAt: new Date().toISOString(),
     }, null, 2)}\n`],
   ];
@@ -148,6 +182,9 @@ async function writeImmutableBuild({ directory, project, graphIr, projectDirecto
 module.exports = {
   PLAYER_JAVASCRIPT,
   GAMEPLAY_JAVASCRIPT,
+  MODULE_SANDBOX_JAVASCRIPT,
+  PLAYER_RUNTIME_HASH,
   buildIndexHtml,
+  buildModuleSandboxHtml,
   writeImmutableBuild,
 };

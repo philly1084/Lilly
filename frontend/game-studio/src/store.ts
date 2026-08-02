@@ -3,10 +3,13 @@ import { studioApi, StudioApiError } from './api';
 import type {
   AiRun,
   BottomTab,
+  EditorPreview,
   LillyCommand,
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  MechanicTestRun,
+  ModuleCompileReport,
   PlayState,
   Playtest,
   StudioBuild,
@@ -28,6 +31,8 @@ type StudioState = {
   transformMode: TransformMode;
   playState: PlayState;
   stepToken: number;
+  editorPreview: EditorPreview | null;
+  previewStatus: 'idle' | 'preparing' | 'ready' | 'error';
   bottomTab: BottomTab;
   aiOpen: boolean;
   aiRun: AiRun | null;
@@ -35,17 +40,19 @@ type StudioState = {
   saveStatus: 'saved' | 'saving' | 'conflict' | 'error';
   buildStatus: 'idle' | 'testing' | 'building' | 'publishing' | 'success' | 'error';
   latestPlaytest: Playtest | null;
+  latestModuleCompile: ModuleCompileReport | null;
+  latestMechanicTestRun: MechanicTestRun | null;
   consoleItems: StudioConsoleItem[];
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   initialize(): Promise<void>;
-  createProject(name: string, prompt?: string): Promise<void>;
+  createProject(name: string, prompt?: string, template?: 'blank' | 'expedition'): Promise<void>;
   importProject(file: File): Promise<void>;
   openProject(id: string): Promise<void>;
   selectEntity(id: string | null): void;
   setSelectedGraph(id: string | null): void;
   setTransformMode(mode: TransformMode): void;
-  setPlayState(state: PlayState): void;
+  setPlayState(state: PlayState): Promise<void>;
   step(): void;
   setBottomTab(tab: BottomTab): void;
   setAiOpen(open: boolean): void;
@@ -62,6 +69,12 @@ type StudioState = {
   proposeAi(prompt: string, options?: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number }): Promise<void>;
   rejectAi(): void;
   applyAi(): Promise<void>;
+  saveSourceFiles(files: Array<{ path: string; content: string; enabled?: boolean }>): Promise<boolean>;
+  saveSourceFile(path: string, content: string, enabled?: boolean): Promise<boolean>;
+  deleteSourceFile(path: string): Promise<boolean>;
+  compileModules(): Promise<void>;
+  runMechanicTests(): Promise<void>;
+  instantiatePrefab(path: string, instanceId: string): Promise<void>;
   runPlaytest(): Promise<void>;
   build(): Promise<void>;
   publish(build: StudioBuild): Promise<void>;
@@ -87,6 +100,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   transformMode: 'translate',
   playState: 'editing',
   stepToken: 0,
+  editorPreview: null,
+  previewStatus: 'idle',
   bottomTab: 'content',
   aiOpen: false,
   aiRun: null,
@@ -94,6 +109,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   saveStatus: 'saved',
   buildStatus: 'idle',
   latestPlaytest: null,
+  latestModuleCompile: null,
+  latestMechanicTestRun: null,
   consoleItems: [consoleItem('info', 'Lilly Engine editor initialized')],
   undoStack: [],
   redoStack: [],
@@ -109,20 +126,22 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const remembered = localStorage.getItem('lilly-game-studio:project');
       const selected = listing.projects.find((project) => project.id === remembered) || listing.projects[0];
       const current = await studioApi.getProject(selected.id);
-      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: current.project.scenes[0]?.entities.find((entity) => entity.tags.includes('player'))?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null });
+      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: current.project.scenes[0]?.entities.find((entity) => entity.tags.includes('player'))?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null, editorPreview: null, previewStatus: 'idle' });
     } catch (error) {
       set({ status: error instanceof TypeError ? 'disconnected' : 'error', error: error instanceof Error ? error.message : 'Game Studio failed to load' });
     }
   },
 
-  async createProject(name, prompt) {
+  async createProject(name, prompt, template = 'expedition') {
     set({ status: 'loading', error: '' });
     try {
-      const current = await studioApi.createProject({ name, ...(prompt ? { prompt } : {}) });
+      const current = await studioApi.createProject({ name, template, ...(prompt ? { prompt } : {}) });
       const listing = await studioApi.listProjects();
       localStorage.setItem('lilly-game-studio:project', current.project.id);
-      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: 'player', selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [] });
-      get().log('success', `Created ${current.project.name} from a deterministic AI level recipe`);
+      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: 'player', selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [], playState: 'editing', editorPreview: null, previewStatus: 'idle' });
+      get().log('success', template === 'blank'
+        ? `Created blank ${current.project.name} for agent-authored scenes and modules`
+        : `Created ${current.project.name} from a deterministic AI level recipe`);
     } catch (error) { set({ status: 'error', error: error instanceof Error ? error.message : 'Project creation failed' }); }
   },
 
@@ -144,7 +163,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       });
       const listing = await studioApi.listProjects();
       localStorage.setItem('lilly-game-studio:project', current.project.id);
-      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: current.project.scenes[0]?.entities[0]?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [] });
+      set({ status: 'ready', projects: listing.projects, current, selectedEntityId: current.project.scenes[0]?.entities[0]?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [], playState: 'editing', editorPreview: null, previewStatus: 'idle' });
       get().log('success', project ? 'Imported LillyProject/v1 as a new revision history' : 'Archived compatible web game source; manual component mapping is required');
     } catch (error) {
       set({ status: 'error', error: error instanceof Error ? error.message : 'Game import failed' });
@@ -156,14 +175,39 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     try {
       const current = await studioApi.getProject(id);
       localStorage.setItem('lilly-game-studio:project', id);
-      set({ status: 'ready', current, selectedEntityId: current.project.scenes[0]?.entities[0]?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [], playState: 'editing' });
+      set({ status: 'ready', current, selectedEntityId: current.project.scenes[0]?.entities[0]?.id || null, selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [], playState: 'editing', editorPreview: null, previewStatus: 'idle' });
     } catch (error) { set({ status: 'error', error: error instanceof Error ? error.message : 'Project failed to open' }); }
   },
 
   selectEntity: (id) => set({ selectedEntityId: id }),
   setSelectedGraph: (id) => set({ selectedGraphId: id }),
   setTransformMode: (mode) => set({ transformMode: mode }),
-  setPlayState: (state) => set({ playState: state }),
+  async setPlayState(state) {
+    if (state === 'editing') {
+      set({ playState: 'editing' });
+      return;
+    }
+    const current = get().current;
+    if (!current) return;
+    const existing = get().editorPreview;
+    set({ playState: state });
+    if (existing?.projectId === current.project.id && existing.projectRevision === current.project.revision) {
+      set({ previewStatus: 'ready' });
+      return;
+    }
+    if (get().previewStatus === 'preparing') return;
+    set({ previewStatus: 'preparing', editorPreview: null });
+    try {
+      const editorPreview = await studioApi.editorPreview(current.project.id, current.project.revision);
+      const latest = get().current;
+      if (!latest || latest.project.id !== editorPreview.projectId || latest.project.revision !== editorPreview.projectRevision) return;
+      set({ editorPreview, previewStatus: 'ready' });
+      get().log('success', `Exact Play preview ready for r${editorPreview.projectRevision} (${editorPreview.moduleSourceHash})`);
+    } catch (error) {
+      set({ previewStatus: 'error', playState: 'paused' });
+      get().log('error', error instanceof Error ? error.message : 'Exact Play preview failed');
+    }
+  },
   step: () => set((state) => ({ stepToken: state.stepToken + 1, playState: 'paused' })),
   setBottomTab: (tab) => set({ bottomTab: tab }),
   setAiOpen: (open) => set({ aiOpen: open }),
@@ -178,6 +222,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       set((state) => ({
         current: result,
         saveStatus: 'saved',
+        playState: 'editing',
+        editorPreview: null,
+        previewStatus: 'idle',
         undoStack: recordHistory && entry ? [...state.undoStack, entry].slice(-80) : state.undoStack,
         redoStack: recordHistory ? [] : state.redoStack,
       }));
@@ -252,6 +299,79 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }
   },
 
+  async saveSourceFiles(files) {
+    const current = get().current;
+    if (!current) return false;
+    set({ saveStatus: 'saving' });
+    try {
+      const result = await studioApi.writeFiles(current.project.id, current.project.revision, files);
+      set({ current: result, saveStatus: 'saved', latestModuleCompile: null, latestMechanicTestRun: null, playState: 'editing', editorPreview: null, previewStatus: 'idle' });
+      get().log('success', `Saved ${files.length} source file${files.length === 1 ? '' : 's'} at revision ${result.project.revision}`);
+      return true;
+    } catch (error) {
+      const conflict = error instanceof StudioApiError && error.status === 409;
+      set({ saveStatus: conflict ? 'conflict' : 'error' });
+      get().log('error', error instanceof Error ? error.message : 'Could not save project source');
+      if (conflict) await get().openProject(current.project.id);
+      return false;
+    }
+  },
+  async saveSourceFile(path, content, enabled = true) {
+    return get().saveSourceFiles([{ path, content, enabled }]);
+  },
+  async deleteSourceFile(path) {
+    const current = get().current;
+    if (!current) return false;
+    set({ saveStatus: 'saving' });
+    try {
+      const result = await studioApi.deleteFiles(current.project.id, current.project.revision, [path]);
+      set({ current: result, saveStatus: 'saved', latestModuleCompile: null, latestMechanicTestRun: null, playState: 'editing', editorPreview: null, previewStatus: 'idle' });
+      get().log('warning', `Deleted ${path} at revision ${result.project.revision}`);
+      return true;
+    } catch (error) {
+      set({ saveStatus: 'error' });
+      get().log('error', error instanceof Error ? error.message : `Could not delete ${path}`);
+      return false;
+    }
+  },
+  async compileModules() {
+    const current = get().current;
+    if (!current) return;
+    set({ buildStatus: 'testing' });
+    try {
+      const latestModuleCompile = await studioApi.compileModules(current.project.id, current.project.revision);
+      set({ latestModuleCompile, buildStatus: latestModuleCompile.valid ? 'success' : 'error' });
+      get().log(latestModuleCompile.valid ? 'success' : 'error', latestModuleCompile.valid
+        ? `Compiled ${latestModuleCompile.systems.length} systems from ${latestModuleCompile.modules.length} modules (${latestModuleCompile.sourceHash})`
+        : `Module compile blocked by ${latestModuleCompile.diagnostics.filter((entry) => entry.severity === 'error').length} errors`);
+    } catch (error) {
+      set({ buildStatus: 'error' });
+      get().log('error', error instanceof Error ? error.message : 'Module compilation failed');
+    }
+  },
+  async runMechanicTests() {
+    const current = get().current;
+    if (!current) return;
+    set({ buildStatus: 'testing' });
+    try {
+      const latestMechanicTestRun = await studioApi.runMechanicTests(current.project.id, current.project.revision);
+      set({ latestMechanicTestRun, buildStatus: latestMechanicTestRun.status === 'passed' ? 'success' : 'error' });
+      get().log(latestMechanicTestRun.status === 'passed' ? 'success' : 'error', `Mechanic specs: ${latestMechanicTestRun.passed} passed, ${latestMechanicTestRun.failed} failed`);
+    } catch (error) {
+      set({ buildStatus: 'error' });
+      get().log('error', error instanceof Error ? error.message : 'Mechanic tests failed');
+    }
+  },
+  async instantiatePrefab(path, instanceId) {
+    const current = get().current;
+    if (!current) return;
+    try {
+      const result = await studioApi.instantiatePrefab(current.project.id, current.project.revision, { sceneId: current.project.entryScene, path, instanceId, parentId: 'world' });
+      set({ current: result, saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle' });
+      get().log('success', `Instantiated ${path} as ${instanceId}`);
+    } catch (error) { get().log('error', error instanceof Error ? error.message : 'Prefab instantiation failed'); }
+  },
+
   async runPlaytest() {
     const current = get().current;
     if (!current) return;
@@ -287,7 +407,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (!current) return;
     try {
       const result = await studioApi.rollback(current.project.id, revision);
-      set({ current: result, undoStack: [], redoStack: [], saveStatus: 'saved' });
+      set({ current: result, undoStack: [], redoStack: [], saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle' });
       get().log('warning', `Rolled back r${current.project.revision} to snapshot r${revision}; saved as r${result.project.revision}`);
     } catch (error) { get().log('error', error instanceof Error ? error.message : 'Rollback failed'); }
   },

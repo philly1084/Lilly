@@ -6,6 +6,7 @@ const path = require('path');
 
 const { COMMAND_SCHEMA } = require('../../packages/lilly-engine/dist/core/src');
 const { GameStudioService } = require('./service');
+const { dashModuleFiles } = require('./test-fixtures/agent-module');
 
 describe('GameStudioService', () => {
   let tempRoot;
@@ -29,7 +30,7 @@ describe('GameStudioService', () => {
     const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
-    expect(result.project.engineVersion).toBe('0.3.0');
+    expect(result.project.engineVersion).toBe('0.4.0');
     expect(result.project.blueprints).toHaveLength(2);
     expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
     expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
@@ -74,6 +75,129 @@ describe('GameStudioService', () => {
     expect(updated.project.scenes[0].entities.find((entity) => entity.id === 'player').name).toBe('Runner');
     await expect(service.applyCommands(projectId, { baseRevision: 1, commands: [command] }, 'phil')).rejects.toMatchObject({ code: 'REVISION_CONFLICT', statusCode: 409 });
   });
+
+  test('lets an outside agent build a runnable game from blank versioned parts', async () => {
+    const created = await service.executeToolAction('create-project', { name: 'Agent Built Dash', template: 'blank' }, { userId: 'phil' });
+    const projectId = created.project.id;
+    expect(created.metadata.source).toBe('template:blank-agent-project');
+    expect(created.project.files).toEqual([]);
+
+    const composed = await service.executeToolAction('apply-commands', {
+      projectId,
+      baseRevision: 1,
+      commands: [
+        {
+          operation: 'entity.create',
+          target: { sceneId: 'main' },
+          payload: {
+            entity: {
+              schema: 'LillyEntity/v1',
+              id: 'player',
+              name: 'Agent Player',
+              parentId: 'world',
+              enabled: true,
+              tags: ['player'],
+              components: [
+                { type: 'Transform', enabled: true, data: { position: { x: 0, y: 0.65, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+                { type: 'MeshRenderer', enabled: true, data: { geometry: 'capsule', material: { color: '#38bdf8' } } },
+              ],
+            },
+          },
+        },
+        {
+          operation: 'entity.create',
+          target: { sceneId: 'main' },
+          payload: {
+            entity: {
+              schema: 'LillyEntity/v1',
+              id: 'camera',
+              name: 'Agent Camera',
+              parentId: 'world',
+              enabled: true,
+              tags: ['camera'],
+              components: [
+                { type: 'Transform', enabled: true, data: { position: { x: 7, y: 7, z: 11 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+                { type: 'Camera', enabled: true, data: { primary: true, fov: 58, near: 0.1, far: 1000 } },
+              ],
+            },
+          },
+        },
+        {
+          operation: 'input.replace',
+          target: {},
+          payload: { inputMap: [
+            { action: 'Move', kind: 'axis2d', keys: ['KeyW', 'KeyS', 'KeyA', 'KeyD'] },
+            { action: 'Dash', kind: 'button', keys: ['ShiftLeft', 'ShiftRight'] },
+          ] },
+        },
+      ],
+    }, { userId: 'phil' });
+    expect(composed.project.revision).toBe(2);
+
+    const written = await service.executeToolAction('write-files', {
+      projectId,
+      baseRevision: 2,
+      files: dashModuleFiles(),
+    }, { userId: 'phil' });
+    expect(written.project.revision).toBe(3);
+    expect(written.project.files).toHaveLength(5);
+
+    const sourceTree = await service.executeToolAction('list-files', { projectId }, { userId: 'phil' });
+    expect(sourceTree).toMatchObject({ schema: 'LillySourceTree/v1', revision: 3 });
+    expect(sourceTree.files.map((file) => file.kind)).toEqual(expect.arrayContaining(['module-manifest', 'mechanic', 'system', 'prefab', 'test']));
+    const systemFile = await service.executeToolAction('read-file', { projectId, path: 'modules/traversal/dash.system.ts' }, { userId: 'phil' });
+    expect(systemFile.file.content).toContain("from '@lilly/engine-runtime'");
+
+    const compile = await service.executeToolAction('compile-project', { projectId, revision: 3 }, { userId: 'phil' });
+    expect(compile).toMatchObject({ schema: 'LillyModuleBundle/v1', valid: true, loadOrder: ['player-dash'] });
+    expect(compile.diagnostics).toEqual([]);
+    const mechanicTests = await service.executeToolAction('run-mechanic-tests', { projectId, revision: 3 }, { userId: 'phil' });
+    expect(mechanicTests).toMatchObject({ schema: 'LillyMechanicTestRun/v1', status: 'passed', passed: 1, failed: 0 });
+
+    const instantiated = await service.executeToolAction('instantiate-prefab', {
+      projectId,
+      baseRevision: 3,
+      sceneId: 'main',
+      path: 'modules/traversal/dash-trail.prefab.json',
+      prefabId: 'dash-trail',
+      instanceId: 'authored-dash-trail',
+      parentId: 'world',
+      config: {
+        position: { x: 3, y: 0, z: -2 },
+        entities: { trail: { name: 'Player Dash Trail', components: { MeshRenderer: { material: { color: '#ff4fd8' } } } } },
+      },
+    }, { userId: 'phil' });
+    expect(instantiated.project.scenes[0].entities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'authored-dash-trail:trail', name: 'Player Dash Trail', tags: expect.arrayContaining(['prefab:dash-trail']) }),
+    ]));
+    const dashTrail = instantiated.project.scenes[0].entities.find((entry) => entry.id === 'authored-dash-trail:trail');
+    expect(dashTrail.components.find((entry) => entry.type === 'Transform').data.position).toEqual({ x: 3, y: 0.5, z: -2 });
+    expect(dashTrail.components.find((entry) => entry.type === 'MeshRenderer').data.material).toMatchObject({ color: '#ff4fd8', emissive: '#0891b2' });
+
+    const editorPreview = await service.createEditorPreview(projectId, { projectRevision: 4 }, 'phil');
+    expect(editorPreview).toMatchObject({ schema: 'LillyEditorPreview/v1', projectRevision: 4, moduleSourceHash: compile.sourceHash, cached: false });
+    expect(editorPreview.previewUrl).toBe(`/api/sandbox-workspaces/${encodeURIComponent(editorPreview.workspaceId)}/preview/`);
+    await expect(fs.access(path.join(service.buildRoot, editorPreview.workspaceId, 'module-sandbox.html'))).resolves.toBeUndefined();
+    const cachedEditorPreview = await service.createEditorPreview(projectId, { projectRevision: 4 }, 'phil');
+    expect(cachedEditorPreview).toMatchObject({ workspaceId: editorPreview.workspaceId, cached: true });
+    expect((await service.readIndex()).builds).toHaveLength(0);
+
+    const build = await service.executeToolAction('build', { projectId, projectRevision: 4 }, { userId: 'phil' });
+    expect(build.status).toBe('success');
+    expect(build.tests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Agent module compilation and capability policy', status: 'passed' }),
+      expect.objectContaining({ name: 'Agent-authored mechanic specifications', status: 'passed' }),
+    ]));
+    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['modules.json', 'module-sandbox.html']));
+    const moduleBundle = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'modules.json'), 'utf8'));
+    expect(moduleBundle).toMatchObject({ schema: 'LillyModuleBundle/v1', sourceHash: compile.sourceHash, loadOrder: ['player-dash'] });
+    const moduleSandbox = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'module-sandbox.html'), 'utf8');
+    expect(moduleSandbox).toContain("worker-src blob:");
+    expect(moduleSandbox).toContain('LillyModuleSandboxResult/v1');
+    expect(moduleSandbox).toContain("worker.postMessage({ ...message, schema: 'LillyModuleWorkerMessage/v1' });");
+    const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
+    expect(manifest).toMatchObject({ schema: 'LillyPlayerBundle/v2', moduleSourceHash: compile.sourceHash, moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
+  }, 20_000);
 
   test('proposes validated AI commands without mutating the saved revision', async () => {
     const created = await service.createProject({ name: 'AI Review' }, 'phil');
@@ -137,13 +261,14 @@ describe('GameStudioService', () => {
     expect(build.schema).toBe('LillyBuild/v1');
     expect(build.status).toBe('success');
     expect(build.previewUrl).toContain('/api/sandbox-workspaces/');
-    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'gameplay.js', 'vendor/three.module.js', 'vendor/three.core.js', 'vendor/addons/loaders/GLTFLoader.js', uploaded.asset.uri, 'project.json', 'blueprints.json']));
+    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'gameplay.js', 'module-sandbox.html', 'modules.json', 'vendor/three.module.js', 'vendor/three.core.js', 'vendor/addons/loaders/GLTFLoader.js', uploaded.asset.uri, 'project.json', 'blueprints.json']));
     const playerSource = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'player.js'), 'utf8');
     expect(playerSource).toContain("from './vendor/three.module.js'");
     expect(playerSource).toContain("from './gameplay.js'");
     expect(playerSource).toContain("from 'three/addons/loaders/GLTFLoader.js'");
     expect(playerSource).toContain('let fixedStep = 1 / 60');
     expect(playerSource).toContain('__LILLY_GAME__');
+    expect(playerSource).toContain('LillyPlayerDebug/v3');
     const playerHtml = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
     expect(playerHtml).toContain('class="touch-controls"');
     expect(playerHtml).toContain('id="level-name"');
