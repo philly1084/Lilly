@@ -29,7 +29,7 @@ describe('GameStudioService', () => {
     const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
-    expect(result.project.engineVersion).toBe('0.2.0');
+    expect(result.project.engineVersion).toBe('0.3.0');
     expect(result.project.blueprints).toHaveLength(2);
     expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
     expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
@@ -127,21 +127,30 @@ describe('GameStudioService', () => {
     const playtest = await service.runPlaytest(created.project.id, { fixedSteps: 180 }, 'phil');
     expect(playtest.status).toBe('passed');
     expect(playtest.tests.every((test) => test.status === 'passed')).toBe(true);
-    const build = await service.createBuild(created.project.id, { projectRevision: 1 }, 'phil');
+    const uploaded = await service.saveAsset(created.project.id, {
+      filename: 'canary.glb',
+      name: 'Canary GLB',
+      mimeType: 'model/gltf-binary',
+      contentBase64: Buffer.from('glTF-canary').toString('base64'),
+    }, 'phil');
+    const build = await service.createBuild(created.project.id, { projectRevision: uploaded.project.revision }, 'phil');
     expect(build.schema).toBe('LillyBuild/v1');
     expect(build.status).toBe('success');
     expect(build.previewUrl).toContain('/api/sandbox-workspaces/');
-    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'vendor/three.module.js', 'vendor/three.core.js', 'project.json', 'blueprints.json']));
+    expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'gameplay.js', 'vendor/three.module.js', 'vendor/three.core.js', 'vendor/addons/loaders/GLTFLoader.js', uploaded.asset.uri, 'project.json', 'blueprints.json']));
     const playerSource = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'player.js'), 'utf8');
     expect(playerSource).toContain("from './vendor/three.module.js'");
+    expect(playerSource).toContain("from './gameplay.js'");
+    expect(playerSource).toContain("from 'three/addons/loaders/GLTFLoader.js'");
     expect(playerSource).toContain('let fixedStep = 1 / 60');
     expect(playerSource).toContain('__LILLY_GAME__');
     const playerHtml = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
     expect(playerHtml).toContain('class="touch-controls"');
     expect(playerHtml).toContain('id="level-name"');
     const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
-    expect(manifest.levelChecksum).toBe(created.project.generatedLevels[0].checksum);
-    expect(playtest.tests.map((test) => test.name)).toEqual(expect.arrayContaining(['Procedural level topology', 'Deterministic level replay', 'Phone creation and touch input contract']));
+    expect(manifest.levelChecksum).toBe(uploaded.project.generatedLevels[0].checksum);
+    await expect(fs.readFile(path.join(service.buildRoot, build.workspaceId, uploaded.asset.uri), 'utf8')).resolves.toBe('glTF-canary');
+    expect(playtest.tests.map((test) => test.name)).toEqual(expect.arrayContaining(['Procedural level topology', 'Deterministic level replay', 'Combat encounter grammar', 'Deterministic combat, gates, checkpoint, and save replay', 'Phone creation and touch input contract']));
     const threeModuleStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.module.js'));
     expect(threeModuleStat.size).toBeGreaterThan(500000);
     const threeCoreStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.core.js'));

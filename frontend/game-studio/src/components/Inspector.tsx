@@ -24,6 +24,7 @@ function ComponentBody({ component, onChange }: { component: LillyComponent; onC
   if (component.type === 'MeshRenderer') {
     const material = (data.material || {}) as Record<string, unknown>;
     return <>
+      {Boolean(data.assetId) && <div className="property-row"><span className="property-label">GLB asset</span><code className="asset-reference">{String(data.assetId)}</code></div>}
       <div className="property-row"><span className="property-label">Geometry</span><select value={String(data.geometry || 'box')} onChange={(event) => onChange({ ...component, data: { ...data, geometry: event.target.value } })}><option>box</option><option>sphere</option><option>capsule</option><option>cylinder</option><option>octahedron</option><option>torus</option></select></div>
       <div className="property-row"><span className="property-label">Color</span><div className="color-input"><input type="color" value={String(material.color || '#8ea7c4')} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, color: event.target.value } } })}/><code>{String(material.color || '#8ea7c4')}</code></div></div>
       <div className="property-row"><span className="property-label">Roughness</span><input className="range" type="range" min="0" max="1" step="0.05" value={Number(material.roughness ?? 0.65)} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, roughness: Number(event.target.value) } } })}/><span className="range-value">{Number(material.roughness ?? 0.65).toFixed(2)}</span></div>
@@ -41,6 +42,31 @@ function ComponentBody({ component, onChange }: { component: LillyComponent; onC
   if (component.type === 'Collider') return <>
     <div className="property-row"><span className="property-label">Shape</span><select value={String(data.shape || 'box')} onChange={(event) => onChange({ ...component, data: { ...data, shape: event.target.value } })}><option>box</option><option>sphere</option><option>capsule</option><option>cylinder</option></select></div>
     <label className="check-row"><input type="checkbox" checked={data.sensor === true} onChange={(event) => onChange({ ...component, data: { ...data, sensor: event.target.checked } })}/><span>Is trigger</span></label>
+  </>;
+  if (component.type === 'Health') return <>
+    <div className="property-row"><span className="property-label">Maximum</span><NumberField label="HP" value={Number(data.max || 1)} step={1} onCommit={(value) => onChange({ ...component, data: { ...data, max: value, current: Math.min(value, Number(data.current || value)) } })}/></div>
+    <div className="property-row"><span className="property-label">Current</span><NumberField label="HP" value={Number(data.current ?? data.max ?? 1)} step={1} onCommit={(value) => onChange({ ...component, data: { ...data, current: value } })}/></div>
+    <div className="property-row"><span className="property-label">Hit grace</span><NumberField label="s" value={Number(data.invulnerabilitySeconds || 0)} step={0.05} onCommit={(value) => onChange({ ...component, data: { ...data, invulnerabilitySeconds: value } })}/></div>
+  </>;
+  if (component.type === 'Combatant') return <>
+    <div className="property-row"><span className="property-label">Team</span><select value={String(data.team || 'neutral')} onChange={(event) => onChange({ ...component, data: { ...data, team: event.target.value } })}><option>player</option><option>enemy</option><option>neutral</option></select></div>
+    <div className="property-row"><span className="property-label">Damage</span><NumberField label="HP" value={Number(data.damage || 1)} step={1} onCommit={(value) => onChange({ ...component, data: { ...data, damage: value } })}/></div>
+    <div className="property-row"><span className="property-label">Range</span><NumberField label="m" value={Number(data.range || 1)} onCommit={(value) => onChange({ ...component, data: { ...data, range: value } })}/></div>
+    <div className="property-row"><span className="property-label">Cooldown</span><NumberField label="s" value={Number(data.cooldownSeconds || 0.5)} step={0.05} onCommit={(value) => onChange({ ...component, data: { ...data, cooldownSeconds: value } })}/></div>
+  </>;
+  if (component.type === 'EnemyBrain') return <>
+    <div className="property-row"><span className="property-label">Behavior</span><select value={String(data.behavior || 'chaser')} onChange={(event) => onChange({ ...component, data: { ...data, behavior: event.target.value } })}><option value="chaser">Chaser</option></select></div>
+    <div className="property-row"><span className="property-label">Move speed</span><NumberField label="m/s" value={Number(data.moveSpeed || 1)} onCommit={(value) => onChange({ ...component, data: { ...data, moveSpeed: value } })}/></div>
+    <div className="property-row"><span className="property-label">Detection</span><NumberField label="m" value={Number(data.detectionRange || 8)} onCommit={(value) => onChange({ ...component, data: { ...data, detectionRange: value } })}/></div>
+    <div className="property-row"><span className="property-label">Attack range</span><NumberField label="m" value={Number(data.attackRange || 1)} onCommit={(value) => onChange({ ...component, data: { ...data, attackRange: value } })}/></div>
+    <div className="property-row"><span className="property-label">Windup</span><NumberField label="s" value={Number(data.windupSeconds || 0.3)} step={0.05} onCommit={(value) => onChange({ ...component, data: { ...data, windupSeconds: value } })}/></div>
+    <div className="property-row"><span className="property-label">Recovery</span><NumberField label="s" value={Number(data.recoverSeconds || 0.7)} step={0.05} onCommit={(value) => onChange({ ...component, data: { ...data, recoverSeconds: value } })}/></div>
+  </>;
+  if (component.type === 'EncounterMember' || component.type === 'EncounterGate' || component.type === 'Checkpoint') return <>
+    <div className="property-row"><span className="property-label">Encounter</span><code className="asset-reference">{String(data.encounterId || 'Not assigned')}</code></div>
+    {component.type === 'EncounterMember' && <div className="property-row"><span className="property-label">Role</span><code className="asset-reference">Combat member</code></div>}
+    {component.type === 'EncounterGate' && <label className="check-row"><input type="checkbox" checked={data.startsOpen === true} onChange={(event) => onChange({ ...component, data: { ...data, startsOpen: event.target.checked } })}/><span>Open before encounter</span></label>}
+    {component.type === 'Checkpoint' && <><div className="property-row"><span className="property-label">Checkpoint</span><code className="asset-reference">{String(data.checkpointId || 'Not assigned')}</code></div><div className="property-row"><span className="property-label">Activates</span><code className="asset-reference">{String(data.activate || 'encounter-clear')}</code></div></>}
   </>;
   if (component.type === 'Blueprint') return <div className="property-row"><span className="property-label">Graph</span><code className="asset-reference">{String(data.graphId || 'Not assigned')}</code></div>;
   if (component.type === 'Script') return <><div className="property-row"><span className="property-label">Sandbox</span><span className="security-pill">Opaque origin</span></div><div className="capability-list">{(data.capabilities as string[] || []).map((capability) => <code key={capability}>{capability}</code>)}</div></>;

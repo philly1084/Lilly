@@ -12,6 +12,7 @@ local/remote-tunnels/*.pid
 # Test & Build
 coverage/
 dist/
+packages/lilly-engine/browser-dist/
 output/sandboxes/
 suite/npm/*/bundle/
 data/

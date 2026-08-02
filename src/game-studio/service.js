@@ -30,6 +30,7 @@ const {
   compileBlueprint,
   validateBlueprint,
 } = require('../../packages/lilly-engine/dist/blueprints/src');
+const { GameplaySimulation } = require('../../packages/lilly-engine/dist/gameplay/src');
 const { writeImmutableBuild } = require('./player-bundle');
 
 const INDEX_SCHEMA = 'LillyGameStudioIndex/v1';
@@ -423,6 +424,7 @@ class GameStudioService {
     if (!result) return null;
     const project = result.project;
     const tests = [];
+    const fixedSteps = Math.max(1, Math.min(Number(input.fixedSteps) || 120, 3600));
     const projectIssues = validateProject(project).filter((issue) => issue.severity === 'error');
     tests.push({ name: 'Project schema and components', status: projectIssues.length ? 'failed' : 'passed', details: projectIssues.map((issue) => issue.message).join('; ') });
     const blueprintIssues = project.blueprints.flatMap((graph) => validateBlueprint(graph).filter((issue) => issue.severity === 'error'));
@@ -464,11 +466,61 @@ class GameStudioService {
     const camera = scene.entities.find((entity) => entity.components.some((component) => component.type === 'Camera' && component.data.primary === true));
     tests.push({ name: 'Automated control contract', status: player && camera ? 'passed' : 'failed', details: player && camera ? 'Player and primary camera are available to the control harness' : 'A player and primary camera are required' });
     const moveBinding = project.inputMap.find((binding) => binding.action === 'Move' && binding.kind === 'axis2d');
+    const attackBinding = project.inputMap.find((binding) => binding.action === 'Attack' && binding.kind === 'button');
+    const encounterCount = (project.generatedLevels || []).reduce((total, design) => total + (design.encounters?.length || 0), 0);
+    tests.push({
+      name: 'Combat encounter grammar',
+      status: encounterCount === 0 || attackBinding ? 'passed' : 'failed',
+      details: encounterCount === 0
+        ? 'Combat encounters are optional for this project'
+        : attackBinding
+          ? `${encounterCount} room encounter${encounterCount === 1 ? '' : 's'} own enemies, gates, checkpoints, and an Attack action`
+          : 'Combat levels require an action-mapped Attack button',
+    });
+    if (encounterCount > 0) {
+      const runCombatScript = () => {
+        const simulation = new GameplaySimulation(project);
+        const design = project.generatedLevels.find((entry) => entry.sceneId === project.entryScene && entry.encounters?.length);
+        const encounter = design?.encounters?.[0];
+        const room = encounter ? design.rooms.find((entry) => entry.id === encounter.roomId) : null;
+        if (!encounter || !room) return { passed: false, reason: 'Encounter room is missing' };
+        simulation.step(1 / 60, { playerPosition: room.position });
+        let state = simulation.getState();
+        const started = state.activeEncounterId === encounter.id && encounter.gateIds.every((id) => state.gates[id] === true);
+        for (let step = 0; step < fixedSteps && !state.encounters.find((entry) => entry.id === encounter.id)?.cleared; step += 1) {
+          const enemy = state.enemies.find((entry) => entry.encounterId === encounter.id && entry.health > 0);
+          if (!enemy) break;
+          const position = step % 5 === 0
+            ? { x: enemy.position.x + Math.max(0.2, state.player.attackRange - 0.08), y: room.position.y, z: enemy.position.z }
+            : { x: room.position.x + 500, y: room.position.y, z: room.position.z + 500 };
+          state = simulation.step(0.1, { playerPosition: position, attackPressed: step % 5 === 0 });
+        }
+        const cleared = state.encounters.find((entry) => entry.id === encounter.id)?.cleared === true;
+        const checkpoint = state.checkpoint.id === encounter.checkpointId;
+        const gatesOpen = encounter.gateIds.every((id) => state.gates[id] === false);
+        const save = simulation.serialize();
+        const restored = new GameplaySimulation(project);
+        const saveRestored = restored.restore(save) && JSON.stringify(restored.serialize()) === JSON.stringify(save);
+        return { passed: started && cleared && checkpoint && gatesOpen && saveRestored, started, cleared, checkpoint, gatesOpen, saveRestored, state };
+      };
+      const firstCombat = runCombatScript();
+      const secondCombat = runCombatScript();
+      const deterministicCombat = firstCombat.passed && secondCombat.passed && JSON.stringify(firstCombat.state) === JSON.stringify(secondCombat.state);
+      tests.push({
+        name: 'Deterministic combat, gates, checkpoint, and save replay',
+        status: deterministicCombat ? 'passed' : 'failed',
+        details: deterministicCombat
+          ? `Cleared the first encounter and restored its stable-ID save in ${fixedSteps} or fewer fixed steps`
+          : `Combat replay failed: ${JSON.stringify({ first: firstCombat, second: secondCombat }).slice(0, 1200)}`,
+      });
+    } else {
+      tests.push({ name: 'Deterministic combat, gates, checkpoint, and save replay', status: 'passed', details: 'No combat encounter requested; shared simulation initialized without gameplay actors' });
+    }
     const mobileAuthoring = project.settings.mobileMode === 'author-play' || !(project.levelRecipes || []).length;
     tests.push({
       name: 'Phone creation and touch input contract',
-      status: moveBinding && mobileAuthoring ? 'passed' : 'failed',
-      details: moveBinding && mobileAuthoring ? 'Mobile authoring mode and action-mapped movement are enabled' : 'author-play mode and a Move axis are required',
+      status: moveBinding && mobileAuthoring && (encounterCount === 0 || attackBinding) ? 'passed' : 'failed',
+      details: moveBinding && mobileAuthoring && (encounterCount === 0 || attackBinding) ? 'Mobile authoring mode and action-mapped movement/attack are enabled' : 'author-play mode, a Move axis, and combat Attack action are required',
     });
     const missingAssets = [];
     for (const asset of project.assets) {
@@ -483,7 +535,7 @@ class GameStudioService {
       status: tests.every((test) => test.status === 'passed') ? 'passed' : 'failed',
       tests,
       compiledGraphs,
-      fixedSteps: Math.max(1, Math.min(Number(input.fixedSteps) || 120, 3600)),
+      fixedSteps,
       createdAt: now(),
     };
     await this.writeJsonAtomic(path.join(this.projectDirectory(projectId), 'playtests', `${playtest.id}.json`), playtest);
@@ -502,7 +554,7 @@ class GameStudioService {
       const id = randomUUID();
       const workspaceId = `game-studio-${slugify(project.slug)}-r${project.revision}-${id.slice(0, 8)}`;
       const directory = path.join(this.buildRoot, workspaceId);
-      const files = await writeImmutableBuild({ directory, project, graphIr: playtest.compiledGraphs });
+      const files = await writeImmutableBuild({ directory, project, graphIr: playtest.compiledGraphs, projectDirectory: this.projectDirectory(projectId) });
       const build = {
         schema: BUILD_SCHEMA,
         id,
@@ -632,7 +684,7 @@ class GameStudioService {
     if (!proposed && this.complete && String(input.prompt || '').trim()) {
       try {
         const prompt = mode === 'level'
-          ? `You are Lilly's level architect. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit or reach-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
+          ? `You are Lilly's game director. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit, reach-exit, or secure-and-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30; encounterCount 0-4; enemyCount 0-4. Combat encounters must fit non-spawn/non-goal rooms, enemyCount must be at least encounterCount, and zero encounters require zero enemies. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
           : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, project.set-settings, level.generate. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, entityCount: scene.entities.length, blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
         const response = await this.complete(prompt);
         const parsed = parseLenientJson(String(response || ''));
@@ -641,6 +693,11 @@ class GameStudioService {
             ...parsed.recipe,
             id: previousRecipe?.id || fallbackRecipe.id,
             sceneId: scene.id,
+            gameplay: {
+              ...parsed.recipe?.gameplay,
+              encounterCount: parsed.recipe?.gameplay?.encounterCount ?? fallbackRecipe.gameplay.encounterCount,
+              enemyCount: parsed.recipe?.gameplay?.enemyCount ?? fallbackRecipe.gameplay.enemyCount,
+            },
           };
           proposed = validateLevelRecipe(candidateRecipe).some((issue) => issue.severity === 'error')
             ? null

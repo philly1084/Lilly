@@ -7,6 +7,7 @@ import type {
 
 export const LEVEL_RECIPE_SCHEMA = 'LillyLevelRecipe/v1' as const;
 export const GENERATED_LEVEL_SCHEMA = 'LillyGeneratedLevel/v1' as const;
+export const ENCOUNTER_SCHEMA = 'LillyEncounterSpec/v1' as const;
 
 export type LillyLevelTheme =
   | 'neon-ruins'
@@ -14,7 +15,7 @@ export type LillyLevelTheme =
   | 'ember-foundry'
   | 'frost-vault';
 
-export type LillyLevelObjective = 'collect-and-exit' | 'reach-exit';
+export type LillyLevelObjective = 'collect-and-exit' | 'reach-exit' | 'secure-and-exit';
 
 export interface LillyLevelRecipe {
   schema: typeof LEVEL_RECIPE_SCHEMA;
@@ -36,6 +37,8 @@ export interface LillyLevelRecipe {
     difficulty: number;
     pickupCount: number;
     hazardCount: number;
+    encounterCount: number;
+    enemyCount: number;
   };
 }
 
@@ -52,6 +55,17 @@ export interface LillyGeneratedConnection {
   toRoomId: string;
 }
 
+export interface LillyEncounterSpec {
+  schema: typeof ENCOUNTER_SCHEMA;
+  id: string;
+  kind: 'room-combat-clear';
+  roomId: string;
+  enemyIds: string[];
+  gateIds: string[];
+  checkpointId: string;
+  checkpointPosition: Vec3;
+}
+
 export interface LillyGeneratedLevel {
   schema: typeof GENERATED_LEVEL_SCHEMA;
   recipeId: string;
@@ -63,6 +77,7 @@ export interface LillyGeneratedLevel {
   objective: LillyLevelObjective;
   rooms: LillyGeneratedRoom[];
   connections: LillyGeneratedConnection[];
+  encounters: LillyEncounterSpec[];
   spawn: { roomId: string; position: Vec3 };
   goal: { roomId: string; position: Vec3 };
   bounds: { min: Vec3; max: Vec3 };
@@ -72,6 +87,9 @@ export interface LillyGeneratedLevel {
     pickupCount: number;
     hazardCount: number;
     landmarkCount: number;
+    encounterCount: number;
+    enemyCount: number;
+    checkpointCount: number;
   };
 }
 
@@ -99,6 +117,9 @@ type ThemePalette = {
   pickup: string;
   hazard: string;
   landmark: string;
+  enemy: string;
+  gate: string;
+  checkpoint: string;
 };
 
 const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
@@ -114,6 +135,9 @@ const THEME_PALETTES: Record<LillyLevelTheme, ThemePalette> = {
     pickup: '#c084fc',
     hazard: '#fb7185',
     landmark: '#fbbf24',
+    enemy: '#f43f5e',
+    gate: '#38bdf8',
+    checkpoint: '#34d399',
   },
   'verdant-temple': {
     background: '#07140f',
@@ -125,6 +149,9 @@ const THEME_PALETTES: Record<LillyLevelTheme, ThemePalette> = {
     pickup: '#fde68a',
     hazard: '#f97316',
     landmark: '#a7f3d0',
+    enemy: '#fb7185',
+    gate: '#6ee7b7',
+    checkpoint: '#fde68a',
   },
   'ember-foundry': {
     background: '#170a08',
@@ -136,6 +163,9 @@ const THEME_PALETTES: Record<LillyLevelTheme, ThemePalette> = {
     pickup: '#facc15',
     hazard: '#ef4444',
     landmark: '#fdba74',
+    enemy: '#f43f5e',
+    gate: '#fb923c',
+    checkpoint: '#facc15',
   },
   'frost-vault': {
     background: '#07121d',
@@ -147,6 +177,9 @@ const THEME_PALETTES: Record<LillyLevelTheme, ThemePalette> = {
     pickup: '#e0f2fe',
     hazard: '#818cf8',
     landmark: '#bae6fd',
+    enemy: '#a78bfa',
+    gate: '#7dd3fc',
+    checkpoint: '#67e8f9',
   },
 };
 
@@ -164,6 +197,12 @@ function clamp(value: number, minimum: number, maximum: number) {
 function finiteNumber(value: unknown, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function isFiniteVector(value: unknown): value is Vec3 {
+  if (!value || typeof value !== 'object') return false;
+  const vector = value as Vec3;
+  return [vector.x, vector.y, vector.z].every(Number.isFinite);
 }
 
 export function stableHash(value: string) {
@@ -270,6 +309,10 @@ export function normalizeLevelRecipe(input: Partial<LillyLevelRecipe> & { id?: s
   const roomSize = clamp(finiteNumber(input.layout?.roomSize, 8), 6, 14);
   const roomSpacing = clamp(finiteNumber(input.layout?.roomSpacing, roomSize + 4), roomSize + 2, 26);
   const recipeId = slug(String(input.id || 'main-level'));
+  const encounterCount = clamp(Math.round(finiteNumber(input.gameplay?.encounterCount, 0)), 0, 4);
+  const enemyCount = encounterCount === 0
+    ? 0
+    : clamp(Math.round(finiteNumber(input.gameplay?.enemyCount, encounterCount)), encounterCount, 4);
   return {
     schema: LEVEL_RECIPE_SCHEMA,
     id: recipeId,
@@ -278,7 +321,11 @@ export function normalizeLevelRecipe(input: Partial<LillyLevelRecipe> & { id?: s
     prompt: String(input.prompt || '').trim().slice(0, 2000),
     seed: String(input.seed || `${recipeId}-lilly`).trim().slice(0, 120) || `${recipeId}-lilly`,
     theme,
-    objective: input.objective === 'reach-exit' ? 'reach-exit' : 'collect-and-exit',
+    objective: input.objective === 'reach-exit'
+      ? 'reach-exit'
+      : input.objective === 'secure-and-exit'
+        ? 'secure-and-exit'
+        : 'collect-and-exit',
     layout: {
       roomCount: clamp(Math.round(finiteNumber(input.layout?.roomCount, 7)), 3, 16),
       roomSize,
@@ -290,6 +337,8 @@ export function normalizeLevelRecipe(input: Partial<LillyLevelRecipe> & { id?: s
       difficulty,
       pickupCount: clamp(Math.round(finiteNumber(input.gameplay?.pickupCount, 4 + difficulty)), 1, 20),
       hazardCount: clamp(Math.round(finiteNumber(input.gameplay?.hazardCount, difficulty * 2)), 0, 30),
+      encounterCount,
+      enemyCount,
     },
   };
 }
@@ -352,9 +401,22 @@ export function createLevelRecipeFromPrompt(input: {
 
   const requestedPickups = explicitCount(normalized, 'pickups?|shards?|crystals?|cores?|relics?');
   const requestedHazards = explicitCount(normalized, 'hazards?|traps?|obstacles?');
-  const objective: LillyLevelObjective = /race|escape|reach (?:the )?(?:end|exit|goal)/.test(normalized) && !/collect|pickup|shard|crystal|relic/.test(normalized)
-    ? 'reach-exit'
-    : 'collect-and-exit';
+  const requestedEncounters = explicitCount(normalized, 'encounters?|ambushes?|battles?|fights?|arenas?');
+  const requestedEnemies = explicitCount(normalized, 'enemies|guards?|guardians?(?!\\s+(?:encounters?|rooms?|battles?))|drones?|monsters?|creatures?');
+  const peaceful = /no (?:enemies|combat|fighting)|peaceful|nonviolent/.test(normalized);
+  const combatRequested = !peaceful && /enemy|enemies|guard|guardian|combat|fight|battle|ambush|attack|monster|drone/.test(normalized);
+  let encounterCount = peaceful
+    ? 0
+    : requestedEncounters ?? (combatRequested ? Math.min(2, Math.max(1, Math.floor(roomCount / 4))) : (previous?.gameplay.encounterCount || 0));
+  encounterCount = clamp(Math.round(encounterCount), 0, Math.min(4, Math.max(0, roomCount - 2)));
+  const enemyCount = encounterCount === 0
+    ? 0
+    : clamp(Math.round(requestedEnemies ?? previous?.gameplay.enemyCount ?? (encounterCount + (difficulty >= 4 ? 1 : 0))), encounterCount, 4);
+  const objective: LillyLevelObjective = encounterCount > 0
+    ? 'secure-and-exit'
+    : /race|escape|reach (?:the )?(?:end|exit|goal)/.test(normalized) && !/collect|pickup|shard|crystal|relic/.test(normalized)
+      ? 'reach-exit'
+      : 'collect-and-exit';
   const seed = String(input.seed || stableHash(`${input.projectId}:${prompt || 'surprise-me'}`));
   const themeLabel = {
     'neon-ruins': 'Neon Ruins',
@@ -366,7 +428,7 @@ export function createLevelRecipeFromPrompt(input: {
   return normalizeLevelRecipe({
     id: previous?.id || 'main-level',
     sceneId: input.sceneId,
-    name: `${themeLabel} Expedition`,
+    name: `${themeLabel} ${encounterCount > 0 ? 'Assault' : 'Expedition'}`,
     prompt,
     seed,
     theme,
@@ -382,6 +444,8 @@ export function createLevelRecipeFromPrompt(input: {
       difficulty,
       pickupCount: requestedPickups ?? (objective === 'reach-exit' ? 1 : Math.min(12, 4 + difficulty)),
       hazardCount: requestedHazards ?? Math.max(0, difficulty * 2 - (/calm|no hazards?/.test(normalized) ? 2 : 0)),
+      encounterCount,
+      enemyCount,
     },
   });
 }
@@ -394,7 +458,7 @@ export function validateLevelRecipe(recipe: LillyLevelRecipe): LevelValidationIs
   if (!recipe?.sceneId) error('LEVEL_RECIPE_SCENE_REQUIRED', 'Level recipe requires a sceneId', 'sceneId');
   if (!recipe?.seed || recipe.seed.length > 120) error('INVALID_LEVEL_SEED', 'Level seed must contain 1 to 120 characters', 'seed');
   if (!Object.prototype.hasOwnProperty.call(THEME_PALETTES, recipe?.theme)) error('INVALID_LEVEL_THEME', 'Level theme is not supported', 'theme');
-  if (!['collect-and-exit', 'reach-exit'].includes(recipe?.objective)) error('INVALID_LEVEL_OBJECTIVE', 'Level objective is not supported', 'objective');
+  if (!['collect-and-exit', 'reach-exit', 'secure-and-exit'].includes(recipe?.objective)) error('INVALID_LEVEL_OBJECTIVE', 'Level objective is not supported', 'objective');
   const layout = recipe?.layout;
   if (!Number.isInteger(layout?.roomCount) || layout.roomCount < 3 || layout.roomCount > 16) error('INVALID_ROOM_COUNT', 'roomCount must be an integer from 3 to 16', 'layout.roomCount');
   if (!Number.isFinite(layout?.roomSize) || layout.roomSize < 6 || layout.roomSize > 14) error('INVALID_ROOM_SIZE', 'roomSize must be between 6 and 14', 'layout.roomSize');
@@ -405,6 +469,9 @@ export function validateLevelRecipe(recipe: LillyLevelRecipe): LevelValidationIs
   if (!Number.isInteger(gameplay?.difficulty) || gameplay.difficulty < 1 || gameplay.difficulty > 5) error('INVALID_DIFFICULTY', 'difficulty must be an integer from 1 to 5', 'gameplay.difficulty');
   if (!Number.isInteger(gameplay?.pickupCount) || gameplay.pickupCount < 1 || gameplay.pickupCount > 20) error('INVALID_PICKUP_COUNT', 'pickupCount must be an integer from 1 to 20', 'gameplay.pickupCount');
   if (!Number.isInteger(gameplay?.hazardCount) || gameplay.hazardCount < 0 || gameplay.hazardCount > 30) error('INVALID_HAZARD_COUNT', 'hazardCount must be an integer from 0 to 30', 'gameplay.hazardCount');
+  if (!Number.isInteger(gameplay?.encounterCount) || gameplay.encounterCount < 0 || gameplay.encounterCount > Math.min(4, Math.max(0, Number(layout?.roomCount || 0) - 2))) error('INVALID_ENCOUNTER_COUNT', 'encounterCount must fit in non-spawn, non-goal rooms and cannot exceed 4', 'gameplay.encounterCount');
+  if (!Number.isInteger(gameplay?.enemyCount) || gameplay.enemyCount < gameplay.encounterCount || gameplay.enemyCount > 4) error('INVALID_ENEMY_COUNT', 'enemyCount must be at least encounterCount and cannot exceed 4', 'gameplay.enemyCount');
+  if (gameplay?.encounterCount === 0 && gameplay?.enemyCount !== 0) error('ENEMIES_REQUIRE_ENCOUNTER', 'enemyCount must be 0 when encounterCount is 0', 'gameplay.enemyCount');
   return issues;
 }
 
@@ -465,6 +532,7 @@ function canonicalDesignValue(design: Omit<LillyGeneratedLevel, 'checksum'>) {
     objective: design.objective,
     rooms: design.rooms,
     connections: design.connections,
+    encounters: design.encounters,
     spawn: design.spawn,
     goal: design.goal,
     bounds: design.bounds,
@@ -582,6 +650,118 @@ export function generateLevel(recipeInput: LillyLevelRecipe, options: { parentId
     }));
   }
 
+  const encounters: LillyEncounterSpec[] = [];
+  const eligibleEncounterRooms = [
+    ...rooms.filter((room) => room.kind === 'challenge'),
+    ...rooms.filter((room) => room.kind === 'traversal'),
+    ...rooms.filter((room) => room.kind === 'reward'),
+  ].filter((room, index, values) => (
+    room.kind !== 'spawn'
+    && room.kind !== 'goal'
+    && values.findIndex((candidate) => candidate.id === room.id) === index
+  ));
+  const selectedEncounterRooms = eligibleEncounterRooms.slice(0, recipe.gameplay.encounterCount);
+  let remainingEnemies = recipe.gameplay.enemyCount;
+  for (const [encounterIndex, room] of selectedEncounterRooms.entries()) {
+    const encounterId = `${prefix}-encounter-${encounterIndex + 1}`;
+    const remainingEncounters = selectedEncounterRooms.length - encounterIndex;
+    const enemiesForEncounter = Math.max(1, Math.min(2, remainingEnemies - Math.max(0, remainingEncounters - 1)));
+    const enemyIds: string[] = [];
+    for (let enemyIndex = 0; enemyIndex < enemiesForEncounter; enemyIndex += 1) {
+      const enemyId = `${encounterId}-enemy-${enemyIndex + 1}`;
+      const angle = (Math.PI * 2 * enemyIndex) / Math.max(1, enemiesForEncounter) + random() * 0.35;
+      const radius = Math.min(2.1, recipe.layout.roomSize * 0.22);
+      const position = {
+        x: room.position.x + Math.cos(angle) * radius,
+        y: 0.62,
+        z: room.position.z + Math.sin(angle) * radius,
+      };
+      const enemyHealth = 2 + Math.floor(recipe.gameplay.difficulty / 2);
+      enemyIds.push(enemyId);
+      entities.push(entity({
+        id: enemyId,
+        name: `Guardian ${encounterIndex + 1}.${enemyIndex + 1}`,
+        parentId,
+        locked: true,
+        tags: [generationTag, 'generated', 'enemy', 'combatant', `encounter:${encounterId}`, `room:${room.id}`],
+        components: [
+          transform(position, { x: 0.9, y: 1.2, z: 0.9 }),
+          mesh(palette.enemy, 'octahedron', { roughness: 0.24, metalness: 0.5, emissive: palette.enemy, emissiveIntensity: 0.34 }),
+          component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.2, z: 0.9 }, sensor: false, restitution: 0.05, friction: 0.65 }),
+          component('Health', { max: enemyHealth, current: enemyHealth, invulnerabilitySeconds: 0.12 }),
+          component('Combatant', { team: 'enemy', damage: 1, range: 1.25, cooldownSeconds: 0.75, attackAction: '' }),
+          component('EnemyBrain', {
+            behavior: 'chaser',
+            moveSpeed: 1.65 + recipe.gameplay.difficulty * 0.22,
+            detectionRange: Math.max(7, recipe.layout.roomSize * 1.2),
+            attackRange: 1.25,
+            windupSeconds: Math.max(0.18, 0.38 - recipe.gameplay.difficulty * 0.035),
+            recoverSeconds: Math.max(0.42, 0.82 - recipe.gameplay.difficulty * 0.06),
+          }),
+          component('EncounterMember', { encounterId }),
+        ],
+      }));
+    }
+    remainingEnemies -= enemiesForEncounter;
+
+    const gateIds: string[] = [];
+    const encounterConnections = connections.filter((connection) => connection.fromRoomId === room.id || connection.toRoomId === room.id);
+    encounterConnections.forEach((connection, gateIndex) => {
+      const otherRoom = roomById.get(connection.fromRoomId === room.id ? connection.toRoomId : connection.fromRoomId)!;
+      const dx = Math.sign(otherRoom.grid.x - room.grid.x);
+      const dz = Math.sign(otherRoom.grid.z - room.grid.z);
+      const gateId = `${encounterId}-gate-${gateIndex + 1}`;
+      const position = {
+        x: room.position.x + dx * (recipe.layout.roomSize / 2 + 0.08),
+        y: 1.15,
+        z: room.position.z + dz * (recipe.layout.roomSize / 2 + 0.08),
+      };
+      const scale = dx !== 0
+        ? { x: 0.34, y: 2.3, z: recipe.layout.pathWidth * 0.94 }
+        : { x: recipe.layout.pathWidth * 0.94, y: 2.3, z: 0.34 };
+      gateIds.push(gateId);
+      entities.push(entity({
+        id: gateId,
+        name: `Encounter Gate ${encounterIndex + 1}.${gateIndex + 1}`,
+        parentId,
+        locked: true,
+        tags: [generationTag, 'generated', 'encounter-gate', 'obstacle', `encounter:${encounterId}`, `room:${room.id}`],
+        components: [
+          transform(position, scale),
+          mesh(palette.gate, 'box', { roughness: 0.16, metalness: 0.45, emissive: palette.gate, emissiveIntensity: 0.52 }),
+          boxCollider(scale),
+          component('EncounterGate', { encounterId, startsOpen: true }),
+        ],
+      }));
+    });
+
+    const checkpointId = `${encounterId}-checkpoint`;
+    const checkpointPosition = { x: room.position.x, y: 0.65, z: room.position.z };
+    entities.push(entity({
+      id: checkpointId,
+      name: `Checkpoint ${encounterIndex + 1}`,
+      parentId,
+      locked: true,
+      tags: [generationTag, 'generated', 'checkpoint', `encounter:${encounterId}`, `room:${room.id}`],
+      components: [
+        transform({ ...checkpointPosition, y: 0.08 }, { x: 1.45, y: 0.12, z: 1.45 }),
+        mesh(palette.checkpoint, 'cylinder', { roughness: 0.2, metalness: 0.4, emissive: palette.checkpoint, emissiveIntensity: 0.48 }),
+        component('Collider', { shape: 'cylinder', size: { x: 1.45, y: 0.15, z: 1.45 }, sensor: true, restitution: 0, friction: 0 }),
+        component('Checkpoint', { checkpointId, encounterId, activate: 'encounter-clear' }),
+      ],
+    }));
+    encounters.push({
+      schema: ENCOUNTER_SCHEMA,
+      id: encounterId,
+      kind: 'room-combat-clear',
+      roomId: room.id,
+      enemyIds,
+      gateIds,
+      checkpointId,
+      checkpointPosition,
+    });
+  }
+
   const pickupRooms = rooms.slice(1);
   for (let index = 0; index < recipe.gameplay.pickupCount; index += 1) {
     const room = pickupRooms[index % pickupRooms.length];
@@ -682,6 +862,7 @@ export function generateLevel(recipeInput: LillyLevelRecipe, options: { parentId
     objective: recipe.objective,
     rooms,
     connections,
+    encounters,
     spawn: { roomId: rooms[0].id, position: spawnPosition },
     goal: { roomId: goalRoom.id, position: goalPosition },
     bounds: {
@@ -694,6 +875,9 @@ export function generateLevel(recipeInput: LillyLevelRecipe, options: { parentId
       pickupCount: recipe.gameplay.pickupCount,
       hazardCount: recipe.gameplay.hazardCount,
       landmarkCount,
+      encounterCount: encounters.length,
+      enemyCount: encounters.reduce((total, encounter) => total + encounter.enemyIds.length, 0),
+      checkpointCount: encounters.length,
     },
   };
   const design = { ...designWithoutChecksum, checksum: computeGeneratedLevelChecksum(designWithoutChecksum) };
@@ -750,8 +934,39 @@ export function validateGeneratedLevel(design: LillyGeneratedLevel, recipe?: Lil
     adjacency.get(id)?.forEach((neighbor) => { if (!visited.has(neighbor)) queue.push(neighbor); });
   }
   if (design?.goal?.roomId && !visited.has(design.goal.roomId)) error('GENERATED_LEVEL_GOAL_UNREACHABLE', 'No traversable room path connects spawn to goal', 'connections');
+  const encounters = Array.isArray(design?.encounters) ? design.encounters : [];
+  const encounterIds = new Set<string>();
+  const ownedEnemies = new Set<string>();
+  const ownedGates = new Set<string>();
+  const ownedCheckpoints = new Set<string>();
+  encounters.forEach((encounter, index) => {
+    const path = `encounters[${index}]`;
+    if (encounter?.schema !== ENCOUNTER_SCHEMA) error('INVALID_ENCOUNTER_SCHEMA', `Expected ${ENCOUNTER_SCHEMA}`, `${path}.schema`);
+    if (!encounter?.id || encounterIds.has(encounter.id)) error('DUPLICATE_ENCOUNTER_ID', `Encounter id ${encounter?.id || '(missing)'} is not unique`, `${path}.id`);
+    encounterIds.add(encounter?.id);
+    if (encounter?.kind !== 'room-combat-clear') error('INVALID_ENCOUNTER_KIND', 'Encounter kind must be room-combat-clear', `${path}.kind`);
+    if (!roomIds.has(encounter?.roomId)) error('ENCOUNTER_ROOM_MISSING', `Encounter room ${encounter?.roomId || '(missing)'} does not exist`, `${path}.roomId`);
+    if (!Array.isArray(encounter?.enemyIds) || encounter.enemyIds.length < 1) error('ENCOUNTER_ENEMIES_REQUIRED', 'Combat encounters require at least one enemy', `${path}.enemyIds`);
+    (encounter?.enemyIds || []).forEach((id, enemyIndex) => {
+      if (!id || ownedEnemies.has(id)) error('DUPLICATE_ENCOUNTER_ENEMY', `Enemy ${id || '(missing)'} belongs to more than one encounter`, `${path}.enemyIds[${enemyIndex}]`);
+      ownedEnemies.add(id);
+    });
+    if (!Array.isArray(encounter?.gateIds) || encounter.gateIds.length < 1) error('ENCOUNTER_GATES_REQUIRED', 'Combat encounters require at least one gate', `${path}.gateIds`);
+    (encounter?.gateIds || []).forEach((id, gateIndex) => {
+      if (!id || ownedGates.has(id)) error('DUPLICATE_ENCOUNTER_GATE', `Gate ${id || '(missing)'} belongs to more than one encounter`, `${path}.gateIds[${gateIndex}]`);
+      ownedGates.add(id);
+    });
+    if (!encounter?.checkpointId || ownedCheckpoints.has(encounter.checkpointId)) error('DUPLICATE_ENCOUNTER_CHECKPOINT', `Checkpoint ${encounter?.checkpointId || '(missing)'} is not unique`, `${path}.checkpointId`);
+    ownedCheckpoints.add(encounter?.checkpointId);
+    if (!isFiniteVector(encounter?.checkpointPosition)) error('INVALID_CHECKPOINT_POSITION', 'Checkpoint position must be a finite Vector3', `${path}.checkpointPosition`);
+  });
   if (design?.metrics?.roomCount !== rooms.length) error('GENERATED_LEVEL_METRICS_MISMATCH', 'Generated room metrics do not match the saved topology', 'metrics.roomCount');
   if (design?.metrics?.pathCount !== (design?.connections || []).length) error('GENERATED_LEVEL_METRICS_MISMATCH', 'Generated path metrics do not match the saved topology', 'metrics.pathCount');
+  if (design?.metrics?.encounterCount !== encounters.length) error('GENERATED_LEVEL_METRICS_MISMATCH', 'Generated encounter metrics do not match the saved topology', 'metrics.encounterCount');
+  if (design?.metrics?.enemyCount !== ownedEnemies.size) error('GENERATED_LEVEL_METRICS_MISMATCH', 'Generated enemy metrics do not match the saved encounters', 'metrics.enemyCount');
+  if (design?.metrics?.checkpointCount !== ownedCheckpoints.size) error('GENERATED_LEVEL_METRICS_MISMATCH', 'Generated checkpoint metrics do not match the saved encounters', 'metrics.checkpointCount');
+  if (recipe && encounters.length !== recipe.gameplay.encounterCount) error('GENERATED_LEVEL_RECIPE_MISMATCH', 'Generated encounter count does not match its recipe', 'encounters');
+  if (recipe && ownedEnemies.size !== recipe.gameplay.enemyCount) error('GENERATED_LEVEL_RECIPE_MISMATCH', 'Generated enemy count does not match its recipe', 'encounters');
   if (design?.checksum !== computeGeneratedLevelChecksum(design)) error('GENERATED_LEVEL_CHECKSUM_MISMATCH', 'Generated level checksum does not match its saved topology', 'checksum');
   return issues;
 }

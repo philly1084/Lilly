@@ -233,7 +233,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       set({ aiRun, aiStatus: 'ready' });
       const level = aiRun.preview.level;
       get().log('info', level
-        ? `AI proposed ${level.name}: ${level.metrics.roomCount} rooms, ${level.metrics.hazardCount} hazards, seed ${level.seed}`
+        ? `AI proposed ${level.name}: ${level.metrics.roomCount} rooms, ${level.metrics.encounterCount} encounters, ${level.metrics.enemyCount} guardians, seed ${level.seed}`
         : `AI proposed ${aiRun.commands.length} revision-safe command${aiRun.commands.length === 1 ? '' : 's'}`);
     } catch (error) { set({ aiStatus: 'error' }); get().log('error', error instanceof Error ? error.message : 'AI proposal failed'); }
   },

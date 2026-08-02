@@ -174,7 +174,12 @@ export function compileBlueprint(graph: LillyBlueprint): LillyGraphIR {
   });
   const entrypoints = graph.nodes
     .filter((node) => node.type.startsWith('event.'))
-    .map((node) => ({ event: node.type.slice('event.'.length), instructionId: node.id }));
+    .map((node) => ({
+      event: node.type === 'event.custom'
+        ? String(node.config?.eventName || 'custom')
+        : node.type.slice('event.'.length),
+      instructionId: node.id,
+    }));
   return { schema: GRAPH_IR_SCHEMA, graphId: graph.id, graphName: graph.name, variables: graph.variables, entrypoints, instructions };
 }
 
@@ -224,7 +229,10 @@ export class BlueprintExecutor {
     const output = instruction.opcode === 'flow.branch'
       ? (this.evaluateBranch(instruction.args) ? 'true' : 'false')
       : 'exec-out';
-    (instruction.next[output] || Object.values(instruction.next).flat()).forEach((nextId) => this.run(nextId, context, nextActive, depth + 1));
+    const nextInstructions = instruction.opcode === 'flow.branch'
+      ? (instruction.next[output] || [])
+      : (instruction.next[output] || Object.values(instruction.next).flat());
+    nextInstructions.forEach((nextId) => this.run(nextId, context, nextActive, depth + 1));
   }
 
   private evaluateBranch(args: Record<string, unknown>) {

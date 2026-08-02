@@ -18,6 +18,7 @@
     "renderer-three/src/**/*.ts",
     "physics-rapier/src/**/*.ts",
     "blueprints/src/**/*.ts",
+    "gameplay/src/**/*.ts",
     "runtime/src/**/*.ts"
   ]
 }

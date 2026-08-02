@@ -21,7 +21,12 @@ function ContentBrowser() {
   const [query, setQuery] = useState('');
   const items = useMemo(() => [
     ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: asset.type, kind: 'asset' })),
-    ...(scene?.entities.filter((entity) => entity.tags.includes('pickup') || entity.tags.includes('player')).map((entity) => ({ id: entity.id, name: entity.name, type: entity.tags.includes('player') ? 'Player prefab' : 'Collectible prefab', kind: 'prefab' })) || []),
+    ...(scene?.entities.filter((entity) => ['pickup', 'player', 'enemy', 'checkpoint'].some((tag) => entity.tags.includes(tag))).map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      type: entity.tags.includes('player') ? 'Player prefab' : entity.tags.includes('enemy') ? 'Enemy prefab' : entity.tags.includes('checkpoint') ? 'Checkpoint prefab' : 'Collectible prefab',
+      kind: 'prefab',
+    })) || []),
     ...(current?.project.blueprints.map((graph) => ({ id: graph.id, name: graph.name, type: `${graph.nodes.length} nodes`, kind: 'blueprint' })) || []),
   ].filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [current, scene, query]);
   return <div className="content-browser"><div className="content-sidebar"><button type="button" className="active">All Content</button><button type="button">Assets</button><button type="button">Prefabs</button><button type="button">Scenes</button><button type="button">Audio</button></div><div className="content-main"><div className="content-actions"><div className="search-field compact"><Icon name="search" size={13}/><input placeholder="Filter content" value={query} onChange={(event) => setQuery(event.target.value)}/></div><input id="game-studio-import" className="visually-hidden" type="file" accept=".json,.html,text/html,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importProject(file); event.currentTarget.value = ''; }}/><button type="button" onClick={() => document.getElementById('game-studio-import')?.click()} title="Import a LillyProject/v1 JSON file or compatible HTML/Three.js bundle"><Icon name="add" size={13}/>Import project</button></div><div className="asset-grid">{items.map((item) => <button type="button" className="asset-card" key={item.id}><div className={`asset-thumb kind-${item.kind}`}><Icon name={item.kind === 'blueprint' ? 'blueprint' : item.kind === 'prefab' ? 'cube' : 'content'} size={24}/></div><strong>{item.name}</strong><small>{item.type}</small></button>)}{!items.length && <div className="workspace-empty"><strong>No matching content</strong><span>Import a GLB, texture, or audio file.</span></div>}</div></div></div>;

@@ -1,4 +1,5 @@
 import {
+  computeGeneratedLevelChecksum,
   createLevelRecipeFromPrompt,
   generateLevel,
   isGeneratedForRecipe,
@@ -11,7 +12,7 @@ import {
 
 export * from './level-generator';
 
-export const ENGINE_VERSION = '0.2.0';
+export const ENGINE_VERSION = '0.3.0';
 export const PROJECT_SCHEMA = 'LillyProject/v1' as const;
 export const SCENE_SCHEMA = 'LillyScene/v1' as const;
 export const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
@@ -34,7 +35,13 @@ export type LillyComponentType =
   | 'Blueprint'
   | 'Script'
   | 'ParticleEmitter'
-  | 'UIAnchor';
+  | 'UIAnchor'
+  | 'Health'
+  | 'Combatant'
+  | 'EnemyBrain'
+  | 'EncounterMember'
+  | 'EncounterGate'
+  | 'Checkpoint';
 
 export interface LillyComponent<T extends Record<string, unknown> = Record<string, unknown>> {
   type: LillyComponentType;
@@ -188,7 +195,7 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
     validate: (value) => validateTransform(value),
   },
   Camera: { defaults: { projection: 'perspective', fov: 60, near: 0.1, far: 1000, primary: false }, validate: numericRangeValidator('fov', 1, 179) },
-  MeshRenderer: { defaults: { geometry: 'box', material: { color: '#8ea7c4', roughness: 0.65, metalness: 0.05 }, castShadow: true, receiveShadow: true }, validate: () => [] },
+  MeshRenderer: { defaults: { geometry: 'box', assetId: '', material: { color: '#8ea7c4', roughness: 0.65, metalness: 0.05 }, castShadow: true, receiveShadow: true }, validate: () => [] },
   Light: { defaults: { kind: 'directional', color: '#fff4df', intensity: 2, castShadow: true }, validate: numericRangeValidator('intensity', 0, 100) },
   RigidBody: { defaults: { bodyType: 'dynamic', mass: 1, linearDamping: 0.1, angularDamping: 0.1, lockRotations: false }, validate: numericRangeValidator('mass', 0.0001, 100000) },
   Collider: { defaults: { shape: 'box', size: { x: 1, y: 1, z: 1 }, sensor: false, restitution: 0.1, friction: 0.7 }, validate: () => [] },
@@ -198,6 +205,57 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
   Script: { defaults: { source: '', enabled: true, timeoutMs: 8, capabilities: ['entity.read', 'entity.write', 'events.emit'] }, validate: numericRangeValidator('timeoutMs', 1, 16) },
   ParticleEmitter: { defaults: { rate: 12, lifetime: 0.8, color: '#7dd3fc', size: 0.08, burst: 0 }, validate: numericRangeValidator('rate', 0, 10000) },
   UIAnchor: { defaults: { anchor: 'top-left', offset: { x: 16, y: 16 }, text: '', visible: true }, validate: () => [] },
+  Health: {
+    defaults: { max: 3, current: 3, invulnerabilitySeconds: 0.55 },
+    validate: (value) => {
+      const maximum = Number(value.max);
+      const current = Number(value.current);
+      const invulnerability = Number(value.invulnerabilitySeconds);
+      const errors: string[] = [];
+      if (!Number.isFinite(maximum) || maximum < 1 || maximum > 10000) errors.push('max must be between 1 and 10000');
+      if (!Number.isFinite(current) || current < 0 || current > maximum) errors.push('current must be between 0 and max');
+      if (!Number.isFinite(invulnerability) || invulnerability < 0 || invulnerability > 10) errors.push('invulnerabilitySeconds must be between 0 and 10');
+      return errors;
+    },
+  },
+  Combatant: {
+    defaults: { team: 'neutral', damage: 1, range: 1.8, cooldownSeconds: 0.55, attackAction: 'Attack' },
+    validate: (value) => {
+      const errors: string[] = [];
+      if (!['player', 'enemy', 'neutral'].includes(String(value.team || ''))) errors.push('team must be player, enemy, or neutral');
+      if (!Number.isFinite(Number(value.damage)) || Number(value.damage) <= 0 || Number(value.damage) > 10000) errors.push('damage must be between 0 and 10000');
+      if (!Number.isFinite(Number(value.range)) || Number(value.range) < 0.1 || Number(value.range) > 100) errors.push('range must be between 0.1 and 100');
+      if (!Number.isFinite(Number(value.cooldownSeconds)) || Number(value.cooldownSeconds) < 0.05 || Number(value.cooldownSeconds) > 60) errors.push('cooldownSeconds must be between 0.05 and 60');
+      return errors;
+    },
+  },
+  EnemyBrain: {
+    defaults: { behavior: 'chaser', moveSpeed: 2.2, detectionRange: 9, attackRange: 1.25, windupSeconds: 0.28, recoverSeconds: 0.65 },
+    validate: (value) => {
+      const errors: string[] = [];
+      if (String(value.behavior || '') !== 'chaser') errors.push('behavior must be chaser in Lilly Engine v0.3');
+      for (const [key, minimum, maximum] of [
+        ['moveSpeed', 0.1, 20],
+        ['detectionRange', 0.5, 100],
+        ['attackRange', 0.2, 20],
+        ['windupSeconds', 0.05, 10],
+        ['recoverSeconds', 0.05, 30],
+      ] as const) {
+        const number = Number(value[key]);
+        if (!Number.isFinite(number) || number < minimum || number > maximum) errors.push(`${key} must be between ${minimum} and ${maximum}`);
+      }
+      return errors;
+    },
+  },
+  EncounterMember: { defaults: { encounterId: '' }, validate: (value) => String(value.encounterId || '').trim() ? [] : ['encounterId is required'] },
+  EncounterGate: { defaults: { encounterId: '', startsOpen: true }, validate: (value) => String(value.encounterId || '').trim() ? [] : ['encounterId is required'] },
+  Checkpoint: { defaults: { checkpointId: '', encounterId: '', activate: 'encounter-clear' }, validate: (value) => {
+    const errors: string[] = [];
+    if (!String(value.checkpointId || '').trim()) errors.push('checkpointId is required');
+    if (!String(value.encounterId || '').trim()) errors.push('encounterId is required');
+    if (String(value.activate || '') !== 'encounter-clear') errors.push('activate must be encounter-clear');
+    return errors;
+  } },
 };
 
 function numericRangeValidator(key: string, min: number, max: number) {
@@ -232,7 +290,22 @@ export function upgradeProject(projectInput: LillyProject): LillyProject {
   project.levelRecipes = Array.isArray(project.levelRecipes)
     ? project.levelRecipes.map((recipe) => normalizeLevelRecipe(recipe))
     : [];
-  project.generatedLevels = Array.isArray(project.generatedLevels) ? project.generatedLevels : [];
+  project.generatedLevels = Array.isArray(project.generatedLevels)
+    ? project.generatedLevels.map((design) => {
+      const upgraded = {
+        ...design,
+        encounters: Array.isArray(design.encounters) ? design.encounters : [],
+        metrics: {
+          ...design.metrics,
+          encounterCount: Number(design.metrics?.encounterCount || 0),
+          enemyCount: Number(design.metrics?.enemyCount || 0),
+          checkpointCount: Number(design.metrics?.checkpointCount || 0),
+        },
+      } as LillyGeneratedLevel;
+      upgraded.checksum = computeGeneratedLevelChecksum(upgraded);
+      return upgraded;
+    })
+    : [];
   project.assets = Array.isArray(project.assets) ? project.assets : [];
   project.inputMap = Array.isArray(project.inputMap) ? project.inputMap : [];
   project.settings = {
@@ -315,6 +388,33 @@ export function validateProject(project: LillyProject): ValidationIssue[] {
       ...issue,
       path: `generatedLevels[${levelIndex}].${issue.path}`,
     }));
+    const scene = project.scenes.find((candidate) => candidate.id === design.sceneId) || null;
+    if (!scene) continue;
+    const byId = new Map(scene.entities.map((entity) => [entity.id, entity]));
+    (design.encounters || []).forEach((encounter, encounterIndex) => {
+      const path = `generatedLevels[${levelIndex}].encounters[${encounterIndex}]`;
+      encounter.enemyIds.forEach((entityId, enemyIndex) => {
+        const entity = byId.get(entityId);
+        const member = entity ? getComponent(entity, 'EncounterMember') : null;
+        const health = entity ? getComponent(entity, 'Health') : null;
+        const brain = entity ? getComponent(entity, 'EnemyBrain') : null;
+        if (!entity || !member || !health || !brain || member.data.encounterId !== encounter.id) {
+          issues.push({ code: 'ENCOUNTER_ENEMY_INVALID', message: `Encounter enemy ${entityId} is missing required gameplay components`, path: `${path}.enemyIds[${enemyIndex}]`, severity: 'error' });
+        }
+      });
+      encounter.gateIds.forEach((entityId, gateIndex) => {
+        const gate = byId.get(entityId);
+        const gateComponent = gate ? getComponent(gate, 'EncounterGate') : null;
+        if (!gate || !gateComponent || gateComponent.data.encounterId !== encounter.id) {
+          issues.push({ code: 'ENCOUNTER_GATE_INVALID', message: `Encounter gate ${entityId} is missing its matching EncounterGate component`, path: `${path}.gateIds[${gateIndex}]`, severity: 'error' });
+        }
+      });
+      const checkpoint = byId.get(encounter.checkpointId);
+      const checkpointComponent = checkpoint ? getComponent(checkpoint, 'Checkpoint') : null;
+      if (!checkpoint || !checkpointComponent || checkpointComponent.data.encounterId !== encounter.id) {
+        issues.push({ code: 'ENCOUNTER_CHECKPOINT_INVALID', message: `Encounter checkpoint ${encounter.checkpointId} is missing its matching Checkpoint component`, path: `${path}.checkpointId`, severity: 'error' });
+      }
+    });
   }
   return issues;
 }
@@ -342,10 +442,11 @@ type LevelSnapshot = {
   recipes: LillyLevelRecipe[];
   designs: LillyGeneratedLevel[];
   entities: LillyEntity[];
-  playerTransform: LillyComponent | null;
+  playerComponents: LillyComponent[] | null;
   objectiveGraph: LillyBlueprint | null;
   uiAnchor: { entityId: string; component: LillyComponent } | null;
   mobileMode: LillyProject['settings']['mobileMode'];
+  inputMap: LillyInputBinding[];
 };
 
 function findObjectiveGraph(project: LillyProject, scene: LillyScene) {
@@ -362,7 +463,6 @@ function isReplaceableLevelEntity(entity: LillyEntity) {
 
 function captureLevelSnapshot(project: LillyProject, scene: LillyScene): LevelSnapshot {
   const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
-  const playerTransform = player ? getComponent(player, 'Transform') : null;
   const objectiveGraph = findObjectiveGraph(project, scene);
   const rulesEntity = scene.entities.find((entity) => entity.tags.includes('gameplay') && getComponent(entity, 'UIAnchor')) || null;
   const uiAnchor = rulesEntity && getComponent(rulesEntity, 'UIAnchor')
@@ -374,10 +474,11 @@ function captureLevelSnapshot(project: LillyProject, scene: LillyScene): LevelSn
     recipes: deepClone((project.levelRecipes || []).filter((recipe) => recipe.sceneId === scene.id)),
     designs: deepClone((project.generatedLevels || []).filter((design) => design.sceneId === scene.id)),
     entities: deepClone(scene.entities.filter(isReplaceableLevelEntity)),
-    playerTransform: playerTransform ? deepClone(playerTransform) : null,
+    playerComponents: player ? deepClone(player.components) : null,
     objectiveGraph: objectiveGraph ? deepClone(objectiveGraph) : null,
     uiAnchor,
     mobileMode: project.settings.mobileMode,
+    inputMap: deepClone(project.inputMap || []),
   };
 }
 
@@ -395,11 +496,8 @@ function restoreLevelSnapshot(project: LillyProject, scene: LillyScene, snapshot
   ];
   project.settings.mobileMode = snapshot.mobileMode || 'author-play';
   const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
-  if (player && snapshot.playerTransform) {
-    const index = player.components.findIndex((entry) => entry.type === 'Transform');
-    if (index >= 0) player.components[index] = deepClone(snapshot.playerTransform);
-    else player.components.push(deepClone(snapshot.playerTransform));
-  }
+  if (player && snapshot.playerComponents) player.components = deepClone(snapshot.playerComponents);
+  project.inputMap = deepClone(snapshot.inputMap || project.inputMap || []);
   if (snapshot.objectiveGraph) {
     const index = project.blueprints.findIndex((graph) => graph.id === snapshot.objectiveGraph!.id);
     if (index >= 0) project.blueprints[index] = deepClone(snapshot.objectiveGraph);
@@ -415,28 +513,113 @@ function restoreLevelSnapshot(project: LillyProject, scene: LillyScene, snapshot
   }
 }
 
+function generatedObjectiveGraph(recipe: LillyLevelRecipe, graphId: string): LillyBlueprint {
+  const eventPins = [{ id: 'exec-out', name: 'Then', kind: 'exec' as const, direction: 'output' as const }];
+  const actionPins = [
+    { id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const },
+    { id: 'exec-out', name: 'Then', kind: 'exec' as const, direction: 'output' as const },
+  ];
+  const branchPins = [
+    { id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const },
+    { id: 'true', name: 'True', kind: 'exec' as const, direction: 'output' as const },
+    { id: 'condition', name: 'Condition', kind: 'data' as const, direction: 'input' as const, dataType: 'boolean' as const },
+  ];
+  const variables = [
+    { id: 'score', name: 'Score', dataType: 'number' as const, defaultValue: 0 },
+    { id: 'exitReached', name: 'Exit Reached', dataType: 'boolean' as const, defaultValue: false },
+    { id: 'encountersCleared', name: 'Encounters Cleared', dataType: 'number' as const, defaultValue: 0 },
+  ];
+  const hudWin = {
+    id: 'hud-win',
+    type: 'presentation.hud-message',
+    label: 'Complete Expedition',
+    position: { x: 760, y: 270 },
+    pins: [{ id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const }],
+    config: { message: `${recipe.name} secured!` },
+  };
+  if (recipe.objective === 'reach-exit') {
+    return {
+      schema: BLUEPRINT_SCHEMA,
+      id: graphId,
+      name: 'Expedition Win Condition',
+      variables,
+      nodes: [
+        { id: 'event-exit', type: 'event.custom', label: 'On Exit Reached', position: { x: 40, y: 270 }, pins: eventPins, config: { eventName: 'exit.reached' } },
+        hudWin,
+      ],
+      edges: [{ id: 'exit-win', sourceNodeId: 'event-exit', sourcePinId: 'exec-out', targetNodeId: 'hud-win', targetPinId: 'exec-in' }],
+    };
+  }
+  const secure = recipe.objective === 'secure-and-exit';
+  const progressVariable = secure ? 'encountersCleared' : 'score';
+  const progressTarget = secure ? recipe.gameplay.encounterCount : recipe.gameplay.pickupCount;
+  const progressEvent = secure ? 'encounter.cleared' : 'pickup.collected';
+  const progressLabel = secure ? 'On Encounter Cleared' : 'On Pickup';
+  const addLabel = secure ? 'Add Encounter Clear' : 'Add Score';
+  return {
+    schema: BLUEPRINT_SCHEMA,
+    id: graphId,
+    name: 'Expedition Win Condition',
+    variables,
+    nodes: [
+      { id: 'event-progress', type: 'event.custom', label: progressLabel, position: { x: 40, y: 70 }, pins: eventPins, config: { eventName: progressEvent } },
+      { id: 'add-progress', type: 'variable.add', label: addLabel, position: { x: 270, y: 70 }, pins: actionPins, config: { variableId: progressVariable, amount: 1 } },
+      { id: 'branch-unlock', type: 'flow.branch', label: 'Progress complete?', position: { x: 500, y: 70 }, pins: branchPins, config: { expression: `${progressVariable} >= ${progressTarget}` } },
+      { id: 'hud-unlock', type: 'presentation.hud-message', label: 'Unlock Exit', position: { x: 760, y: 70 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec' as const, direction: 'input' as const }], config: { message: 'Exit beacon unlocked!' } },
+      { id: 'event-exit', type: 'event.custom', label: 'On Exit Reached', position: { x: 40, y: 270 }, pins: eventPins, config: { eventName: 'exit.reached' } },
+      { id: 'branch-win', type: 'flow.branch', label: 'Exit unlocked?', position: { x: 500, y: 270 }, pins: branchPins, config: { expression: `${progressVariable} >= ${progressTarget}` } },
+      hudWin,
+    ],
+    edges: [
+      { id: 'progress-add', sourceNodeId: 'event-progress', sourcePinId: 'exec-out', targetNodeId: 'add-progress', targetPinId: 'exec-in' },
+      { id: 'progress-check', sourceNodeId: 'add-progress', sourcePinId: 'exec-out', targetNodeId: 'branch-unlock', targetPinId: 'exec-in' },
+      { id: 'progress-unlock', sourceNodeId: 'branch-unlock', sourcePinId: 'true', targetNodeId: 'hud-unlock', targetPinId: 'exec-in' },
+      { id: 'exit-check', sourceNodeId: 'event-exit', sourcePinId: 'exec-out', targetNodeId: 'branch-win', targetPinId: 'exec-in' },
+      { id: 'exit-win', sourceNodeId: 'branch-win', sourcePinId: 'true', targetNodeId: 'hud-win', targetPinId: 'exec-in' },
+    ],
+  };
+}
+
 function updateGeneratedObjective(project: LillyProject, scene: LillyScene, recipe: LillyLevelRecipe) {
   const graph = findObjectiveGraph(project, scene);
   if (graph) {
-    graph.nodes.forEach((node) => {
-      if (node.type === 'flow.branch') {
-        node.label = recipe.objective === 'reach-exit' ? 'Exit reached?' : `Score = ${recipe.gameplay.pickupCount}?`;
-        node.config = {
-          ...(node.config || {}),
-          expression: recipe.objective === 'reach-exit' ? 'exitReached === true' : `score >= ${recipe.gameplay.pickupCount}`,
-        };
-      }
-      if (node.type === 'presentation.hud-message') {
-        node.config = { ...(node.config || {}), message: `${recipe.name} secured!` };
-      }
-    });
+    const next = generatedObjectiveGraph(recipe, graph.id);
+    graph.name = next.name;
+    graph.variables = next.variables;
+    graph.nodes = next.nodes;
+    graph.edges = next.edges;
   }
   const rulesEntity = scene.entities.find((entity) => entity.tags.includes('gameplay'));
   const anchor = rulesEntity ? getComponent(rulesEntity, 'UIAnchor') : null;
   if (anchor) {
     anchor.data.text = recipe.objective === 'reach-exit'
       ? 'Find and reach the exit beacon'
-      : `Collect ${recipe.gameplay.pickupCount} energy cores, then reach the exit`;
+      : recipe.objective === 'secure-and-exit'
+        ? `Clear ${recipe.gameplay.encounterCount} encounter${recipe.gameplay.encounterCount === 1 ? '' : 's'}, then reach the exit`
+        : `Collect ${recipe.gameplay.pickupCount} energy cores, then reach the exit`;
+  }
+}
+
+function ensurePlayerGameplay(project: LillyProject, scene: LillyScene, recipe: LillyLevelRecipe) {
+  const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
+  if (!player) return;
+  const setComponent = (type: LillyComponentType, data: Record<string, unknown>) => {
+    const next = component(type, data);
+    const index = player.components.findIndex((entry) => entry.type === type);
+    if (index >= 0) player.components[index] = next;
+    else player.components.push(next);
+  };
+  const maxHealth = Math.max(3, Math.min(8, 3 + Math.floor((recipe.gameplay.difficulty - 1) / 2)));
+  setComponent('Health', { max: maxHealth, current: maxHealth, invulnerabilitySeconds: 0.55 });
+  setComponent('Combatant', {
+    team: 'player',
+    damage: recipe.gameplay.difficulty >= 4 ? 2 : 1,
+    range: 2.25,
+    cooldownSeconds: 0.42,
+    attackAction: 'Attack',
+  });
+  if (!project.inputMap.some((binding) => binding.action === 'Attack')) {
+    project.inputMap.push({ action: 'Attack', kind: 'button', keys: ['Space', 'Enter'] });
   }
 }
 
@@ -566,9 +749,17 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
     }
     case 'level.generate': {
       if (!scene) throw new Error('level.generate requires target.sceneId');
-      const rawRecipe = {
+      const rawRecipeInput = {
         ...deepClone((command.payload.recipe || {}) as LillyLevelRecipe),
         sceneId: scene.id,
+      } as LillyLevelRecipe;
+      const rawRecipe = {
+        ...rawRecipeInput,
+        gameplay: {
+          ...rawRecipeInput.gameplay,
+          encounterCount: rawRecipeInput.gameplay?.encounterCount ?? 0,
+          enemyCount: rawRecipeInput.gameplay?.enemyCount ?? 0,
+        },
       } as LillyLevelRecipe;
       const recipeIssues = validateLevelRecipe(rawRecipe).filter((issue) => issue.severity === 'error');
       if (recipeIssues.length) throw Object.assign(new Error(recipeIssues.map((issue) => issue.message).join('; ')), { code: 'INVALID_LEVEL_RECIPE', issues: recipeIssues });
@@ -588,6 +779,7 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
       const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
       const playerTransform = player ? getComponent(player, 'Transform') : null;
       if (playerTransform) playerTransform.data.position = deepClone(generated.design.spawn.position);
+      ensurePlayerGameplay(project, scene, generated.recipe);
       updateGeneratedObjective(project, scene, generated.recipe);
       inverse = {
         ...inverseBase,
@@ -728,7 +920,7 @@ export function createProceduralProject(input: {
   const id = input.id;
   const sceneId = 'arena';
   const graphId = 'arena-win-condition';
-  const prompt = input.prompt || 'A winding neon ruin with readable rooms, a few pulse traps, glowing energy cores, landmarks, and a final exit beacon.';
+  const prompt = input.prompt || 'A winding neon ruin with readable rooms, two fair guardian encounters, glowing energy cores, checkpoints, landmarks, and a final exit beacon.';
   const recipe = createLevelRecipeFromPrompt({
     projectId: id,
     sceneId,
@@ -755,33 +947,14 @@ export function createProceduralProject(input: {
       entities: [
         { schema: ENTITY_SCHEMA, id: 'world', name: 'World', parentId: null, enabled: true, tags: ['root'], components: [] },
         { schema: ENTITY_SCHEMA, id: 'sun', name: 'Key Light', parentId: 'world', enabled: true, tags: ['lighting'], components: [transform({ x: 8, y: 14, z: 6 }), component('Light', { kind: 'directional', intensity: 3.4, color: '#dbeafe', castShadow: true })] },
-        { schema: ENTITY_SCHEMA, id: 'player', name: 'Player', parentId: 'world', enabled: true, tags: ['player'], components: [transform(generated.design.spawn.position), component('MeshRenderer', { geometry: 'capsule', material: { color: '#38bdf8', roughness: 0.28, metalness: 0.35, emissive: '#075985', emissiveIntensity: 0.22 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.4, z: 0.9 } }), component('Blueprint', { graphId: 'player-controller' })] },
+        { schema: ENTITY_SCHEMA, id: 'player', name: 'Player', parentId: 'world', enabled: true, tags: ['player'], components: [transform(generated.design.spawn.position), component('MeshRenderer', { geometry: 'capsule', material: { color: '#38bdf8', roughness: 0.28, metalness: 0.35, emissive: '#075985', emissiveIntensity: 0.22 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.4, z: 0.9 } }), component('Health', { max: 4, current: 4, invulnerabilitySeconds: 0.55 }), component('Combatant', { team: 'player', damage: 1, range: 2.25, cooldownSeconds: 0.42, attackAction: 'Attack' }), component('Blueprint', { graphId: 'player-controller' })] },
         { schema: ENTITY_SCHEMA, id: 'camera', name: 'Follow Camera', parentId: 'world', enabled: true, tags: ['camera'], components: [transform({ x: generated.design.spawn.position.x + 7, y: 7, z: generated.design.spawn.position.z + 11 }), component('Camera', { primary: true, fov: 58 })] },
-        { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Expedition Rules', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('Blueprint', { graphId }), component('UIAnchor', { anchor: 'top-left', text: `Collect ${pickupCount} energy cores, then reach the exit` })] },
+        { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Expedition Rules', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('Blueprint', { graphId }), component('UIAnchor', { anchor: 'top-left', text: recipe.objective === 'secure-and-exit' ? `Clear ${recipe.gameplay.encounterCount} encounters, then reach the exit` : `Collect ${pickupCount} energy cores, then reach the exit` })] },
         ...generated.entities,
       ],
     }],
     blueprints: [
-      {
-        schema: BLUEPRINT_SCHEMA,
-        id: graphId,
-        name: 'Expedition Win Condition',
-        variables: [
-          { id: 'score', name: 'Score', dataType: 'number', defaultValue: 0 },
-          { id: 'exitReached', name: 'Exit Reached', dataType: 'boolean', defaultValue: false },
-        ],
-        nodes: [
-          { id: 'event-pickup', type: 'event.custom', label: 'On Pickup', position: { x: 40, y: 80 }, pins: [{ id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }] },
-          { id: 'add-score', type: 'variable.add', label: 'Add Score', position: { x: 280, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }], config: { variableId: 'score', amount: 1 } },
-          { id: 'branch-win', type: 'flow.branch', label: `Score = ${pickupCount}?`, position: { x: 510, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'true', name: 'True', kind: 'exec', direction: 'output' }, { id: 'condition', name: 'Condition', kind: 'data', direction: 'input', dataType: 'boolean' }], config: { expression: `score >= ${pickupCount}` } },
-          { id: 'hud-win', type: 'presentation.hud-message', label: 'Unlock Exit', position: { x: 760, y: 20 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }], config: { message: 'Exit beacon unlocked!' } },
-        ],
-        edges: [
-          { id: 'e1', sourceNodeId: 'event-pickup', sourcePinId: 'exec-out', targetNodeId: 'add-score', targetPinId: 'exec-in' },
-          { id: 'e2', sourceNodeId: 'add-score', sourcePinId: 'exec-out', targetNodeId: 'branch-win', targetPinId: 'exec-in' },
-          { id: 'e3', sourceNodeId: 'branch-win', sourcePinId: 'true', targetNodeId: 'hud-win', targetPinId: 'exec-in' },
-        ],
-      },
+      generatedObjectiveGraph(recipe, graphId),
       {
         schema: BLUEPRINT_SCHEMA,
         id: 'player-controller',
@@ -800,6 +973,7 @@ export function createProceduralProject(input: {
     inputMap: [
       { action: 'Move', kind: 'axis2d', keys: ['KeyW', 'KeyS', 'KeyA', 'KeyD'] },
       { action: 'Jump', kind: 'button', keys: ['Space'] },
+      { action: 'Attack', kind: 'button', keys: ['Space', 'Enter'] },
       { action: 'Reset', kind: 'button', keys: ['KeyR'] },
     ],
     settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play' },
