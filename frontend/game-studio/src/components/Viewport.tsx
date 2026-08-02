@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Edges, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, PerspectiveCamera, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GameplaySimulation, scheduleGameplaySteps, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
+import { useWorkspacePreviewAccess } from '../preview-access';
 import type { LillyComponent, LillyEntity, LillyProject, LillyScene, Vec3 } from '../types';
 import { currentScene, useStudioStore } from '../store';
 import { Icon } from './Icon';
@@ -350,22 +351,26 @@ class ViewportErrorBoundary extends Component<{ children: React.ReactNode }, { e
 function ExactPlayPreview({ previewUrl, projectId, playState, stepToken }: { previewUrl: string; projectId: string; playState: 'playing' | 'paused'; stepToken: number }) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const lastStep = useRef(stepToken);
+  const previewAccess = useWorkspacePreviewAccess(previewUrl);
   const send = (type: 'play' | 'pause' | 'step') => frameRef.current?.contentWindow?.postMessage({
     schema: 'LillyEditorPlayerControl/v1',
     type,
     projectId,
   }, '*');
   const sendPlayState = () => send(playState === 'playing' ? 'play' : 'pause');
-  useEffect(() => { sendPlayState(); }, [playState, previewUrl]);
+  useEffect(() => { sendPlayState(); }, [playState, previewAccess.url]);
   useEffect(() => {
     if (stepToken === lastStep.current) return;
     lastStep.current = stepToken;
     send('step');
-  }, [stepToken, previewUrl]);
+  }, [stepToken, previewAccess.url]);
+  if (previewAccess.status !== 'ready') return <div className="exact-play-preview preview-access-state" role="status">
+    {previewAccess.status === 'error' ? <><strong>Player access blocked</strong><span>{previewAccess.error}</span></> : <><span className="spinner-small"/><span>Signing the isolated player…</span></>}
+  </div>;
   return <div className="exact-play-preview">
     <iframe
       ref={frameRef}
-      src={previewUrl}
+      src={previewAccess.url}
       title="Exact sandboxed editor Play preview"
       sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
       onLoad={() => {
