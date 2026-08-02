@@ -39,6 +39,18 @@ describe('GameStudioService', () => {
     await expect(fs.access(service.revisionPath(result.project.id, 1))).resolves.toBeUndefined();
   });
 
+  test('bounds every immutable build workspace and file below the shared sandbox root', () => {
+    expect(service.buildWorkspaceDirectory('game-studio-safe-r1-12345678')).toBe(
+      path.join(service.buildRoot, 'game-studio-safe-r1-12345678'),
+    );
+    expect(() => service.buildWorkspaceDirectory('..')).toThrow(
+      expect.objectContaining({ code: 'BUILD_WORKSPACE_PATH_INVALID' }),
+    );
+    expect(() => service.buildWorkspaceFilePath('game-studio-safe-r1-12345678', '../index.html')).toThrow(
+      expect.objectContaining({ code: 'BUILD_FILE_PATH_INVALID' }),
+    );
+  });
+
   test('imports a compatible web bundle explicitly without silently converting it', async () => {
     const result = await service.createProject({
       name: 'Imported Three Game',
@@ -281,6 +293,29 @@ describe('GameStudioService', () => {
     const threeCoreStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.core.js'));
     expect(threeCoreStat.size).toBeGreaterThan(1000000);
     await expect(fs.writeFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'overwrite', { flag: 'wx' })).rejects.toMatchObject({ code: 'EEXIST' });
+
+    const restartedService = new GameStudioService({
+      root: service.root,
+      buildRoot: service.buildRoot,
+      postgres: { enabled: false },
+    });
+    await restartedService.initialize();
+    const restored = await restartedService.getBuild(build.id, 'phil');
+    expect(restored.build).toMatchObject({
+      id: build.id,
+      projectRevision: uploaded.project.revision,
+      workspaceId: build.workspaceId,
+      status: 'success',
+    });
+    const restoredManifest = JSON.parse(await fs.readFile(
+      path.join(restartedService.buildRoot, restored.build.workspaceId, 'build-manifest.json'),
+      'utf8',
+    ));
+    expect(restoredManifest).toMatchObject({
+      schema: 'LillyPlayerBundle/v2',
+      projectId: created.project.id,
+      revision: uploaded.project.revision,
+    });
   });
 
   test('publishes immutable player files under the managed-app public root', async () => {

@@ -1,7 +1,11 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { config } = require('./config');
 
-const SANDBOX_ROOT = path.resolve(process.cwd(), 'output', 'sandboxes');
+const SANDBOX_ROOT = path.resolve(
+  process.env.KIMIBUILT_SANDBOX_WORKSPACE_DIR
+    || path.join(config.persistence.dataDir, 'sandbox-workspaces'),
+);
 const SANDBOX_WORKSPACE_ID_PATTERN = /^[a-z0-9._-]{1,140}$/i;
 
 function normalizeSandboxWorkspaceId(value = '') {

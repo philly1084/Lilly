@@ -1,6 +1,8 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { config } = require('./config');
 const {
+  SANDBOX_ROOT,
   deleteSandboxWorkspace,
   deleteSandboxWorkspacesForArtifacts,
   getArtifactSandboxWorkspaceId,
@@ -28,6 +30,11 @@ describe('sandbox workspace storage', () => {
     expect(normalizeSandboxWorkspaceId('../project-123')).toBe('');
     expect(resolveSandboxWorkspacePath('project-123', testRoot)).toBe(path.join(testRoot, 'project-123'));
     expect(resolveSandboxWorkspacePath('..', testRoot)).toBeNull();
+  });
+
+  test('keeps default workspaces on the configured persistent data volume', () => {
+    expect(SANDBOX_ROOT).toBe(path.join(config.persistence.dataDir, 'sandbox-workspaces'));
+    expect(path.relative(config.persistence.dataDir, SANDBOX_ROOT)).toBe('sandbox-workspaces');
   });
 
   test('deletes only code-sandbox project workspaces linked by artifact metadata', async () => {

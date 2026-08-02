@@ -14,6 +14,7 @@ const {
   normalizeBundlePath,
 } = require('../../../../frontend-bundles');
 const { buildSandboxBrowserLibraryInstructions } = require('../../../../sandbox-browser-libraries');
+const { resolveSandboxWorkspacePath } = require('../../../../sandbox-workspace-storage');
 
 class SandboxTool extends ToolBase {
   constructor() {
@@ -467,7 +468,10 @@ class SandboxTool extends ToolBase {
     const startTime = Date.now();
     const safeProjectName = this.normalizeProjectName(projectName);
     const workspaceId = `${safeProjectName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const workspacePath = path.join(process.cwd(), 'output', 'sandboxes', workspaceId);
+    const workspacePath = resolveSandboxWorkspacePath(workspaceId);
+    if (!workspacePath) {
+      throw new Error('Could not allocate a bounded sandbox workspace path.');
+    }
     const normalizedFiles = this.normalizeProjectFiles({ language, code, files, entry });
 
     if (normalizedFiles.length === 0) {
