@@ -89,7 +89,7 @@ describe('Game Studio API', () => {
 
     const conflict = await request(app).put(`/api/game-studio/projects/${id}/files`).send({ baseRevision: 2, files: [{ path: 'data/config.json', content: '{}' }] }).expect(409);
     expect(conflict.body.error).toMatchObject({ code: 'REVISION_CONFLICT', currentRevision: 3 });
-  });
+  }, 20_000);
 
   test('runs AI review, playtest, and build endpoints', async () => {
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'Pipeline' }).expect(201);

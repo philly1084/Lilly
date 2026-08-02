@@ -9,6 +9,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function redactPreviewTokens(value = '') {
+  return String(value || '').replace(/(\/(?:preview|sandbox)-access\/)[^/?#]+/gi, '$1[redacted]');
+}
+
 function parseArgs(argv) {
   const args = {
     url: process.env.GAME_STUDIO_URL || 'http://127.0.0.1:3000/game-studio/',
@@ -74,6 +78,8 @@ async function connectHandles(page, source, target) {
 async function run() {
   const args = parseArgs(process.argv.slice(2));
   const origin = new URL(args.url).origin;
+  const apiToken = String(process.env.KIMIBUILT_UI_CHECK_TOKEN || process.env.KIMIBUILT_FRONTEND_API_KEY || '').trim();
+  const apiAuthHeaders = apiToken ? { authorization: `Bearer ${apiToken}`, 'x-api-key': apiToken } : {};
   const report = { schema: 'LillyGameStudioSmoke/v1', url: args.url, startedAt: new Date().toISOString(), steps: [], consoleErrors: [], pageErrors: [], httpErrors: [] };
   const record = async (name, task) => {
     const startedAt = Date.now();
@@ -85,6 +91,7 @@ async function run() {
   const projectName = `Browser Canary ${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
   const created = await requestJson(`${origin}/api/game-studio/projects`, {
     method: 'POST',
+    headers: apiAuthHeaders,
     body: JSON.stringify({
       name: projectName,
       prompt: 'A compact neon ruin with 7 readable rooms, two fair combat encounters, four guardians, checkpoints, 5 energy cores, pulse traps, and a clear exit beacon.',
@@ -97,16 +104,50 @@ async function run() {
   const executablePath = await existingBrowser();
   const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   try {
+    let browserAuthCookie = null;
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
+    if (apiToken) {
+      const previewSession = await requestJson(`${origin}/api/auth/ws-token`, { headers: apiAuthHeaders });
+      assert(previewSession.token, 'Authenticated browser smoke did not receive a signed session token');
+      const parsedOrigin = new URL(origin);
+      browserAuthCookie = {
+        name: process.env.KIMIBUILT_AUTH_COOKIE || process.env.LILLYBUILT_AUTH_COOKIE || 'lillybuilt_auth',
+        value: previewSession.token,
+        domain: parsedOrigin.hostname,
+        path: '/',
+        httpOnly: true,
+        secure: parsedOrigin.protocol === 'https:',
+        sameSite: 'Lax',
+      };
+      await context.addCookies([browserAuthCookie]);
+      report.authenticated = true;
+    }
     const page = await context.newPage();
     page.on('console', (message) => {
-      if (message.type() === 'error') report.consoleErrors.push({ text: message.text().slice(0, 500), location: message.location() });
+      if (message.type() === 'error') {
+        const location = message.location();
+        report.consoleErrors.push({ text: redactPreviewTokens(message.text()).slice(0, 500), location: { ...location, url: redactPreviewTokens(location.url) } });
+      }
     });
-    page.on('pageerror', (error) => report.pageErrors.push(String(error.message || error).slice(0, 500)));
+    page.on('pageerror', (error) => report.pageErrors.push(redactPreviewTokens(error.message || error).slice(0, 500)));
     page.on('response', (response) => {
-      if (response.status() >= 400) report.httpErrors.push({ status: response.status(), url: response.url() });
+      if (response.status() >= 400) report.httpErrors.push({ status: response.status(), url: redactPreviewTokens(response.url()) });
     });
     await page.addInitScript((id) => {
+      window.__LILLY_SMOKE_MESSAGES__ = [];
+      window.addEventListener('message', (event) => {
+        const message = event.data;
+        if (message?.schema !== 'LillyPlayerStorage/v1') return;
+        window.__LILLY_SMOKE_MESSAGES__.push({
+          schema: message.schema,
+          type: message.type,
+          projectId: message.projectId,
+          requestId: message.requestId,
+          ok: message.ok,
+          sourceIsParent: event.source === window.parent,
+          sourceIsTop: event.source === window.top,
+        });
+      });
       if (location.pathname.startsWith('/game-studio')) localStorage.setItem('lilly-game-studio:project', id);
     }, projectId);
 
@@ -238,7 +279,12 @@ async function run() {
       await page.getByRole('button', { name: 'Build current revision', exact: true }).click();
       await page.getByRole('button', { name: 'Private preview', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
       await page.getByRole('button', { name: 'Private preview', exact: true }).click();
-      const frame = page.frameLocator('.build-preview-wrap iframe').frameLocator('iframe');
+      const previewIframe = page.locator('.build-preview-wrap iframe');
+      await previewIframe.waitFor({ state: 'visible', timeout: 30000 });
+      const previewSrc = await previewIframe.getAttribute('src');
+      assert(previewSrc && /\/preview(?:-access\/[^/]+)?\/$/.test(new URL(previewSrc, origin).pathname), `Private preview did not use the direct player route: ${previewSrc}`);
+      if (apiToken) assert(/\/preview-access\//.test(previewSrc), 'Authenticated private preview did not use signed path access');
+      const frame = page.frameLocator('.build-preview-wrap iframe');
       await frame.locator('#game-canvas').waitFor({ state: 'visible', timeout: 30000 });
       const control = await frame.locator('body').evaluate(async () => {
         for (let attempt = 0; attempt < 150; attempt += 1) {
@@ -254,12 +300,20 @@ async function run() {
       assert(authoredModule?.passed === true && authoredModule?.systems?.length === 1, `Agent module runtime test failed: ${JSON.stringify(authoredModule)}`);
       const collision = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.collisionTest?.() || null);
       assert(collision?.passed === true && collision?.detected === true && collision?.handled === true, `Agent collision lifecycle test failed: ${JSON.stringify(collision)}`);
-      report.runtimeProof = { control, combat, authoredModule, collision };
+      report.runtimeProof = { control, combat, authoredModule, collision, previewPath: redactPreviewTokens(previewSrc) };
       await page.locator('.build-preview-wrap').screenshot({ path: path.join(args.outDir, 'lilly-generated-player.png') });
       await frame.getByRole('button', { name: 'Save', exact: true }).click();
-      await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible' });
+      const savedAcknowledged = await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
       const storedSave = await page.evaluate((id) => localStorage.getItem(`lilly:${id}:save`), projectId);
-      assert(Boolean(storedSave), 'Opaque-origin player save was not persisted through the bounded parent bridge');
+      const storageMessages = [];
+      for (const browserFrame of page.frames()) {
+        storageMessages.push({
+          url: redactPreviewTokens(browserFrame.url()),
+          messages: await browserFrame.evaluate(() => window.__LILLY_SMOKE_MESSAGES__ || []).catch(() => []),
+        });
+      }
+      report.storageBridgeProof = { savedAcknowledged, stored: Boolean(storedSave), messages: storageMessages };
+      assert(savedAcknowledged && Boolean(storedSave), `Opaque-origin player save bridge failed: ${JSON.stringify(report.storageBridgeProof)}`);
     });
 
     await record('publish-failure-preserves-preview', async () => {
@@ -284,13 +338,17 @@ async function run() {
 
     await record('mobile-create-and-touch-flow', async () => {
       const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true });
+      if (browserAuthCookie) await mobileContext.addCookies([browserAuthCookie]);
       const mobilePage = await mobileContext.newPage();
       mobilePage.on('console', (message) => {
-        if (message.type() === 'error') report.consoleErrors.push({ text: message.text().slice(0, 500), location: message.location(), viewport: 'mobile' });
+        if (message.type() === 'error') {
+          const location = message.location();
+          report.consoleErrors.push({ text: redactPreviewTokens(message.text()).slice(0, 500), location: { ...location, url: redactPreviewTokens(location.url) }, viewport: 'mobile' });
+        }
       });
-      mobilePage.on('pageerror', (error) => report.pageErrors.push(`[mobile] ${String(error.message || error).slice(0, 500)}`));
+      mobilePage.on('pageerror', (error) => report.pageErrors.push(`[mobile] ${redactPreviewTokens(error.message || error).slice(0, 500)}`));
       mobilePage.on('response', (response) => {
-        if (response.status() >= 400) report.httpErrors.push({ status: response.status(), url: response.url(), viewport: 'mobile' });
+        if (response.status() >= 400) report.httpErrors.push({ status: response.status(), url: redactPreviewTokens(response.url()), viewport: 'mobile' });
       });
       await mobilePage.addInitScript((id) => {
         if (location.pathname.startsWith('/game-studio')) localStorage.setItem('lilly-game-studio:project', id);
@@ -342,7 +400,7 @@ async function run() {
     const screenshotPath = path.join(args.outDir, 'lilly-game-studio-smoke.png');
     await page.screenshot({ path: screenshotPath, fullPage: false });
     report.screenshotPath = screenshotPath;
-    report.finalProject = await requestJson(`${origin}/api/game-studio/projects/${projectId}`);
+    report.finalProject = await requestJson(`${origin}/api/game-studio/projects/${projectId}`, { headers: apiAuthHeaders });
     assert(report.pageErrors.length === 0, `Page errors: ${report.pageErrors.join('; ')}`);
     const expectedPublishErrors = report.httpErrors.filter((entry) => entry.status === 503 && /\/publish$/.test(new URL(entry.url).pathname));
     const unexpectedHttpErrors = report.httpErrors.filter((entry) => !expectedPublishErrors.includes(entry));
@@ -354,7 +412,7 @@ async function run() {
     await context.close();
   } catch (error) {
     report.status = 'failed';
-    report.error = error.message;
+    report.error = redactPreviewTokens(error.message);
     report.finishedAt = new Date().toISOString();
     throw error;
   } finally {

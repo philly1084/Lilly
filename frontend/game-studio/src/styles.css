@@ -177,6 +177,9 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 .viewport-panel canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .exact-play-preview { position: absolute; inset: 0; z-index: 1; background: #05090e; }
 .exact-play-preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #05090e; }
+.preview-access-state { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 18px; color: var(--muted); background: #081018; text-align: center; }
+.preview-access-state strong { color: var(--text); font-size: 11px; }
+.preview-access-state span:not(.spinner-small) { max-width: 440px; font-size: 9px; line-height: 1.45; }
 .viewport-toolbar { position: absolute; z-index: 8; left: 10px; right: 10px; top: 9px; height: 31px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
 .viewport-mode, .viewport-tools { display: flex; align-items: center; gap: 3px; padding: 3px; background: rgba(7,12,17,.82); border: 1px solid rgba(77,103,119,.55); border-radius: 6px; backdrop-filter: blur(10px); box-shadow: 0 7px 22px rgba(0,0,0,.2); pointer-events: auto; }
 .viewport-mode button, .viewport-tools button { height: 23px; padding: 0 8px; color: var(--muted); border-radius: 4px; background: transparent; cursor: pointer; }
