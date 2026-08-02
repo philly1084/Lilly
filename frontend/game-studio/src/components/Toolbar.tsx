@@ -50,7 +50,7 @@ export function Toolbar({ onCommandPalette }: { onCommandPalette(): void }) {
       {playState !== 'editing' && <button type="button" className="stop-button" onClick={() => setPlayState('editing')} title="Stop play mode"><span/></button>}
     </div>
     <div className="toolbar-spacer" />
-    <ToolButton label="AI" icon="spark" onClick={() => setAiOpen(true)}/>
+    <ToolButton label="Create" icon="spark" onClick={() => setAiOpen(true)}/>
     <ToolButton label={buildStatus === 'building' ? 'Building…' : 'Build'} icon="build" disabled={buildStatus === 'building'} onClick={build}/>
     <button className="command-button" type="button" onClick={onCommandPalette} title="Command palette (Ctrl+K)"><Icon name="command"/><kbd>⌘ K</kbd></button>
   </header>;

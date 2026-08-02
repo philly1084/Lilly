@@ -17,8 +17,13 @@ const {
   PROJECT_SCHEMA,
   applyCommandBatch,
   createArenaProject,
+  createLevelRecipeFromPrompt,
   deepClone,
+  generateLevel,
   getScene,
+  upgradeProject,
+  validateGeneratedLevel,
+  validateLevelRecipe,
   validateProject,
 } = require('../../packages/lilly-engine/dist/core/src');
 const {
@@ -173,6 +178,10 @@ class GameStudioService {
     await fs.rename(tempPath, targetPath);
   }
 
+  async readProjectFile(targetPath) {
+    return upgradeProject(JSON.parse(await fs.readFile(targetPath, 'utf8')));
+  }
+
   async persistSnapshot(project, audit = {}) {
     await this.writeJsonAtomic(this.revisionPath(project.id, project.revision), project);
     await this.writeJsonAtomic(this.currentPath(project.id), project);
@@ -229,11 +238,11 @@ class GameStudioService {
     await this.ensureInitialized();
     if (!ownerId) throw Object.assign(new Error('Project creation requires an authenticated owner'), { statusCode: 401, code: 'OWNER_REQUIRED' });
     const id = randomUUID();
-    const name = String(input.name || input.project?.name || 'Neon Arena').trim().slice(0, 100) || 'Neon Arena';
+    const name = String(input.name || input.project?.name || 'My Lilly Game').trim().slice(0, 100) || 'My Lilly Game';
     const slug = slugify(input.slug || name);
-    const imported = input.project?.schema === PROJECT_SCHEMA ? deepClone(input.project) : null;
+    const imported = input.project?.schema === PROJECT_SCHEMA ? upgradeProject(deepClone(input.project)) : null;
     const importedBundle = normalizeImportBundle(input.importBundle);
-    const project = imported || createArenaProject({ id, name, slug });
+    const project = upgradeProject(imported || createArenaProject({ id, name, slug, prompt: input.prompt, seed: input.seed }));
     project.id = id;
     project.name = name;
     project.slug = slug;
@@ -260,7 +269,7 @@ class GameStudioService {
       engineVersion: project.engineVersion,
       createdAt,
       updatedAt: createdAt,
-      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : 'template:third-person-arena'),
+      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : 'template:ai-procedural-expedition'),
       importedBundle: importedBundle ? {
         schema: 'LillyImportedBundle/v1',
         entry: importedBundle.entry,
@@ -305,7 +314,7 @@ class GameStudioService {
   async getProject(projectId, ownerId) {
     const { metadata, index } = await this.getMetadata(projectId, ownerId);
     if (!metadata) return null;
-    const project = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+    const project = await this.readProjectFile(this.currentPath(projectId));
     return this.describeProject(metadata, project, index);
   }
 
@@ -341,7 +350,7 @@ class GameStudioService {
     return this.withProjectLock(projectId, async () => {
       const { metadata, index } = await this.getMetadata(projectId, ownerId);
       if (!metadata) return null;
-      const project = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+      const project = await this.readProjectFile(this.currentPath(projectId));
       const baseRevision = Number(input.baseRevision);
       if (!Number.isInteger(baseRevision)) throw Object.assign(new Error('baseRevision is required'), { statusCode: 400, code: 'BASE_REVISION_REQUIRED' });
       const commands = this.normalizeCommands(project, input.commands, baseRevision);
@@ -355,6 +364,11 @@ class GameStudioService {
       }
       await this.persistSnapshot(applied.project, { ownerId, source: input.source || 'editor', commands, inverses: applied.inverses, metadata });
       Object.assign(metadata, { revision: applied.project.revision, updatedAt: now() });
+      const aiRunId = String(input.source || '').startsWith('ai-run:') ? String(input.source).slice('ai-run:'.length) : '';
+      if (aiRunId) {
+        const aiRun = index.aiRuns.find((run) => run.id === aiRunId && run.projectId === projectId && run.ownerId === ownerId);
+        if (aiRun) Object.assign(aiRun, { status: 'applied', appliedRevision: applied.project.revision, appliedAt: now() });
+      }
       await this.writeIndex(index);
       await this.emit(projectId, 'commands.applied', { baseRevision, revision: applied.project.revision, commandIds: commands.map((command) => command.commandId), source: input.source || 'editor' });
       return { ...this.describeProject(metadata, applied.project, index), commandBatch: { schema: 'LillyCommandBatch/v1', baseRevision, revision: applied.project.revision, commands, inverses: applied.inverses } };
@@ -365,10 +379,10 @@ class GameStudioService {
     return this.withProjectLock(projectId, async () => {
       const { metadata, index } = await this.getMetadata(projectId, ownerId);
       if (!metadata) return null;
-      const current = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+      const current = await this.readProjectFile(this.currentPath(projectId));
       const targetRevision = Number(input.revision);
       if (!Number.isInteger(targetRevision) || targetRevision < 1 || targetRevision >= current.revision) throw Object.assign(new Error('rollback revision must be an earlier saved revision'), { statusCode: 400, code: 'INVALID_ROLLBACK_REVISION' });
-      const target = JSON.parse(await fs.readFile(this.revisionPath(projectId, targetRevision), 'utf8'));
+      const target = await this.readProjectFile(this.revisionPath(projectId, targetRevision));
       target.revision = current.revision + 1;
       await this.persistSnapshot(target, { ownerId, source: 'rollback', metadata: { ...metadata, rollbackFrom: current.revision, rollbackTarget: targetRevision } });
       Object.assign(metadata, { revision: target.revision, updatedAt: now() });
@@ -393,7 +407,7 @@ class GameStudioService {
       await fs.mkdir(directory, { recursive: true });
       await fs.writeFile(path.join(directory, filename), buffer, { flag: 'wx' });
       const asset = { id, name: String(input.name || input.filename || 'Asset').slice(0, 100), type: mimeType, uri: `assets/${filename}`, metadata: { sizeBytes: buffer.length, sha256: crypto.createHash('sha256').update(buffer).digest('hex') } };
-      const project = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+      const project = await this.readProjectFile(this.currentPath(projectId));
       project.assets.push(asset);
       project.revision += 1;
       await this.persistSnapshot(project, { ownerId, source: 'asset-upload', metadata });
@@ -417,9 +431,45 @@ class GameStudioService {
     if (!blueprintIssues.length) project.blueprints.forEach((graph) => compiledGraphs.push(compileBlueprint(graph)));
     tests.push({ name: 'Blueprint compilation', status: compiledGraphs.length === project.blueprints.length ? 'passed' : 'failed', details: `${compiledGraphs.length}/${project.blueprints.length} graphs compiled` });
     const scene = getScene(project);
+    const levelIssues = [];
+    const deterministicFailures = [];
+    for (const recipe of project.levelRecipes || []) {
+      levelIssues.push(...validateLevelRecipe(recipe));
+      const design = (project.generatedLevels || []).find((entry) => entry.recipeId === recipe.id && entry.sceneId === recipe.sceneId);
+      if (!design) {
+        levelIssues.push({ code: 'GENERATED_LEVEL_MISSING', message: `Recipe ${recipe.id} has no generated topology`, severity: 'error' });
+        continue;
+      }
+      levelIssues.push(...validateGeneratedLevel(design, recipe));
+      const firstReplay = generateLevel(recipe, { parentId: 'world' });
+      const secondReplay = generateLevel(recipe, { parentId: 'world' });
+      if (firstReplay.design.checksum !== design.checksum || JSON.stringify(firstReplay.entities) !== JSON.stringify(secondReplay.entities)) {
+        deterministicFailures.push(recipe.id);
+      }
+    }
+    const levelErrors = levelIssues.filter((issue) => issue.severity === 'error');
+    tests.push({
+      name: 'Procedural level topology',
+      status: levelErrors.length ? 'failed' : 'passed',
+      details: project.levelRecipes?.length
+        ? (levelErrors.length ? levelErrors.map((issue) => issue.message).join('; ') : `${project.generatedLevels.length} seeded level connects spawn to goal`)
+        : 'Hand-authored scene; procedural topology is optional',
+    });
+    tests.push({
+      name: 'Deterministic level replay',
+      status: deterministicFailures.length ? 'failed' : 'passed',
+      details: deterministicFailures.length ? `Checksum mismatch: ${deterministicFailures.join(', ')}` : `${project.levelRecipes?.length || 0} level recipes replay identically`,
+    });
     const player = scene.entities.find((entity) => entity.tags.includes('player'));
     const camera = scene.entities.find((entity) => entity.components.some((component) => component.type === 'Camera' && component.data.primary === true));
     tests.push({ name: 'Automated control contract', status: player && camera ? 'passed' : 'failed', details: player && camera ? 'Player and primary camera are available to the control harness' : 'A player and primary camera are required' });
+    const moveBinding = project.inputMap.find((binding) => binding.action === 'Move' && binding.kind === 'axis2d');
+    const mobileAuthoring = project.settings.mobileMode === 'author-play' || !(project.levelRecipes || []).length;
+    tests.push({
+      name: 'Phone creation and touch input contract',
+      status: moveBinding && mobileAuthoring ? 'passed' : 'failed',
+      details: moveBinding && mobileAuthoring ? 'Mobile authoring mode and action-mapped movement are enabled' : 'author-play mode and a Move axis are required',
+    });
     const missingAssets = [];
     for (const asset of project.assets) {
       if (String(asset.uri || '').startsWith('assets/') && !await pathExists(path.join(this.projectDirectory(projectId), asset.uri))) missingAssets.push(asset.name);
@@ -445,7 +495,7 @@ class GameStudioService {
     return this.withProjectLock(projectId, async () => {
       const { metadata, index } = await this.getMetadata(projectId, ownerId);
       if (!metadata) return null;
-      const project = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+      const project = await this.readProjectFile(this.currentPath(projectId));
       if (input.projectRevision != null && Number(input.projectRevision) !== project.revision) throw Object.assign(new Error('Build revision no longer matches the saved project revision'), { statusCode: 409, code: 'BUILD_REVISION_CONFLICT' });
       const playtest = await this.runPlaytest(projectId, input, ownerId);
       if (playtest.status !== 'passed') throw Object.assign(new Error('Build blocked by failed project or Blueprint validation'), { statusCode: 422, code: 'PLAYTEST_FAILED', tests: playtest.tests });
@@ -527,9 +577,21 @@ class GameStudioService {
     return { build, managedApp: managedResult, previewPreservedUntilHttpsVerified: true };
   }
 
-  deterministicProposal(project, prompt = '') {
+  deterministicProposal(project, prompt = '', input = {}) {
     const normalized = String(prompt || '').toLowerCase();
     const scene = getScene(project);
+    if (input.mode === 'level') {
+      const previous = project.levelRecipes.find((recipe) => recipe.sceneId === scene.id) || null;
+      const recipe = createLevelRecipeFromPrompt({
+        projectId: project.id,
+        sceneId: scene.id,
+        prompt,
+        seed: input.seed,
+        previous,
+      });
+      if (Number.isInteger(Number(input.difficulty))) recipe.gameplay.difficulty = Math.max(1, Math.min(5, Number(input.difficulty)));
+      return [{ operation: 'level.generate', target: { sceneId: scene.id }, payload: { recipe } }];
+    }
     const commands = [];
     if (/light|brighter|rim|glow/.test(normalized)) {
       const lightId = `ai-light-${randomUUID().slice(0, 6)}`;
@@ -553,25 +615,55 @@ class GameStudioService {
   async createAiRun(projectId, input = {}, ownerId = '') {
     const { metadata, index } = await this.getMetadata(projectId, ownerId);
     if (!metadata) return null;
-    const project = JSON.parse(await fs.readFile(this.currentPath(projectId), 'utf8'));
+    const project = await this.readProjectFile(this.currentPath(projectId));
     const baseRevision = Number.isInteger(Number(input.baseRevision)) ? Number(input.baseRevision) : project.revision;
     if (baseRevision !== project.revision) throw Object.assign(new Error('AI proposal is based on a stale project revision'), { statusCode: 409, code: 'REVISION_CONFLICT', currentRevision: project.revision });
+    const mode = input.mode === 'level' ? 'level' : 'edit';
+    const scene = getScene(project);
+    const previousRecipe = project.levelRecipes.find((recipe) => recipe.sceneId === scene.id) || null;
+    const fallbackRecipe = mode === 'level' ? createLevelRecipeFromPrompt({
+      projectId: project.id,
+      sceneId: scene.id,
+      prompt: String(input.prompt || ''),
+      seed: input.seed,
+      previous: previousRecipe,
+    }) : null;
     let proposed = Array.isArray(input.commands) ? input.commands : null;
     if (!proposed && this.complete && String(input.prompt || '').trim()) {
       try {
-        const response = await this.complete(`Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, project.set-settings. Project: ${JSON.stringify(project)}. Request: ${String(input.prompt).slice(0, 2000)}`);
+        const prompt = mode === 'level'
+          ? `You are Lilly's level architect. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit or reach-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
+          : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, project.set-settings, level.generate. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, entityCount: scene.entities.length, blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
+        const response = await this.complete(prompt);
         const parsed = parseLenientJson(String(response || ''));
-        proposed = parsed?.commands || (Array.isArray(parsed) ? parsed : null);
+        if (mode === 'level' && parsed?.recipe) {
+          const candidateRecipe = {
+            ...parsed.recipe,
+            id: previousRecipe?.id || fallbackRecipe.id,
+            sceneId: scene.id,
+          };
+          proposed = validateLevelRecipe(candidateRecipe).some((issue) => issue.severity === 'error')
+            ? null
+            : [{ operation: 'level.generate', target: { sceneId: scene.id }, payload: { recipe: candidateRecipe } }];
+        } else {
+          proposed = parsed?.commands || (Array.isArray(parsed) ? parsed : null);
+        }
+        if (mode === 'level' && !proposed?.some((command) => command?.operation === 'level.generate')) proposed = null;
       } catch (error) {
         console.warn(`[GameStudio] AI proposal fallback: ${error.message}`);
       }
     }
-    proposed ||= this.deterministicProposal(project, input.prompt);
+    proposed ||= this.deterministicProposal(project, input.prompt, { mode, seed: input.seed, difficulty: input.difficulty });
     const commands = this.normalizeCommands(project, proposed, baseRevision);
+    if (commands.some((command) => command.operation === 'level.restore')) {
+      throw Object.assign(new Error('AI proposals cannot restore opaque level snapshots'), { statusCode: 422, code: 'AI_OPERATION_DENIED' });
+    }
     let preview;
     try { preview = applyCommandBatch(project, commands, baseRevision); }
     catch (error) { error.statusCode ||= 422; throw error; }
-    const affected = commands.map((command) => ({ operation: command.operation, sceneId: command.target.sceneId || null, entityId: command.target.entityId || command.payload.entity?.id || null, graphId: command.target.graphId || null }));
+    const affected = commands.map((command) => ({ operation: command.operation, sceneId: command.target.sceneId || null, entityId: command.target.entityId || command.payload.entity?.id || null, graphId: command.target.graphId || null, recipeId: command.payload.recipe?.id || null }));
+    const previewLevel = preview.project.generatedLevels.find((design) => design.sceneId === scene.id) || null;
+    const previewRecipe = previewLevel ? preview.project.levelRecipes.find((recipe) => recipe.id === previewLevel.recipeId) || null : null;
     const run = {
       schema: AI_RUN_SCHEMA,
       id: randomUUID(),
@@ -579,10 +671,24 @@ class GameStudioService {
       ownerId,
       baseRevision,
       prompt: String(input.prompt || ''),
+      mode,
       status: 'proposed',
       commands,
       affected,
-      preview: { revision: preview.project.revision, validation: { projectIssues: validateProject(preview.project), blueprintIssues: preview.project.blueprints.flatMap(validateBlueprint) } },
+      preview: {
+        revision: preview.project.revision,
+        validation: { projectIssues: validateProject(preview.project), blueprintIssues: preview.project.blueprints.flatMap(validateBlueprint) },
+        level: previewLevel && previewRecipe ? {
+          recipeId: previewRecipe.id,
+          name: previewRecipe.name,
+          theme: previewRecipe.theme,
+          seed: previewRecipe.seed,
+          objective: previewRecipe.objective,
+          difficulty: previewRecipe.gameplay.difficulty,
+          checksum: previewLevel.checksum,
+          metrics: previewLevel.metrics,
+        } : null,
+      },
       createdAt: now(),
     };
     index.aiRuns.unshift(run);
@@ -607,6 +713,7 @@ class GameStudioService {
     switch (action) {
       case 'inspect-project': return this.getProject(params.projectId, ownerId);
       case 'inspect-scene': return this.inspectScene(params.projectId, params.sceneId, ownerId);
+      case 'generate-level': return this.createAiRun(params.projectId, { ...params, mode: 'level' }, ownerId);
       case 'apply-commands': return this.applyCommands(params.projectId, params, ownerId);
       case 'edit-blueprint': {
         const result = await this.getProject(params.projectId, ownerId);

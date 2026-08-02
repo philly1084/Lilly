@@ -5,6 +5,7 @@ const { ToolBase } = require('../../ToolBase');
 const ACTIONS = [
   'inspect-project',
   'inspect-scene',
+  'generate-level',
   'apply-commands',
   'edit-blueprint',
   'run-playtest',
@@ -20,7 +21,7 @@ class GameStudioTool extends ToolBase {
       name: 'Lilly Game Studio',
       category: 'design',
       version: '1.0.0',
-      description: 'Inspect and mutate durable Lilly Game Studio projects through revision-safe LillyCommand/v1 batches; validate Blueprints, playtest, build immutable browser players, publish, and roll back.',
+      description: 'Inspect and mutate durable Lilly Game Studio projects through revision-safe LillyCommand/v1 batches; turn plain-language ideas into validated seeded level proposals, validate Blueprints, playtest, build immutable browser players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
           const gameStudioService = context.gameStudioService;
@@ -48,6 +49,8 @@ class GameStudioTool extends ToolBase {
           commands: { type: 'array', items: { type: 'object' }, maxItems: 100 },
           graph: { type: 'object' },
           prompt: { type: 'string' },
+          seed: { type: 'string', maxLength: 120 },
+          difficulty: { type: 'integer', minimum: 1, maximum: 5 },
           publicHost: { type: 'string' },
           fixedSteps: { type: 'integer', minimum: 1, maximum: 3600 },
           sessionId: { type: 'string' },
