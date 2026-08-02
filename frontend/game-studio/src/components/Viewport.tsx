@@ -2,7 +2,7 @@ import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Edges, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, PerspectiveCamera, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { GameplaySimulation, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
+import { GameplaySimulation, scheduleGameplaySteps, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
 import type { LillyComponent, LillyEntity, LillyProject, LillyScene, Vec3 } from '../types';
 import { currentScene, useStudioStore } from '../store';
 import { Icon } from './Icon';
@@ -273,12 +273,12 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
     const attacking = touchAttack || attackKeys.some((code) => keys.current.has(code));
     if (attacking && !attackHeld.current) attackQueued.current = true;
     attackHeld.current = attacking;
-    accumulator.current = playState === 'playing'
-      ? Math.min(0.25, accumulator.current + Math.min(0.05, frameDelta))
-      : fixedStep;
-    let steps = 0;
+    const schedule = playState === 'playing'
+      ? scheduleGameplaySteps(accumulator.current, frameDelta, fixedStep)
+      : { accumulatorSeconds: 0, steps: 1, droppedTime: false };
+    accumulator.current = schedule.accumulatorSeconds;
     let state = latest.current;
-    while (accumulator.current + Number.EPSILON >= fixedStep && steps < 8) {
+    for (let stepIndex = 0; stepIndex < schedule.steps; stepIndex += 1) {
       if (direction.lengthSq() > 0) {
         const distance = fixedStep * 6;
         const nextX = playerObject.position.x + direction.x * distance;
@@ -298,14 +298,11 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
         if (event.type === 'player-respawned') playerObject.position.set(event.position.x, event.position.y, event.position.z);
         if (event.type === 'player-attacked') playerObject.userData.attackPulse = 0.14;
       });
-      accumulator.current -= fixedStep;
-      steps += 1;
     }
-    if (steps === 8) accumulator.current = 0;
-    if (!steps) return;
+    if (!schedule.steps) return;
     syncObjects(state);
-    updateCounter.current += steps;
-    if (updateCounter.current % 5 < steps || playState === 'paused') onState(state);
+    updateCounter.current += schedule.steps;
+    if (updateCounter.current % 5 < schedule.steps || playState === 'paused') onState(state);
   });
   return null;
 }

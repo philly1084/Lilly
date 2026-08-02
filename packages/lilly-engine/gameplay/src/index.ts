@@ -41,6 +41,26 @@ export type GameplayProject = {
 };
 
 export const GAMEPLAY_SAVE_SCHEMA = 'LillyGameplaySave/v1' as const;
+export const GAMEPLAY_MAX_FRAME_DELTA_SECONDS = 0.25;
+export const GAMEPLAY_MAX_FIXED_STEPS = 8;
+
+export function scheduleGameplaySteps(
+  accumulatorSeconds: number,
+  frameDeltaSeconds: number,
+  fixedStepSeconds: number,
+  maxSteps = GAMEPLAY_MAX_FIXED_STEPS,
+) {
+  const stepSeconds = Math.max(Number.EPSILON, finite(fixedStepSeconds, 1 / 60));
+  const stepLimit = Math.max(1, Math.floor(finite(maxSteps, GAMEPLAY_MAX_FIXED_STEPS)));
+  let accumulator = Math.max(0, finite(accumulatorSeconds, 0))
+    + clamp(finite(frameDeltaSeconds, 0), 0, GAMEPLAY_MAX_FRAME_DELTA_SECONDS);
+  const availableSteps = Math.max(0, Math.floor((accumulator + Number.EPSILON) / stepSeconds));
+  const steps = Math.min(stepLimit, availableSteps);
+  accumulator -= steps * stepSeconds;
+  const droppedTime = availableSteps > stepLimit;
+  if (steps === stepLimit) accumulator = 0;
+  return { accumulatorSeconds: Math.max(0, accumulator), steps, droppedTime };
+}
 
 type EnemyPhase = 'idle' | 'chase' | 'windup' | 'recover' | 'dead';
 

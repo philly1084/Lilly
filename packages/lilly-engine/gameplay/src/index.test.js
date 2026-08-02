@@ -1,7 +1,7 @@
 'use strict';
 
 const { createProceduralProject } = require('../../dist/core/src');
-const { GameplaySimulation, GAMEPLAY_SAVE_SCHEMA } = require('../../dist/gameplay/src');
+const { GameplaySimulation, GAMEPLAY_SAVE_SCHEMA, scheduleGameplaySteps } = require('../../dist/gameplay/src');
 
 function combatProject() {
   return createProceduralProject({
@@ -20,6 +20,23 @@ function stepIntoEncounter(simulation, project) {
 }
 
 describe('GameplaySimulation', () => {
+  test('uses one bounded fixed-step schedule for editor and exported player frames', () => {
+    const fixedStep = 1 / 60;
+    const frameDeltas = [1 / 120, 1 / 60, 0.2, 1 / 30];
+    const run = () => {
+      let accumulatorSeconds = 0;
+      return frameDeltas.map((frameDeltaSeconds) => {
+        const schedule = scheduleGameplaySteps(accumulatorSeconds, frameDeltaSeconds, fixedStep);
+        accumulatorSeconds = schedule.accumulatorSeconds;
+        return schedule;
+      });
+    };
+    const editorSchedule = run();
+    const playerSchedule = run();
+    expect(editorSchedule).toEqual(playerSchedule);
+    expect(editorSchedule[2]).toMatchObject({ steps: 8, accumulatorSeconds: 0, droppedTime: true });
+  });
+
   test('activates a room encounter and closes only its stable gates', () => {
     const project = combatProject();
     const simulation = new GameplaySimulation(project);

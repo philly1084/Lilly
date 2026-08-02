@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { GameplaySimulation } from './gameplay.js';
+import { GAMEPLAY_MAX_FRAME_DELTA_SECONDS, GameplaySimulation, scheduleGameplaySteps } from './gameplay.js';
 
 const canvas = document.querySelector('#game-canvas');
 const loading = document.querySelector('#loading');
@@ -538,15 +538,13 @@ function animateWorld(elapsed, delta) {
 }
 
 function frame() {
-  const delta = Math.min(0.05, clock.getDelta());
-  accumulator = Math.min(0.25, accumulator + delta);
-  let steps = 0;
-  while (accumulator + Number.EPSILON >= fixedStep && steps < 8) {
+  const frameDelta = clock.getDelta();
+  const schedule = scheduleGameplaySteps(accumulator, frameDelta, fixedStep);
+  accumulator = schedule.accumulatorSeconds;
+  for (let stepIndex = 0; stepIndex < schedule.steps; stepIndex += 1) {
     simulate(fixedStep);
-    accumulator -= fixedStep;
-    steps += 1;
   }
-  if (steps === 8) accumulator = 0;
+  const delta = Math.min(GAMEPLAY_MAX_FRAME_DELTA_SECONDS, Math.max(0, frameDelta));
   animateWorld(clock.elapsedTime, delta);
   updateParticles(delta);
   renderer.render(scene, camera);
