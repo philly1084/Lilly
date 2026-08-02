@@ -4,8 +4,12 @@ const {
   PROJECT_SCHEMA,
   SCENE_SCHEMA,
   FixedStepClock,
+  CommandHistory,
   applyCommandBatch,
   createArenaProject,
+  createLevelRecipeFromPrompt,
+  generateLevel,
+  validateGeneratedLevel,
   validateProject,
 } = require('../../dist/core/src');
 
@@ -69,5 +73,111 @@ describe('Lilly engine core contracts', () => {
     let steps = 0;
     clock.advance(1 + (1 / 30), () => { steps += 1; });
     expect(steps).toBe(2);
+  });
+
+  test('generates a connected level deterministically from a saved recipe', () => {
+    const recipe = createLevelRecipeFromPrompt({
+      projectId: 'seeded',
+      sceneId: 'arena',
+      prompt: 'A difficult frozen vault with nine rooms, traps, and a final exit',
+      seed: 'same-world-every-time',
+    });
+    const first = generateLevel(recipe, { parentId: 'world' });
+    const replay = generateLevel(recipe, { parentId: 'world' });
+    const alternate = generateLevel({ ...recipe, seed: 'another-world' }, { parentId: 'world' });
+
+    expect(first.design.checksum).toBe(replay.design.checksum);
+    expect(first.entities).toEqual(replay.entities);
+    expect(first.design.checksum).not.toBe(alternate.design.checksum);
+    expect(validateGeneratedLevel(first.design, recipe)).toEqual([]);
+    expect(first.design.metrics.roomCount).toBeGreaterThanOrEqual(3);
+    expect(first.design.metrics.roomCount).toBe(9);
+    expect(first.design.connections).toHaveLength(first.design.rooms.length - 1);
+  });
+
+  test('connects a branched room to the actual adjacent parent when the latest room is trapped', () => {
+    const recipe = createLevelRecipeFromPrompt({
+      projectId: 'branched-path',
+      sceneId: 'arena',
+      prompt: 'A sprawling level with sixteen rooms',
+      seed: '110',
+    });
+    recipe.layout.roomCount = 16;
+    const generated = generateLevel(recipe, { parentId: 'world' });
+    const rooms = new Map(generated.design.rooms.map((room) => [room.id, room]));
+
+    for (const connection of generated.design.connections) {
+      const from = rooms.get(connection.fromRoomId);
+      const to = rooms.get(connection.toRoomId);
+      expect(Math.abs(from.grid.x - to.grid.x) + Math.abs(from.grid.z - to.grid.z)).toBe(1);
+    }
+    expect(validateGeneratedLevel(generated.design, recipe)).toEqual([]);
+
+    const disconnected = JSON.parse(JSON.stringify(generated.design));
+    disconnected.connections[10].fromRoomId = disconnected.rooms[10].id;
+    expect(validateGeneratedLevel(disconnected, recipe)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'GENERATED_LEVEL_CONNECTION_NOT_ADJACENT' }),
+    ]));
+  });
+
+  test('level generation is one undoable command and restores the previous world', () => {
+    const project = createArenaProject({ id: 'level-undo', seed: 'first-seed' });
+    const previousChecksum = project.generatedLevels[0].checksum;
+    const previousPlayer = project.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position;
+    const recipe = createLevelRecipeFromPrompt({
+      projectId: project.id,
+      sceneId: project.entryScene,
+      prompt: 'An ember foundry with twelve rooms and many hazards',
+      seed: 'second-seed',
+      previous: project.levelRecipes[0],
+    });
+    const forward = command(project, 'level.generate', { sceneId: project.entryScene }, { recipe });
+    const applied = applyCommandBatch(project, [forward], project.revision);
+    const history = new CommandHistory();
+    history.record([forward], applied.inverses);
+
+    expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
+    expect(applied.project.engineVersion).toBe('0.2.0');
+    const undone = history.undo(applied.project);
+    expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
+    expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);
+    expect(validateProject(undone)).toEqual([]);
+  });
+
+  test('rejects malformed level recipes without changing the source project', () => {
+    const project = createArenaProject({ id: 'invalid-level' });
+    const snapshot = JSON.stringify(project);
+    const badRecipe = { ...project.levelRecipes[0], layout: { ...project.levelRecipes[0].layout, roomCount: 999 } };
+    expect(() => applyCommandBatch(project, [command(project, 'level.generate', { sceneId: 'arena' }, { recipe: badRecipe })], project.revision)).toThrow(/roomCount/i);
+    expect(JSON.stringify(project)).toBe(snapshot);
+  });
+
+  test('migrates the known legacy arena pieces without touching other authored entities and can undo', () => {
+    const project = createArenaProject({ id: 'legacy-upgrade' });
+    const scene = project.scenes[0];
+    const legacyFloor = JSON.parse(JSON.stringify(scene.entities.find((entity) => entity.tags.includes('room'))));
+    legacyFloor.id = 'arena-floor';
+    legacyFloor.name = 'Arena Floor';
+    legacyFloor.tags = ['ground'];
+    const legacyPickup = JSON.parse(JSON.stringify(scene.entities.find((entity) => entity.tags.includes('pickup'))));
+    legacyPickup.id = 'pickup-1';
+    legacyPickup.name = 'Energy Shard 1';
+    legacyPickup.tags = ['pickup'];
+    const authored = { schema: ENTITY_SCHEMA, id: 'authored-statue', name: 'Authored Statue', parentId: 'world', enabled: true, tags: ['scenery'], components: [] };
+    scene.entities = [...scene.entities.filter((entity) => !entity.tags.includes('generated')), legacyFloor, legacyPickup, authored];
+    project.levelRecipes = [];
+    project.generatedLevels = [];
+    project.engineVersion = '0.1.0';
+    const recipe = createLevelRecipeFromPrompt({ projectId: project.id, sceneId: scene.id, prompt: 'A compact verdant temple', seed: 'migrated-seed' });
+    const forward = command(project, 'level.generate', { sceneId: scene.id }, { recipe });
+    const applied = applyCommandBatch(project, [forward], project.revision);
+    const history = new CommandHistory();
+    history.record([forward], applied.inverses);
+
+    expect(applied.project.scenes[0].entities.some((entity) => entity.id === 'arena-floor' || entity.id === 'pickup-1')).toBe(false);
+    expect(applied.project.scenes[0].entities.some((entity) => entity.id === authored.id)).toBe(true);
+    const undone = history.undo(applied.project);
+    expect(undone.scenes[0].entities.map((entity) => entity.id)).toEqual(expect.arrayContaining(['arena-floor', 'pickup-1', authored.id]));
+    expect(undone.scenes[0].entities.some((entity) => entity.tags.includes('generated'))).toBe(false);
   });
 });

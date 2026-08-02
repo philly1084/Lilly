@@ -39,7 +39,7 @@ type StudioState = {
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   initialize(): Promise<void>;
-  createProject(name: string): Promise<void>;
+  createProject(name: string, prompt?: string): Promise<void>;
   importProject(file: File): Promise<void>;
   openProject(id: string): Promise<void>;
   selectEntity(id: string | null): void;
@@ -59,7 +59,7 @@ type StudioState = {
   addComponent(entityId: string, component: LillyComponent): Promise<void>;
   undo(): Promise<void>;
   redo(): Promise<void>;
-  proposeAi(prompt: string): Promise<void>;
+  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number }): Promise<void>;
   rejectAi(): void;
   applyAi(): Promise<void>;
   runPlaytest(): Promise<void>;
@@ -115,14 +115,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }
   },
 
-  async createProject(name) {
+  async createProject(name, prompt) {
     set({ status: 'loading', error: '' });
     try {
-      const current = await studioApi.createProject({ name });
+      const current = await studioApi.createProject({ name, ...(prompt ? { prompt } : {}) });
       const listing = await studioApi.listProjects();
       localStorage.setItem('lilly-game-studio:project', current.project.id);
       set({ status: 'ready', projects: listing.projects, current, selectedEntityId: 'player', selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [] });
-      get().log('success', `Created ${current.project.name} from the third-person arena template`);
+      get().log('success', `Created ${current.project.name} from a deterministic AI level recipe`);
     } catch (error) { set({ status: 'error', error: error instanceof Error ? error.message : 'Project creation failed' }); }
   },
 
@@ -224,14 +224,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     if (success) set((state) => ({ redoStack: state.redoStack.slice(0, -1), undoStack: [...state.undoStack, entry] }));
   },
 
-  async proposeAi(prompt) {
+  async proposeAi(prompt, options = {}) {
     const current = get().current;
     if (!current) return;
     set({ aiStatus: 'thinking', aiRun: null });
     try {
-      const aiRun = await studioApi.proposeAi(current.project.id, current.project.revision, prompt);
+      const aiRun = await studioApi.proposeAi(current.project.id, current.project.revision, prompt, options);
       set({ aiRun, aiStatus: 'ready' });
-      get().log('info', `AI proposed ${aiRun.commands.length} revision-safe command${aiRun.commands.length === 1 ? '' : 's'}`);
+      const level = aiRun.preview.level;
+      get().log('info', level
+        ? `AI proposed ${level.name}: ${level.metrics.roomCount} rooms, ${level.metrics.hazardCount} hazards, seed ${level.seed}`
+        : `AI proposed ${aiRun.commands.length} revision-safe command${aiRun.commands.length === 1 ? '' : 's'}`);
     } catch (error) { set({ aiStatus: 'error' }); get().log('error', error instanceof Error ? error.message : 'AI proposal failed'); }
   },
   rejectAi: () => set({ aiRun: null, aiStatus: 'idle' }),
@@ -241,7 +244,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({ aiStatus: 'applying' });
     const success = await get().dispatch(run.commands, `ai-run:${run.id}`);
     set({ aiRun: success ? null : run, aiStatus: success ? 'idle' : 'error' });
-    if (success) get().log('success', `Applied AI command batch to revision ${get().current?.project.revision}`);
+    if (success) {
+      const design = get().current?.project.generatedLevels?.find((level) => level.sceneId === get().current?.project.entryScene);
+      get().log('success', design
+        ? `Generated level ${design.checksum} saved at revision ${get().current?.project.revision}`
+        : `Applied AI command batch to revision ${get().current?.project.revision}`);
+    }
   },
 
   async runPlaytest() {

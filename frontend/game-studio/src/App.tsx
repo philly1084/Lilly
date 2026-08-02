@@ -5,6 +5,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { Hierarchy } from './components/Hierarchy';
 import { Icon } from './components/Icon';
 import { Inspector } from './components/Inspector';
+import { MobileCreator } from './components/LevelCreator';
 import { Toolbar } from './components/Toolbar';
 import { Viewport } from './components/Viewport';
 import { useStudioStore } from './store';
@@ -32,8 +33,24 @@ function LoadingState() {
 
 function EmptyState() {
   const createProject = useStudioStore((state) => state.createProject);
-  const [name, setName] = useState('Neon Arena');
-  return <div className="full-state onboarding-state"><div className="onboarding-art"><div className="art-grid"/><div className="art-player"/><div className="art-shard one"/><div className="art-shard two"/><div className="art-shard three"/></div><div className="onboarding-copy"><div className="brand-mark large">L</div><span className="panel-kicker">Browser-native creation suite</span><h1>Build the game, not a prompt.</h1><p>Start with a playable third-person arena powered by Lilly scenes, components, Blueprints, fixed-step simulation, and immutable builds.</p><label>Project name<input value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) createProject(name.trim()); }}/></label><button type="button" onClick={() => createProject(name.trim())} disabled={!name.trim()}><Icon name="spark"/>Create arena project</button><div className="onboarding-proof"><span>Three.js renderer</span><span>Rapier physics</span><span>Typed Blueprints</span><span>Private previews</span></div></div></div>;
+  const [name, setName] = useState('My Lilly Game');
+  const [brief, setBrief] = useState('A winding neon ruin with glowing energy cores, fair pulse traps, strong landmarks, and a final exit beacon.');
+  const create = () => {
+    if (name.trim() && brief.trim()) createProject(name.trim(), brief.trim());
+  };
+  return <div className="full-state onboarding-state">
+    <div className="onboarding-art"><div className="art-grid"/><div className="art-player"/><div className="art-shard one"/><div className="art-shard two"/><div className="art-shard three"/></div>
+    <div className="onboarding-copy">
+      <div className="brand-mark large">L</div>
+      <span className="panel-kicker">Lilly AI Game Studio</span>
+      <h1>Describe a world. Play it.</h1>
+      <p>Lilly turns one idea into a saved, editable level with a real route, objectives, hazards, landmarks, touch controls, and a deterministic seed.</p>
+      <label>Game name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label>What should the level feel like?<textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) create(); }}/></label>
+      <button type="button" onClick={create} disabled={!name.trim() || !brief.trim()}><Icon name="spark"/>Create playable world</button>
+      <div className="onboarding-proof"><span>Seeded level design</span><span>Typed Blueprints</span><span>Phone authoring</span><span>HTTPS publishing</span></div>
+    </div>
+  </div>;
 }
 
 function FailureState({ disconnected = false }: { disconnected?: boolean }) {
@@ -126,7 +143,6 @@ export default function App() {
 
   return <div className="studio-app" style={gridStyle}>
     <Toolbar onCommandPalette={() => setPaletteOpen(true)}/>
-    <div className="mobile-review-notice"><div><Icon name="eye"/><span><strong>Review mode</strong> Authoring controls require a desktop viewport.</span></div></div>
     <div className="studio-grid">
       {layout.leftOpen && <Hierarchy/>}
       {layout.leftOpen && <ResizeHandle direction="left" onResize={(delta) => setLayout((currentLayout) => ({ ...currentLayout, left: Math.max(200, Math.min(420, currentLayout.left + delta)) }))}/>}
@@ -137,6 +153,7 @@ export default function App() {
       <BottomWorkspace/>
       <div className="dock-controls"><button type="button" className={!layout.leftOpen ? 'collapsed' : ''} onClick={() => setLayout((value) => ({ ...value, leftOpen: !value.leftOpen }))} title="Toggle Hierarchy">H</button><button type="button" className={!layout.bottomOpen ? 'collapsed' : ''} onClick={() => setLayout((value) => ({ ...value, bottomOpen: !value.bottomOpen }))} title="Toggle Workspace">W</button><button type="button" className={!layout.rightOpen ? 'collapsed' : ''} onClick={() => setLayout((value) => ({ ...value, rightOpen: !value.rightOpen }))} title="Toggle Inspector">I</button></div>
     </div>
+    <MobileCreator/>
     <AiPanel/>
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)}/>
   </div>;

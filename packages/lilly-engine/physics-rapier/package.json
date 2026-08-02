@@ -1,6 +1,6 @@
 {
   "name": "@lilly/engine-physics-rapier",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "../dist/physics-rapier/src/index.js",
   "types": "../dist/physics-rapier/src/index.d.ts"

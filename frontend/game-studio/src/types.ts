@@ -7,6 +7,8 @@ import type {
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  LillyGeneratedLevel,
+  LillyLevelRecipe,
   LillyProject,
   LillyScene,
   ValidationIssue,
@@ -22,6 +24,8 @@ export type {
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  LillyGeneratedLevel,
+  LillyLevelRecipe,
   LillyProject,
   LillyScene,
   ValidationIssue,
@@ -54,10 +58,24 @@ export type AiRun = {
   projectId: string;
   baseRevision: number;
   prompt: string;
+  mode?: 'level' | 'edit';
   status: 'proposed' | 'applied' | 'rejected';
   commands: LillyCommand[];
-  affected: Array<{ operation: string; sceneId: string | null; entityId: string | null; graphId: string | null }>;
-  preview: { revision: number; validation: { projectIssues: ValidationIssue[]; blueprintIssues: ValidationIssue[] } };
+  affected: Array<{ operation: string; sceneId: string | null; entityId: string | null; graphId: string | null; recipeId?: string | null }>;
+  preview: {
+    revision: number;
+    validation: { projectIssues: ValidationIssue[]; blueprintIssues: ValidationIssue[] };
+    level?: {
+      recipeId: string;
+      name: string;
+      theme: string;
+      seed: string;
+      objective: string;
+      difficulty: number;
+      checksum: string;
+      metrics: LillyGeneratedLevel['metrics'];
+    } | null;
+  };
   createdAt: string;
 };
 

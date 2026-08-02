@@ -26,10 +26,14 @@ describe('GameStudioService', () => {
   });
 
   test('creates a durable versioned canary project', async () => {
-    const result = await service.createProject({ name: 'Canary Arena' }, 'phil');
+    const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
+    expect(result.project.engineVersion).toBe('0.2.0');
     expect(result.project.blueprints).toHaveLength(2);
+    expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
+    expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
+    expect(result.metadata.source).toBe('template:ai-procedural-expedition');
     expect(result.validation.valid).toBe(true);
     await expect(fs.access(service.revisionPath(result.project.id, 1))).resolves.toBeUndefined();
   });
@@ -81,6 +85,43 @@ describe('GameStudioService', () => {
     expect(reloaded.project.revision).toBe(1);
   });
 
+  test('proposes and atomically applies a seeded AI level without mutating during review', async () => {
+    const created = await service.createProject({ name: 'Level Director', seed: 'original-seed' }, 'phil');
+    const originalChecksum = created.project.generatedLevels[0].checksum;
+    const run = await service.createAiRun(created.project.id, {
+      mode: 'level',
+      prompt: 'A hard ember foundry with 9 rooms, 5 cores, and 7 traps',
+      seed: 'reviewed-level-seed',
+    }, 'phil');
+
+    expect(run.mode).toBe('level');
+    expect(run.commands).toHaveLength(1);
+    expect(run.commands[0]).toMatchObject({ operation: 'level.generate', target: { sceneId: 'arena' } });
+    expect(run.preview.level).toMatchObject({ theme: 'ember-foundry', seed: 'reviewed-level-seed', difficulty: 4, metrics: { roomCount: 9, pickupCount: 5, hazardCount: 7 } });
+    expect(run.preview.level.checksum).not.toBe(originalChecksum);
+    expect((await service.getProject(created.project.id, 'phil')).project.revision).toBe(1);
+
+    const applied = await service.applyCommands(created.project.id, { baseRevision: 1, source: 'ai', aiRunId: run.id, commands: run.commands }, 'phil');
+    expect(applied.project.revision).toBe(2);
+    expect(applied.project.generatedLevels[0].checksum).toBe(run.preview.level.checksum);
+    expect(applied.commandBatch.inverses[0].operation).toBe('level.restore');
+  });
+
+  test('falls back to the deterministic architect when a model returns a malformed recipe', async () => {
+    service.complete = jest.fn(async () => JSON.stringify({ recipe: { schema: 'Wrong/v1', layout: { roomCount: 999 } } }));
+    const created = await service.createProject({ name: 'Safe AI Fallback' }, 'phil');
+    const run = await service.createAiRun(created.project.id, {
+      mode: 'level',
+      prompt: 'A calm frost vault with 6 rooms and 3 cores',
+      seed: 'fallback-seed',
+    }, 'phil');
+
+    expect(service.complete).toHaveBeenCalledTimes(1);
+    expect(run.commands).toHaveLength(1);
+    expect(run.preview.validation.projectIssues).toEqual([]);
+    expect(run.preview.level).toMatchObject({ theme: 'frost-vault', seed: 'fallback-seed', metrics: { roomCount: 6, pickupCount: 3 } });
+  });
+
   test('playtests and creates an immutable runnable build', async () => {
     const created = await service.createProject({ name: 'Build Arena' }, 'phil');
     const playtest = await service.runPlaytest(created.project.id, { fixedSteps: 180 }, 'phil');
@@ -91,7 +132,16 @@ describe('GameStudioService', () => {
     expect(build.status).toBe('success');
     expect(build.previewUrl).toContain('/api/sandbox-workspaces/');
     expect(build.files.map((file) => file.path)).toEqual(expect.arrayContaining(['index.html', 'player.js', 'vendor/three.module.js', 'vendor/three.core.js', 'project.json', 'blueprints.json']));
-    await expect(fs.readFile(path.join(service.buildRoot, build.workspaceId, 'player.js'), 'utf8')).resolves.toContain("from './vendor/three.module.js'");
+    const playerSource = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'player.js'), 'utf8');
+    expect(playerSource).toContain("from './vendor/three.module.js'");
+    expect(playerSource).toContain('let fixedStep = 1 / 60');
+    expect(playerSource).toContain('__LILLY_GAME__');
+    const playerHtml = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
+    expect(playerHtml).toContain('class="touch-controls"');
+    expect(playerHtml).toContain('id="level-name"');
+    const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
+    expect(manifest.levelChecksum).toBe(created.project.generatedLevels[0].checksum);
+    expect(playtest.tests.map((test) => test.name)).toEqual(expect.arrayContaining(['Procedural level topology', 'Deterministic level replay', 'Phone creation and touch input contract']));
     const threeModuleStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.module.js'));
     expect(threeModuleStat.size).toBeGreaterThan(500000);
     const threeCoreStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.core.js'));

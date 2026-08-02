@@ -16,6 +16,43 @@ function vector(value: unknown, fallback: Vec3): Vec3 {
   return { x: Number(candidate.x ?? fallback.x), y: Number(candidate.y ?? fallback.y), z: Number(candidate.z ?? fallback.z) };
 }
 
+type CollisionBox = { minX: number; maxX: number; minZ: number; maxZ: number };
+type CollisionWorld = { walkable: CollisionBox[]; obstacles: CollisionBox[]; center: Vec3; span: number };
+
+function collisionWorld(scene: LillyScene): CollisionWorld {
+  const walkable: CollisionBox[] = [];
+  const obstacles: CollisionBox[] = [];
+  scene.entities.forEach((entity) => {
+    const collider = component(entity, 'Collider');
+    const transform = component(entity, 'Transform');
+    if (!collider || !transform) return;
+    const position = vector(transform.data.position, { x: 0, y: 0, z: 0 });
+    const scale = vector(transform.data.scale, { x: 1, y: 1, z: 1 });
+    const size = vector(collider.data.size, scale);
+    const box = { minX: position.x - size.x / 2, maxX: position.x + size.x / 2, minZ: position.z - size.z / 2, maxZ: position.z + size.z / 2 };
+    if (entity.tags.includes('ground')) walkable.push(box);
+    if (collider.data.sensor !== true && (entity.tags.includes('wall') || entity.tags.includes('obstacle'))) obstacles.push(box);
+  });
+  const boxes = walkable.length ? walkable : [{ minX: -9, maxX: 9, minZ: -9, maxZ: 9 }];
+  const minX = Math.min(...boxes.map((box) => box.minX));
+  const maxX = Math.max(...boxes.map((box) => box.maxX));
+  const minZ = Math.min(...boxes.map((box) => box.minZ));
+  const maxZ = Math.max(...boxes.map((box) => box.maxZ));
+  return {
+    walkable: boxes,
+    obstacles,
+    center: { x: (minX + maxX) / 2, y: 0, z: (minZ + maxZ) / 2 },
+    span: Math.max(18, maxX - minX, maxZ - minZ),
+  };
+}
+
+function canStand(world: CollisionWorld, x: number, z: number) {
+  const radius = 0.44;
+  const onGround = world.walkable.some((box) => x >= box.minX - 0.18 && x <= box.maxX + 0.18 && z >= box.minZ - 0.18 && z <= box.maxZ + 0.18);
+  const blocked = world.obstacles.some((box) => x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ);
+  return onGround && !blocked;
+}
+
 function Geometry({ kind }: { kind: string }) {
   if (kind === 'sphere') return <sphereGeometry args={[0.5, 24, 18]}/>;
   if (kind === 'capsule') return <capsuleGeometry args={[0.45, 0.7, 8, 16]}/>;
@@ -25,7 +62,7 @@ function Geometry({ kind }: { kind: string }) {
   return <boxGeometry args={[1, 1, 1]}/>;
 }
 
-function EntityMesh({ entity, scene, runtimePlayer, snap }: { entity: LillyEntity; scene: LillyScene; runtimePlayer: React.MutableRefObject<THREE.Vector3>; snap: boolean }) {
+function EntityMesh({ entity, runtimePlayer, snap, world, touchKeys }: { entity: LillyEntity; runtimePlayer: React.MutableRefObject<THREE.Vector3>; snap: boolean; world: CollisionWorld; touchKeys: Set<string> }) {
   const selected = useStudioStore((state) => state.selectedEntityId === entity.id);
   const transformMode = useStudioStore((state) => state.transformMode);
   const playState = useStudioStore((state) => state.playState);
@@ -52,25 +89,35 @@ function EntityMesh({ entity, scene, runtimePlayer, snap }: { entity: LillyEntit
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, [isPlayer]);
 
+  useEffect(() => {
+    if (!isPlayer || playState !== 'editing' || !group.current) return;
+    group.current.position.set(position.x, position.y, position.z);
+    group.current.rotation.set(rotation.x, rotation.y, rotation.z);
+    runtimePlayer.current.copy(group.current.position);
+  }, [isPlayer, playState, position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, runtimePlayer]);
+
   useFrame((state, delta) => {
     if (!group.current) return;
     if (isPickup) group.current.rotation.y += delta * 0.8;
     if (!isPlayer || playState === 'editing') return;
     if (playState === 'playing') {
-      const x = Number(keys.current.has('KeyD')) - Number(keys.current.has('KeyA'));
-      const z = Number(keys.current.has('KeyS')) - Number(keys.current.has('KeyW'));
+      const pressed = (code: string) => keys.current.has(code) || touchKeys.has(code);
+      const x = Number(pressed('KeyD')) - Number(pressed('KeyA'));
+      const z = Number(pressed('KeyS')) - Number(pressed('KeyW'));
       const direction = new THREE.Vector3(x, 0, z);
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        group.current.position.addScaledVector(direction, delta * 6);
+        const distance = delta * 6;
+        const nextX = group.current.position.x + direction.x * distance;
+        if (canStand(world, nextX, group.current.position.z)) group.current.position.x = nextX;
+        const nextZ = group.current.position.z + direction.z * distance;
+        if (canStand(world, group.current.position.x, nextZ)) group.current.position.z = nextZ;
         group.current.rotation.y = Math.atan2(direction.x, direction.z);
       }
     } else if (stepToken !== lastStep.current) {
       group.current.position.x += 0.1;
       lastStep.current = stepToken;
     }
-    group.current.position.x = THREE.MathUtils.clamp(group.current.position.x, -8.2, 8.2);
-    group.current.position.z = THREE.MathUtils.clamp(group.current.position.z, -8.2, 8.2);
     runtimePlayer.current.copy(group.current.position);
     if (state.clock.elapsedTime < 0.2) runtimePlayer.current.copy(group.current.position);
   });
@@ -133,24 +180,26 @@ function PlayCameraRig({ player }: { player: React.MutableRefObject<THREE.Vector
   return null;
 }
 
-function EditorScene({ scene, snap, lighting }: { scene: LillyScene; snap: boolean; lighting: string }) {
+function EditorScene({ scene, snap, lighting, touchKeys }: { scene: LillyScene; snap: boolean; lighting: string; touchKeys: Set<string> }) {
   const playState = useStudioStore((state) => state.playState);
   const selectEntity = useStudioStore((state) => state.selectEntity);
   const playerEntity = scene.entities.find((entity) => entity.tags.includes('player'));
   const playerPosition = vector(component(playerEntity || scene.entities[0], 'Transform')?.data.position, { x: 0, y: 0.65, z: 5 });
   const runtimePlayer = useRef(new THREE.Vector3(playerPosition.x, playerPosition.y, playerPosition.z));
+  const world = useMemo(() => collisionWorld(scene), [scene]);
+  const cameraDistance = Math.max(14, Math.min(58, world.span * 0.9));
   return <>
     <color attach="background" args={[lighting === 'unlit' ? '#0d1117' : scene.environment.background || '#081018']}/>
     {lighting === 'studio' && <><hemisphereLight args={['#d8ecff', '#111923', 1.3]}/><directionalLight position={[8, 12, 6]} intensity={2.2} castShadow/></>}
     {lighting === 'unlit' && <ambientLight intensity={2}/>}
     {lighting === 'scene' && <hemisphereLight args={['#d8ecff', '#17202b', Number(scene.environment.ambientIntensity || 0.5)]}/>}
-    <PerspectiveCamera makeDefault position={[9, 7.5, 12]} fov={52}/>
-    {scene.entities.map((entity) => <EntityMesh key={entity.id} entity={entity} scene={scene} runtimePlayer={runtimePlayer} snap={snap}/>)}
-    <Grid position={[0, 0.01, 0]} args={[40, 40]} cellSize={0.5} cellThickness={0.5} cellColor="#23394a" sectionSize={5} sectionThickness={1} sectionColor="#3b6078" fadeDistance={55} fadeStrength={1.5} infiniteGrid/>
-    <OrbitControls makeDefault enabled={playState === 'editing'} target={[0, 0.8, 0]} minDistance={2} maxDistance={70} maxPolarAngle={Math.PI * 0.49}/>
+    <PerspectiveCamera makeDefault position={[world.center.x + cameraDistance * 0.72, cameraDistance * 0.58, world.center.z + cameraDistance]} fov={52}/>
+    {scene.entities.map((entity) => <EntityMesh key={entity.id} entity={entity} runtimePlayer={runtimePlayer} snap={snap} world={world} touchKeys={touchKeys}/>)}
+    <Grid position={[world.center.x, 0.01, world.center.z]} args={[Math.max(40, world.span * 1.5), Math.max(40, world.span * 1.5)]} cellSize={0.5} cellThickness={0.5} cellColor="#23394a" sectionSize={5} sectionThickness={1} sectionColor="#3b6078" fadeDistance={Math.max(55, world.span * 1.3)} fadeStrength={1.5}/>
+    <OrbitControls makeDefault enabled={playState === 'editing'} target={[world.center.x, 0.8, world.center.z]} minDistance={2} maxDistance={Math.max(70, world.span * 2)} maxPolarAngle={Math.PI * 0.49}/>
     <PlayCameraRig player={runtimePlayer}/>
     {playState === 'editing' && <GizmoHelper alignment="bottom-right" margin={[68, 58]}><GizmoViewport axisColors={['#f87171', '#6ee7b7', '#60a5fa']} labelColor="#dce8f2"/></GizmoHelper>}
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} onClick={() => selectEntity(null)}><planeGeometry args={[200, 200]}/><meshBasicMaterial transparent opacity={0}/></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[world.center.x, -0.02, world.center.z]} onClick={() => selectEntity(null)}><planeGeometry args={[Math.max(200, world.span * 2), Math.max(200, world.span * 2)]}/><meshBasicMaterial transparent opacity={0}/></mesh>
   </>;
 }
 
@@ -169,7 +218,18 @@ export function Viewport() {
   const [snap, setSnap] = useState(true);
   const [lighting, setLighting] = useState('scene');
   const [rendererReady, setRendererReady] = useState(false);
+  const [touchKeys, setTouchKeys] = useState<Set<string>>(() => new Set());
   const scene = useMemo(() => currentScene(current), [current]);
+  const design = current?.project.generatedLevels?.find((level) => level.sceneId === current.project.entryScene) || null;
+  const recipe = design ? current?.project.levelRecipes?.find((levelRecipe) => levelRecipe.id === design.recipeId) || null : null;
+  const setTouchCode = (code: string, pressed: boolean) => setTouchKeys((currentKeys) => {
+    const next = new Set(currentKeys);
+    if (pressed) next.add(code); else next.delete(code);
+    return next;
+  });
+  useEffect(() => {
+    if (playState !== 'playing') setTouchKeys(new Set());
+  }, [playState]);
   if (!scene) return <main className="viewport-panel"><div className="viewport-empty"><Icon name="cube" size={34}/><strong>No entry scene</strong><span>Create or select a scene to start authoring.</span></div></main>;
   return <main className={`viewport-panel mode-${playState}`}>
     <div className="viewport-toolbar">
@@ -179,10 +239,32 @@ export function Viewport() {
     {!rendererReady && <div className="viewport-loading"><span className="spinner-small"/><span>Starting WebGL2 renderer…</span></div>}
     <ViewportErrorBoundary>
       <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }} onCreated={({ gl }) => { gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.04; setRendererReady(true); }}>
-        <Suspense fallback={null}><EditorScene scene={scene} snap={snap} lighting={lighting}/></Suspense>
+        <Suspense fallback={null}><EditorScene scene={scene} snap={snap} lighting={lighting} touchKeys={touchKeys}/></Suspense>
       </Canvas>
     </ViewportErrorBoundary>
-    {playState !== 'editing' && <div className="play-hud"><div><span>Play mode</span><strong>{playState === 'playing' ? 'Simulation running' : 'Paused — step to advance'}</strong></div><div className="play-objective"><small>Blueprint objective</small><span>Collect 3 energy shards</span></div></div>}
+    {playState !== 'editing' && <div className="play-hud"><div><span>Play mode</span><strong>{playState === 'playing' ? 'Simulation running' : 'Paused — step to advance'}</strong></div><div className="play-objective"><small>{recipe?.name || 'Blueprint objective'}</small><span>{recipe?.objective === 'reach-exit' ? 'Reach the exit beacon' : `Collect ${design?.metrics.pickupCount || 0} cores, then reach the exit`}</span></div></div>}
+    {playState === 'playing' && <div className="editor-touch-controls" aria-label="Touch movement controls">
+      {[
+        ['KeyW', '↑', 'up'],
+        ['KeyA', '←', 'left'],
+        ['KeyS', '↓', 'down'],
+        ['KeyD', '→', 'right'],
+      ].map(([code, label, direction]) => <button
+        key={code}
+        type="button"
+        className={`touch-${direction}`}
+        data-pressed={touchKeys.has(code)}
+        aria-label={`Move ${direction}`}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_error) { /* Synthetic and interrupted pointers may not be capturable. */ }
+          setTouchCode(code, true);
+        }}
+        onPointerUp={() => setTouchCode(code, false)}
+        onPointerCancel={() => setTouchCode(code, false)}
+        onLostPointerCapture={() => setTouchCode(code, false)}
+      >{label}</button>)}
+    </div>}
     <div className="viewport-status"><span><i className="axis x"/>X</span><span><i className="axis y"/>Y</span><span><i className="axis z"/>Z</span><span className="viewport-stat">WebGL2 · 60 Hz fixed step</span></div>
   </main>;
 }

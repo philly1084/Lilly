@@ -1,4 +1,17 @@
-export const ENGINE_VERSION = '0.1.0';
+import {
+  createLevelRecipeFromPrompt,
+  generateLevel,
+  isGeneratedForRecipe,
+  normalizeLevelRecipe,
+  validateGeneratedLevel,
+  validateLevelRecipe,
+  type LillyGeneratedLevel,
+  type LillyLevelRecipe,
+} from './level-generator';
+
+export * from './level-generator';
+
+export const ENGINE_VERSION = '0.2.0';
 export const PROJECT_SCHEMA = 'LillyProject/v1' as const;
 export const SCENE_SCHEMA = 'LillyScene/v1' as const;
 export const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
@@ -106,13 +119,16 @@ export interface LillyProject {
   entryScene: string;
   scenes: LillyScene[];
   blueprints: LillyBlueprint[];
+  levelRecipes: LillyLevelRecipe[];
+  generatedLevels: LillyGeneratedLevel[];
   assets: Array<{ id: string; name: string; type: string; uri: string; metadata?: Record<string, unknown> }>;
   inputMap: LillyInputBinding[];
   settings: {
     renderer: 'webgl2' | 'webgpu-experimental';
     fixedStepHz: number;
     gravity: Vec3;
-    mobileMode: 'play-review';
+    mobileMode: 'play-review' | 'author-play';
+    legacyImport?: Record<string, unknown>;
   };
 }
 
@@ -127,7 +143,9 @@ export type LillyCommandOperation =
   | 'component.remove'
   | 'scene.set-environment'
   | 'blueprint.replace'
-  | 'project.set-settings';
+  | 'project.set-settings'
+  | 'level.generate'
+  | 'level.restore';
 
 export interface LillyCommand {
   schema: typeof COMMAND_SCHEMA;
@@ -209,6 +227,24 @@ export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+export function upgradeProject(projectInput: LillyProject): LillyProject {
+  const project = deepClone(projectInput);
+  project.levelRecipes = Array.isArray(project.levelRecipes)
+    ? project.levelRecipes.map((recipe) => normalizeLevelRecipe(recipe))
+    : [];
+  project.generatedLevels = Array.isArray(project.generatedLevels) ? project.generatedLevels : [];
+  project.assets = Array.isArray(project.assets) ? project.assets : [];
+  project.inputMap = Array.isArray(project.inputMap) ? project.inputMap : [];
+  project.settings = {
+    renderer: project.settings?.renderer === 'webgpu-experimental' ? 'webgpu-experimental' : 'webgl2',
+    fixedStepHz: Number(project.settings?.fixedStepHz || 60),
+    gravity: project.settings?.gravity || { x: 0, y: -9.81, z: 0 },
+    mobileMode: project.settings?.mobileMode === 'play-review' ? 'play-review' : 'author-play',
+    ...(project.settings?.legacyImport ? { legacyImport: deepClone(project.settings.legacyImport) } : {}),
+  };
+  return project;
+}
+
 export function getScene(project: LillyProject, sceneId = project.entryScene): LillyScene {
   const scene = project.scenes.find((entry) => entry.id === sceneId);
   if (!scene) throw Object.assign(new Error(`Scene ${sceneId} was not found`), { code: 'SCENE_NOT_FOUND' });
@@ -261,6 +297,25 @@ export function validateProject(project: LillyProject): ValidationIssue[] {
       }
     }
   }
+  const recipes = Array.isArray(project.levelRecipes) ? project.levelRecipes : [];
+  const generatedLevels = Array.isArray(project.generatedLevels) ? project.generatedLevels : [];
+  for (const [recipeIndex, recipe] of recipes.entries()) {
+    validateLevelRecipe(recipe).forEach((issue) => issues.push({
+      ...issue,
+      path: `levelRecipes[${recipeIndex}].${issue.path}`,
+    }));
+    if (!project.scenes.some((scene) => scene.id === recipe.sceneId)) {
+      issues.push({ code: 'LEVEL_RECIPE_SCENE_MISSING', message: `Level recipe scene ${recipe.sceneId} does not exist`, path: `levelRecipes[${recipeIndex}].sceneId`, severity: 'error' });
+    }
+  }
+  for (const [levelIndex, design] of generatedLevels.entries()) {
+    const recipe = recipes.find((candidate) => candidate.id === design.recipeId) || null;
+    if (!recipe) issues.push({ code: 'GENERATED_LEVEL_RECIPE_MISSING', message: `Generated level recipe ${design.recipeId} does not exist`, path: `generatedLevels[${levelIndex}].recipeId`, severity: 'error' });
+    validateGeneratedLevel(design, recipe).forEach((issue) => issues.push({
+      ...issue,
+      path: `generatedLevels[${levelIndex}].${issue.path}`,
+    }));
+  }
   return issues;
 }
 
@@ -281,10 +336,114 @@ function removeEntityTree(scene: LillyScene, entityId: string) {
   return removed;
 }
 
+type LevelSnapshot = {
+  sceneId: string;
+  environment: LillyEnvironment;
+  recipes: LillyLevelRecipe[];
+  designs: LillyGeneratedLevel[];
+  entities: LillyEntity[];
+  playerTransform: LillyComponent | null;
+  objectiveGraph: LillyBlueprint | null;
+  uiAnchor: { entityId: string; component: LillyComponent } | null;
+  mobileMode: LillyProject['settings']['mobileMode'];
+};
+
+function findObjectiveGraph(project: LillyProject, scene: LillyScene) {
+  return project.blueprints.find((graph) => scene.blueprintGraphIds.includes(graph.id) && graph.variables.some((variable) => variable.id === 'score')) || null;
+}
+
+function isLegacyArenaEntity(entity: LillyEntity) {
+  return entity.id === 'arena-floor' || /^pickup-[1-3]$/.test(entity.id);
+}
+
+function isReplaceableLevelEntity(entity: LillyEntity) {
+  return entity.tags.includes('generated') || isLegacyArenaEntity(entity);
+}
+
+function captureLevelSnapshot(project: LillyProject, scene: LillyScene): LevelSnapshot {
+  const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
+  const playerTransform = player ? getComponent(player, 'Transform') : null;
+  const objectiveGraph = findObjectiveGraph(project, scene);
+  const rulesEntity = scene.entities.find((entity) => entity.tags.includes('gameplay') && getComponent(entity, 'UIAnchor')) || null;
+  const uiAnchor = rulesEntity && getComponent(rulesEntity, 'UIAnchor')
+    ? { entityId: rulesEntity.id, component: deepClone(getComponent(rulesEntity, 'UIAnchor')!) }
+    : null;
+  return {
+    sceneId: scene.id,
+    environment: deepClone(scene.environment),
+    recipes: deepClone((project.levelRecipes || []).filter((recipe) => recipe.sceneId === scene.id)),
+    designs: deepClone((project.generatedLevels || []).filter((design) => design.sceneId === scene.id)),
+    entities: deepClone(scene.entities.filter(isReplaceableLevelEntity)),
+    playerTransform: playerTransform ? deepClone(playerTransform) : null,
+    objectiveGraph: objectiveGraph ? deepClone(objectiveGraph) : null,
+    uiAnchor,
+    mobileMode: project.settings.mobileMode,
+  };
+}
+
+function restoreLevelSnapshot(project: LillyProject, scene: LillyScene, snapshot: LevelSnapshot) {
+  scene.entities = scene.entities.filter((entity) => !isReplaceableLevelEntity(entity));
+  scene.entities.push(...deepClone(snapshot.entities || []));
+  scene.environment = deepClone(snapshot.environment);
+  project.levelRecipes = [
+    ...(project.levelRecipes || []).filter((recipe) => recipe.sceneId !== scene.id),
+    ...deepClone(snapshot.recipes || []),
+  ];
+  project.generatedLevels = [
+    ...(project.generatedLevels || []).filter((design) => design.sceneId !== scene.id),
+    ...deepClone(snapshot.designs || []),
+  ];
+  project.settings.mobileMode = snapshot.mobileMode || 'author-play';
+  const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
+  if (player && snapshot.playerTransform) {
+    const index = player.components.findIndex((entry) => entry.type === 'Transform');
+    if (index >= 0) player.components[index] = deepClone(snapshot.playerTransform);
+    else player.components.push(deepClone(snapshot.playerTransform));
+  }
+  if (snapshot.objectiveGraph) {
+    const index = project.blueprints.findIndex((graph) => graph.id === snapshot.objectiveGraph!.id);
+    if (index >= 0) project.blueprints[index] = deepClone(snapshot.objectiveGraph);
+    else project.blueprints.push(deepClone(snapshot.objectiveGraph));
+  }
+  if (snapshot.uiAnchor) {
+    const entityValue = scene.entities.find((entity) => entity.id === snapshot.uiAnchor!.entityId);
+    if (entityValue) {
+      const index = entityValue.components.findIndex((entry) => entry.type === 'UIAnchor');
+      if (index >= 0) entityValue.components[index] = deepClone(snapshot.uiAnchor.component);
+      else entityValue.components.push(deepClone(snapshot.uiAnchor.component));
+    }
+  }
+}
+
+function updateGeneratedObjective(project: LillyProject, scene: LillyScene, recipe: LillyLevelRecipe) {
+  const graph = findObjectiveGraph(project, scene);
+  if (graph) {
+    graph.nodes.forEach((node) => {
+      if (node.type === 'flow.branch') {
+        node.label = recipe.objective === 'reach-exit' ? 'Exit reached?' : `Score = ${recipe.gameplay.pickupCount}?`;
+        node.config = {
+          ...(node.config || {}),
+          expression: recipe.objective === 'reach-exit' ? 'exitReached === true' : `score >= ${recipe.gameplay.pickupCount}`,
+        };
+      }
+      if (node.type === 'presentation.hud-message') {
+        node.config = { ...(node.config || {}), message: `${recipe.name} secured!` };
+      }
+    });
+  }
+  const rulesEntity = scene.entities.find((entity) => entity.tags.includes('gameplay'));
+  const anchor = rulesEntity ? getComponent(rulesEntity, 'UIAnchor') : null;
+  if (anchor) {
+    anchor.data.text = recipe.objective === 'reach-exit'
+      ? 'Find and reach the exit beacon'
+      : `Collect ${recipe.gameplay.pickupCount} energy cores, then reach the exit`;
+  }
+}
+
 export function applyCommand(projectInput: LillyProject, command: LillyCommand): { project: LillyProject; inverse: LillyCommand } {
   if (command.schema !== COMMAND_SCHEMA) throw Object.assign(new Error(`Commands must use ${COMMAND_SCHEMA}`), { code: 'INVALID_COMMAND_SCHEMA' });
   if (command.projectId !== projectInput.id) throw Object.assign(new Error('Command projectId does not match the project'), { code: 'PROJECT_MISMATCH' });
-  const project = deepClone(projectInput);
+  const project = upgradeProject(projectInput);
   const scene = command.target.sceneId ? getScene(project, command.target.sceneId) : null;
   const inverseBase = { schema: COMMAND_SCHEMA, commandId: `${command.commandId}:inverse`, projectId: project.id, baseRevision: command.baseRevision, target: deepClone(command.target) } as Omit<LillyCommand, 'operation' | 'payload'>;
   let inverse: LillyCommand;
@@ -405,6 +564,55 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
       inverse = { ...inverseBase, operation: 'project.set-settings', payload: previous };
       break;
     }
+    case 'level.generate': {
+      if (!scene) throw new Error('level.generate requires target.sceneId');
+      const rawRecipe = {
+        ...deepClone((command.payload.recipe || {}) as LillyLevelRecipe),
+        sceneId: scene.id,
+      } as LillyLevelRecipe;
+      const recipeIssues = validateLevelRecipe(rawRecipe).filter((issue) => issue.severity === 'error');
+      if (recipeIssues.length) throw Object.assign(new Error(recipeIssues.map((issue) => issue.message).join('; ')), { code: 'INVALID_LEVEL_RECIPE', issues: recipeIssues });
+      const recipe = normalizeLevelRecipe(rawRecipe);
+      const snapshot = captureLevelSnapshot(project, scene);
+      const rootEntity = scene.entities.find((entity) => entity.parentId === null && entity.tags.includes('root'))
+        || scene.entities.find((entity) => entity.parentId === null)
+        || null;
+      const generated = generateLevel(recipe, { parentId: rootEntity?.id || null });
+      scene.entities = scene.entities.filter((entity) => !isReplaceableLevelEntity(entity));
+      scene.entities.push(...generated.entities);
+      scene.environment = generated.environment;
+      project.engineVersion = ENGINE_VERSION;
+      project.levelRecipes = [...(project.levelRecipes || []).filter((entry) => entry.sceneId !== scene.id), generated.recipe];
+      project.generatedLevels = [...(project.generatedLevels || []).filter((entry) => entry.sceneId !== scene.id), generated.design];
+      project.settings.mobileMode = 'author-play';
+      const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
+      const playerTransform = player ? getComponent(player, 'Transform') : null;
+      if (playerTransform) playerTransform.data.position = deepClone(generated.design.spawn.position);
+      updateGeneratedObjective(project, scene, generated.recipe);
+      inverse = {
+        ...inverseBase,
+        operation: 'level.restore',
+        target: { sceneId: scene.id },
+        payload: { snapshot },
+      };
+      break;
+    }
+    case 'level.restore': {
+      if (!scene) throw new Error('level.restore requires target.sceneId');
+      const snapshot = deepClone(command.payload.snapshot as LevelSnapshot);
+      if (!snapshot || snapshot.sceneId !== scene.id || !Array.isArray(snapshot.entities)) {
+        throw Object.assign(new Error('level.restore requires a valid saved level snapshot'), { code: 'INVALID_LEVEL_SNAPSHOT' });
+      }
+      const currentSnapshot = captureLevelSnapshot(project, scene);
+      restoreLevelSnapshot(project, scene, snapshot);
+      inverse = {
+        ...inverseBase,
+        operation: 'level.restore',
+        target: { sceneId: scene.id },
+        payload: { snapshot: currentSnapshot },
+      };
+      break;
+    }
     default:
       throw Object.assign(new Error(`Unsupported command operation ${(command as LillyCommand).operation}`), { code: 'UNSUPPORTED_COMMAND' });
   }
@@ -510,44 +718,63 @@ function transform(position: Vec3, scale: Vec3 = { x: 1, y: 1, z: 1 }) {
   return component('Transform', { position, rotation: { x: 0, y: 0, z: 0 }, scale });
 }
 
-export function createArenaProject(input: { id: string; name?: string; slug?: string } = { id: 'arena' }): LillyProject {
+export function createProceduralProject(input: {
+  id: string;
+  name?: string;
+  slug?: string;
+  prompt?: string;
+  seed?: string;
+} = { id: 'expedition' }): LillyProject {
   const id = input.id;
+  const sceneId = 'arena';
   const graphId = 'arena-win-condition';
+  const prompt = input.prompt || 'A winding neon ruin with readable rooms, a few pulse traps, glowing energy cores, landmarks, and a final exit beacon.';
+  const recipe = createLevelRecipeFromPrompt({
+    projectId: id,
+    sceneId,
+    prompt,
+    seed: input.seed || `${id}-first-world`,
+    previous: null,
+  });
+  const generated = generateLevel(recipe, { parentId: 'world' });
+  const pickupCount = recipe.gameplay.pickupCount;
   return {
     schema: PROJECT_SCHEMA,
     id,
-    name: input.name || 'Neon Arena',
-    slug: input.slug || 'neon-arena',
+    name: input.name || 'Neon Trail',
+    slug: input.slug || 'neon-trail',
     engineVersion: ENGINE_VERSION,
     revision: 1,
-    entryScene: 'arena',
+    entryScene: sceneId,
     scenes: [{
       schema: SCENE_SCHEMA,
-      id: 'arena',
-      name: 'Arena',
-      environment: { background: '#081018', ambientIntensity: 0.55, fog: { color: '#081018', near: 18, far: 58 } },
+      id: sceneId,
+      name: recipe.name,
+      environment: generated.environment,
       blueprintGraphIds: [graphId],
       entities: [
         { schema: ENTITY_SCHEMA, id: 'world', name: 'World', parentId: null, enabled: true, tags: ['root'], components: [] },
-        { schema: ENTITY_SCHEMA, id: 'sun', name: 'Key Light', parentId: 'world', enabled: true, tags: ['lighting'], components: [transform({ x: 5, y: 10, z: 4 }), component('Light', { kind: 'directional', intensity: 3.2, color: '#dbeafe' })] },
-        { schema: ENTITY_SCHEMA, id: 'arena-floor', name: 'Arena Floor', parentId: 'world', enabled: true, locked: true, tags: ['ground'], components: [transform({ x: 0, y: -0.5, z: 0 }, { x: 18, y: 1, z: 18 }), component('MeshRenderer', { geometry: 'box', material: { color: '#17202b', roughness: 0.82, metalness: 0.12 } }), component('Collider', { shape: 'box', size: { x: 18, y: 1, z: 18 } })] },
-        { schema: ENTITY_SCHEMA, id: 'player', name: 'Player', parentId: 'world', enabled: true, tags: ['player'], components: [transform({ x: 0, y: 0.65, z: 5 }), component('MeshRenderer', { geometry: 'capsule', material: { color: '#38bdf8', roughness: 0.28, metalness: 0.35 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.45, y: 1.3, z: 0.45 } }), component('Blueprint', { graphId: 'player-controller' })] },
-        { schema: ENTITY_SCHEMA, id: 'camera', name: 'Follow Camera', parentId: 'world', enabled: true, tags: ['camera'], components: [transform({ x: 7, y: 7, z: 11 }), component('Camera', { primary: true, fov: 58 })] },
-        ...[-5, 0, 5].map((x, index) => ({ schema: ENTITY_SCHEMA, id: `pickup-${index + 1}`, name: `Energy Shard ${index + 1}`, parentId: 'world', enabled: true, tags: ['pickup'], components: [transform({ x, y: 0.8, z: index % 2 ? -3 : 0 }, { x: 0.55, y: 0.55, z: 0.55 }), component('MeshRenderer', { geometry: 'octahedron', material: { color: index === 1 ? '#fbbf24' : '#a78bfa', roughness: 0.22, metalness: 0.5 } }), component('Collider', { shape: 'sphere', size: { x: 0.7, y: 0.7, z: 0.7 }, sensor: true }), component('ParticleEmitter', { rate: 8, color: '#c4b5fd' })] } as LillyEntity)),
-        { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Arena Rules', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('Blueprint', { graphId }), component('UIAnchor', { anchor: 'top-left', text: 'Collect all energy shards' })] },
+        { schema: ENTITY_SCHEMA, id: 'sun', name: 'Key Light', parentId: 'world', enabled: true, tags: ['lighting'], components: [transform({ x: 8, y: 14, z: 6 }), component('Light', { kind: 'directional', intensity: 3.4, color: '#dbeafe', castShadow: true })] },
+        { schema: ENTITY_SCHEMA, id: 'player', name: 'Player', parentId: 'world', enabled: true, tags: ['player'], components: [transform(generated.design.spawn.position), component('MeshRenderer', { geometry: 'capsule', material: { color: '#38bdf8', roughness: 0.28, metalness: 0.35, emissive: '#075985', emissiveIntensity: 0.22 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.4, z: 0.9 } }), component('Blueprint', { graphId: 'player-controller' })] },
+        { schema: ENTITY_SCHEMA, id: 'camera', name: 'Follow Camera', parentId: 'world', enabled: true, tags: ['camera'], components: [transform({ x: generated.design.spawn.position.x + 7, y: 7, z: generated.design.spawn.position.z + 11 }), component('Camera', { primary: true, fov: 58 })] },
+        { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Expedition Rules', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('Blueprint', { graphId }), component('UIAnchor', { anchor: 'top-left', text: `Collect ${pickupCount} energy cores, then reach the exit` })] },
+        ...generated.entities,
       ],
     }],
     blueprints: [
       {
         schema: BLUEPRINT_SCHEMA,
         id: graphId,
-        name: 'Arena Win Condition',
-        variables: [{ id: 'score', name: 'Score', dataType: 'number', defaultValue: 0 }],
+        name: 'Expedition Win Condition',
+        variables: [
+          { id: 'score', name: 'Score', dataType: 'number', defaultValue: 0 },
+          { id: 'exitReached', name: 'Exit Reached', dataType: 'boolean', defaultValue: false },
+        ],
         nodes: [
           { id: 'event-pickup', type: 'event.custom', label: 'On Pickup', position: { x: 40, y: 80 }, pins: [{ id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }] },
           { id: 'add-score', type: 'variable.add', label: 'Add Score', position: { x: 280, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'exec-out', name: 'Then', kind: 'exec', direction: 'output' }], config: { variableId: 'score', amount: 1 } },
-          { id: 'branch-win', type: 'flow.branch', label: 'Score = 3?', position: { x: 510, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'true', name: 'True', kind: 'exec', direction: 'output' }, { id: 'condition', name: 'Condition', kind: 'data', direction: 'input', dataType: 'boolean' }], config: { expression: 'score >= 3' } },
-          { id: 'hud-win', type: 'presentation.hud-message', label: 'Show Victory', position: { x: 760, y: 20 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }], config: { message: 'Arena secured!' } },
+          { id: 'branch-win', type: 'flow.branch', label: `Score = ${pickupCount}?`, position: { x: 510, y: 80 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }, { id: 'true', name: 'True', kind: 'exec', direction: 'output' }, { id: 'condition', name: 'Condition', kind: 'data', direction: 'input', dataType: 'boolean' }], config: { expression: `score >= ${pickupCount}` } },
+          { id: 'hud-win', type: 'presentation.hud-message', label: 'Unlock Exit', position: { x: 760, y: 20 }, pins: [{ id: 'exec-in', name: 'In', kind: 'exec', direction: 'input' }], config: { message: 'Exit beacon unlocked!' } },
         ],
         edges: [
           { id: 'e1', sourceNodeId: 'event-pickup', sourcePinId: 'exec-out', targetNodeId: 'add-score', targetPinId: 'exec-in' },
@@ -567,12 +794,18 @@ export function createArenaProject(input: { id: string; name?: string; slug?: st
         edges: [{ id: 'pc1', sourceNodeId: 'fixed', sourcePinId: 'exec-out', targetNodeId: 'move', targetPinId: 'exec-in' }],
       },
     ],
+    levelRecipes: [generated.recipe],
+    generatedLevels: [generated.design],
     assets: [],
     inputMap: [
       { action: 'Move', kind: 'axis2d', keys: ['KeyW', 'KeyS', 'KeyA', 'KeyD'] },
       { action: 'Jump', kind: 'button', keys: ['Space'] },
       { action: 'Reset', kind: 'button', keys: ['KeyR'] },
     ],
-    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'play-review' },
+    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play' },
   };
+}
+
+export function createArenaProject(input: { id: string; name?: string; slug?: string; prompt?: string; seed?: string } = { id: 'arena' }): LillyProject {
+  return createProceduralProject(input);
 }

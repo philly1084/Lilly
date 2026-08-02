@@ -249,7 +249,7 @@ function buildToolRuntime(toolId, options = {}) {
     return {
       configured: config.gameStudio?.enabled === true,
       provider: 'lilly-engine',
-      engineVersion: '0.1.0',
+      engineVersion: '0.2.0',
       projectSchema: 'LillyProject/v1',
       commandSchema: 'LillyCommand/v1',
       persistenceAvailable: Boolean(options.gameStudioService?.initialized),
