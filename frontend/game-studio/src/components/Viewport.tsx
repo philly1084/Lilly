@@ -347,9 +347,41 @@ class ViewportErrorBoundary extends Component<{ children: React.ReactNode }, { e
   }
 }
 
+function ExactPlayPreview({ previewUrl, projectId, playState, stepToken }: { previewUrl: string; projectId: string; playState: 'playing' | 'paused'; stepToken: number }) {
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const lastStep = useRef(stepToken);
+  const send = (type: 'play' | 'pause' | 'step') => frameRef.current?.contentWindow?.postMessage({
+    schema: 'LillyEditorPlayerControl/v1',
+    type,
+    projectId,
+  }, '*');
+  const sendPlayState = () => send(playState === 'playing' ? 'play' : 'pause');
+  useEffect(() => { sendPlayState(); }, [playState, previewUrl]);
+  useEffect(() => {
+    if (stepToken === lastStep.current) return;
+    lastStep.current = stepToken;
+    send('step');
+  }, [stepToken, previewUrl]);
+  return <div className="exact-play-preview">
+    <iframe
+      ref={frameRef}
+      src={previewUrl}
+      title="Exact sandboxed editor Play preview"
+      sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+      onLoad={() => {
+        sendPlayState();
+        frameRef.current?.contentWindow?.focus();
+      }}
+    />
+  </div>;
+}
+
 export function Viewport() {
   const current = useStudioStore((state) => state.current);
   const playState = useStudioStore((state) => state.playState);
+  const stepToken = useStudioStore((state) => state.stepToken);
+  const editorPreview = useStudioStore((state) => state.editorPreview);
+  const previewStatus = useStudioStore((state) => state.previewStatus);
   const [snap, setSnap] = useState(true);
   const [lighting, setLighting] = useState('scene');
   const [rendererReady, setRendererReady] = useState(false);
@@ -392,14 +424,16 @@ export function Viewport() {
       <div className="viewport-mode"><button type="button" className={playState === 'editing' ? 'active' : ''}>Perspective</button><button type="button" className={playState !== 'editing' ? 'active' : ''}>Game</button></div>
       <div className="viewport-tools"><label>Lighting<select value={lighting} onChange={(event) => setLighting(event.target.value)}><option value="scene">Scene</option><option value="studio">Studio</option><option value="unlit">Unlit</option></select></label><button type="button" className={snap ? 'active' : ''} onClick={() => setSnap((value) => !value)}>Snap <kbd>0.5</kbd></button></div>
     </div>
-    {!rendererReady && <div className="viewport-loading"><span className="spinner-small"/><span>Starting WebGL2 renderer…</span></div>}
-    <ViewportErrorBoundary>
-      <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }} onCreated={({ gl }) => { gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.04; setRendererReady(true); }}>
-        <Suspense fallback={null}><EditorScene project={current.project} scene={scene} snap={snap} lighting={lighting} touchKeys={touchKeys} touchAttack={touchAttack} onGameplayState={setGameplayState}/></Suspense>
-      </Canvas>
-    </ViewportErrorBoundary>
-    {playState !== 'editing' && <div className="play-hud"><div><span>Play mode</span><strong>{playState === 'playing' ? `Shield ${Math.ceil(gameplayState?.player.health || 0)} · Simulation running` : 'Paused — step to advance'}</strong></div><div className="play-objective"><small>{recipe?.name || 'Blueprint objective'}</small><span>{objectiveText}</span></div></div>}
-    {playState === 'playing' && <>
+    {playState === 'editing' ? <>
+      {!rendererReady && <div className="viewport-loading"><span className="spinner-small"/><span>Starting WebGL2 renderer…</span></div>}
+      <ViewportErrorBoundary>
+        <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }} onCreated={({ gl }) => { gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.04; setRendererReady(true); }}>
+          <Suspense fallback={null}><EditorScene project={current.project} scene={scene} snap={snap} lighting={lighting} touchKeys={touchKeys} touchAttack={touchAttack} onGameplayState={setGameplayState}/></Suspense>
+        </Canvas>
+      </ViewportErrorBoundary>
+    </> : previewStatus === 'ready' && editorPreview ? <ExactPlayPreview previewUrl={editorPreview.previewUrl} projectId={current.project.id} playState={playState} stepToken={stepToken}/> : <div className={`viewport-loading preview-${previewStatus}`}><span className="spinner-small"/><span>{previewStatus === 'error' ? 'Exact Play preview blocked — open Console for diagnostics' : 'Compiling modules and preparing exact Play preview…'}</span></div>}
+    {playState !== 'editing' && <div className="play-hud"><div><span>Exact Play · sandboxed modules</span><strong>{previewStatus === 'preparing' ? 'Compiling project and mechanic specs' : playState === 'playing' ? 'Simulation running' : 'Paused — step to advance'}</strong></div><div className="play-objective"><small>{recipe?.name || 'Project objective'}</small><span>{objectiveText}</span></div></div>}
+    {false && playState === 'playing' && <>
       <div className="editor-touch-controls" aria-label="Touch movement controls">
         {[
           ['KeyW', '↑', 'up'],
@@ -437,6 +471,6 @@ export function Viewport() {
         onLostPointerCapture={() => setTouchAttack(false)}
       >Strike</button>
     </>}
-    <div className="viewport-status"><span><i className="axis x"/>X</span><span><i className="axis y"/>Y</span><span><i className="axis z"/>Z</span><span className="viewport-stat">WebGL2 · shared 60 Hz gameplay</span></div>
+    <div className="viewport-status"><span><i className="axis x"/>X</span><span><i className="axis y"/>Y</span><span><i className="axis z"/>Z</span><span className="viewport-stat">{playState === 'editing' ? 'WebGL2 · Lilly scene renderer' : 'Exact player · opaque module sandbox · fixed step'}</span></div>
   </main>;
 }

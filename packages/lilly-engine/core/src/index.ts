@@ -12,16 +12,40 @@ import {
 
 export * from './level-generator';
 
-export const ENGINE_VERSION = '0.3.0';
+export const ENGINE_VERSION = '0.4.0';
 export const PROJECT_SCHEMA = 'LillyProject/v1' as const;
 export const SCENE_SCHEMA = 'LillyScene/v1' as const;
 export const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
 export const BLUEPRINT_SCHEMA = 'LillyBlueprint/v1' as const;
 export const COMMAND_SCHEMA = 'LillyCommand/v1' as const;
 export const BUILD_SCHEMA = 'LillyBuild/v1' as const;
+export const SOURCE_FILE_SCHEMA = 'LillySourceFile/v1' as const;
+export const GAME_MODULE_SCHEMA = 'LillyGameModule/v1' as const;
+export const MECHANIC_SCHEMA = 'LillyMechanic/v1' as const;
+export const PREFAB_SCHEMA = 'LillyPrefab/v1' as const;
+export const MECHANIC_TEST_SCHEMA = 'LillyMechanicTest/v1' as const;
 
 export type Vec2 = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
+
+export type LillySourceFileKind =
+  | 'module-manifest'
+  | 'mechanic'
+  | 'system'
+  | 'prefab'
+  | 'test'
+  | 'blueprint'
+  | 'scene'
+  | 'data';
+
+export interface LillySourceFile {
+  schema: typeof SOURCE_FILE_SCHEMA;
+  path: string;
+  kind: LillySourceFileKind;
+  language: 'json' | 'typescript';
+  content: string;
+  enabled: boolean;
+}
 
 export type LillyComponentType =
   | 'Transform'
@@ -41,7 +65,9 @@ export type LillyComponentType =
   | 'EnemyBrain'
   | 'EncounterMember'
   | 'EncounterGate'
-  | 'Checkpoint';
+  | 'Checkpoint'
+  | 'Behavior'
+  | 'State';
 
 export interface LillyComponent<T extends Record<string, unknown> = Record<string, unknown>> {
   type: LillyComponentType;
@@ -58,6 +84,29 @@ export interface LillyEntity {
   locked?: boolean;
   tags: string[];
   components: LillyComponent[];
+}
+
+export interface LillyPrefabDefinition {
+  schema: typeof PREFAB_SCHEMA;
+  id: string;
+  moduleId: string;
+  name: string;
+  rootEntityId: string;
+  entities: LillyEntity[];
+}
+
+export interface LillyPrefabEntityOverride {
+  name?: string;
+  enabled?: boolean;
+  tags?: string[];
+  components?: Partial<Record<LillyComponentType, Record<string, unknown>>>;
+}
+
+export interface LillyPrefabInstanceConfig {
+  /** Translation added to the authored root Transform position. */
+  position?: Vec3;
+  /** Overrides keyed by the source entity id stored in LillyPrefab/v1. */
+  entities?: Record<string, LillyPrefabEntityOverride>;
 }
 
 export interface LillyEnvironment {
@@ -128,6 +177,7 @@ export interface LillyProject {
   blueprints: LillyBlueprint[];
   levelRecipes: LillyLevelRecipe[];
   generatedLevels: LillyGeneratedLevel[];
+  files: LillySourceFile[];
   assets: Array<{ id: string; name: string; type: string; uri: string; metadata?: Record<string, unknown> }>;
   inputMap: LillyInputBinding[];
   settings: {
@@ -140,6 +190,9 @@ export interface LillyProject {
 }
 
 export type LillyCommandOperation =
+  | 'scene.create'
+  | 'scene.delete'
+  | 'scene.rename'
   | 'entity.create'
   | 'entity.delete'
   | 'entity.rename'
@@ -150,6 +203,12 @@ export type LillyCommandOperation =
   | 'component.remove'
   | 'scene.set-environment'
   | 'blueprint.replace'
+  | 'blueprint.delete'
+  | 'file.upsert'
+  | 'file.delete'
+  | 'prefab.instantiate'
+  | 'input.replace'
+  | 'project.set-entry-scene'
   | 'project.set-settings'
   | 'level.generate'
   | 'level.restore';
@@ -165,6 +224,9 @@ export interface LillyCommand {
     entityId?: string;
     componentType?: LillyComponentType;
     graphId?: string;
+    path?: string;
+    prefabId?: string;
+    instanceId?: string;
   };
   payload: Record<string, unknown>;
 }
@@ -256,6 +318,25 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
     if (String(value.activate || '') !== 'encounter-clear') errors.push('activate must be encounter-clear');
     return errors;
   } },
+  Behavior: {
+    defaults: { moduleId: '', systemId: '', config: {} },
+    validate: (value) => {
+      const errors: string[] = [];
+      if (!String(value.moduleId || '').trim()) errors.push('moduleId is required');
+      if (!String(value.systemId || '').trim()) errors.push('systemId is required');
+      if (!value.config || typeof value.config !== 'object' || Array.isArray(value.config)) errors.push('config must be an object');
+      return errors;
+    },
+  },
+  State: {
+    defaults: { schemaId: '', values: {} },
+    validate: (value) => {
+      const errors: string[] = [];
+      if (!String(value.schemaId || '').trim()) errors.push('schemaId is required');
+      if (!value.values || typeof value.values !== 'object' || Array.isArray(value.values)) errors.push('values must be an object');
+      return errors;
+    },
+  },
 };
 
 function numericRangeValidator(key: string, min: number, max: number) {
@@ -285,6 +366,194 @@ export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+const FORBIDDEN_STRUCTURED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function assertSafeStructuredValue(value: unknown, valuePath: string, depth = 0): void {
+  if (depth > 24) throw Object.assign(new Error(`${valuePath} exceeds the maximum nesting depth`), { code: 'INVALID_PREFAB_CONFIG' });
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw Object.assign(new Error(`${valuePath} contains a non-finite number`), { code: 'INVALID_PREFAB_CONFIG' });
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertSafeStructuredValue(entry, `${valuePath}[${index}]`, depth + 1));
+    return;
+  }
+  if (!isPlainRecord(value)) throw Object.assign(new Error(`${valuePath} must contain JSON-compatible values`), { code: 'INVALID_PREFAB_CONFIG' });
+  for (const [key, entry] of Object.entries(value)) {
+    if (FORBIDDEN_STRUCTURED_KEYS.has(key)) throw Object.assign(new Error(`${valuePath}.${key} is not allowed`), { code: 'INVALID_PREFAB_CONFIG' });
+    assertSafeStructuredValue(entry, `${valuePath}.${key}`, depth + 1);
+  }
+}
+
+function mergeSafeRecords(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(base)) merged[key] = deepClone(value);
+  for (const [key, value] of Object.entries(patch)) {
+    merged[key] = isPlainRecord(value) && isPlainRecord(merged[key])
+      ? mergeSafeRecords(merged[key] as Record<string, unknown>, value)
+      : deepClone(value);
+  }
+  return merged;
+}
+
+function normalizePrefabInstanceConfig(value: unknown, prefab: LillyPrefabDefinition): LillyPrefabInstanceConfig {
+  if (value == null) return {};
+  if (!isPlainRecord(value)) throw Object.assign(new Error('Prefab config must be an object'), { code: 'INVALID_PREFAB_CONFIG' });
+  assertSafeStructuredValue(value, 'config');
+  const unknownKeys = Object.keys(value).filter((key) => !['position', 'entities'].includes(key));
+  if (unknownKeys.length > 0) throw Object.assign(new Error(`Unknown prefab config field ${unknownKeys[0]}`), { code: 'INVALID_PREFAB_CONFIG' });
+  if (value.position !== undefined && !isFiniteVec3(value.position)) {
+    throw Object.assign(new Error('Prefab config.position must be a finite Vector3'), { code: 'INVALID_PREFAB_CONFIG' });
+  }
+  if (value.entities !== undefined && !isPlainRecord(value.entities)) {
+    throw Object.assign(new Error('Prefab config.entities must be an object keyed by source entity id'), { code: 'INVALID_PREFAB_CONFIG' });
+  }
+  const entities: Record<string, LillyPrefabEntityOverride> = {};
+  for (const [entityId, rawOverride] of Object.entries((value.entities || {}) as Record<string, unknown>)) {
+    const sourceEntity = prefab.entities.find((entry) => entry.id === entityId);
+    if (!sourceEntity) throw Object.assign(new Error(`Prefab config references unknown entity ${entityId}`), { code: 'PREFAB_CONFIG_ENTITY_NOT_FOUND' });
+    if (!isPlainRecord(rawOverride)) throw Object.assign(new Error(`Prefab override ${entityId} must be an object`), { code: 'INVALID_PREFAB_CONFIG' });
+    const invalidOverrideKey = Object.keys(rawOverride).find((key) => !['name', 'enabled', 'tags', 'components'].includes(key));
+    if (invalidOverrideKey) throw Object.assign(new Error(`Unknown prefab override field ${entityId}.${invalidOverrideKey}`), { code: 'INVALID_PREFAB_CONFIG' });
+    const override: LillyPrefabEntityOverride = {};
+    if (rawOverride.name !== undefined) {
+      const name = String(rawOverride.name).trim();
+      if (!name || name.length > 100) throw Object.assign(new Error(`Prefab override ${entityId}.name must contain 1 to 100 characters`), { code: 'INVALID_PREFAB_CONFIG' });
+      override.name = name;
+    }
+    if (rawOverride.enabled !== undefined) {
+      if (typeof rawOverride.enabled !== 'boolean') throw Object.assign(new Error(`Prefab override ${entityId}.enabled must be boolean`), { code: 'INVALID_PREFAB_CONFIG' });
+      override.enabled = rawOverride.enabled;
+    }
+    if (rawOverride.tags !== undefined) {
+      if (!Array.isArray(rawOverride.tags) || rawOverride.tags.length > 64 || rawOverride.tags.some((tag) => typeof tag !== 'string' || !tag.trim() || tag.length > 64)) {
+        throw Object.assign(new Error(`Prefab override ${entityId}.tags must contain at most 64 non-empty strings`), { code: 'INVALID_PREFAB_CONFIG' });
+      }
+      override.tags = [...new Set(rawOverride.tags.map((tag) => tag.trim()))];
+    }
+    if (rawOverride.components !== undefined) {
+      if (!isPlainRecord(rawOverride.components)) throw Object.assign(new Error(`Prefab override ${entityId}.components must be an object`), { code: 'INVALID_PREFAB_CONFIG' });
+      const componentOverrides: Partial<Record<LillyComponentType, Record<string, unknown>>> = {};
+      for (const [componentType, componentPatch] of Object.entries(rawOverride.components)) {
+        if (!(componentType in COMPONENT_DEFINITIONS)) throw Object.assign(new Error(`Prefab override ${entityId} references unknown component ${componentType}`), { code: 'PREFAB_CONFIG_COMPONENT_NOT_FOUND' });
+        if (!sourceEntity.components.some((entry) => entry.type === componentType)) throw Object.assign(new Error(`Prefab entity ${entityId} does not contain component ${componentType}`), { code: 'PREFAB_CONFIG_COMPONENT_NOT_FOUND' });
+        if (!isPlainRecord(componentPatch)) throw Object.assign(new Error(`Prefab override ${entityId}.${componentType} must be an object data patch`), { code: 'INVALID_PREFAB_CONFIG' });
+        componentOverrides[componentType as LillyComponentType] = componentPatch;
+      }
+      override.components = componentOverrides;
+    }
+    entities[entityId] = override;
+  }
+  return {
+    ...(value.position === undefined ? {} : { position: deepClone(value.position as Vec3) }),
+    ...(Object.keys(entities).length === 0 ? {} : { entities }),
+  };
+}
+
+export function validatePrefabDefinition(prefab: LillyPrefabDefinition): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (!prefab || prefab.schema !== PREFAB_SCHEMA) issues.push({ code: 'INVALID_PREFAB_SCHEMA', message: `Expected ${PREFAB_SCHEMA}`, path: 'schema', severity: 'error' });
+  if (!String(prefab?.id || '').trim()) issues.push({ code: 'PREFAB_ID_REQUIRED', message: 'Prefab id is required', path: 'id', severity: 'error' });
+  if (!Array.isArray(prefab?.entities) || prefab.entities.length === 0) {
+    issues.push({ code: 'PREFAB_ENTITIES_REQUIRED', message: 'Prefab entities are required', path: 'entities', severity: 'error' });
+    return issues;
+  }
+  const ids = new Set<string>();
+  for (const [index, entity] of prefab.entities.entries()) {
+    const entityPath = `entities[${index}]`;
+    if (!entity?.id || ids.has(entity.id)) issues.push({ code: 'PREFAB_ENTITY_ID_DUPLICATE', message: `Prefab entity id ${entity?.id || '<missing>'} must be unique`, path: `${entityPath}.id`, severity: 'error' });
+    ids.add(entity?.id);
+    if (entity?.schema !== ENTITY_SCHEMA || typeof entity.name !== 'string' || typeof entity.enabled !== 'boolean' || !Array.isArray(entity.tags) || !Array.isArray(entity.components)) {
+      issues.push({ code: 'INVALID_PREFAB_ENTITY', message: `Prefab entities must use ${ENTITY_SCHEMA} with name, enabled, tags, and components`, path: entityPath, severity: 'error' });
+      continue;
+    }
+    const componentTypes = new Set<string>();
+    for (const [componentIndex, component] of entity.components.entries()) {
+      const componentPath = `${entityPath}.components[${componentIndex}]`;
+      if (componentTypes.has(component.type)) issues.push({ code: 'DUPLICATE_COMPONENT', message: `${component.type} can only be added once`, path: componentPath, severity: 'error' });
+      componentTypes.add(component.type);
+      const definition = COMPONENT_DEFINITIONS[component.type];
+      if (!definition || !isPlainRecord(component.data)) issues.push({ code: 'UNKNOWN_COMPONENT', message: `Unknown or malformed component ${component.type}`, path: componentPath, severity: 'error' });
+      else definition.validate(component.data).forEach((message) => issues.push({ code: 'INVALID_COMPONENT_VALUE', message, path: `${componentPath}.data`, severity: 'error' }));
+    }
+  }
+  const root = prefab.entities.find((entry) => entry.id === prefab.rootEntityId);
+  if (!root) issues.push({ code: 'PREFAB_ROOT_MISSING', message: `Prefab root ${prefab.rootEntityId || '<missing>'} does not exist`, path: 'rootEntityId', severity: 'error' });
+  else if (root.parentId !== null) issues.push({ code: 'PREFAB_ROOT_PARENT', message: 'Prefab root parentId must be null', path: 'rootEntityId', severity: 'error' });
+  for (const [index, entity] of prefab.entities.entries()) {
+    if (entity.id !== prefab.rootEntityId && !entity.parentId) issues.push({ code: 'PREFAB_ENTITY_DISCONNECTED', message: `Prefab entity ${entity.id} must descend from the root`, path: `entities[${index}].parentId`, severity: 'error' });
+    if (entity.parentId && !ids.has(entity.parentId)) issues.push({ code: 'PREFAB_PARENT_MISSING', message: `Prefab parent ${entity.parentId} does not exist`, path: `entities[${index}].parentId`, severity: 'error' });
+    const visited = new Set<string>();
+    let cursor: LillyEntity | undefined = entity;
+    while (cursor?.parentId) {
+      if (visited.has(cursor.id)) {
+        issues.push({ code: 'PREFAB_PARENT_CYCLE', message: `Prefab entity ${entity.id} belongs to a parent cycle`, path: `entities[${index}].parentId`, severity: 'error' });
+        break;
+      }
+      visited.add(cursor.id);
+      cursor = prefab.entities.find((entry) => entry.id === cursor?.parentId);
+    }
+    if (root && entity.id !== root.id && cursor && cursor.id !== root.id) issues.push({ code: 'PREFAB_ENTITY_DISCONNECTED', message: `Prefab entity ${entity.id} must descend from root ${root.id}`, path: `entities[${index}].parentId`, severity: 'error' });
+  }
+  return issues;
+}
+
+export const MAX_PROJECT_SOURCE_FILES = 240;
+export const MAX_PROJECT_SOURCE_FILE_BYTES = 128 * 1024;
+export const MAX_PROJECT_SOURCE_BYTES = 2 * 1024 * 1024;
+
+export function detectSourceFileKind(filePath: string): LillySourceFileKind {
+  const normalized = String(filePath || '').toLowerCase();
+  if (normalized.endsWith('.module.json')) return 'module-manifest';
+  if (normalized.endsWith('.mechanic.json')) return 'mechanic';
+  if (normalized.endsWith('.system.ts')) return 'system';
+  if (normalized.endsWith('.prefab.json')) return 'prefab';
+  if (normalized.endsWith('.spec.json')) return 'test';
+  if (normalized.endsWith('.blueprint.json')) return 'blueprint';
+  if (normalized.endsWith('.scene.json')) return 'scene';
+  return 'data';
+}
+
+export function normalizeSourcePath(value: string): string {
+  const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!normalized || normalized.length > 180 || normalized.startsWith('/') || normalized.includes('//')) {
+    throw Object.assign(new Error('Source paths must be relative project paths up to 180 characters'), { code: 'INVALID_SOURCE_PATH' });
+  }
+  const segments = normalized.split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(segment))) {
+    throw Object.assign(new Error(`Source path ${normalized} contains an invalid segment`), { code: 'INVALID_SOURCE_PATH' });
+  }
+  const kind = detectSourceFileKind(normalized);
+  if (kind === 'data' && !normalized.toLowerCase().endsWith('.json')) {
+    throw Object.assign(new Error('Game Studio source files must use .system.ts or a supported .json contract extension'), { code: 'UNSUPPORTED_SOURCE_FILE' });
+  }
+  return normalized;
+}
+
+export function normalizeSourceFile(input: Partial<LillySourceFile> & { path: string; content: string }): LillySourceFile {
+  const filePath = normalizeSourcePath(input.path);
+  const content = String(input.content ?? '');
+  if (new TextEncoder().encode(content).length > MAX_PROJECT_SOURCE_FILE_BYTES) {
+    throw Object.assign(new Error(`Source files are limited to ${MAX_PROJECT_SOURCE_FILE_BYTES} bytes`), { code: 'SOURCE_FILE_TOO_LARGE' });
+  }
+  const kind = detectSourceFileKind(filePath);
+  return {
+    schema: SOURCE_FILE_SCHEMA,
+    path: filePath,
+    kind,
+    language: kind === 'system' ? 'typescript' : 'json',
+    content,
+    enabled: input.enabled !== false,
+  };
+}
+
 export function upgradeProject(projectInput: LillyProject): LillyProject {
   const project = deepClone(projectInput);
   project.levelRecipes = Array.isArray(project.levelRecipes)
@@ -305,6 +574,9 @@ export function upgradeProject(projectInput: LillyProject): LillyProject {
       upgraded.checksum = computeGeneratedLevelChecksum(upgraded);
       return upgraded;
     })
+    : [];
+  project.files = Array.isArray(project.files)
+    ? project.files.map((file) => normalizeSourceFile(file))
     : [];
   project.assets = Array.isArray(project.assets) ? project.assets : [];
   project.inputMap = Array.isArray(project.inputMap) ? project.inputMap : [];
@@ -369,6 +641,29 @@ export function validateProject(project: LillyProject): ValidationIssue[] {
         else definition.validate(component.data).forEach((message) => issues.push({ code: 'INVALID_COMPONENT_VALUE', message, path: `${path}.components[${componentIndex}].data`, severity: 'error' }));
       }
     }
+  }
+  const sourceFiles = Array.isArray(project.files) ? project.files : [];
+  const sourcePaths = new Set<string>();
+  let sourceBytes = 0;
+  if (sourceFiles.length > MAX_PROJECT_SOURCE_FILES) {
+    issues.push({ code: 'SOURCE_FILE_LIMIT', message: `Projects support at most ${MAX_PROJECT_SOURCE_FILES} source files`, path: 'files', severity: 'error' });
+  }
+  sourceFiles.forEach((file, fileIndex) => {
+    const filePath = `files[${fileIndex}]`;
+    try {
+      const normalized = normalizeSourceFile(file);
+      const bytes = new TextEncoder().encode(normalized.content).length;
+      sourceBytes += bytes;
+      if (sourcePaths.has(normalized.path)) issues.push({ code: 'DUPLICATE_SOURCE_PATH', message: `Duplicate source path ${normalized.path}`, path: `${filePath}.path`, severity: 'error' });
+      sourcePaths.add(normalized.path);
+      if (file.schema !== SOURCE_FILE_SCHEMA) issues.push({ code: 'INVALID_SOURCE_FILE_SCHEMA', message: `Expected ${SOURCE_FILE_SCHEMA}`, path: `${filePath}.schema`, severity: 'error' });
+      if (file.kind !== normalized.kind || file.language !== normalized.language) issues.push({ code: 'SOURCE_FILE_KIND_MISMATCH', message: `${normalized.path} must be stored as ${normalized.kind}/${normalized.language}`, path: filePath, severity: 'error' });
+    } catch (error) {
+      issues.push({ code: String((error as { code?: string }).code || 'INVALID_SOURCE_FILE'), message: (error as Error).message, path: filePath, severity: 'error' });
+    }
+  });
+  if (sourceBytes > MAX_PROJECT_SOURCE_BYTES) {
+    issues.push({ code: 'SOURCE_SIZE_LIMIT', message: `Project source is limited to ${MAX_PROJECT_SOURCE_BYTES} bytes`, path: 'files', severity: 'error' });
   }
   const recipes = Array.isArray(project.levelRecipes) ? project.levelRecipes : [];
   const generatedLevels = Array.isArray(project.generatedLevels) ? project.generatedLevels : [];
@@ -627,11 +922,36 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
   if (command.schema !== COMMAND_SCHEMA) throw Object.assign(new Error(`Commands must use ${COMMAND_SCHEMA}`), { code: 'INVALID_COMMAND_SCHEMA' });
   if (command.projectId !== projectInput.id) throw Object.assign(new Error('Command projectId does not match the project'), { code: 'PROJECT_MISMATCH' });
   const project = upgradeProject(projectInput);
-  const scene = command.target.sceneId ? getScene(project, command.target.sceneId) : null;
+  const scene = command.target.sceneId ? project.scenes.find((entry) => entry.id === command.target.sceneId) || null : null;
   const inverseBase = { schema: COMMAND_SCHEMA, commandId: `${command.commandId}:inverse`, projectId: project.id, baseRevision: command.baseRevision, target: deepClone(command.target) } as Omit<LillyCommand, 'operation' | 'payload'>;
   let inverse: LillyCommand;
 
   switch (command.operation) {
+    case 'scene.create': {
+      const created = deepClone(command.payload.scene as LillyScene);
+      if (!created?.id || project.scenes.some((entry) => entry.id === created.id)) throw Object.assign(new Error('Created scene id must be unique'), { code: 'DUPLICATE_SCENE_ID' });
+      if (created.schema !== SCENE_SCHEMA || !Array.isArray(created.entities) || !Array.isArray(created.blueprintGraphIds)) {
+        throw Object.assign(new Error(`scene.create requires a ${SCENE_SCHEMA} scene`), { code: 'INVALID_SCENE' });
+      }
+      project.scenes.push(created);
+      inverse = { ...inverseBase, operation: 'scene.delete', target: { sceneId: created.id }, payload: {} };
+      break;
+    }
+    case 'scene.delete': {
+      if (!scene) throw Object.assign(new Error('scene.delete requires an existing target.sceneId'), { code: 'SCENE_NOT_FOUND' });
+      if (project.scenes.length <= 1) throw Object.assign(new Error('A project must keep at least one scene'), { code: 'LAST_SCENE_DELETE' });
+      if (project.entryScene === scene.id) throw Object.assign(new Error('Set another entry scene before deleting the current entry scene'), { code: 'ENTRY_SCENE_DELETE' });
+      project.scenes = project.scenes.filter((entry) => entry.id !== scene.id);
+      inverse = { ...inverseBase, operation: 'scene.create', target: {}, payload: { scene } };
+      break;
+    }
+    case 'scene.rename': {
+      if (!scene) throw Object.assign(new Error('scene.rename requires an existing target.sceneId'), { code: 'SCENE_NOT_FOUND' });
+      const previous = scene.name;
+      scene.name = String(command.payload.name || '').trim() || scene.name;
+      inverse = { ...inverseBase, operation: 'scene.rename', payload: { name: previous } };
+      break;
+    }
     case 'entity.create': {
       if (!scene) throw new Error('entity.create requires target.sceneId');
       const entity = deepClone(command.payload.entity as LillyEntity);
@@ -736,9 +1056,128 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
       const previous = index >= 0 ? deepClone(project.blueprints[index]) : null;
       if (index >= 0) project.blueprints[index] = graph;
       else project.blueprints.push(graph);
+      if (Array.isArray(command.payload.sceneIds)) {
+        for (const sceneId of command.payload.sceneIds as string[]) {
+          const referencedScene = project.scenes.find((entry) => entry.id === sceneId);
+          if (referencedScene && !referencedScene.blueprintGraphIds.includes(graphId)) referencedScene.blueprintGraphIds.push(graphId);
+        }
+      }
       inverse = previous
         ? { ...inverseBase, operation: 'blueprint.replace', payload: { graph: previous } }
-        : { ...inverseBase, operation: 'blueprint.replace', payload: { graph: { ...graph, nodes: [], edges: [] } } };
+        : { ...inverseBase, operation: 'blueprint.delete', target: { graphId }, payload: {} };
+      break;
+    }
+    case 'blueprint.delete': {
+      const graphId = command.target.graphId;
+      if (!graphId) throw new Error('blueprint.delete requires target.graphId');
+      const index = project.blueprints.findIndex((entry) => entry.id === graphId);
+      if (index < 0) throw Object.assign(new Error('Blueprint was not found'), { code: 'BLUEPRINT_NOT_FOUND' });
+      const previous = project.blueprints.splice(index, 1)[0];
+      const sceneIds = project.scenes.filter((entry) => entry.blueprintGraphIds.includes(graphId)).map((entry) => entry.id);
+      project.scenes.forEach((entry) => { entry.blueprintGraphIds = entry.blueprintGraphIds.filter((id) => id !== graphId); });
+      inverse = { ...inverseBase, operation: 'blueprint.replace', target: { graphId }, payload: { graph: previous, sceneIds } };
+      break;
+    }
+    case 'file.upsert': {
+      const rawFile = command.payload.file as Partial<LillySourceFile> & { path: string; content: string };
+      const file = normalizeSourceFile({ ...rawFile, path: command.target.path || rawFile?.path });
+      const index = project.files.findIndex((entry) => entry.path === file.path);
+      const previous = index >= 0 ? deepClone(project.files[index]) : null;
+      if (index >= 0) project.files[index] = file;
+      else project.files.push(file);
+      project.files.sort((left, right) => left.path.localeCompare(right.path));
+      inverse = previous
+        ? { ...inverseBase, operation: 'file.upsert', target: { path: previous.path }, payload: { file: previous } }
+        : { ...inverseBase, operation: 'file.delete', target: { path: file.path }, payload: {} };
+      break;
+    }
+    case 'file.delete': {
+      const filePath = normalizeSourcePath(String(command.target.path || ''));
+      const index = project.files.findIndex((entry) => entry.path === filePath);
+      if (index < 0) throw Object.assign(new Error(`Source file ${filePath} was not found`), { code: 'SOURCE_FILE_NOT_FOUND' });
+      const previous = project.files.splice(index, 1)[0];
+      inverse = { ...inverseBase, operation: 'file.upsert', target: { path: previous.path }, payload: { file: previous } };
+      break;
+    }
+    case 'prefab.instantiate': {
+      if (!scene) throw new Error('prefab.instantiate requires target.sceneId');
+      const targetPath = command.target.path ? normalizeSourcePath(String(command.target.path)) : '';
+      const payloadPath = command.payload.path ? normalizeSourcePath(String(command.payload.path)) : '';
+      if (targetPath && payloadPath && targetPath !== payloadPath) throw Object.assign(new Error('Prefab target path and payload path must match'), { code: 'PREFAB_PATH_MISMATCH' });
+      const prefabPath = targetPath || payloadPath;
+      if (!prefabPath) throw Object.assign(new Error('prefab.instantiate requires a prefab source path'), { code: 'PREFAB_PATH_REQUIRED' });
+      const sourceFile = project.files.find((entry) => entry.path === prefabPath && entry.kind === 'prefab');
+      if (!sourceFile) throw Object.assign(new Error(`Prefab source ${prefabPath} was not found`), { code: 'PREFAB_NOT_FOUND' });
+      let prefab: LillyPrefabDefinition;
+      try { prefab = JSON.parse(sourceFile.content) as typeof prefab; }
+      catch (_error) { throw Object.assign(new Error(`Prefab source ${prefabPath} is not valid JSON`), { code: 'INVALID_PREFAB' }); }
+      try { assertSafeStructuredValue(prefab, 'prefab'); }
+      catch (error) { throw Object.assign(new Error(`Prefab source ${prefabPath} is unsafe: ${(error as Error).message}`), { code: 'INVALID_PREFAB' }); }
+      const prefabIssues = validatePrefabDefinition(prefab).filter((issue) => issue.severity === 'error');
+      if (prefabIssues.length > 0) throw Object.assign(new Error(`Prefab source ${prefabPath} is invalid: ${prefabIssues[0].message}`), { code: prefabIssues[0].code, issues: prefabIssues });
+      const requestedPrefabId = String(command.target.prefabId || command.payload.prefabId || '').trim();
+      if (requestedPrefabId && requestedPrefabId !== prefab.id) throw Object.assign(new Error(`Prefab id ${requestedPrefabId} does not match source id ${prefab.id}`), { code: 'PREFAB_ID_MISMATCH' });
+      const targetInstanceId = String(command.target.instanceId || '').trim();
+      const payloadInstanceId = String(command.payload.instanceId || '').trim();
+      if (targetInstanceId && payloadInstanceId && targetInstanceId !== payloadInstanceId) throw Object.assign(new Error('Prefab target instanceId and payload instanceId must match'), { code: 'PREFAB_INSTANCE_ID_MISMATCH' });
+      const instanceId = targetInstanceId || payloadInstanceId;
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(instanceId)) throw Object.assign(new Error('prefab.instantiate requires a stable alphanumeric instanceId'), { code: 'INVALID_PREFAB_INSTANCE_ID' });
+      const instanceConfig = normalizePrefabInstanceConfig(command.payload.config, prefab);
+      const idMap = new Map(prefab.entities.map((entry) => [entry.id, `${instanceId}:${entry.id}`]));
+      const parentId = command.payload.parentId ? String(command.payload.parentId) : null;
+      if (parentId && !scene.entities.some((entry) => entry.id === parentId)) throw Object.assign(new Error('Prefab parent entity does not exist'), { code: 'PARENT_MISSING' });
+      const entities = prefab.entities.map((entry) => {
+        const cloned = deepClone(entry);
+        const override = instanceConfig.entities?.[entry.id];
+        if (override?.name !== undefined) cloned.name = override.name;
+        if (override?.enabled !== undefined) cloned.enabled = override.enabled;
+        if (override?.tags !== undefined) cloned.tags = deepClone(override.tags);
+        for (const [componentType, componentPatch] of Object.entries(override?.components || {})) {
+          const component = cloned.components.find((candidate) => candidate.type === componentType) as LillyComponent | undefined;
+          if (!component || !componentPatch) continue;
+          component.data = mergeSafeRecords(component.data, componentPatch);
+          const validationErrors = COMPONENT_DEFINITIONS[component.type].validate(component.data);
+          if (validationErrors.length > 0) throw Object.assign(new Error(`Prefab override ${entry.id}.${component.type} is invalid: ${validationErrors[0]}`), { code: 'INVALID_PREFAB_COMPONENT_OVERRIDE' });
+        }
+        if (entry.id === prefab.rootEntityId && instanceConfig.position) {
+          const transform = cloned.components.find((candidate) => candidate.type === 'Transform');
+          if (!transform) throw Object.assign(new Error('Prefab config.position requires a Transform on the prefab root'), { code: 'PREFAB_ROOT_TRANSFORM_REQUIRED' });
+          const authoredPosition = transform.data.position as Vec3;
+          const translated = {
+            x: authoredPosition.x + instanceConfig.position.x,
+            y: authoredPosition.y + instanceConfig.position.y,
+            z: authoredPosition.z + instanceConfig.position.z,
+          };
+          if (!isFiniteVec3(translated)) throw Object.assign(new Error('Prefab config.position produces a non-finite root position'), { code: 'INVALID_PREFAB_CONFIG' });
+          transform.data.position = translated;
+        }
+        cloned.id = idMap.get(entry.id) as string;
+        cloned.parentId = entry.id === prefab.rootEntityId ? parentId : (entry.parentId ? idMap.get(entry.parentId) || parentId : parentId);
+        cloned.tags = [...new Set([...(cloned.tags || []), `prefab:${prefab.id || prefabPath}`, `instance:${instanceId}`])];
+        return cloned;
+      });
+      if (entities.some((entry) => scene.entities.some((existing) => existing.id === entry.id))) throw Object.assign(new Error(`Prefab instance ${instanceId} already exists`), { code: 'DUPLICATE_ENTITY_ID' });
+      scene.entities.push(...entities);
+      const rootEntityId = idMap.get(prefab.rootEntityId) as string;
+      inverse = { ...inverseBase, operation: 'entity.delete', target: { sceneId: scene.id, entityId: rootEntityId }, payload: {} };
+      break;
+    }
+    case 'input.replace': {
+      const previous = deepClone(project.inputMap);
+      const inputMap = deepClone(command.payload.inputMap as LillyInputBinding[]);
+      if (!Array.isArray(inputMap) || inputMap.some((binding) => !binding?.action || !['button', 'axis2d'].includes(binding.kind) || !Array.isArray(binding.keys))) {
+        throw Object.assign(new Error('input.replace requires a valid inputMap array'), { code: 'INVALID_INPUT_MAP' });
+      }
+      project.inputMap = inputMap;
+      inverse = { ...inverseBase, operation: 'input.replace', payload: { inputMap: previous } };
+      break;
+    }
+    case 'project.set-entry-scene': {
+      const sceneId = String(command.payload.sceneId || command.target.sceneId || '');
+      if (!project.scenes.some((entry) => entry.id === sceneId)) throw Object.assign(new Error(`Scene ${sceneId} was not found`), { code: 'SCENE_NOT_FOUND' });
+      const previous = project.entryScene;
+      project.entryScene = sceneId;
+      inverse = { ...inverseBase, operation: 'project.set-entry-scene', target: { sceneId: previous }, payload: { sceneId: previous } };
       break;
     }
     case 'project.set-settings': {
@@ -969,6 +1408,7 @@ export function createProceduralProject(input: {
     ],
     levelRecipes: [generated.recipe],
     generatedLevels: [generated.design],
+    files: [],
     assets: [],
     inputMap: [
       { action: 'Move', kind: 'axis2d', keys: ['KeyW', 'KeyS', 'KeyA', 'KeyD'] },
@@ -982,4 +1422,32 @@ export function createProceduralProject(input: {
 
 export function createArenaProject(input: { id: string; name?: string; slug?: string; prompt?: string; seed?: string } = { id: 'arena' }): LillyProject {
   return createProceduralProject(input);
+}
+
+export function createBlankProject(input: { id: string; name?: string; slug?: string } = { id: 'blank' }): LillyProject {
+  const sceneId = 'main';
+  return {
+    schema: PROJECT_SCHEMA,
+    id: input.id,
+    name: input.name || 'Untitled Lilly Game',
+    slug: input.slug || 'untitled-lilly-game',
+    engineVersion: ENGINE_VERSION,
+    revision: 1,
+    entryScene: sceneId,
+    scenes: [{
+      schema: SCENE_SCHEMA,
+      id: sceneId,
+      name: 'Main Scene',
+      environment: { background: '#071018', ambientIntensity: 0.65, fog: null },
+      entities: [{ schema: ENTITY_SCHEMA, id: 'world', name: 'World', parentId: null, enabled: true, tags: ['root'], components: [] }],
+      blueprintGraphIds: [],
+    }],
+    blueprints: [],
+    levelRecipes: [],
+    generatedLevels: [],
+    files: [],
+    assets: [],
+    inputMap: [],
+    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play' },
+  };
 }

@@ -1,4 +1,4 @@
-import type { AiRun, LillyCommand, Playtest, StudioBuild, StudioMetadata, StudioProjectResponse } from './types';
+import type { AiRun, EditorPreview, LillyCommand, LillySourceFile, MechanicTestRun, ModuleCompileReport, Playtest, StudioBuild, StudioMetadata, StudioProjectResponse } from './types';
 
 type ApiErrorPayload = { error?: { code?: string; message?: string; currentRevision?: number; issues?: unknown[] } };
 
@@ -31,11 +31,17 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const studioApi = {
   listProjects: () => request<{ projects: StudioMetadata[]; count: number }>('/api/game-studio/projects'),
-  createProject: (input: { name: string; slug?: string; prompt?: string; seed?: string; project?: unknown; importBundle?: unknown }) => request<StudioProjectResponse>('/api/game-studio/projects', { method: 'POST', body: JSON.stringify(input) }),
+  createProject: (input: { name: string; slug?: string; prompt?: string; seed?: string; template?: 'blank' | 'expedition'; project?: unknown; importBundle?: unknown }) => request<StudioProjectResponse>('/api/game-studio/projects', { method: 'POST', body: JSON.stringify(input) }),
   getProject: (projectId: string) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}`),
   applyCommands: (projectId: string, baseRevision: number, commands: Partial<LillyCommand>[], source = 'editor') => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/commands`, { method: 'POST', body: JSON.stringify({ baseRevision, commands, source }) }),
+  writeFiles: (projectId: string, baseRevision: number, files: Array<Pick<LillySourceFile, 'path' | 'content'> & Partial<Pick<LillySourceFile, 'enabled'>>>) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/files`, { method: 'PUT', body: JSON.stringify({ baseRevision, files }) }),
+  deleteFiles: (projectId: string, baseRevision: number, paths: string[]) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/files`, { method: 'DELETE', body: JSON.stringify({ baseRevision, paths }) }),
+  compileModules: (projectId: string, revision: number) => request<ModuleCompileReport>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/compile`, { method: 'POST', body: JSON.stringify({ revision }) }),
+  runMechanicTests: (projectId: string, revision: number, testIds?: string[]) => request<MechanicTestRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/mechanic-tests`, { method: 'POST', body: JSON.stringify({ revision, testIds }) }),
+  instantiatePrefab: (projectId: string, baseRevision: number, input: { sceneId: string; path: string; instanceId: string; parentId?: string | null; config?: Record<string, unknown> }) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/prefab-instances`, { method: 'POST', body: JSON.stringify({ baseRevision, ...input }) }),
   proposeAi: (projectId: string, baseRevision: number, prompt: string, options: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number } = {}) => request<AiRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs`, { method: 'POST', body: JSON.stringify({ baseRevision, prompt, ...options }) }),
   playtest: (projectId: string) => request<Playtest>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/playtests`, { method: 'POST', body: '{}' }),
+  editorPreview: (projectId: string, projectRevision: number) => request<EditorPreview>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/editor-preview`, { method: 'POST', body: JSON.stringify({ projectRevision }) }),
   build: (projectId: string, projectRevision: number) => request<StudioBuild>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: JSON.stringify({ projectRevision }) }),
   publish: (buildId: string, publicHost?: string) => request<{ build: StudioBuild; previewPreservedUntilHttpsVerified: boolean }>(`/api/game-studio/builds/${encodeURIComponent(buildId)}/publish`, { method: 'POST', body: JSON.stringify({ publicHost }) }),
   rollback: (projectId: string, revision: number) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/rollback`, { method: 'POST', body: JSON.stringify({ revision }) }),

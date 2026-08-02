@@ -11,6 +11,7 @@ import type {
   LillyLevelRecipe,
   LillyProject,
   LillyScene,
+  LillySourceFile,
   ValidationIssue,
   Vec3,
 } from '../../../packages/lilly-engine/core/src';
@@ -28,6 +29,7 @@ export type {
   LillyLevelRecipe,
   LillyProject,
   LillyScene,
+  LillySourceFile,
   ValidationIssue,
   Vec3,
 };
@@ -50,6 +52,20 @@ export type StudioBuild = LillyBuild & {
   publishedAt?: string | null;
   publicUrl?: string;
   managedApp?: { appId?: string | null; buildRunId?: string | null; status?: string } | null;
+};
+
+export type EditorPreview = {
+  schema: 'LillyEditorPreview/v1';
+  projectId: string;
+  projectRevision: number;
+  moduleSourceHash: string;
+  playerRuntimeHash: string;
+  workspaceId: string;
+  previewUrl: string;
+  sandboxUrl: string;
+  cached: boolean;
+  tests: Array<{ name: string; status: 'passed' | 'failed'; details?: string }>;
+  createdAt: string;
 };
 
 export type AiRun = {
@@ -86,6 +102,17 @@ export type StudioProjectResponse = {
     valid: boolean;
     projectIssues: ValidationIssue[];
     blueprintIssues: Array<ValidationIssue & { graphId?: string }>;
+    moduleIssues: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning'; line?: number; column?: number }>;
+  };
+  moduleSummary: {
+    schema: 'LillyModuleBundle/v1';
+    sourceHash: string;
+    loadOrder: string[];
+    modules: Array<{ id: string; name: string; version: string; sourcePath: string; capabilities: string[] }>;
+    systems: Array<{ moduleId: string; path: string; sourceHash: string }>;
+    mechanics: Array<{ id: string; moduleId: string; name: string; sourcePath: string; inputs: string[]; events: string[] }>;
+    prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string }>;
+    tests: Array<{ id: string; moduleId: string; name: string; sourcePath: string }>;
   };
   builds: StudioBuild[];
   aiRuns: AiRun[];
@@ -112,6 +139,32 @@ export type StudioConsoleItem = {
   level: 'info' | 'success' | 'warning' | 'error';
   message: string;
   timestamp: string;
+};
+
+export type ModuleCompileReport = {
+  schema: 'LillyModuleBundle/v1';
+  projectId: string;
+  projectRevision: number;
+  sourceHash: string;
+  valid: boolean;
+  loadOrder: string[];
+  modules: Array<{ id: string; name: string; version: string; sourcePath: string; capabilities: string[]; dependencies: string[] }>;
+  systems: Array<{ moduleId: string; path: string; sourceHash: string }>;
+  mechanics: Array<{ id: string; moduleId: string; name: string; sourcePath: string; inputs: string[]; events: string[] }>;
+  prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string; entityCount: number }>;
+  tests: Array<{ id: string; moduleId: string; name: string; sourcePath: string; assertionCount: number }>;
+  diagnostics: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning'; line?: number; column?: number }>;
+};
+
+export type MechanicTestRun = {
+  schema: 'LillyMechanicTestRun/v1';
+  projectId: string;
+  projectRevision: number;
+  sourceHash: string;
+  status: 'passed' | 'failed';
+  passed: number;
+  failed: number;
+  tests: Array<{ id: string; name: string; moduleId: string; status: 'passed' | 'failed'; assertions: Array<{ path: string; operator: string; value?: unknown; actual?: unknown; passed: boolean }>; error?: { code: string; message: string } }>;
 };
 
 export type TransformMode = 'translate' | 'rotate' | 'scale';
