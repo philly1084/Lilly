@@ -8,6 +8,7 @@ const { randomUUID } = require('crypto');
 
 const { config } = require('../config');
 const { postgres } = require('../postgres');
+const { SANDBOX_ROOT } = require('../sandbox-workspace-storage');
 const { parseLenientJson } = require('../utils/lenient-json');
 const { normalizeFrontendBundle } = require('../frontend-bundles');
 const {
@@ -114,7 +115,7 @@ async function pathExists(targetPath) {
 class GameStudioService {
   constructor(options = {}) {
     this.root = path.resolve(options.root || path.join(config.persistence.dataDir, 'game-studio'));
-    this.buildRoot = path.resolve(options.buildRoot || path.join(process.cwd(), 'output', 'sandboxes'));
+    this.buildRoot = path.resolve(options.buildRoot || SANDBOX_ROOT);
     this.postgres = options.postgres || postgres;
     this.complete = options.complete || null;
     this.managedAppService = options.managedAppService || null;

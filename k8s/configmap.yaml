@@ -147,6 +147,7 @@ data:
   KIMIBUILT_REMOTE_RUNNER_PREFERRED: "true"
   KIMIBUILT_DATA_DIR: "/home/kimibuilt/.kimibuilt"
   KIMIBUILT_STATE_DIR: "/home/kimibuilt/.kimibuilt"
+  KIMIBUILT_SANDBOX_WORKSPACE_DIR: "/home/kimibuilt/.kimibuilt/sandbox-workspaces"
   KUBERNETES_IN_CLUSTER_ENABLED: "true"
   GITEA_ENABLED: "false"
   GITLAB_ENABLED: "true"

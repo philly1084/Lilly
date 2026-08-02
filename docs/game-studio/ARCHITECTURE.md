@@ -20,11 +20,11 @@ The component registry starts with Transform, Camera, MeshRenderer, Light, Rigid
 
 ## Persistence
 
-Project source and immutable build files live below `${KIMIBUILT_DATA_DIR}/game-studio` on the existing persistent volume. PostgreSQL mirrors projects, revisions, builds, AI runs, and events when configured. The file-backed store remains a durable development fallback; production publishing requires PostgreSQL plus the managed-app/GitLab lane.
+Project source lives below `${KIMIBUILT_DATA_DIR}/game-studio`; immutable build and editor-preview workspaces live below `${KIMIBUILT_SANDBOX_WORKSPACE_DIR}` (default `${KIMIBUILT_DATA_DIR}/sandbox-workspaces`). Both paths use the existing persistent volume, so a saved build URL survives pod replacement. PostgreSQL mirrors projects, revisions, builds, AI runs, and events when configured. The file-backed store remains a durable development fallback; production publishing requires PostgreSQL plus the managed-app/GitLab lane.
 
 ## Isolation
 
-Draft builds run through the existing sandbox workspace route in nested iframes without `allow-same-origin`. Player scripts cannot access the Lilly DOM, cookies, credentials, filesystem, or unrestricted parent APIs. Static sandbox preview and sandbox-library reads allow the opaque `Origin: null`; all mutation and credential-bearing API routes continue to reject it.
+Draft builds run through one editor-owned iframe without `allow-same-origin`. The editor exchanges its authenticated session for a signed workspace path, then loads the player directly so module assets and the bounded save bridge work from the opaque origin without exposing cookies or headers. Player scripts cannot access the Lilly DOM, cookies, credentials, filesystem, or unrestricted parent APIs. Static sandbox preview and sandbox-library reads allow the opaque `Origin: null`; all mutation and credential-bearing API routes continue to reject it.
 
 Private player save/load uses the bounded `LillyPlayerStorage/v1` message contract. The parent accepts only the open project ID and a maximum 64 KiB JSON state. Published players use their own origin storage directly.
 

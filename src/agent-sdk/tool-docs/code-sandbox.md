@@ -14,7 +14,7 @@ Use when:
 
 Notes:
 - `mode: "execute"` is operationally heavier than analysis-only tools and requires Docker.
-- `mode: "project"` writes files under `output/sandboxes`, returns authenticated workspace preview URLs, and packages them as a frontend bundle artifact when persistence is available.
+- `mode: "project"` writes files below `${KIMIBUILT_SANDBOX_WORKSPACE_DIR}` (default `${KIMIBUILT_DATA_DIR}/sandbox-workspaces`), returns authenticated workspace preview URLs, and packages them as a frontend bundle artifact when persistence is available. Production must mount this path on durable storage so preview URLs survive pod replacement.
 - Execution languages include JavaScript, Python, Java, Bash, Ruby, Go, and Rust. `dependencies` are installed before execution for JavaScript with npm and Python with pip; set `network: true` when packages must be downloaded.
 - Java execution expects a `public class Main` entry point because sandbox code is saved as `Main.java`.
 - Previewable site, app, and game projects should use `mode: "project"` with `language: "html"`, `"vite"`, `"react"`, or `"tailwind"`. Use `"vite"` for multi-file apps, browser games, simulations, and any request that expects a Vite-style preview/handoff.

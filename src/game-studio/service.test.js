@@ -281,6 +281,29 @@ describe('GameStudioService', () => {
     const threeCoreStat = await fs.stat(path.join(service.buildRoot, build.workspaceId, 'vendor', 'three.core.js'));
     expect(threeCoreStat.size).toBeGreaterThan(1000000);
     await expect(fs.writeFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'overwrite', { flag: 'wx' })).rejects.toMatchObject({ code: 'EEXIST' });
+
+    const restartedService = new GameStudioService({
+      root: service.root,
+      buildRoot: service.buildRoot,
+      postgres: { enabled: false },
+    });
+    await restartedService.initialize();
+    const restored = await restartedService.getBuild(build.id, 'phil');
+    expect(restored.build).toMatchObject({
+      id: build.id,
+      projectRevision: uploaded.project.revision,
+      workspaceId: build.workspaceId,
+      status: 'success',
+    });
+    const restoredManifest = JSON.parse(await fs.readFile(
+      path.join(restartedService.buildRoot, restored.build.workspaceId, 'build-manifest.json'),
+      'utf8',
+    ));
+    expect(restoredManifest).toMatchObject({
+      schema: 'LillyPlayerBundle/v2',
+      projectId: created.project.id,
+      revision: uploaded.project.revision,
+    });
   });
 
   test('publishes immutable player files under the managed-app public root', async () => {
