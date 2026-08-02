@@ -418,15 +418,18 @@ function roomKind(index: number, roomCount: number): LillyGeneratedRoom['kind'] 
 
 function buildRoomPath(recipe: LillyLevelRecipe, random: () => number) {
   const cells = [{ x: 0, z: 0 }];
+  const parentIndexes: number[] = [];
   const occupied = new Set(['0:0']);
   while (cells.length < recipe.layout.roomCount) {
     const candidateBases = [cells[cells.length - 1], ...shuffled(cells.slice(0, -1), random)];
     let chosen: { x: number; z: number } | null = null;
+    let parentIndex = -1;
     for (const base of candidateBases) {
       for (const direction of shuffled(DIRECTIONS, random)) {
         const candidate = { x: base.x + direction.x, z: base.z + direction.z };
         if (!occupied.has(`${candidate.x}:${candidate.z}`)) {
           chosen = candidate;
+          parentIndex = cells.indexOf(base);
           break;
         }
       }
@@ -434,9 +437,10 @@ function buildRoomPath(recipe: LillyLevelRecipe, random: () => number) {
     }
     if (!chosen) throw new Error('Level generator could not extend the room path');
     cells.push(chosen);
+    parentIndexes.push(parentIndex);
     occupied.add(`${chosen.x}:${chosen.z}`);
   }
-  return cells;
+  return { cells, parentIndexes };
 }
 
 function wallSegments(roomSize: number, pathWidth: number, hasDoor: boolean) {
@@ -482,7 +486,7 @@ export function generateLevel(recipeInput: LillyLevelRecipe, options: { parentId
   const random = createRandom(`${recipe.id}:${recipe.seed}`);
   const palette = THEME_PALETTES[recipe.theme];
   const parentId = options.parentId === undefined ? 'world' : options.parentId;
-  const cells = buildRoomPath(recipe, random);
+  const { cells, parentIndexes } = buildRoomPath(recipe, random);
   const prefix = `level-${recipe.id}`;
   const generationTag = generatedTag(recipe.id);
   const rooms: LillyGeneratedRoom[] = cells.map((cell, index) => ({
@@ -493,7 +497,7 @@ export function generateLevel(recipeInput: LillyLevelRecipe, options: { parentId
   }));
   const connections: LillyGeneratedConnection[] = rooms.slice(1).map((room, index) => ({
     id: `${prefix}-path-${index + 1}`,
-    fromRoomId: rooms[index].id,
+    fromRoomId: rooms[parentIndexes[index]].id,
     toRoomId: room.id,
   }));
   const roomById = new Map(rooms.map((room) => [room.id, room]));
@@ -713,9 +717,11 @@ export function validateGeneratedLevel(design: LillyGeneratedLevel, recipe?: Lil
   if (recipe && design?.sceneId !== recipe.sceneId) error('GENERATED_LEVEL_SCENE_MISMATCH', 'Generated level targets a different scene', 'sceneId');
   const rooms = Array.isArray(design?.rooms) ? design.rooms : [];
   const roomIds = new Set<string>();
+  const roomById = new Map<string, LillyGeneratedRoom>();
   rooms.forEach((room, index) => {
     if (!room?.id || roomIds.has(room.id)) error('DUPLICATE_GENERATED_ROOM', `Generated room id ${room?.id || '(missing)'} is not unique`, `rooms[${index}].id`);
     roomIds.add(room?.id);
+    roomById.set(room?.id, room);
   });
   if (rooms.length < 3) error('GENERATED_LEVEL_TOO_SMALL', 'Generated level requires at least three rooms', 'rooms');
   if (!roomIds.has(design?.spawn?.roomId)) error('GENERATED_LEVEL_SPAWN_MISSING', 'Spawn room does not exist', 'spawn.roomId');
@@ -726,6 +732,11 @@ export function validateGeneratedLevel(design: LillyGeneratedLevel, recipe?: Lil
     if (!roomIds.has(connection.fromRoomId) || !roomIds.has(connection.toRoomId)) {
       error('GENERATED_LEVEL_CONNECTION_MISSING_ROOM', 'Generated path references a missing room', `connections[${index}]`);
       return;
+    }
+    const from = roomById.get(connection.fromRoomId)!;
+    const to = roomById.get(connection.toRoomId)!;
+    if (Math.abs(from.grid.x - to.grid.x) + Math.abs(from.grid.z - to.grid.z) !== 1) {
+      error('GENERATED_LEVEL_CONNECTION_NOT_ADJACENT', 'Generated path must connect adjacent rooms', `connections[${index}]`);
     }
     adjacency.get(connection.fromRoomId)!.add(connection.toRoomId);
     adjacency.get(connection.toRoomId)!.add(connection.fromRoomId);

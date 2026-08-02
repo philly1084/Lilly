@@ -95,6 +95,31 @@ describe('Lilly engine core contracts', () => {
     expect(first.design.connections).toHaveLength(first.design.rooms.length - 1);
   });
 
+  test('connects a branched room to the actual adjacent parent when the latest room is trapped', () => {
+    const recipe = createLevelRecipeFromPrompt({
+      projectId: 'branched-path',
+      sceneId: 'arena',
+      prompt: 'A sprawling level with sixteen rooms',
+      seed: '110',
+    });
+    recipe.layout.roomCount = 16;
+    const generated = generateLevel(recipe, { parentId: 'world' });
+    const rooms = new Map(generated.design.rooms.map((room) => [room.id, room]));
+
+    for (const connection of generated.design.connections) {
+      const from = rooms.get(connection.fromRoomId);
+      const to = rooms.get(connection.toRoomId);
+      expect(Math.abs(from.grid.x - to.grid.x) + Math.abs(from.grid.z - to.grid.z)).toBe(1);
+    }
+    expect(validateGeneratedLevel(generated.design, recipe)).toEqual([]);
+
+    const disconnected = JSON.parse(JSON.stringify(generated.design));
+    disconnected.connections[10].fromRoomId = disconnected.rooms[10].id;
+    expect(validateGeneratedLevel(disconnected, recipe)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'GENERATED_LEVEL_CONNECTION_NOT_ADJACENT' }),
+    ]));
+  });
+
   test('level generation is one undoable command and restores the previous world', () => {
     const project = createArenaProject({ id: 'level-undo', seed: 'first-seed' });
     const previousChecksum = project.generatedLevels[0].checksum;
