@@ -48,6 +48,7 @@ type StudioState = {
   initialize(): Promise<void>;
   createProject(name: string, prompt?: string, template?: 'blank' | 'expedition'): Promise<void>;
   importProject(file: File): Promise<void>;
+  uploadAsset(file: File): Promise<void>;
   openProject(id: string): Promise<void>;
   selectEntity(id: string | null): void;
   setSelectedGraph(id: string | null): void;
@@ -74,7 +75,7 @@ type StudioState = {
   deleteSourceFile(path: string): Promise<boolean>;
   compileModules(): Promise<void>;
   runMechanicTests(): Promise<void>;
-  instantiatePrefab(path: string, instanceId: string): Promise<void>;
+  instantiatePrefab(path: string, instanceId: string, variant?: string): Promise<void>;
   runPlaytest(): Promise<void>;
   build(): Promise<void>;
   publish(build: StudioBuild): Promise<void>;
@@ -88,6 +89,19 @@ function consoleItem(level: StudioConsoleItem['level'], message: string): Studio
 
 function selectedSceneId(current: StudioProjectResponse | null) {
   return current?.project.entryScene || '';
+}
+
+function assetMimeType(file: File) {
+  if (file.type) return file.type;
+  if (/\.glb$/i.test(file.name)) return 'model/gltf-binary';
+  if (/\.gltf$/i.test(file.name)) return 'model/gltf+json';
+  if (/\.png$/i.test(file.name)) return 'image/png';
+  if (/\.jpe?g$/i.test(file.name)) return 'image/jpeg';
+  if (/\.webp$/i.test(file.name)) return 'image/webp';
+  if (/\.mp3$/i.test(file.name)) return 'audio/mpeg';
+  if (/\.ogg$/i.test(file.name)) return 'audio/ogg';
+  if (/\.wav$/i.test(file.name)) return 'audio/wav';
+  return 'application/octet-stream';
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -167,6 +181,31 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       get().log('success', project ? 'Imported LillyProject/v1 as a new revision history' : 'Archived compatible web game source; manual component mapping is required');
     } catch (error) {
       set({ status: 'error', error: error instanceof Error ? error.message : 'Game import failed' });
+    }
+  },
+
+  async uploadAsset(file) {
+    const current = get().current;
+    if (!current) return;
+    if (file.size <= 0 || file.size > 8 * 1024 * 1024) {
+      get().log('error', 'Assets must be between 1 byte and 8 MB');
+      return;
+    }
+    set({ saveStatus: 'saving' });
+    try {
+      const result = await studioApi.uploadAsset(current.project.id, {
+        file,
+        filename: file.name,
+        name: file.name.replace(/\.[^.]+$/, ''),
+        mimeType: assetMimeType(file),
+        metadata: { upAxis: 'Y', unitsPerMeter: 1 },
+      });
+      const refreshed = await studioApi.getProject(current.project.id);
+      set({ current: refreshed, saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle' });
+      get().log('success', `Imported ${result.asset.name} into the immutable asset library at r${refreshed.project.revision}`);
+    } catch (error) {
+      set({ saveStatus: 'error' });
+      get().log('error', error instanceof Error ? error.message : 'Asset upload failed');
     }
   },
 
@@ -362,13 +401,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       get().log('error', error instanceof Error ? error.message : 'Mechanic tests failed');
     }
   },
-  async instantiatePrefab(path, instanceId) {
+  async instantiatePrefab(path, instanceId, variant = '') {
     const current = get().current;
     if (!current) return;
     try {
-      const result = await studioApi.instantiatePrefab(current.project.id, current.project.revision, { sceneId: current.project.entryScene, path, instanceId, parentId: 'world' });
+      const result = await studioApi.instantiatePrefab(current.project.id, current.project.revision, { sceneId: current.project.entryScene, path, instanceId, parentId: 'world', ...(variant ? { config: { variant } } : {}) });
       set({ current: result, saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle' });
-      get().log('success', `Instantiated ${path} as ${instanceId}`);
+      get().log('success', `Instantiated ${path}${variant ? ` variant ${variant}` : ''} as ${instanceId}`);
     } catch (error) { get().log('error', error instanceof Error ? error.message : 'Prefab instantiation failed'); }
   },
 

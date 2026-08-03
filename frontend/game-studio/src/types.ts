@@ -10,8 +10,13 @@ import type {
   LillyGeneratedLevel,
   LillyLevelRecipe,
   LillyProject,
+  LillyProjectAsset,
   LillyScene,
   LillySourceFile,
+  LillyAnimationControllerDefinition,
+  LillyAssetMetadataDefinition,
+  LillyMaterialDefinition,
+  LillyTerrainDefinition,
   ValidationIssue,
   Vec3,
 } from '../../../packages/lilly-engine/core/src';
@@ -28,8 +33,13 @@ export type {
   LillyGeneratedLevel,
   LillyLevelRecipe,
   LillyProject,
+  LillyProjectAsset,
   LillyScene,
   LillySourceFile,
+  LillyAnimationControllerDefinition,
+  LillyAssetMetadataDefinition,
+  LillyMaterialDefinition,
+  LillyTerrainDefinition,
   ValidationIssue,
   Vec3,
 };
@@ -103,6 +113,7 @@ export type StudioProjectResponse = {
     projectIssues: ValidationIssue[];
     blueprintIssues: Array<ValidationIssue & { graphId?: string }>;
     moduleIssues: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning'; line?: number; column?: number }>;
+    worldIssues: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning' }>;
   };
   moduleSummary: {
     schema: 'LillyModuleBundle/v1';
@@ -111,8 +122,12 @@ export type StudioProjectResponse = {
     modules: Array<{ id: string; name: string; version: string; sourcePath: string; capabilities: string[] }>;
     systems: Array<{ moduleId: string; path: string; sourceHash: string }>;
     mechanics: Array<{ id: string; moduleId: string; name: string; sourcePath: string; inputs: string[]; events: string[] }>;
-    prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string }>;
+    prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string; variants: Array<{ id: string; name: string }> }>;
     tests: Array<{ id: string; moduleId: string; name: string; sourcePath: string }>;
+    materials: Array<LillyMaterialDefinition & { sourcePath: string }>;
+    assets: Array<LillyAssetMetadataDefinition & { sourcePath: string }>;
+    animations: Array<LillyAnimationControllerDefinition & { sourcePath: string }>;
+    terrains: Array<LillyTerrainDefinition & { sourcePath: string }>;
   };
   builds: StudioBuild[];
   aiRuns: AiRun[];
@@ -151,8 +166,13 @@ export type ModuleCompileReport = {
   modules: Array<{ id: string; name: string; version: string; sourcePath: string; capabilities: string[]; dependencies: string[] }>;
   systems: Array<{ moduleId: string; path: string; sourceHash: string }>;
   mechanics: Array<{ id: string; moduleId: string; name: string; sourcePath: string; inputs: string[]; events: string[] }>;
-  prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string; entityCount: number }>;
+  prefabs: Array<{ id: string; moduleId: string; name: string; sourcePath: string; entityCount: number; variants: Array<{ id: string; name: string }> }>;
   tests: Array<{ id: string; moduleId: string; name: string; sourcePath: string; assertionCount: number }>;
+  materials: Array<LillyMaterialDefinition & { sourcePath: string }>;
+  assets: Array<LillyAssetMetadataDefinition & { sourcePath: string }>;
+  animations: Array<LillyAnimationControllerDefinition & { sourcePath: string }>;
+  terrains: Array<LillyTerrainDefinition & { sourcePath: string }>;
+  worldIssues: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning' }>;
   diagnostics: Array<{ code: string; message: string; path: string; severity: 'error' | 'warning'; line?: number; column?: number }>;
 };
 

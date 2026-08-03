@@ -1,17 +1,29 @@
 import ts from 'typescript';
 
 import {
+  ANIMATION_CONTROLLER_SCHEMA,
+  ASSET_METADATA_SCHEMA,
   GAME_MODULE_SCHEMA,
+  MATERIAL_SCHEMA,
   MECHANIC_SCHEMA,
   MECHANIC_TEST_SCHEMA,
   PREFAB_SCHEMA,
   SOURCE_FILE_SCHEMA,
+  TERRAIN_SCHEMA,
   detectSourceFileKind,
   normalizeSourceFile,
   normalizeSourcePath,
+  validateAnimationControllerDefinition,
+  validateAssetMetadataDefinition,
+  validateMaterialDefinition,
   validatePrefabDefinition,
+  validateTerrainDefinition,
+  type LillyAnimationControllerDefinition,
+  type LillyAssetMetadataDefinition,
+  type LillyMaterialDefinition,
   type LillyPrefabDefinition,
   type LillySourceFile,
+  type LillyTerrainDefinition,
 } from '../../core/src';
 
 export const MODULE_BUNDLE_SCHEMA = 'LillyModuleBundle/v1' as const;
@@ -67,6 +79,10 @@ export interface LillyGameModuleManifest {
   mechanics: string[];
   prefabs: string[];
   tests: string[];
+  materials?: string[];
+  assets?: string[];
+  animations?: string[];
+  terrains?: string[];
 }
 
 export interface LillyMechanicDefinition {
@@ -126,6 +142,10 @@ export interface CompiledModule extends LillyGameModuleManifest {
   mechanics: string[];
   prefabs: string[];
   tests: string[];
+  materials: string[];
+  assets: string[];
+  animations: string[];
+  terrains: string[];
 }
 
 export interface LillyModuleBundle {
@@ -137,6 +157,10 @@ export interface LillyModuleBundle {
   mechanics: Array<LillyMechanicDefinition & { sourcePath: string }>;
   prefabs: Array<LillyPrefabDefinition & { sourcePath: string }>;
   tests: Array<LillyMechanicTestDefinition & { sourcePath: string }>;
+  materials: Array<LillyMaterialDefinition & { sourcePath: string }>;
+  assets: Array<LillyAssetMetadataDefinition & { sourcePath: string }>;
+  animations: Array<LillyAnimationControllerDefinition & { sourcePath: string }>;
+  terrains: Array<LillyTerrainDefinition & { sourcePath: string }>;
   diagnostics: ModuleDiagnostic[];
 }
 
@@ -365,6 +389,9 @@ function validateManifest(value: LillyGameModuleManifest, path: string, diagnost
   for (const key of ['dependencies', 'capabilities', 'systems', 'mechanics', 'prefabs', 'tests'] as const) {
     if (!Array.isArray(value[key])) diagnostics.push(diagnostic('INVALID_MODULE_FIELD', `${key} must be an array`, path));
   }
+  for (const key of ['materials', 'assets', 'animations', 'terrains'] as const) {
+    if (value[key] !== undefined && !Array.isArray(value[key])) diagnostics.push(diagnostic('INVALID_MODULE_FIELD', `${key} must be an array when provided`, path));
+  }
   for (const capability of Array.isArray(value.capabilities) ? value.capabilities : []) {
     if (!SCRIPT_CAPABILITIES.includes(capability)) diagnostics.push(diagnostic('UNKNOWN_CAPABILITY', `Unknown capability ${capability}`, path));
   }
@@ -387,6 +414,26 @@ function validatePrefab(value: LillyPrefabDefinition, path: string, diagnostics:
   if (!IDENTIFIER_PATTERN.test(String(value.moduleId || ''))) diagnostics.push(diagnostic('PREFAB_MODULE_REQUIRED', 'Prefab moduleId is invalid', path));
   if (!String(value.name || '').trim()) diagnostics.push(diagnostic('PREFAB_NAME_REQUIRED', 'Prefab name is required', path));
   validatePrefabDefinition(value).forEach((issue) => diagnostics.push(diagnostic(issue.code, issue.message, `${path}:${issue.path}`, issue.severity)));
+}
+
+function appendResourceIssues(issues: ReturnType<typeof validateMaterialDefinition>, path: string, diagnostics: ModuleDiagnostic[]) {
+  issues.forEach((issue) => diagnostics.push(diagnostic(issue.code, issue.message, `${path}:${issue.path}`, issue.severity)));
+}
+
+function validateMaterial(value: LillyMaterialDefinition, path: string, diagnostics: ModuleDiagnostic[]) {
+  appendResourceIssues(validateMaterialDefinition(value), path, diagnostics);
+}
+
+function validateAssetMetadata(value: LillyAssetMetadataDefinition, path: string, diagnostics: ModuleDiagnostic[]) {
+  appendResourceIssues(validateAssetMetadataDefinition(value), path, diagnostics);
+}
+
+function validateAnimation(value: LillyAnimationControllerDefinition, path: string, diagnostics: ModuleDiagnostic[]) {
+  appendResourceIssues(validateAnimationControllerDefinition(value), path, diagnostics);
+}
+
+function validateTerrain(value: LillyTerrainDefinition, path: string, diagnostics: ModuleDiagnostic[]) {
+  appendResourceIssues(validateTerrainDefinition(value), path, diagnostics);
 }
 
 function validateTest(value: LillyMechanicTestDefinition, path: string, diagnostics: ModuleDiagnostic[]) {
@@ -463,6 +510,10 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
       mechanics: resolveAll(manifest.mechanics),
       prefabs: resolveAll(manifest.prefabs),
       tests: resolveAll(manifest.tests),
+      materials: resolveAll(manifest.materials),
+      assets: resolveAll(manifest.assets),
+      animations: resolveAll(manifest.animations),
+      terrains: resolveAll(manifest.terrains),
       sourcePath,
     };
   });
@@ -471,7 +522,20 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
   const mechanics: Array<LillyMechanicDefinition & { sourcePath: string }> = [];
   const prefabs: Array<LillyPrefabDefinition & { sourcePath: string }> = [];
   const tests: Array<LillyMechanicTestDefinition & { sourcePath: string }> = [];
-  const referenced = new Set<string>(modules.flatMap((module) => [...module.systems, ...module.mechanics, ...module.prefabs, ...module.tests]));
+  const materials: Array<LillyMaterialDefinition & { sourcePath: string }> = [];
+  const assets: Array<LillyAssetMetadataDefinition & { sourcePath: string }> = [];
+  const animations: Array<LillyAnimationControllerDefinition & { sourcePath: string }> = [];
+  const terrains: Array<LillyTerrainDefinition & { sourcePath: string }> = [];
+  const referenced = new Set<string>(modules.flatMap((module) => [
+    ...module.systems,
+    ...module.mechanics,
+    ...module.prefabs,
+    ...module.tests,
+    ...module.materials,
+    ...module.assets,
+    ...module.animations,
+    ...module.terrains,
+  ]));
 
   for (const module of modules) {
     for (const [field, paths, expectedKind] of [
@@ -479,6 +543,10 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
       ['mechanics', module.mechanics, 'mechanic'],
       ['prefabs', module.prefabs, 'prefab'],
       ['tests', module.tests, 'test'],
+      ['materials', module.materials, 'material'],
+      ['assets', module.assets, 'asset-metadata'],
+      ['animations', module.animations, 'animation-controller'],
+      ['terrains', module.terrains, 'terrain'],
     ] as const) {
       for (const filePath of paths) {
         const file = files.get(filePath);
@@ -522,10 +590,68 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
       if (value.moduleId !== module.id) diagnostics.push(diagnostic('TEST_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
       tests.push({ ...value, sourcePath: file.path });
     }
+    for (const filePath of module.materials) {
+      const file = files.get(filePath);
+      if (!file || file.kind !== 'material') continue;
+      const value = parseJson<LillyMaterialDefinition>(file, MATERIAL_SCHEMA, diagnostics);
+      if (!value) continue;
+      validateMaterial(value, file.path, diagnostics);
+      if (value.moduleId !== module.id) diagnostics.push(diagnostic('MATERIAL_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
+      materials.push({ ...value, sourcePath: file.path });
+    }
+    for (const filePath of module.assets) {
+      const file = files.get(filePath);
+      if (!file || file.kind !== 'asset-metadata') continue;
+      const value = parseJson<LillyAssetMetadataDefinition>(file, ASSET_METADATA_SCHEMA, diagnostics);
+      if (!value) continue;
+      validateAssetMetadata(value, file.path, diagnostics);
+      if (value.moduleId !== module.id) diagnostics.push(diagnostic('ASSET_METADATA_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
+      assets.push({ ...value, sourcePath: file.path });
+    }
+    for (const filePath of module.animations) {
+      const file = files.get(filePath);
+      if (!file || file.kind !== 'animation-controller') continue;
+      const value = parseJson<LillyAnimationControllerDefinition>(file, ANIMATION_CONTROLLER_SCHEMA, diagnostics);
+      if (!value) continue;
+      validateAnimation(value, file.path, diagnostics);
+      if (value.moduleId !== module.id) diagnostics.push(diagnostic('ANIMATION_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
+      animations.push({ ...value, sourcePath: file.path });
+    }
+    for (const filePath of module.terrains) {
+      const file = files.get(filePath);
+      if (!file || file.kind !== 'terrain') continue;
+      const value = parseJson<LillyTerrainDefinition>(file, TERRAIN_SCHEMA, diagnostics);
+      if (!value) continue;
+      validateTerrain(value, file.path, diagnostics);
+      if (value.moduleId !== module.id) diagnostics.push(diagnostic('TERRAIN_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
+      terrains.push({ ...value, sourcePath: file.path });
+    }
   }
   for (const file of normalizedFiles) {
-    if (['system', 'mechanic', 'prefab', 'test'].includes(file.kind) && !referenced.has(file.path)) diagnostics.push(diagnostic('ORPHAN_SOURCE_FILE', `${file.path} is not exported by a module manifest`, file.path, 'warning'));
+    if (['system', 'mechanic', 'prefab', 'test', 'material', 'asset-metadata', 'animation-controller', 'terrain'].includes(file.kind) && !referenced.has(file.path)) diagnostics.push(diagnostic('ORPHAN_SOURCE_FILE', `${file.path} is not exported by a module manifest`, file.path, 'warning'));
   }
+  const ensureUniqueResources = <T extends { id: string; sourcePath: string }>(kind: string, values: T[]) => {
+    const seen = new Set<string>();
+    values.forEach((value) => {
+      if (seen.has(value.id)) diagnostics.push(diagnostic(`DUPLICATE_${kind}_ID`, `Duplicate ${kind.toLowerCase()} id ${value.id}`, value.sourcePath));
+      seen.add(value.id);
+    });
+  };
+  ensureUniqueResources('MATERIAL', materials);
+  ensureUniqueResources('ASSET_METADATA', assets);
+  ensureUniqueResources('ANIMATION_CONTROLLER', animations);
+  ensureUniqueResources('TERRAIN', terrains);
+  const materialIds = new Set(materials.map((value) => value.id));
+  const animationIds = new Set(animations.map((value) => value.id));
+  const terrainIds = new Set(terrains.map((value) => value.id));
+  terrains.forEach((terrain) => {
+    if (terrain.materialId && !materialIds.has(terrain.materialId)) diagnostics.push(diagnostic('TERRAIN_MATERIAL_MISSING', `Terrain ${terrain.id} references missing material ${terrain.materialId}`, terrain.sourcePath));
+  });
+  prefabs.forEach((prefab) => prefab.entities.forEach((entity) => entity.components.forEach((entry) => {
+    if (entry.type === 'MeshRenderer' && entry.data.materialId && !materialIds.has(String(entry.data.materialId))) diagnostics.push(diagnostic('PREFAB_MATERIAL_MISSING', `Prefab ${prefab.id} references missing material ${entry.data.materialId}`, prefab.sourcePath));
+    if (entry.type === 'Animator' && entry.data.controllerId && !animationIds.has(String(entry.data.controllerId))) diagnostics.push(diagnostic('PREFAB_ANIMATION_MISSING', `Prefab ${prefab.id} references missing animation controller ${entry.data.controllerId}`, prefab.sourcePath));
+    if (entry.type === 'Terrain' && entry.data.terrainId && !terrainIds.has(String(entry.data.terrainId))) diagnostics.push(diagnostic('PREFAB_TERRAIN_MISSING', `Prefab ${prefab.id} references missing terrain ${entry.data.terrainId}`, prefab.sourcePath));
+  })));
   const loadIndex = new Map(loadOrder.map((moduleId, index) => [moduleId, index]));
   const byModuleOrder = <T extends { moduleId: string; sourcePath?: string; path?: string }>(left: T, right: T) => (
     (loadIndex.get(left.moduleId) ?? Number.MAX_SAFE_INTEGER) - (loadIndex.get(right.moduleId) ?? Number.MAX_SAFE_INTEGER)
@@ -536,8 +662,12 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
   mechanics.sort(byModuleOrder);
   prefabs.sort(byModuleOrder);
   tests.sort(byModuleOrder);
+  materials.sort(byModuleOrder);
+  assets.sort(byModuleOrder);
+  animations.sort(byModuleOrder);
+  terrains.sort(byModuleOrder);
   const sourceHash = stableHash(normalizedFiles.map((file) => `${file.path}\0${file.content}`).sort().join('\0'));
-  return { schema: MODULE_BUNDLE_SCHEMA, sourceHash, loadOrder, modules, systems, mechanics, prefabs, tests, diagnostics };
+  return { schema: MODULE_BUNDLE_SCHEMA, sourceHash, loadOrder, modules, systems, mechanics, prefabs, tests, materials, assets, animations, terrains, diagnostics };
 }
 
 export function assertModuleBundleValid(bundle: LillyModuleBundle): LillyModuleBundle {

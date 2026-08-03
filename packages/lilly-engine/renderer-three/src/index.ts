@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import type { LillyComponent, LillyEntity, LillyProject, LillyScene, Vec3 } from '../../core/src';
+import type { LillyAnimationControllerDefinition, LillyAssetMetadataDefinition, LillyComponent, LillyEntity, LillyMaterialDefinition, LillyProject, LillyScene, LillyTerrainDefinition, Vec3 } from '../../core/src';
 
 type MeshData = {
   geometry?: string;
   assetId?: string;
+  materialId?: string;
   material?: { color?: string; roughness?: number; metalness?: number; emissive?: string; emissiveIntensity?: number };
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -52,6 +53,11 @@ export class ThreeSceneAdapter {
   private activeScene: LillyScene | null = null;
   private assetResolver: (assetId: string) => string | null = () => null;
   private gltfLoader = new GLTFLoader();
+  private materials = new Map<string, LillyMaterialDefinition>();
+  private assetMetadata = new Map<string, LillyAssetMetadataDefinition>();
+  private animations = new Map<string, LillyAnimationControllerDefinition>();
+  private terrains = new Map<string, LillyTerrainDefinition>();
+  private mixers: THREE.AnimationMixer[] = [];
 
   constructor() {
     this.root.name = 'LillySceneRoot';
@@ -63,6 +69,7 @@ export class ThreeSceneAdapter {
   async load(project: LillyProject, sceneId = project.entryScene) {
     this.clear();
     this.project = project;
+    this.readWorldResources(project);
     this.activeScene = project.scenes.find((scene) => scene.id === sceneId) || null;
     if (!this.activeScene) throw new Error(`Scene ${sceneId} was not found`);
     this.scene.background = new THREE.Color(this.activeScene.environment.background || '#0b1118');
@@ -91,10 +98,12 @@ export class ThreeSceneAdapter {
 
   private async createObject(entity: LillyEntity): Promise<THREE.Object3D> {
     const meshComponent = component(entity, 'MeshRenderer');
+    const terrainComponent = component(entity, 'Terrain');
     const lightComponent = component(entity, 'Light');
     const cameraComponent = component(entity, 'Camera');
     let object: THREE.Object3D = new THREE.Group();
-    if (meshComponent) object = await this.createMesh(meshComponent.data as MeshData);
+    if (terrainComponent) object = this.createTerrain(terrainComponent.data);
+    else if (meshComponent) object = await this.createMesh(meshComponent.data as MeshData, entity);
     else if (lightComponent) object = this.createLight(lightComponent.data);
     else if (cameraComponent) object = this.createCamera(cameraComponent.data);
     this.applyTransform(object, component(entity, 'Transform')?.data || {});
@@ -102,7 +111,60 @@ export class ThreeSceneAdapter {
     return object;
   }
 
-  private async createMesh(data: MeshData) {
+  private readWorldResources(project: LillyProject) {
+    this.materials.clear();
+    this.assetMetadata.clear();
+    this.animations.clear();
+    this.terrains.clear();
+    for (const file of project.files || []) {
+      if (!file.enabled || !['material', 'asset-metadata', 'animation-controller', 'terrain'].includes(file.kind)) continue;
+      try {
+        const value = JSON.parse(file.content);
+        if (file.kind === 'material') this.materials.set(value.id, value);
+        else if (file.kind === 'asset-metadata') this.assetMetadata.set(value.assetId, value);
+        else if (file.kind === 'animation-controller') this.animations.set(value.id, value);
+        else if (file.kind === 'terrain') this.terrains.set(value.id, value);
+      } catch (_error) {
+        // Source diagnostics own malformed authoring files; the renderer remains recoverable.
+      }
+    }
+  }
+
+  private createMaterial(data: MeshData = {}) {
+    const authored = this.materials.get(String(data.materialId || '')) || {} as LillyMaterialDefinition;
+    const inline = data.material || {};
+    const values = { ...authored, ...inline };
+    const common = {
+      color: values.color || '#8ea7c4',
+      transparent: values.transparent === true || Number(values.opacity ?? 1) < 1,
+      opacity: Number(values.opacity ?? 1),
+      side: values.doubleSided === true ? THREE.DoubleSide : THREE.FrontSide,
+      flatShading: values.flatShading === true,
+      wireframe: values.wireframe === true,
+    };
+    if (values.shading === 'unlit') return new THREE.MeshBasicMaterial(common);
+    const lit = { ...common, emissive: values.emissive || '#000000', emissiveIntensity: Number(values.emissiveIntensity ?? 0) };
+    if (values.shading === 'toon') return new THREE.MeshToonMaterial(lit);
+    if (values.shading === 'physical') return new THREE.MeshPhysicalMaterial({ ...lit, roughness: Number(values.roughness ?? 0.65), metalness: Number(values.metalness ?? 0.05), clearcoat: Number(values.clearcoat ?? 0), clearcoatRoughness: Number(values.clearcoatRoughness ?? 0) });
+    return new THREE.MeshStandardMaterial({ ...lit, roughness: Number(values.roughness ?? 0.65), metalness: Number(values.metalness ?? 0.05) });
+  }
+
+  private createTerrain(data: Record<string, unknown>) {
+    const definition = this.terrains.get(String(data.terrainId || ''));
+    if (!definition) return new THREE.Group();
+    const geometry = new THREE.PlaneGeometry(definition.size.x, definition.size.y, definition.resolution - 1, definition.resolution - 1);
+    geometry.rotateX(-Math.PI / 2);
+    const positions = geometry.attributes.position;
+    for (let index = 0; index < positions.count; index += 1) positions.setY(index, Number(definition.heights[index] || 0) * definition.heightScale);
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, this.createMaterial({ materialId: definition.materialId }));
+    mesh.castShadow = data.castShadow === true;
+    mesh.receiveShadow = data.receiveShadow !== false;
+    return mesh;
+  }
+
+  private async createMesh(data: MeshData, entity: LillyEntity) {
     if (data.assetId) {
       const uri = this.assetResolver(data.assetId);
       if (uri) {
@@ -111,20 +173,30 @@ export class ThreeSceneAdapter {
           if (child instanceof THREE.Mesh) {
             child.castShadow = data.castShadow !== false;
             child.receiveShadow = data.receiveShadow !== false;
+            if (data.materialId) child.material = this.createMaterial(data);
           }
         });
+        const metadata = this.assetMetadata.get(data.assetId);
+        const scale = toVector3(metadata?.scale, { x: 1, y: 1, z: 1 });
+        const pivot = toVector3(metadata?.pivot, { x: 0, y: 0, z: 0 });
+        gltf.scene.scale.set(scale.x, scale.y, scale.z);
+        gltf.scene.position.set(-pivot.x, -pivot.y, -pivot.z);
+        const animator = component(entity, 'Animator');
+        const controller = this.animations.get(String(animator?.data.controllerId || ''));
+        const state = controller?.states.find((entry) => entry.id === String(animator?.data.state || controller.defaultState));
+        const clipName = String(animator?.data.clip || state?.clip || '');
+        const clip = gltf.animations.find((entry) => entry.name === clipName) || gltf.animations[0];
+        if (animator?.data.autoplay !== false && clip) {
+          const mixer = new THREE.AnimationMixer(gltf.scene);
+          const action = mixer.clipAction(clip);
+          action.timeScale = Number(animator?.data.speed ?? state?.speed ?? 1);
+          action.setLoop(state?.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity).play();
+          this.mixers.push(mixer);
+        }
         return gltf.scene;
       }
     }
-    const materialData = data.material || {};
-    const material = new THREE.MeshStandardMaterial({
-      color: materialData.color || '#8ea7c4',
-      roughness: Number(materialData.roughness ?? 0.65),
-      metalness: Number(materialData.metalness ?? 0.05),
-      emissive: materialData.emissive || '#000000',
-      emissiveIntensity: Number(materialData.emissiveIntensity ?? 0),
-    });
-    const mesh = new THREE.Mesh(createGeometry(data.geometry), material);
+    const mesh = new THREE.Mesh(createGeometry(data.geometry), this.createMaterial(data));
     mesh.castShadow = data.castShadow !== false;
     mesh.receiveShadow = data.receiveShadow !== false;
     return mesh;
@@ -163,6 +235,8 @@ export class ThreeSceneAdapter {
     if (object) this.applyTransform(object, transform);
   }
 
+  update(deltaSeconds: number) { this.mixers.forEach((mixer) => mixer.update(Math.max(0, deltaSeconds))); }
+
   getPrimaryCamera(): THREE.Camera | null {
     if (!this.activeScene) return null;
     const entity = this.activeScene.entities.find((candidate) => component(candidate, 'Camera')?.data.primary === true)
@@ -194,6 +268,7 @@ export class ThreeSceneAdapter {
       });
     }
     this.objects.clear();
+    this.mixers = [];
   }
 }
 
@@ -201,6 +276,7 @@ export class LillyThreeRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly adapter = new ThreeSceneAdapter();
   readonly editorCamera = new THREE.PerspectiveCamera(55, 16 / 9, 0.05, 2000);
+  private clock = new THREE.Clock();
 
   constructor(options: LillyRendererOptions) {
     this.renderer = new THREE.WebGLRenderer({ canvas: options.canvas, antialias: options.antialias !== false, alpha: false, powerPreference: 'high-performance' });
@@ -226,6 +302,7 @@ export class LillyThreeRenderer {
   }
 
   render(gameView = false) {
+    this.adapter.update(this.clock.getDelta());
     this.renderer.render(this.adapter.scene, (gameView && this.adapter.getPrimaryCamera()) || this.editorCamera);
   }
 

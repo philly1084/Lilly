@@ -1,8 +1,19 @@
 'use strict';
 
-const { Router } = require('express');
+const { Router, raw } = require('express');
 
 const router = Router();
+const parseBinaryAsset = raw({ type: 'application/octet-stream', limit: '8mb' });
+
+function boundedBinaryAsset(req, res, next) {
+  parseBinaryAsset(req, res, (error) => {
+    if (error) {
+      error.statusCode = error.status || 413;
+      error.code = error.code || 'ASSET_SIZE_INVALID';
+    }
+    next(error);
+  });
+}
 
 function ownerId(req) {
   return String(req.user?.username || req.user?.id || '').trim();
@@ -52,6 +63,10 @@ router.get('/contracts', async (req, res, next) => {
         mechanic: core.MECHANIC_SCHEMA,
         prefab: core.PREFAB_SCHEMA,
         mechanicTest: core.MECHANIC_TEST_SCHEMA,
+        material: core.MATERIAL_SCHEMA,
+        assetMetadata: core.ASSET_METADATA_SCHEMA,
+        animationController: core.ANIMATION_CONTROLLER_SCHEMA,
+        terrain: core.TERRAIN_SCHEMA,
         moduleBundle: modules.MODULE_BUNDLE_SCHEMA,
       },
       sourceFileTypes: [
@@ -60,6 +75,10 @@ router.get('/contracts', async (req, res, next) => {
         { extension: '.system.ts', kind: 'system', purpose: 'Typed lifecycle code executed inside the capability sandbox' },
         { extension: '.prefab.json', kind: 'prefab', purpose: 'Reusable versioned entity hierarchies' },
         { extension: '.spec.json', kind: 'test', purpose: 'Deterministic mechanic events and assertions' },
+        { extension: '.material.json', kind: 'material', purpose: 'Reusable rendering materials owned by Lilly project source' },
+        { extension: '.asset.json', kind: 'asset-metadata', purpose: 'Scale, pivot, shadow, collision, LOD, and clip metadata for uploaded assets' },
+        { extension: '.animation.json', kind: 'animation-controller', purpose: 'GLB clip bindings and procedural animation states' },
+        { extension: '.terrain.json', kind: 'terrain', purpose: 'Bounded deterministic heightfields with authored material and collision intent' },
         { extension: '.blueprint.json', kind: 'blueprint', purpose: 'Typed visual graph source' },
         { extension: '.scene.json', kind: 'scene', purpose: 'Scene source and import/export interchange' },
       ],
@@ -214,13 +233,48 @@ router.get('/projects/:id/events', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/projects/:id/assets', async (req, res, next) => {
+router.get('/projects/:id/assets', async (req, res, next) => {
   try {
     const gameStudio = ensureAvailable(req, res);
     if (!gameStudio) return;
-    const result = await gameStudio.saveAsset(req.params.id, req.body || {}, ownerId(req));
+    const result = await gameStudio.listAssets(req.params.id, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/assets', boundedBinaryAsset, async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const input = Buffer.isBuffer(req.body)
+      ? {
+          filename: String(req.query.filename || ''),
+          name: String(req.query.name || req.query.filename || ''),
+          mimeType: String(req.query.mimeType || 'application/octet-stream'),
+          contentBuffer: req.body,
+          metadata: {
+            upAxis: String(req.query.upAxis || 'Y'),
+            unitsPerMeter: Number(req.query.unitsPerMeter || 1),
+          },
+        }
+      : (req.body || {});
+    const result = await gameStudio.saveAsset(req.params.id, input, ownerId(req));
     if (!result) return notFound(res);
     res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/assets/:assetId/content', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.readAssetContent(req.params.id, req.params.assetId, ownerId(req));
+    if (!result) return notFound(res);
+    res.setHeader('Content-Type', result.asset.type || 'application/octet-stream');
+    res.setHeader('Content-Length', String(result.content.length));
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(result.content);
   } catch (error) { next(error); }
 });
 

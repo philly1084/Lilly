@@ -13,6 +13,39 @@ function redactPreviewTokens(value = '') {
   return String(value || '').replace(/(\/(?:preview|sandbox)-access\/)[^/?#]+/gi, '$1[redacted]');
 }
 
+function createTriangleGlb() {
+  const binary = Buffer.alloc(44);
+  const positions = new Float32Array([-0.6, 0, 0, 0.6, 0, 0, 0, 1, 0]);
+  Buffer.from(positions.buffer).copy(binary, 0);
+  binary.writeUInt16LE(0, 36);
+  binary.writeUInt16LE(1, 38);
+  binary.writeUInt16LE(2, 40);
+  const json = Buffer.from(JSON.stringify({
+    asset: { version: '2.0', generator: 'Lilly Game Studio smoke' },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0, name: 'Lilly Triangle' }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
+    buffers: [{ byteLength: binary.length }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36, target: 34962 }, { buffer: 0, byteOffset: 36, byteLength: 6, target: 34963 }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [-0.6, 0, 0], max: [0.6, 1, 0] }, { bufferView: 1, componentType: 5123, count: 3, type: 'SCALAR', min: [0], max: [2] }],
+  }));
+  const jsonLength = Math.ceil(json.length / 4) * 4;
+  const totalLength = 12 + 8 + jsonLength + 8 + binary.length;
+  const glb = Buffer.alloc(totalLength, 0x20);
+  glb.writeUInt32LE(0x46546c67, 0);
+  glb.writeUInt32LE(2, 4);
+  glb.writeUInt32LE(totalLength, 8);
+  glb.writeUInt32LE(jsonLength, 12);
+  glb.writeUInt32LE(0x4e4f534a, 16);
+  json.copy(glb, 20);
+  const binaryHeader = 20 + jsonLength;
+  glb.writeUInt32LE(binary.length, binaryHeader);
+  glb.writeUInt32LE(0x004e4942, binaryHeader + 4);
+  binary.copy(glb, binaryHeader + 8);
+  return glb;
+}
+
 function parseArgs(argv) {
   const args = {
     url: process.env.GAME_STUDIO_URL || 'http://127.0.0.1:3000/game-studio/',
@@ -100,6 +133,8 @@ async function run() {
   });
   const projectId = created.project.id;
   report.projectId = projectId;
+  const modelBytes = createTriangleGlb();
+  let uploaded = null;
 
   const executablePath = await existingBrowser();
   const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
@@ -155,6 +190,19 @@ async function run() {
       await page.goto(args.url, { waitUntil: 'domcontentloaded' });
       await page.locator('.studio-app').waitFor({ state: 'visible' });
       await page.getByText(projectName, { exact: true }).first().waitFor({ state: 'visible' });
+    });
+
+    await record('raw-binary-asset-upload-and-byte-replay', async () => {
+      const uploadResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/assets$/.test(new URL(response.url()).pathname));
+      await page.locator('#game-studio-import-asset').setInputFiles({ name: 'Lilly Triangle Model.glb', mimeType: 'model/gltf-binary', buffer: modelBytes });
+      const response = await uploadResponse;
+      assert(response.ok(), `Raw binary GLB upload failed with HTTP ${response.status()}`);
+      uploaded = await response.json();
+      await page.getByRole('button', { name: 'Lilly Triangle Model model', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      const uploadedResponse = await fetch(`${origin}/api/game-studio/projects/${projectId}/assets/${uploaded.asset.id}/content`, { headers: apiAuthHeaders });
+      const uploadedBytes = Buffer.from(await uploadedResponse.arrayBuffer());
+      assert(uploadedResponse.ok && uploadedBytes.equals(modelBytes), 'Uploaded GLB did not replay byte-for-byte through the authenticated asset route');
+      report.assetProof = { id: uploaded.asset.id, sizeBytes: uploadedBytes.length, kind: uploaded.asset.metadata?.kind, glbMagic: uploadedBytes.subarray(0, 4).toString('hex'), transport: 'application/octet-stream' };
     });
 
     await record('hierarchy-and-inspector-edit', async () => {
@@ -233,6 +281,72 @@ async function run() {
       await page.getByRole('button', { name: 'Close AI Director' }).click();
     });
 
+    await record('world-pack-authoring-variant-and-layout-matrix', async () => {
+      await page.getByRole('button', { name: /^Content Browser/ }).click();
+      const sourceWrite = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/files$/.test(new URL(response.url()).pathname));
+      await page.getByRole('button', { name: 'New world pack', exact: true }).click();
+      const sourceResponse = await sourceWrite;
+      assert(sourceResponse.ok(), `World pack source write failed with HTTP ${sourceResponse.status()}`);
+      const authored = await sourceResponse.json();
+      const worldModule = authored.moduleSummary.modules.find((module) => /^world-pack-/.test(module.id));
+      const worldPrefab = authored.moduleSummary.prefabs.find((prefab) => prefab.moduleId === worldModule?.id);
+      assert(worldModule && worldPrefab, `World pack module or prefab was not exported: ${JSON.stringify(authored.moduleSummary)}`);
+      assert(authored.moduleSummary.materials.some((entry) => entry.moduleId === worldModule.id), 'World pack material was not exported');
+      assert(authored.moduleSummary.assets.some((entry) => entry.moduleId === worldModule.id && entry.assetId === uploaded.asset.id), 'World pack asset metadata did not bind the uploaded GLB');
+      assert(authored.moduleSummary.animations.some((entry) => entry.moduleId === worldModule.id), 'World pack animation controller was not exported');
+      assert(authored.moduleSummary.terrains.some((entry) => entry.moduleId === worldModule.id), 'World pack terrain was not exported');
+      assert(worldPrefab.variants.some((variant) => variant.id === 'sentinel'), 'World pack sentinel variant was not exposed to the editor');
+      await page.getByText(`${worldModule.id}.module.json`, { exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      const compileResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/compile$/.test(new URL(response.url()).pathname));
+      await page.getByRole('button', { name: 'Compile', exact: true }).click();
+      const compiledResponse = await compileResponse;
+      assert(compiledResponse.ok(), `World pack compile failed with HTTP ${compiledResponse.status()}`);
+      const compiled = await compiledResponse.json();
+      assert(compiled.valid === true && compiled.worldIssues.length === 0, `World pack compile was invalid: ${JSON.stringify(compiled)}`);
+
+      await page.getByRole('button', { name: /^Content Browser/ }).click();
+      await page.getByRole('button', { name: 'Prefabs', exact: true }).click();
+      const prefabCard = page.locator('.asset-card-shell').filter({ hasText: worldPrefab.name });
+      await prefabCard.getByLabel(`${worldPrefab.name} variant`).selectOption('sentinel');
+      const placedResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/prefab-instances$/.test(new URL(response.url()).pathname));
+      await prefabCard.getByRole('button', { name: `Place ${worldPrefab.name}`, exact: true }).click();
+      const placed = await placedResponse;
+      assert(placed.ok(), `World pack prefab placement failed with HTTP ${placed.status()}`);
+      const placedProject = await placed.json();
+      const sentinel = placedProject.project.scenes.flatMap((scene) => scene.entities).find((entity) => entity.name === 'Sentinel Landmark');
+      assert(sentinel, 'Selected prefab variant did not create the Sentinel Landmark entity');
+
+      const layoutProof = [];
+      for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+        await page.setViewportSize(viewport);
+        await page.waitForTimeout(150);
+        const metrics = await page.evaluate(() => {
+          const toolbar = document.querySelector('.content-actions');
+          const toolbarRect = toolbar?.getBoundingClientRect();
+          const clippedControls = toolbarRect ? [...toolbar.querySelectorAll(':scope > button, :scope > .search-field')]
+            .filter((element) => {
+              const rect = element.getBoundingClientRect();
+              return rect.left < toolbarRect.left - 1 || rect.right > toolbarRect.right + 1 || rect.top < toolbarRect.top - 1 || rect.bottom > toolbarRect.bottom + 1;
+            }).map((element) => element.textContent?.trim() || element.className) : [];
+          return { viewportWidth: innerWidth, documentWidth: document.documentElement.scrollWidth, clippedControls };
+        });
+        assert(metrics.documentWidth <= metrics.viewportWidth + 1, `Editor overflowed at ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)}`);
+        assert(metrics.clippedControls.length === 0, `Content controls clipped at ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)}`);
+        const screenshotPath = path.join(args.outDir, `lilly-world-authoring-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: false });
+        layoutProof.push({ ...viewport, screenshotPath, ...metrics });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      report.worldAuthoringProof = {
+        moduleId: worldModule.id,
+        prefabId: worldPrefab.id,
+        variant: 'sentinel',
+        entityId: sentinel.id,
+        resourceCounts: { materials: compiled.materials.length, assets: compiled.assets.length, animations: compiled.animations.length, terrains: compiled.terrains.length },
+        layoutProof,
+      };
+    });
+
     await record('play-pause-step', async () => {
       await page.getByTitle(/^Play/).click();
       await page.getByText(/Simulation running/).waitFor({ state: 'visible', timeout: 30000 });
@@ -247,6 +361,7 @@ async function run() {
         return null;
       });
       assert(runningState?.systemCount === 1 && runningState?.moduleSourceHash, `Editor Play did not load the exact module bundle: ${JSON.stringify(runningState)}`);
+      assert(runningState.materialCount >= 1 && runningState.assetMetadataCount >= 1 && runningState.animationControllerCount >= 1 && runningState.terrainCount >= 1, `Editor Play did not load the exact authored world resources: ${JSON.stringify(runningState)}`);
       await page.locator('.viewport-panel').screenshot({ path: path.join(args.outDir, 'lilly-editor-exact-play.png') });
       await page.getByTitle(/^Pause/).click();
       await page.getByText('Paused — step to advance', { exact: true }).waitFor({ state: 'visible' });
@@ -294,13 +409,15 @@ async function run() {
         return null;
       });
       assert(control?.passed === true, `Player control test failed: ${JSON.stringify(control)}`);
+      const worldState = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.getState?.() || null);
+      assert(worldState?.materialCount >= 1 && worldState?.assetMetadataCount >= 1 && worldState?.animationControllerCount >= 1 && worldState?.terrainCount >= 1, `Immutable player did not replay the authored world resource bundle: ${JSON.stringify(worldState)}`);
       const combat = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.combatTest?.() || null);
       assert(combat?.passed === true && combat?.cleared === true && combat?.checkpoint === true && combat?.gatesOpen === true, `Player combat/checkpoint test failed: ${JSON.stringify(combat)}`);
       const authoredModule = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.moduleTest?.() || null);
       assert(authoredModule?.passed === true && authoredModule?.systems?.length === 1, `Agent module runtime test failed: ${JSON.stringify(authoredModule)}`);
       const collision = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.collisionTest?.() || null);
       assert(collision?.passed === true && collision?.detected === true && collision?.handled === true, `Agent collision lifecycle test failed: ${JSON.stringify(collision)}`);
-      report.runtimeProof = { control, combat, authoredModule, collision, previewPath: redactPreviewTokens(previewSrc) };
+      report.runtimeProof = { control, combat, authoredModule, collision, worldState, previewPath: redactPreviewTokens(previewSrc) };
       await page.locator('.build-preview-wrap').screenshot({ path: path.join(args.outDir, 'lilly-generated-player.png') });
       await frame.getByRole('button', { name: 'Save', exact: true }).click();
       const savedAcknowledged = await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);

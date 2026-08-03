@@ -15,24 +15,106 @@ const tabs: Array<{ id: BottomTab; label: string; icon: Parameters<typeof Icon>[
   { id: 'build', label: 'Build Output', icon: 'build' },
 ];
 
+type ContentItem = {
+  id: string;
+  name: string;
+  type: string;
+  kind: string;
+  category: string;
+  sourcePath?: string;
+  variants?: Array<{ id: string; name: string }>;
+};
+
 function ContentBrowser() {
   const current = useStudioStore((state) => state.current);
   const importProject = useStudioStore((state) => state.importProject);
+  const uploadAsset = useStudioStore((state) => state.uploadAsset);
   const instantiatePrefab = useStudioStore((state) => state.instantiatePrefab);
+  const saveSourceFiles = useStudioStore((state) => state.saveSourceFiles);
+  const setBottomTab = useStudioStore((state) => state.setBottomTab);
   const scene = currentScene(current);
   const [query, setQuery] = useState('');
-  const items = useMemo(() => [
-    ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: asset.type, kind: 'asset' })),
+  const [category, setCategory] = useState('all');
+  const [prefabVariants, setPrefabVariants] = useState<Record<string, string>>({});
+  const items = useMemo<ContentItem[]>(() => [
+    ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: String(asset.metadata?.kind || asset.type), kind: 'asset', category: asset.type.startsWith('audio/') ? 'audio' : asset.type.startsWith('model/') ? 'models' : 'textures' })),
     ...(scene?.entities.filter((entity) => ['pickup', 'player', 'enemy', 'checkpoint'].some((tag) => entity.tags.includes(tag))).map((entity) => ({
       id: entity.id,
       name: entity.name,
       type: entity.tags.includes('player') ? 'Player prefab' : entity.tags.includes('enemy') ? 'Enemy prefab' : entity.tags.includes('checkpoint') ? 'Checkpoint prefab' : 'Collectible prefab',
       kind: 'prefab',
+      category: 'prefabs',
     })) || []),
-    ...(current?.project.blueprints.map((graph) => ({ id: graph.id, name: graph.name, type: `${graph.nodes.length} nodes`, kind: 'blueprint' })) || []),
-    ...(current?.moduleSummary.prefabs.map((prefab) => ({ id: `module:${prefab.id}`, name: prefab.name, type: `${prefab.moduleId} prefab`, kind: 'prefab', sourcePath: prefab.sourcePath })) || []),
-  ].filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [current, scene, query]);
-  return <div className="content-browser"><div className="content-sidebar"><button type="button" className="active">All Content</button><button type="button">Assets</button><button type="button">Prefabs</button><button type="button">Scenes</button><button type="button">Audio</button></div><div className="content-main"><div className="content-actions"><div className="search-field compact"><Icon name="search" size={13}/><input placeholder="Filter content" value={query} onChange={(event) => setQuery(event.target.value)}/></div><input id="game-studio-import" className="visually-hidden" type="file" accept=".json,.html,text/html,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importProject(file); event.currentTarget.value = ''; }}/><button type="button" onClick={() => document.getElementById('game-studio-import')?.click()} title="Import a LillyProject/v1 JSON file or compatible HTML/Three.js bundle"><Icon name="add" size={13}/>Import project</button></div><div className="asset-grid">{items.map((item) => <button type="button" className="asset-card" key={item.id} onDoubleClick={() => 'sourcePath' in item && item.sourcePath && instantiatePrefab(item.sourcePath, `${item.id.replace(/[^a-z0-9-]/gi, '-')}-${Date.now().toString(36)}`)} title={'sourcePath' in item ? 'Double-click to instantiate this module prefab in the active scene' : item.name}><div className={`asset-thumb kind-${item.kind}`}><Icon name={item.kind === 'blueprint' ? 'blueprint' : item.kind === 'prefab' ? 'cube' : 'content'} size={24}/></div><strong>{item.name}</strong><small>{item.type}</small></button>)}{!items.length && <div className="workspace-empty"><strong>No matching content</strong><span>Import a GLB, texture, or audio file.</span></div>}</div></div></div>;
+    ...(current?.project.blueprints.map((graph) => ({ id: graph.id, name: graph.name, type: `${graph.nodes.length} nodes`, kind: 'blueprint', category: 'blueprints' })) || []),
+    ...(current?.moduleSummary.prefabs.map((prefab) => ({ id: `module:${prefab.id}`, name: prefab.name, type: `${prefab.moduleId} prefab`, kind: 'prefab', category: 'prefabs', sourcePath: prefab.sourcePath, variants: prefab.variants })) || []),
+    ...(current?.moduleSummary.materials.map((material) => ({ id: `material:${material.id}`, name: material.name, type: `${material.shading} material`, kind: 'material', category: 'materials', sourcePath: material.sourcePath })) || []),
+    ...(current?.moduleSummary.terrains.map((terrain) => ({ id: `terrain:${terrain.id}`, name: terrain.name, type: `${terrain.resolution}² heightfield`, kind: 'terrain', category: 'terrains', sourcePath: terrain.sourcePath })) || []),
+    ...(current?.moduleSummary.animations.map((animation) => ({ id: `animation:${animation.id}`, name: animation.name, type: `${animation.states.length} animation states`, kind: 'animation', category: 'animations', sourcePath: animation.sourcePath })) || []),
+  ].filter((item) => (category === 'all' || item.category === category) && item.name.toLowerCase().includes(query.toLowerCase())), [current, scene, query, category]);
+  const createWorldPack = async () => {
+    if (!current) return;
+    const occupiedWorldPacks = new Set(current.moduleSummary.modules.map((entry) => entry.id));
+    for (const file of current.project.files) {
+      const match = file.path.match(/^world\/(world-pack-\d+)(?:\/|$)/);
+      if (match) occupiedWorldPacks.add(match[1]);
+    }
+    let index = 1;
+    while (occupiedWorldPacks.has(`world-pack-${index}`)) index += 1;
+    const id = `world-pack-${index}`;
+    const directory = `world/${id}`;
+    const resolution = 17;
+    const heights = Array.from({ length: resolution * resolution }, (_value, heightIndex) => {
+      const x = (heightIndex % resolution) / (resolution - 1) * 2 - 1;
+      const z = Math.floor(heightIndex / resolution) / (resolution - 1) * 2 - 1;
+      return Number((Math.sin(x * Math.PI * 2) * 0.18 + Math.cos(z * Math.PI * 1.5) * 0.12 + Math.exp(-(x * x + z * z) * 5) * 0.35).toFixed(4));
+    });
+    const firstAsset = current.project.assets.find((asset) => asset.type.startsWith('model/')) || null;
+    const manifest = { schema: 'LillyGameModule/v1', id, name: `World Pack ${index}`, version: '1.0.0', description: 'Reusable Lilly-owned terrain, materials, animation, asset metadata, and prefab variants.', dependencies: [], capabilities: [], systems: [], mechanics: [], prefabs: ['./world-patch.prefab.json'], tests: [], materials: ['./world-surface.material.json'], assets: firstAsset ? ['./featured-model.asset.json'] : [], animations: ['./landmark.animation.json'], terrains: ['./world-patch.terrain.json'] };
+    const files = [
+      { path: `${directory}/${id}.module.json`, content: JSON.stringify(manifest, null, 2) },
+      { path: `${directory}/world-surface.material.json`, content: JSON.stringify({ schema: 'LillyMaterial/v1', id: `${id}-surface`, moduleId: id, name: `World Pack ${index} Surface`, shading: 'physical', color: '#2f6b62', emissive: '#071f21', emissiveIntensity: 0.18, roughness: 0.78, metalness: 0.08, clearcoat: 0.14, clearcoatRoughness: 0.7 }, null, 2) },
+      { path: `${directory}/landmark.animation.json`, content: JSON.stringify({ schema: 'LillyAnimationController/v1', id: `${id}-landmark-motion`, moduleId: id, name: `World Pack ${index} Landmark Motion`, defaultState: 'float', states: [{ id: 'float', mode: 'float', amplitude: 0.24, frequency: 0.42, speed: 1 }, { id: 'spin', mode: 'spin', axis: 'y', speed: 0.55 }] }, null, 2) },
+      { path: `${directory}/world-patch.terrain.json`, content: JSON.stringify({ schema: 'LillyTerrain/v1', id: `${id}-terrain`, moduleId: id, name: `World Pack ${index} Sculpted Patch`, size: { x: 28, y: 28 }, resolution, heights, heightScale: 3.4, materialId: `${id}-surface`, collision: true, walkable: true }, null, 2) },
+      { path: `${directory}/world-patch.prefab.json`, content: JSON.stringify({ schema: 'LillyPrefab/v1', id: `${id}-patch`, moduleId: id, name: `World Pack ${index} Terrain Patch`, rootEntityId: 'terrain', entities: [{ schema: 'LillyEntity/v1', id: 'terrain', name: 'Sculpted Terrain', parentId: null, enabled: true, tags: ['ground', 'terrain', 'agent-authored'], components: [{ type: 'Transform', enabled: true, data: { position: { x: 0, y: -0.35, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }, { type: 'Terrain', enabled: true, data: { terrainId: `${id}-terrain`, walkable: true, collision: true } }] }, { schema: 'LillyEntity/v1', id: 'landmark', name: 'Floating Landmark', parentId: 'terrain', enabled: true, tags: ['landmark', 'agent-authored'], components: [{ type: 'Transform', enabled: true, data: { position: { x: 0, y: 3.6, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.4, y: 1.4, z: 1.4 } } }, { type: 'MeshRenderer', enabled: true, data: { geometry: 'octahedron', materialId: `${id}-surface`, material: { emissive: '#22d3ee', emissiveIntensity: 0.72 }, castShadow: true, receiveShadow: true } }, { type: 'Animator', enabled: true, data: { controllerId: `${id}-landmark-motion`, state: 'float', speed: 1, autoplay: true } }] }], variants: [{ id: 'sentinel', name: 'Sentinel', entities: { landmark: { name: 'Sentinel Landmark', components: { Animator: { state: 'spin', speed: 1.2 }, MeshRenderer: { material: { color: '#7c3aed', emissive: '#c084fc', emissiveIntensity: 1.1 } } } } } }, { id: 'beacon', name: 'Beacon', entities: { landmark: { name: 'Beacon Landmark', components: { MeshRenderer: { material: { color: '#0e7490', emissive: '#67e8f9', emissiveIntensity: 1.35 } } } } } }] }, null, 2) },
+      ...(firstAsset ? [{ path: `${directory}/featured-model.asset.json`, content: JSON.stringify({ schema: 'LillyAssetMetadata/v1', id: `${id}-featured-model`, moduleId: id, assetId: firstAsset.id, name: `${firstAsset.name} Authoring Metadata`, kind: 'model', scale: { x: 1, y: 1, z: 1 }, pivot: { x: 0, y: 0, z: 0 }, castShadow: true, receiveShadow: true, collision: { shape: 'box', size: { x: 1, y: 1, z: 1 }, center: { x: 0, y: 0.5, z: 0 }, sensor: false }, lods: [], animations: [] }, null, 2) }] : []),
+    ];
+    if (await saveSourceFiles(files)) setBottomTab('typescript');
+  };
+  const categories = [['all', 'All Content'], ['models', 'Models'], ['materials', 'Materials'], ['terrains', 'Terrain'], ['animations', 'Animation'], ['prefabs', 'Prefabs'], ['textures', 'Textures'], ['audio', 'Audio']];
+  const placePrefab = (item: ContentItem) => {
+    if (!item.sourcePath) return;
+    const variant = prefabVariants[item.sourcePath] || '';
+    instantiatePrefab(item.sourcePath, `${item.id.replace(/[^a-z0-9-]/gi, '-')}-${Date.now().toString(36)}`, variant);
+  };
+  return <div className="content-browser">
+    <div className="content-sidebar">{categories.map(([id, label]) => <button key={id} type="button" className={category === id ? 'active' : ''} onClick={() => setCategory(id)}>{label}</button>)}</div>
+    <div className="content-main">
+      <div className="content-actions">
+        <div className="search-field compact"><Icon name="search" size={13}/><input placeholder="Filter content" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+        <input id="game-studio-import-project" className="visually-hidden" type="file" accept=".json,.html,text/html,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importProject(file); event.currentTarget.value = ''; }}/>
+        <input id="game-studio-import-asset" className="visually-hidden" type="file" accept=".glb,.gltf,.png,.jpg,.jpeg,.webp,.mp3,.ogg,.wav,model/gltf-binary,model/gltf+json,image/*,audio/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadAsset(file); event.currentTarget.value = ''; }}/>
+        <button type="button" onClick={createWorldPack} title="Create a versioned material, terrain, animation controller, optional asset metadata, and prefab variants"><Icon name="add" size={13}/>New world pack</button>
+        <button type="button" onClick={() => document.getElementById('game-studio-import-asset')?.click()} title="Import a bounded GLB, texture, or audio asset"><Icon name="content" size={13}/>Import asset</button>
+        <button type="button" onClick={() => document.getElementById('game-studio-import-project')?.click()} title="Import a LillyProject/v1 JSON file or compatible HTML/Three.js bundle">Import project</button>
+      </div>
+      <div className="asset-grid">
+        {items.map((item) => <div className={`asset-card-shell${item.sourcePath && item.kind === 'prefab' ? ' placeable' : ''}`} key={item.id}>
+          <button type="button" className="asset-card" onDoubleClick={() => item.kind === 'prefab' && placePrefab(item)} title={item.kind === 'prefab' && item.sourcePath ? 'Double-click to place this authored prefab with the selected variant' : `${item.name} · ${item.type}`}>
+            <div className={`asset-thumb kind-${item.kind}`}><Icon name={item.kind === 'blueprint' ? 'blueprint' : item.kind === 'prefab' || item.kind === 'terrain' ? 'cube' : item.kind === 'animation' ? 'play' : 'content'} size={24}/></div>
+            <strong>{item.name}</strong><small>{item.type}</small>
+          </button>
+          {item.sourcePath && item.kind === 'prefab' && <div className="asset-card-actions">
+            <select aria-label={`${item.name} variant`} value={prefabVariants[item.sourcePath] || ''} onChange={(event) => setPrefabVariants((currentVariants) => ({ ...currentVariants, [item.sourcePath!]: event.target.value }))}>
+              <option value="">Default</option>
+              {(item.variants || []).map((variant) => <option key={variant.id} value={variant.id}>{variant.name}</option>)}
+            </select>
+            <button type="button" onClick={() => placePrefab(item)} aria-label={`Place ${item.name}`}><Icon name="add" size={11}/>Place</button>
+          </div>}
+        </div>)}
+        {!items.length && <div className="workspace-empty"><strong>No matching world content</strong><span>Import an asset or create a versioned world pack.</span><button type="button" onClick={createWorldPack}>Create world pack</button></div>}
+      </div>
+    </div>
+  </div>;
 }
 
 const starterScript = `import type { LillyScriptApi } from '@lilly/engine-runtime';

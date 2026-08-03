@@ -60,11 +60,15 @@ const pendingModuleCollisions = [];
 const enemyObjects = new Map();
 const gateObjects = new Map();
 const checkpointObjects = new Map();
+const animationMixers = [];
+const proceduralAnimations = [];
 const clock = new THREE.Clock();
 const playerVelocity = new THREE.Vector3();
 const playerSpawn = new THREE.Vector3();
 const playerRadius = 0.44;
 const gltfLoader = new GLTFLoader();
+const textureLoader = new THREE.TextureLoader();
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function component(entity, type) {
   return entity.components.find((entry) => entry.type === type && entry.enabled !== false) || null;
@@ -202,25 +206,115 @@ function geometry(kind = 'box') {
   return new THREE.BoxGeometry(1, 1, 1);
 }
 
+function projectAsset(assetId) {
+  return (project?.assets || []).find((entry) => entry.id === assetId) || null;
+}
+
+function assetMetadata(assetId) {
+  return (moduleBundle?.assets || []).find((entry) => entry.assetId === assetId || entry.id === assetId) || null;
+}
+
+function materialDefinition(materialId) {
+  return (moduleBundle?.materials || []).find((entry) => entry.id === materialId) || null;
+}
+
+function terrainDefinition(terrainId) {
+  return (moduleBundle?.terrains || []).find((entry) => entry.id === terrainId) || null;
+}
+
+function animationController(controllerId) {
+  return (moduleBundle?.animations || []).find((entry) => entry.id === controllerId) || null;
+}
+
+function textureForAsset(assetId, colorTexture = false, tiling = { x: 1, y: 1 }) {
+  const asset = projectAsset(assetId);
+  if (!asset || !String(asset.uri || '').startsWith('assets/')) return null;
+  const texture = textureLoader.load(`./${asset.uri}`);
+  if (colorTexture) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(Number(tiling?.x || 1), Number(tiling?.y || 1));
+  return texture;
+}
+
+function makeMaterial(meshData = {}, roleGlow = false) {
+  const definition = materialDefinition(String(meshData.materialId || '')) || {};
+  const inline = meshData.material || {};
+  const data = { ...definition, ...inline, textures: { ...(definition.textures || {}), ...(inline.textures || {}) } };
+  const textureOptions = data.textures || {};
+  const common = {
+    color: data.color || '#8ea7c4',
+    transparent: data.transparent === true || Number(data.opacity ?? 1) < 1,
+    opacity: Number(data.opacity ?? 1),
+    side: data.doubleSided === true ? THREE.DoubleSide : THREE.FrontSide,
+    flatShading: data.flatShading === true,
+    wireframe: data.wireframe === true,
+    map: textureForAsset(textureOptions.baseColor, true, data.tiling),
+  };
+  const lit = {
+    ...common,
+    emissive: data.emissive || (roleGlow ? data.color || '#a78bfa' : '#000000'),
+    emissiveIntensity: Number(data.emissiveIntensity ?? (roleGlow ? 0.42 : 0)),
+  };
+  let material;
+  if (data.shading === 'unlit') material = new THREE.MeshBasicMaterial(common);
+  else if (data.shading === 'toon') material = new THREE.MeshToonMaterial({ ...lit, emissiveMap: textureForAsset(textureOptions.emissive, true, data.tiling) });
+  else if (data.shading === 'physical') material = new THREE.MeshPhysicalMaterial({
+    ...lit,
+    roughness: Number(data.roughness ?? 0.65),
+    metalness: Number(data.metalness ?? 0.05),
+    clearcoat: Number(data.clearcoat ?? 0),
+    clearcoatRoughness: Number(data.clearcoatRoughness ?? 0),
+    normalMap: textureForAsset(textureOptions.normal, false, data.tiling),
+    roughnessMap: textureForAsset(textureOptions.roughness, false, data.tiling),
+    metalnessMap: textureForAsset(textureOptions.metalness, false, data.tiling),
+    emissiveMap: textureForAsset(textureOptions.emissive, true, data.tiling),
+  });
+  else material = new THREE.MeshStandardMaterial({
+    ...lit,
+    roughness: Number(data.roughness ?? 0.65),
+    metalness: Number(data.metalness ?? 0.05),
+    normalMap: textureForAsset(textureOptions.normal, false, data.tiling),
+    roughnessMap: textureForAsset(textureOptions.roughness, false, data.tiling),
+    metalnessMap: textureForAsset(textureOptions.metalness, false, data.tiling),
+    emissiveMap: textureForAsset(textureOptions.emissive, true, data.tiling),
+  });
+  material.name = String(definition.name || meshData.materialId || 'Lilly inline material');
+  return material;
+}
+
+function makeTerrain(data = {}) {
+  const definition = terrainDefinition(String(data.terrainId || ''));
+  if (!definition) return new THREE.Group();
+  const resolution = Number(definition.resolution);
+  const geometry = new THREE.PlaneGeometry(Number(definition.size.x), Number(definition.size.y), resolution - 1, resolution - 1);
+  geometry.rotateX(-Math.PI / 2);
+  const positions = geometry.attributes.position;
+  for (let index = 0; index < positions.count; index += 1) positions.setY(index, Number(definition.heights[index] || 0) * Number(definition.heightScale || 0));
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, makeMaterial({ materialId: definition.materialId, material: data.material || {} }));
+  mesh.castShadow = data.castShadow === true;
+  mesh.receiveShadow = data.receiveShadow !== false;
+  mesh.userData.terrainDefinition = definition;
+  return mesh;
+}
+
 function makeObject(entity) {
   const mesh = component(entity, 'MeshRenderer');
+  const terrain = component(entity, 'Terrain');
   const light = component(entity, 'Light');
   const cameraComponent = component(entity, 'Camera');
   let object = new THREE.Group();
-  if (mesh) {
+  if (terrain) {
+    object = makeTerrain(terrain.data);
+  } else if (mesh) {
     if (mesh.data.assetId) {
       object.userData.assetId = String(mesh.data.assetId);
     } else {
-      const material = mesh.data.material || {};
       const roleGlow = ['pickup', 'goal', 'hazard', 'enemy', 'encounter-gate', 'checkpoint']
         .some((tag) => entity.tags.includes(tag));
-      object = new THREE.Mesh(geometry(mesh.data.geometry), new THREE.MeshStandardMaterial({
-        color: material.color || '#8ea7c4',
-        roughness: Number(material.roughness ?? 0.65),
-        metalness: Number(material.metalness ?? 0.05),
-        emissive: material.emissive || (roleGlow ? material.color || '#a78bfa' : '#000000'),
-        emissiveIntensity: Number(material.emissiveIntensity ?? (roleGlow ? 0.42 : 0)),
-      }));
+      object = new THREE.Mesh(geometry(mesh.data.geometry), makeMaterial(mesh.data, roleGlow));
       object.castShadow = mesh.data.castShadow !== false;
       object.receiveShadow = mesh.data.receiveShadow !== false;
     }
@@ -256,6 +350,17 @@ function makeObject(entity) {
   return object;
 }
 
+function mergeRuntimeData(base, patch) {
+  if (!base || typeof base !== 'object' || Array.isArray(base) || !patch || typeof patch !== 'object' || Array.isArray(patch)) return JSON.parse(JSON.stringify(patch));
+  const result = JSON.parse(JSON.stringify(base));
+  Object.entries(patch).forEach(([key, value]) => {
+    result[key] = result[key] && typeof result[key] === 'object' && !Array.isArray(result[key]) && value && typeof value === 'object' && !Array.isArray(value)
+      ? mergeRuntimeData(result[key], value)
+      : JSON.parse(JSON.stringify(value));
+  });
+  return result;
+}
+
 function spawnModulePrefab(prefabId, options = {}) {
   const prefab = moduleBundle?.prefabs?.find((entry) => entry.id === prefabId);
   if (!prefab || !Array.isArray(prefab.entities)) return [];
@@ -265,8 +370,19 @@ function spawnModulePrefab(prefabId, options = {}) {
   const idMap = new Map(prefab.entities.map((entity) => [entity.id, `${instanceId}:${entity.id}`]));
   const parentId = options.parentId && objectMap.has(options.parentId) ? options.parentId : null;
   const offset = vector(options.position || { x: 0, y: 0, z: 0 });
+  const variant = (prefab.variants || []).find((entry) => entry.id === options.variant) || null;
+  const instanceOverrides = options.entities || {};
   const entities = prefab.entities.map((sourceEntity) => {
     const entity = JSON.parse(JSON.stringify(sourceEntity));
+    const authoredOverride = variant?.entities?.[sourceEntity.id] || {};
+    const override = mergeRuntimeData(authoredOverride, instanceOverrides[sourceEntity.id] || {});
+    if (override.name !== undefined) entity.name = String(override.name);
+    if (override.enabled !== undefined) entity.enabled = override.enabled !== false;
+    if (Array.isArray(override.tags)) entity.tags = [...override.tags];
+    Object.entries(override.components || {}).forEach(([componentType, dataPatch]) => {
+      const target = entity.components.find((entry) => entry.type === componentType);
+      if (target) target.data = mergeRuntimeData(target.data, dataPatch);
+    });
     entity.id = idMap.get(sourceEntity.id);
     entity.parentId = sourceEntity.id === prefab.rootEntityId
       ? parentId
@@ -289,6 +405,7 @@ function spawnModulePrefab(prefabId, options = {}) {
     (parent || scene).add(object);
     registerCollisionRole(entity, object);
     if (object.userData.assetId) loadAssetObject(entity, object).catch(showRuntimeError);
+    else registerEntityAnimation(entity, object);
   });
   sceneData.entities.push(...entities);
   return entities.map((entity) => entity.id);
@@ -350,17 +467,82 @@ async function loadAssetObject(entity, object) {
   if (!asset || !String(asset.uri || '').startsWith('assets/')) throw new Error(`Asset ${assetId} is unavailable for ${entity.name}`);
   if (!/\.glb$/i.test(asset.uri) && !/gltf|model/i.test(String(asset.type || ''))) throw new Error(`Asset ${asset.name} is not a supported GLB model`);
   const gltf = await gltfLoader.loadAsync(`./${asset.uri}`);
+  const metadata = assetMetadata(assetId);
+  const meshRenderer = component(entity, 'MeshRenderer');
   gltf.scene.traverse((child) => {
     if (!child.isMesh) return;
-    child.castShadow = component(entity, 'MeshRenderer')?.data.castShadow !== false;
-    child.receiveShadow = component(entity, 'MeshRenderer')?.data.receiveShadow !== false;
+    child.castShadow = metadata?.castShadow ?? meshRenderer?.data.castShadow !== false;
+    child.receiveShadow = metadata?.receiveShadow ?? meshRenderer?.data.receiveShadow !== false;
+    if (meshRenderer?.data.materialId) child.material = makeMaterial(meshRenderer.data);
   });
+  const metadataScale = vector(metadata?.scale, { x: 1, y: 1, z: 1 });
+  gltf.scene.scale.set(metadataScale.x, metadataScale.y, metadataScale.z);
+  const pivot = vector(metadata?.pivot);
+  gltf.scene.position.set(-pivot.x, -pivot.y, -pivot.z);
   object.add(gltf.scene);
   object.userData.animations = gltf.animations || [];
+  object.userData.animationRoot = gltf.scene;
+  registerEntityAnimation(entity, object);
+}
+
+function registerEntityAnimation(entity, object) {
+  if (object.userData.lillyAnimatorRegistered) return;
+  const animator = component(entity, 'Animator');
+  if (!animator || animator.data.autoplay === false) return;
+  const controller = animationController(String(animator.data.controllerId || ''));
+  const requestedState = String(animator.data.state || controller?.defaultState || '');
+  const state = controller?.states?.find((entry) => entry.id === requestedState) || controller?.states?.find((entry) => entry.id === controller.defaultState) || null;
+  const mode = state?.mode || (animator.data.clip ? 'clip' : '');
+  if (!mode) return;
+  object.userData.lillyAnimatorRegistered = true;
+  const speed = Number(animator.data.speed ?? state?.speed ?? 1);
+  if (mode === 'clip') {
+    const metadata = assetMetadata(String(animator.data.assetId || object.userData.assetId || controller?.assetId || ''));
+    const requestedClip = String(animator.data.clip || state?.clip || '');
+    const clipAlias = metadata?.animations?.find((entry) => entry.name === requestedClip);
+    const clipName = clipAlias?.clip || requestedClip;
+    const clips = object.userData.animations || [];
+    const clip = clips.find((entry) => entry.name === clipName) || clips[0];
+    if (!clip || !object.userData.animationRoot) return;
+    const mixer = new THREE.AnimationMixer(object.userData.animationRoot);
+    const action = mixer.clipAction(clip);
+    action.timeScale = speed * Number(clipAlias?.speed ?? 1);
+    action.setLoop((state?.loop ?? clipAlias?.loop) === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+    action.clampWhenFinished = (state?.loop ?? clipAlias?.loop) === false;
+    action.fadeIn(Math.max(0, Number(state?.fadeSeconds || 0))).play();
+    animationMixers.push(mixer);
+    return;
+  }
+  proceduralAnimations.push({
+    object,
+    mode,
+    axis: state?.axis || 'y',
+    speed,
+    amplitude: Number(state?.amplitude ?? (mode === 'float' ? 0.2 : 0.08)),
+    frequency: Number(state?.frequency ?? 1),
+    basePosition: object.position.clone(),
+    baseRotation: object.rotation.clone(),
+    baseScale: object.scale.clone(),
+  });
 }
 
 function registerCollisionRole(entity, object) {
-  const collider = component(entity, 'Collider');
+  const terrain = component(entity, 'Terrain');
+  const terrainData = terrainDefinition(String(terrain?.data.terrainId || ''));
+  if (terrain && terrainData && terrain.data.walkable !== false && terrainData.walkable !== false) {
+    const scale = vector(component(entity, 'Transform')?.data.scale, { x: 1, y: 1, z: 1 });
+    walkableAreas.push({
+      minX: object.position.x - Math.abs(Number(terrainData.size.x) * scale.x) / 2,
+      maxX: object.position.x + Math.abs(Number(terrainData.size.x) * scale.x) / 2,
+      minZ: object.position.z - Math.abs(Number(terrainData.size.y) * scale.z) / 2,
+      maxZ: object.position.z + Math.abs(Number(terrainData.size.y) * scale.z) / 2,
+    });
+  }
+  let collider = component(entity, 'Collider');
+  if (!collider) {
+    const metadataCollision = assetMetadata(String(component(entity, 'MeshRenderer')?.data.assetId || ''))?.collision;
+    if (metadataCollision) collider = { type: 'Collider', enabled: true, data: { ...metadataCollision, size: metadataCollision.size || { x: 1, y: 1, z: 1 } } };
+  }
   if (!collider) return;
   runtimeColliders.set(entity.id, { entity, object, collider });
   const transform = component(entity, 'Transform')?.data || {};
@@ -555,6 +737,7 @@ async function setupScene() {
     if (component(entity, 'Camera')?.data.primary === true) camera = object;
     registerCollisionRole(entity, object);
     if (object.userData.assetId) assetLoads.push(loadAssetObject(entity, object));
+    else registerEntityAnimation(entity, object);
   });
   await Promise.all(assetLoads);
   totalPickups = pickups.length;
@@ -870,6 +1053,14 @@ function simulate(delta) {
 }
 
 function animateWorld(elapsed, delta) {
+  animationMixers.forEach((mixer) => mixer.update(delta));
+  const motionScale = reducedMotion ? 0.25 : 1;
+  proceduralAnimations.forEach((animation) => {
+    const phase = elapsed * Math.max(0, animation.frequency) * Math.PI * 2;
+    if (animation.mode === 'spin') animation.object.rotation[animation.axis] = animation.baseRotation[animation.axis] + elapsed * animation.speed * motionScale;
+    else if (animation.mode === 'float') animation.object.position.y = animation.basePosition.y + Math.sin(phase) * animation.amplitude * motionScale;
+    else if (animation.mode === 'pulse') animation.object.scale.copy(animation.baseScale).multiplyScalar(1 + Math.sin(phase) * animation.amplitude * motionScale);
+  });
   pickups.forEach(({ object }, index) => {
     if (!object.visible) return;
     object.rotation.y = elapsed * 1.8 + index * 0.3;
@@ -890,7 +1081,10 @@ function animateWorld(elapsed, delta) {
     if (enemy) object.position.y = enemy.position.y + Math.sin(elapsed * 3 + enemyId.length) * 0.08;
   });
   gateObjects.forEach((object, gateId) => {
-    if (object.visible) object.material.emissiveIntensity = 0.5 + Math.sin(elapsed * 7 + gateId.length) * 0.18;
+    if (!object.visible) return;
+    object.traverse((child) => {
+      if (child.material && 'emissiveIntensity' in child.material) child.material.emissiveIntensity = 0.5 + Math.sin(elapsed * 7 + gateId.length) * 0.18;
+    });
   });
   checkpointObjects.forEach((object, checkpointId) => {
     const active = gameplayState.checkpoint.id === checkpointId;
@@ -1298,6 +1492,10 @@ async function start() {
         moduleSourceHash: moduleBundle?.sourceHash || null,
         moduleCount: moduleBundle?.modules?.length || 0,
         systemCount: moduleBundle?.systems?.length || 0,
+        materialCount: moduleBundle?.materials?.length || 0,
+        assetMetadataCount: moduleBundle?.assets?.length || 0,
+        animationControllerCount: moduleBundle?.animations?.length || 0,
+        terrainCount: moduleBundle?.terrains?.length || 0,
         editorPaused,
         pendingEditorSteps: editorStepRequests,
         editorCompletedSteps,

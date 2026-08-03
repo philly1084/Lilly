@@ -99,7 +99,7 @@ async function hashFile(filePath) {
 }
 
 function buildModuleSandboxHtml(moduleBundle) {
-  const serialized = JSON.stringify(moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], diagnostics: [] })
+  const serialized = JSON.stringify(moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], materials: [], assets: [], animations: [], terrains: [], diagnostics: [] })
     .replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en">
@@ -116,7 +116,7 @@ function buildModuleSandboxHtml(moduleBundle) {
 }
 
 async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, projectDirectory = '' }) {
-  moduleBundle = moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], diagnostics: [] };
+  moduleBundle = moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], materials: [], assets: [], animations: [], terrains: [], diagnostics: [] };
   await fs.mkdir(directory, { recursive: false });
   const threeBuildDirectory = path.dirname(require.resolve('three'));
   const [threeModule, threeCore, gltfLoader, bufferGeometryUtils, skeletonUtils] = await Promise.all([
@@ -151,6 +151,10 @@ async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, 
       moduleCount: moduleBundle?.modules?.length || 0,
       systemCount: moduleBundle?.systems?.length || 0,
       mechanicTestCount: moduleBundle?.tests?.length || 0,
+      materialCount: moduleBundle?.materials?.length || 0,
+      assetMetadataCount: moduleBundle?.assets?.length || 0,
+      animationControllerCount: moduleBundle?.animations?.length || 0,
+      terrainCount: moduleBundle?.terrains?.length || 0,
       generatedAt: new Date().toISOString(),
     }, null, 2)}\n`],
   ];

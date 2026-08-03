@@ -198,6 +198,17 @@ describe('GitLabClient', () => {
         expect(global.fetch.mock.calls[2][1].body).toContain('"action":"update"');
     });
 
+    test('marks binary repository actions as base64 without altering their content', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' })
+            .mockResolvedValueOnce({ ok: true, status: 201, text: async () => JSON.stringify({ id: 'binary-commit-sha' }) });
+        const client = new GitLabClient();
+        const content = Buffer.from([0, 255, 17, 128]).toString('base64');
+        await client.upsertFiles({ owner: 'agent-apps', repo: 'game', branch: 'main', files: [{ path: 'public/assets/model.glb', content, encoding: 'base64' }] });
+        const body = JSON.parse(global.fetch.mock.calls[1][1].body);
+        expect(body.actions).toEqual([{ action: 'create', file_path: 'public/assets/model.glb', content, encoding: 'base64' }]);
+    });
+
     test('lists GitLab pipelines filtered by sha', async () => {
         global.fetch = jest.fn().mockResolvedValue({
             ok: true,

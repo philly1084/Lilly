@@ -30,7 +30,7 @@ describe('GameStudioService', () => {
     const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
-    expect(result.project.engineVersion).toBe('0.4.0');
+    expect(result.project.engineVersion).toBe('0.5.0');
     expect(result.project.blueprints).toHaveLength(2);
     expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
     expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
@@ -211,6 +211,55 @@ describe('GameStudioService', () => {
     expect(manifest).toMatchObject({ schema: 'LillyPlayerBundle/v2', moduleSourceHash: compile.sourceHash, moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
   }, 20_000);
 
+  test('authors, validates, previews, and packages a complete world resource layer', async () => {
+    const created = await service.createProject({ name: 'World Authoring Canary', seed: 'world-authoring' }, 'phil');
+    const uploaded = await service.saveAsset(created.project.id, {
+      filename: 'landmark.glb',
+      name: 'Landmark Model',
+      mimeType: 'model/gltf-binary',
+      contentBase64: Buffer.from('bounded-glb-fixture').toString('base64'),
+      metadata: { upAxis: 'Y', unitsPerMeter: 1 },
+    }, 'phil');
+    expect(uploaded.asset.metadata).toMatchObject({ kind: 'model', upAxis: 'Y', unitsPerMeter: 1, sizeBytes: 19 });
+    const read = await service.readAssetContent(created.project.id, uploaded.asset.id, 'phil');
+    expect(read.asset.id).toBe(uploaded.asset.id);
+    expect(read.content.toString('utf8')).toBe('bounded-glb-fixture');
+
+    const moduleId = 'world-authoring';
+    const resolution = 3;
+    const heights = [0, 0.12, 0, 0.1, 0.5, 0.1, 0, 0.12, 0];
+    const sourceFiles = [
+      { path: 'world/canary/canary.module.json', content: JSON.stringify({ schema: 'LillyGameModule/v1', id: moduleId, name: 'World Authoring', version: '1.0.0', dependencies: [], capabilities: [], systems: [], mechanics: [], prefabs: ['./landmark.prefab.json'], tests: [], materials: ['./surface.material.json'], assets: ['./landmark.asset.json'], animations: ['./landmark.animation.json'], terrains: ['./arena.terrain.json'] }) },
+      { path: 'world/canary/surface.material.json', content: JSON.stringify({ schema: 'LillyMaterial/v1', id: 'canary-surface', moduleId, name: 'Canary Surface', shading: 'physical', color: '#28635c', emissive: '#082f34', emissiveIntensity: 0.2, roughness: 0.76, metalness: 0.08, clearcoat: 0.12 }) },
+      { path: 'world/canary/landmark.asset.json', content: JSON.stringify({ schema: 'LillyAssetMetadata/v1', id: 'canary-landmark-model', moduleId, assetId: uploaded.asset.id, name: 'Canary Landmark Model', kind: 'model', scale: { x: 1, y: 1, z: 1 }, pivot: { x: 0, y: 0, z: 0 }, castShadow: true, receiveShadow: true, collision: { shape: 'box', size: { x: 1.5, y: 2.5, z: 1.5 }, center: { x: 0, y: 1.25, z: 0 } }, lods: [], animations: [] }) },
+      { path: 'world/canary/landmark.animation.json', content: JSON.stringify({ schema: 'LillyAnimationController/v1', id: 'canary-landmark-motion', moduleId, name: 'Canary Landmark Motion', defaultState: 'float', states: [{ id: 'float', mode: 'float', amplitude: 0.22, frequency: 0.4 }, { id: 'spin', mode: 'spin', axis: 'y', speed: 0.75 }] }) },
+      { path: 'world/canary/arena.terrain.json', content: JSON.stringify({ schema: 'LillyTerrain/v1', id: 'canary-terrain', moduleId, name: 'Canary Terrain', size: { x: 24, y: 24 }, resolution, heights, heightScale: 3.5, materialId: 'canary-surface', collision: true, walkable: true }) },
+      { path: 'world/canary/landmark.prefab.json', content: JSON.stringify({ schema: 'LillyPrefab/v1', id: 'canary-landmark', moduleId, name: 'Canary Landmark', rootEntityId: 'landmark', entities: [{ schema: 'LillyEntity/v1', id: 'landmark', name: 'Floating Landmark', parentId: null, enabled: true, tags: ['landmark'], components: [{ type: 'Transform', enabled: true, data: { position: { x: 0, y: 2.5, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }, { type: 'MeshRenderer', enabled: true, data: { geometry: 'octahedron', materialId: 'canary-surface', material: { emissive: '#22d3ee', emissiveIntensity: 0.8 } } }, { type: 'Animator', enabled: true, data: { controllerId: 'canary-landmark-motion', state: 'float', speed: 1, autoplay: true } }] }], variants: [{ id: 'sentinel', entities: { landmark: { name: 'Sentinel Landmark', components: { Animator: { state: 'spin', speed: 1.2 }, MeshRenderer: { material: { color: '#7c3aed', emissive: '#c084fc' } } } } } }] }) },
+    ];
+    const written = await service.writeSourceFiles(created.project.id, { baseRevision: 2, files: sourceFiles }, 'phil');
+    expect(written.project.revision).toBe(3);
+    expect(written.moduleSummary).toMatchObject({ prefabs: [{ id: 'canary-landmark', variants: [{ id: 'sentinel', name: 'sentinel' }] }], materials: [{ id: 'canary-surface' }], assets: [{ id: 'canary-landmark-model' }], animations: [{ id: 'canary-landmark-motion' }], terrains: [{ id: 'canary-terrain' }] });
+    expect(written.validation.worldIssues).toEqual([]);
+
+    const composed = await service.applyCommands(created.project.id, { baseRevision: 3, commands: [{ operation: 'entity.create', target: { sceneId: 'arena' }, payload: { entity: { schema: 'LillyEntity/v1', id: 'authored-terrain', name: 'Authored Terrain', parentId: 'world', enabled: true, tags: ['ground', 'terrain'], components: [{ type: 'Transform', enabled: true, data: { position: { x: 0, y: -0.4, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } }, { type: 'Terrain', enabled: true, data: { terrainId: 'canary-terrain', walkable: true, collision: true } }] } } }] }, 'phil');
+    const instantiated = await service.instantiatePrefab(created.project.id, { baseRevision: composed.project.revision, sceneId: 'arena', path: 'world/canary/landmark.prefab.json', prefabId: 'canary-landmark', instanceId: 'sentinel-one', parentId: 'world', config: { variant: 'sentinel', position: { x: 4, y: 0, z: -3 } } }, 'phil');
+    const sentinel = instantiated.project.scenes[0].entities.find((entity) => entity.id === 'sentinel-one:landmark');
+    expect(sentinel).toMatchObject({ name: 'Sentinel Landmark' });
+    expect(sentinel.components.find((entry) => entry.type === 'Animator').data).toMatchObject({ state: 'spin', speed: 1.2 });
+
+    const compile = await service.compileProjectModules(created.project.id, { revision: instantiated.project.revision }, 'phil');
+    expect(compile).toMatchObject({ valid: true, prefabs: [{ id: 'canary-landmark', variants: [{ id: 'sentinel', name: 'sentinel' }] }], materials: [{ id: 'canary-surface' }], assets: [{ assetId: uploaded.asset.id }], animations: [{ id: 'canary-landmark-motion' }], terrains: [{ id: 'canary-terrain' }], worldIssues: [] });
+    const playtest = await service.runPlaytest(created.project.id, {}, 'phil');
+    expect(playtest.status).toBe('passed');
+    expect(playtest.tests).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'World resources and authored asset metadata', status: 'passed' })]));
+    const build = await service.createBuild(created.project.id, { projectRevision: instantiated.project.revision }, 'phil');
+    const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
+    expect(manifest).toMatchObject({ materialCount: 1, assetMetadataCount: 1, animationControllerCount: 1, terrainCount: 1 });
+    const moduleBundle = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'modules.json'), 'utf8'));
+    expect(moduleBundle.terrains[0]).toMatchObject({ id: 'canary-terrain', heights });
+    await expect(fs.readFile(path.join(service.buildRoot, build.workspaceId, uploaded.asset.uri), 'utf8')).resolves.toBe('bounded-glb-fixture');
+  }, 20_000);
+
   test('proposes validated AI commands without mutating the saved revision', async () => {
     const created = await service.createProject({ name: 'AI Review' }, 'phil');
     const run = await service.createAiRun(created.project.id, { prompt: 'Make the shards glow and add a violet rim light' }, 'phil');
@@ -322,7 +371,9 @@ describe('GameStudioService', () => {
 
   test('publishes immutable player files under the managed-app public root', async () => {
     const created = await service.createProject({ name: 'Published Arena', slug: 'published-arena' }, 'phil');
-    const build = await service.createBuild(created.project.id, { projectRevision: 1 }, 'phil');
+    const binaryFixture = Buffer.from([0, 255, 17, 128, 64, 1]);
+    const uploaded = await service.saveAsset(created.project.id, { filename: 'published.glb', name: 'Published GLB', mimeType: 'model/gltf-binary', contentBase64: binaryFixture.toString('base64') }, 'phil');
+    const build = await service.createBuild(created.project.id, { projectRevision: uploaded.project.revision }, 'phil');
     const createApp = jest.fn(async () => ({
       app: { id: 'managed-app-1', slug: 'published-arena', status: 'building' },
       buildRun: { id: 'build-run-1' },
@@ -345,6 +396,7 @@ describe('GameStudioService', () => {
     ]));
     expect(input.files).not.toEqual(expect.arrayContaining([expect.objectContaining({ path: 'index.html' })]));
     expect(input.files.find((file) => file.path === 'public/index.html').content).toContain('id="game-canvas"');
+    expect(input.files.find((file) => file.path === `public/${uploaded.asset.uri}`)).toMatchObject({ encoding: 'base64', content: binaryFixture.toString('base64') });
     expect(published).toMatchObject({
       build: { status: 'published', publicUrl: 'https://published-arena.demoserver2.buzz' },
       previewPreservedUntilHttpsVerified: true,

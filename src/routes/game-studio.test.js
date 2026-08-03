@@ -60,11 +60,12 @@ describe('Game Studio API', () => {
     const contracts = await request(app).get('/api/game-studio/contracts').expect(200);
     expect(contracts.body).toMatchObject({
       schema: 'LillyGameStudioContracts/v1',
-      engineVersion: '0.4.0',
-      contracts: { sourceFile: 'LillySourceFile/v1', module: 'LillyGameModule/v1', mechanic: 'LillyMechanic/v1', prefab: 'LillyPrefab/v1', mechanicTest: 'LillyMechanicTest/v1' },
+      engineVersion: '0.5.0',
+      contracts: { sourceFile: 'LillySourceFile/v1', module: 'LillyGameModule/v1', mechanic: 'LillyMechanic/v1', prefab: 'LillyPrefab/v1', mechanicTest: 'LillyMechanicTest/v1', material: 'LillyMaterial/v1', assetMetadata: 'LillyAssetMetadata/v1', animationController: 'LillyAnimationController/v1', terrain: 'LillyTerrain/v1' },
       sandbox: { network: 'denied', dom: 'denied' },
     });
     expect(contracts.body.runtimeTypeDeclarations).toContain("declare module '@lilly/engine-runtime'");
+    expect(contracts.body.sourceFileTypes.map((entry) => entry.extension)).toEqual(expect.arrayContaining(['.material.json', '.asset.json', '.animation.json', '.terrain.json']));
 
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'External Agent Project', template: 'blank' }).expect(201);
     const id = created.body.project.id;
@@ -89,6 +90,49 @@ describe('Game Studio API', () => {
 
     const conflict = await request(app).put(`/api/game-studio/projects/${id}/files`).send({ baseRevision: 2, files: [{ path: 'data/config.json', content: '{}' }] }).expect(409);
     expect(conflict.body.error).toMatchObject({ code: 'REVISION_CONFLICT', currentRevision: 3 });
+  }, 20_000);
+
+  test('uploads, inventories, and streams authenticated world assets', async () => {
+    const created = await request(app).post('/api/game-studio/projects').send({ name: 'Asset Routes' }).expect(201);
+    const id = created.body.project.id;
+    const uploaded = await request(app).post(`/api/game-studio/projects/${id}/assets`).send({
+      filename: 'marker.glb',
+      name: 'Marker',
+      mimeType: 'model/gltf-binary',
+      contentBase64: Buffer.from('route-glb-fixture').toString('base64'),
+      metadata: { upAxis: 'Y', unitsPerMeter: 1 },
+    }).expect(201);
+    expect(uploaded.body.asset).toMatchObject({ name: 'Marker', type: 'model/gltf-binary', metadata: { kind: 'model', upAxis: 'Y' } });
+    const listing = await request(app).get(`/api/game-studio/projects/${id}/assets`).expect(200);
+    expect(listing.body).toMatchObject({ schema: 'LillyAssetLibrary/v1', revision: 2, assets: [{ id: uploaded.body.asset.id }] });
+    const content = await request(app).get(`/api/game-studio/projects/${id}/assets/${uploaded.body.asset.id}/content`).buffer(true).parse((response, callback) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on('end', () => callback(null, Buffer.concat(chunks)));
+    }).expect(200).expect('Content-Type', /model\/gltf-binary/);
+    expect(content.body.toString('utf8')).toBe('route-glb-fixture');
+    await request(app).get(`/api/game-studio/projects/${id}/assets/missing/content`).expect(404).expect((response) => expect(response.body.error.code).toBe('ASSET_NOT_FOUND'));
+  });
+
+  test('accepts the full 8 MiB raw asset lane and rejects malformed Base64 compatibility payloads', async () => {
+    const created = await request(app).post('/api/game-studio/projects').send({ name: 'Bounded Asset Routes' }).expect(201);
+    const id = created.body.project.id;
+    const bytes = Buffer.alloc(8 * 1024 * 1024, 0xa5);
+    const uploaded = await request(app)
+      .post(`/api/game-studio/projects/${id}/assets`)
+      .query({ filename: 'maximum.glb', name: 'Maximum GLB', mimeType: 'model/gltf-binary', upAxis: 'Y', unitsPerMeter: 1 })
+      .set('Content-Type', 'application/octet-stream')
+      .send(bytes)
+      .expect(201);
+    expect(uploaded.body.asset.metadata).toMatchObject({ sizeBytes: bytes.length, kind: 'model' });
+
+    const malformed = await request(app).post(`/api/game-studio/projects/${id}/assets`).send({
+      filename: 'malformed.glb',
+      name: 'Malformed',
+      mimeType: 'model/gltf-binary',
+      contentBase64: 'not!!!canonical===',
+    }).expect(400);
+    expect(malformed.body.error.code).toBe('ASSET_BASE64_INVALID');
   }, 20_000);
 
   test('runs AI review, playtest, and build endpoints', async () => {

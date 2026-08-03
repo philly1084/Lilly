@@ -409,10 +409,14 @@ function isKimiBuiltInitiatedBuildRun(buildRun = null) {
 function normalizeFilesInput(files = []) {
     return (Array.isArray(files) ? files : [])
         .filter((entry) => entry && typeof entry === 'object' && normalizeText(entry.path))
-        .map((entry) => ({
-            path: normalizeText(entry.path),
-            content: String(entry.content || ''),
-        }));
+        .map((entry) => {
+            const encoding = normalizeText(entry.encoding).toLowerCase() === 'base64' ? 'base64' : 'text';
+            return {
+                path: normalizeText(entry.path),
+                content: String(entry.content || ''),
+                ...(encoding === 'base64' ? { encoding } : {}),
+            };
+        });
 }
 
 function createManagedAppLlmClient() {
@@ -439,6 +443,7 @@ function mergeRepositoryFiles(baseFiles = [], overrideFiles = []) {
         merged.set(normalizeText(entry.path), {
             path: normalizeText(entry.path),
             content: String(entry.content || ''),
+            ...(normalizeText(entry.encoding).toLowerCase() === 'base64' ? { encoding: 'base64' } : {}),
         });
     });
 
@@ -449,6 +454,7 @@ function mergeRepositoryFiles(baseFiles = [], overrideFiles = []) {
         merged.set(normalizeText(entry.path), {
             path: normalizeText(entry.path),
             content: String(entry.content || ''),
+            ...(normalizeText(entry.encoding).toLowerCase() === 'base64' ? { encoding: 'base64' } : {}),
         });
     });
 
