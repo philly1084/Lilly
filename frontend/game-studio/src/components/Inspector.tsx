@@ -15,6 +15,7 @@ function VectorEditor({ label, value, onCommit }: { label: string; value: Vec3; 
 }
 
 function ComponentBody({ component, onChange }: { component: LillyComponent; onChange(next: LillyComponent): void }) {
+  const current = useStudioStore((state) => state.current);
   const data = component.data as Record<string, unknown>;
   if (component.type === 'Transform') return <>
     <VectorEditor label="Position" value={data.position as Vec3} onCommit={(value) => onChange({ ...component, data: { ...data, position: value } })}/>
@@ -24,12 +25,29 @@ function ComponentBody({ component, onChange }: { component: LillyComponent; onC
   if (component.type === 'MeshRenderer') {
     const material = (data.material || {}) as Record<string, unknown>;
     return <>
-      {Boolean(data.assetId) && <div className="property-row"><span className="property-label">GLB asset</span><code className="asset-reference">{String(data.assetId)}</code></div>}
+      <div className="property-row"><span className="property-label">Model asset</span><select value={String(data.assetId || '')} onChange={(event) => onChange({ ...component, data: { ...data, assetId: event.target.value } })}><option value="">Primitive geometry</option>{(current?.project.assets || []).filter((asset) => asset.type.startsWith('model/') || /\.glb$/i.test(asset.uri)).map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></div>
+      <div className="property-row"><span className="property-label">Material</span><select value={String(data.materialId || '')} onChange={(event) => onChange({ ...component, data: { ...data, materialId: event.target.value } })}><option value="">Inline material</option>{(current?.moduleSummary.materials || []).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></div>
       <div className="property-row"><span className="property-label">Geometry</span><select value={String(data.geometry || 'box')} onChange={(event) => onChange({ ...component, data: { ...data, geometry: event.target.value } })}><option>box</option><option>sphere</option><option>capsule</option><option>cylinder</option><option>octahedron</option><option>torus</option></select></div>
       <div className="property-row"><span className="property-label">Color</span><div className="color-input"><input type="color" value={String(material.color || '#8ea7c4')} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, color: event.target.value } } })}/><code>{String(material.color || '#8ea7c4')}</code></div></div>
       <div className="property-row"><span className="property-label">Roughness</span><input className="range" type="range" min="0" max="1" step="0.05" value={Number(material.roughness ?? 0.65)} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, roughness: Number(event.target.value) } } })}/><span className="range-value">{Number(material.roughness ?? 0.65).toFixed(2)}</span></div>
+      <div className="property-row"><span className="property-label">Metalness</span><input className="range" type="range" min="0" max="1" step="0.05" value={Number(material.metalness ?? 0.05)} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, metalness: Number(event.target.value) } } })}/><span className="range-value">{Number(material.metalness ?? 0.05).toFixed(2)}</span></div>
+      <div className="property-row"><span className="property-label">Emissive</span><div className="color-input"><input type="color" value={String(material.emissive || '#000000')} onChange={(event) => onChange({ ...component, data: { ...data, material: { ...material, emissive: event.target.value } } })}/><code>{String(material.emissive || '#000000')}</code></div></div>
+      <label className="check-row"><input type="checkbox" checked={data.castShadow !== false} onChange={(event) => onChange({ ...component, data: { ...data, castShadow: event.target.checked } })}/><span>Cast shadows</span></label>
+      <label className="check-row"><input type="checkbox" checked={data.receiveShadow !== false} onChange={(event) => onChange({ ...component, data: { ...data, receiveShadow: event.target.checked } })}/><span>Receive shadows</span></label>
     </>;
   }
+  if (component.type === 'Terrain') return <>
+    <div className="property-row"><span className="property-label">Heightfield</span><select value={String(data.terrainId || '')} onChange={(event) => onChange({ ...component, data: { ...data, terrainId: event.target.value } })}><option value="">Select terrain</option>{(current?.moduleSummary.terrains || []).map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.resolution}²</option>)}</select></div>
+    <label className="check-row"><input type="checkbox" checked={data.walkable !== false} onChange={(event) => onChange({ ...component, data: { ...data, walkable: event.target.checked } })}/><span>Walkable surface</span></label>
+    <label className="check-row"><input type="checkbox" checked={data.collision !== false} onChange={(event) => onChange({ ...component, data: { ...data, collision: event.target.checked } })}/><span>Heightfield collision intent</span></label>
+    <div className="property-hint">Terrain heights are deterministic source data. V1 player collision uses the authored XZ footprint while heightfield physics is promoted next.</div>
+  </>;
+  if (component.type === 'Animator') return <>
+    <div className="property-row"><span className="property-label">Controller</span><select value={String(data.controllerId || '')} onChange={(event) => onChange({ ...component, data: { ...data, controllerId: event.target.value, state: '' } })}><option value="">Direct GLB clip</option>{(current?.moduleSummary.animations || []).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></div>
+    {data.controllerId ? <div className="property-row"><span className="property-label">State</span><select value={String(data.state || '')} onChange={(event) => onChange({ ...component, data: { ...data, state: event.target.value } })}><option value="">Controller default</option>{current?.moduleSummary.animations.find((entry) => entry.id === data.controllerId)?.states.map((state) => <option key={state.id} value={state.id}>{state.id} · {state.mode}</option>)}</select></div> : <div className="property-row"><span className="property-label">Clip</span><input value={String(data.clip || '')} placeholder="GLB clip name" onChange={(event) => onChange({ ...component, data: { ...data, clip: event.target.value } })}/></div>}
+    <div className="property-row"><span className="property-label">Speed</span><NumberField label="×" value={Number(data.speed ?? 1)} step={0.1} onCommit={(value) => onChange({ ...component, data: { ...data, speed: value } })}/></div>
+    <label className="check-row"><input type="checkbox" checked={data.autoplay !== false} onChange={(event) => onChange({ ...component, data: { ...data, autoplay: event.target.checked } })}/><span>Autoplay in editor and player</span></label>
+  </>;
   if (component.type === 'Light') return <>
     <div className="property-row"><span className="property-label">Type</span><select value={String(data.kind || 'directional')} onChange={(event) => onChange({ ...component, data: { ...data, kind: event.target.value } })}><option>directional</option><option>point</option><option>spot</option><option>hemisphere</option></select></div>
     <div className="property-row"><span className="property-label">Color</span><input type="color" value={String(data.color || '#ffffff')} onChange={(event) => onChange({ ...component, data: { ...data, color: event.target.value } })}/></div>

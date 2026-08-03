@@ -52,6 +52,10 @@ router.get('/contracts', async (req, res, next) => {
         mechanic: core.MECHANIC_SCHEMA,
         prefab: core.PREFAB_SCHEMA,
         mechanicTest: core.MECHANIC_TEST_SCHEMA,
+        material: core.MATERIAL_SCHEMA,
+        assetMetadata: core.ASSET_METADATA_SCHEMA,
+        animationController: core.ANIMATION_CONTROLLER_SCHEMA,
+        terrain: core.TERRAIN_SCHEMA,
         moduleBundle: modules.MODULE_BUNDLE_SCHEMA,
       },
       sourceFileTypes: [
@@ -60,6 +64,10 @@ router.get('/contracts', async (req, res, next) => {
         { extension: '.system.ts', kind: 'system', purpose: 'Typed lifecycle code executed inside the capability sandbox' },
         { extension: '.prefab.json', kind: 'prefab', purpose: 'Reusable versioned entity hierarchies' },
         { extension: '.spec.json', kind: 'test', purpose: 'Deterministic mechanic events and assertions' },
+        { extension: '.material.json', kind: 'material', purpose: 'Reusable rendering materials owned by Lilly project source' },
+        { extension: '.asset.json', kind: 'asset-metadata', purpose: 'Scale, pivot, shadow, collision, LOD, and clip metadata for uploaded assets' },
+        { extension: '.animation.json', kind: 'animation-controller', purpose: 'GLB clip bindings and procedural animation states' },
+        { extension: '.terrain.json', kind: 'terrain', purpose: 'Bounded deterministic heightfields with authored material and collision intent' },
         { extension: '.blueprint.json', kind: 'blueprint', purpose: 'Typed visual graph source' },
         { extension: '.scene.json', kind: 'scene', purpose: 'Scene source and import/export interchange' },
       ],
@@ -214,6 +222,16 @@ router.get('/projects/:id/events', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/projects/:id/assets', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.listAssets(req.params.id, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
 router.post('/projects/:id/assets', async (req, res, next) => {
   try {
     const gameStudio = ensureAvailable(req, res);
@@ -221,6 +239,19 @@ router.post('/projects/:id/assets', async (req, res, next) => {
     const result = await gameStudio.saveAsset(req.params.id, req.body || {}, ownerId(req));
     if (!result) return notFound(res);
     res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/assets/:assetId/content', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.readAssetContent(req.params.id, req.params.assetId, ownerId(req));
+    if (!result) return notFound(res);
+    res.setHeader('Content-Type', result.asset.type || 'application/octet-stream');
+    res.setHeader('Content-Length', String(result.content.length));
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(result.content);
   } catch (error) { next(error); }
 });
 

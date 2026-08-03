@@ -1,10 +1,12 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Edges, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, PerspectiveCamera, TransformControls } from '@react-three/drei';
+import { Edges, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, PerspectiveCamera, TransformControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { clone as cloneSkinnedScene } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { GameplaySimulation, scheduleGameplaySteps, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
+import { studioApi } from '../api';
 import { useWorkspacePreviewAccess } from '../preview-access';
-import type { LillyComponent, LillyEntity, LillyProject, LillyScene, Vec3 } from '../types';
+import type { LillyAnimationControllerDefinition, LillyAssetMetadataDefinition, LillyComponent, LillyEntity, LillyMaterialDefinition, LillyProject, LillyScene, LillyTerrainDefinition, Vec3 } from '../types';
 import { currentScene, useStudioStore } from '../store';
 import { Icon } from './Icon';
 
@@ -20,16 +22,35 @@ function vector(value: unknown, fallback: Vec3): Vec3 {
 
 type CollisionBox = { entityId: string; gateId: string | null; minX: number; maxX: number; minZ: number; maxZ: number };
 type CollisionWorld = { walkable: CollisionBox[]; obstacles: CollisionBox[]; center: Vec3; span: number };
+type WorldResources = {
+  materials: LillyMaterialDefinition[];
+  assetMetadata: LillyAssetMetadataDefinition[];
+  animations: LillyAnimationControllerDefinition[];
+  terrains: LillyTerrainDefinition[];
+};
 
-function collisionWorld(scene: LillyScene): CollisionWorld {
+function collisionWorld(scene: LillyScene, resources: WorldResources): CollisionWorld {
   const walkable: CollisionBox[] = [];
   const obstacles: CollisionBox[] = [];
   scene.entities.forEach((entity) => {
     const collider = component(entity, 'Collider');
     const transform = component(entity, 'Transform');
-    if (!collider || !transform) return;
+    const terrain = component(entity, 'Terrain');
+    if (!transform) return;
     const position = vector(transform.data.position, { x: 0, y: 0, z: 0 });
     const scale = vector(transform.data.scale, { x: 1, y: 1, z: 1 });
+    if (terrain) {
+      const definition = resources.terrains.find((entry) => entry.id === String(terrain.data.terrainId || ''));
+      if (definition && terrain.data.walkable !== false && definition.walkable !== false) walkable.push({
+        entityId: entity.id,
+        gateId: null,
+        minX: position.x - Math.abs(definition.size.x * scale.x) / 2,
+        maxX: position.x + Math.abs(definition.size.x * scale.x) / 2,
+        minZ: position.z - Math.abs(definition.size.y * scale.z) / 2,
+        maxZ: position.z + Math.abs(definition.size.y * scale.z) / 2,
+      });
+    }
+    if (!collider) return;
     const size = vector(collider.data.size, scale);
     const box = {
       entityId: entity.id,
@@ -73,9 +94,125 @@ function Geometry({ kind }: { kind: string }) {
   return <boxGeometry args={[1, 1, 1]}/>;
 }
 
+const editorTextureLoader = new THREE.TextureLoader();
+const editorReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function editorTexture(project: LillyProject, assetId: unknown, colorTexture = false, tiling: { x?: number; y?: number } = {}) {
+  const asset = project.assets.find((entry) => entry.id === String(assetId || ''));
+  if (!asset) return null;
+  const texture = editorTextureLoader.load(studioApi.assetContentUrl(project.id, asset.id, project.revision));
+  if (colorTexture) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(Number(tiling.x || 1), Number(tiling.y || 1));
+  return texture;
+}
+
+function createEditorMaterial(project: LillyProject, resources: WorldResources, meshData: Record<string, unknown>, selected = false) {
+  const definition = resources.materials.find((entry) => entry.id === String(meshData.materialId || '')) || {} as LillyMaterialDefinition;
+  const inline = (meshData.material || {}) as Record<string, unknown>;
+  const values = { ...definition, ...inline } as LillyMaterialDefinition & Record<string, unknown>;
+  const textures = { ...(definition.textures || {}), ...((inline.textures || {}) as Record<string, string>) };
+  const tiling = (values.tiling || {}) as { x?: number; y?: number };
+  const common = {
+    color: String(values.color || '#8ea7c4'),
+    transparent: values.transparent === true || Number(values.opacity ?? 1) < 1,
+    opacity: Number(values.opacity ?? 1),
+    side: values.doubleSided === true ? THREE.DoubleSide : THREE.FrontSide,
+    flatShading: values.flatShading === true,
+    wireframe: values.wireframe === true,
+    map: editorTexture(project, textures.baseColor, true, tiling),
+  };
+  const lit = {
+    ...common,
+    emissive: selected ? '#0ea5e9' : String(values.emissive || '#000000'),
+    emissiveIntensity: selected ? 0.45 : Number(values.emissiveIntensity ?? 0),
+  };
+  if (values.shading === 'unlit') return new THREE.MeshBasicMaterial({ ...common, color: selected ? '#38bdf8' : common.color });
+  if (values.shading === 'toon') return new THREE.MeshToonMaterial({ ...lit, emissiveMap: editorTexture(project, textures.emissive, true, tiling) });
+  if (values.shading === 'physical') return new THREE.MeshPhysicalMaterial({
+    ...lit,
+    roughness: Number(values.roughness ?? 0.65),
+    metalness: Number(values.metalness ?? 0.05),
+    clearcoat: Number(values.clearcoat ?? 0),
+    clearcoatRoughness: Number(values.clearcoatRoughness ?? 0),
+    normalMap: editorTexture(project, textures.normal, false, tiling),
+    roughnessMap: editorTexture(project, textures.roughness, false, tiling),
+    metalnessMap: editorTexture(project, textures.metalness, false, tiling),
+    emissiveMap: editorTexture(project, textures.emissive, true, tiling),
+  });
+  return new THREE.MeshStandardMaterial({
+    ...lit,
+    roughness: Number(values.roughness ?? 0.65),
+    metalness: Number(values.metalness ?? 0.05),
+    normalMap: editorTexture(project, textures.normal, false, tiling),
+    roughnessMap: editorTexture(project, textures.roughness, false, tiling),
+    metalnessMap: editorTexture(project, textures.metalness, false, tiling),
+    emissiveMap: editorTexture(project, textures.emissive, true, tiling),
+  });
+}
+
+function TerrainSurface({ project, definition, resources, selected, data }: { project: LillyProject; definition: LillyTerrainDefinition; resources: WorldResources; selected: boolean; data: Record<string, unknown> }) {
+  const geometry = useMemo(() => {
+    const created = new THREE.PlaneGeometry(definition.size.x, definition.size.y, definition.resolution - 1, definition.resolution - 1);
+    created.rotateX(-Math.PI / 2);
+    const positions = created.attributes.position;
+    for (let index = 0; index < positions.count; index += 1) positions.setY(index, Number(definition.heights[index] || 0) * definition.heightScale);
+    positions.needsUpdate = true;
+    created.computeVertexNormals();
+    return created;
+  }, [definition]);
+  const material = useMemo(() => createEditorMaterial(project, resources, { materialId: definition.materialId, material: data.material || {} }, selected), [project.id, project.revision, resources, definition, data.material, selected]);
+  useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
+  return <mesh geometry={geometry} material={material} castShadow={data.castShadow === true} receiveShadow={data.receiveShadow !== false}>{selected && <Edges color="#7dd3fc" threshold={15}/>}</mesh>;
+}
+
+function AssetModel({ project, entity, resources, selected }: { project: LillyProject; entity: LillyEntity; resources: WorldResources; selected: boolean }) {
+  const mesh = component(entity, 'MeshRenderer') as LillyComponent | null;
+  const animator = component(entity, 'Animator') as LillyComponent | null;
+  const assetId = String(mesh?.data.assetId || '');
+  const url = studioApi.assetContentUrl(project.id, assetId, project.revision);
+  const gltf = useGLTF(url) as unknown as { scene: THREE.Group; animations: THREE.AnimationClip[] };
+  const metadata = resources.assetMetadata.find((entry) => entry.assetId === assetId || entry.id === assetId);
+  const material = useMemo(() => mesh?.data.materialId ? createEditorMaterial(project, resources, mesh.data, selected) : null, [project.id, project.revision, resources, mesh?.data, selected]);
+  const cloned = useMemo(() => {
+    const object = cloneSkinnedScene(gltf.scene) as THREE.Group;
+    const scale = vector(metadata?.scale, { x: 1, y: 1, z: 1 });
+    const pivot = vector(metadata?.pivot, { x: 0, y: 0, z: 0 });
+    object.scale.set(scale.x, scale.y, scale.z);
+    object.position.set(-pivot.x, -pivot.y, -pivot.z);
+    object.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.castShadow = metadata?.castShadow ?? mesh?.data.castShadow !== false;
+      child.receiveShadow = metadata?.receiveShadow ?? mesh?.data.receiveShadow !== false;
+      if (material) child.material = material;
+    });
+    return object;
+  }, [gltf.scene, material, metadata, mesh?.data.castShadow, mesh?.data.receiveShadow]);
+  const mixer = useRef<THREE.AnimationMixer | null>(null);
+  useEffect(() => {
+    if (!animator || animator.data.autoplay === false || !gltf.animations.length) return undefined;
+    const controller = resources.animations.find((entry) => entry.id === String(animator.data.controllerId || ''));
+    const state = controller?.states.find((entry) => entry.id === String(animator.data.state || controller.defaultState));
+    if (state && state.mode !== 'clip') return undefined;
+    const alias = metadata?.animations?.find((entry) => entry.name === String(animator.data.clip || state?.clip || ''));
+    const clipName = String(alias?.clip || animator.data.clip || state?.clip || '');
+    const clip = gltf.animations.find((entry) => entry.name === clipName) || gltf.animations[0];
+    const created = new THREE.AnimationMixer(cloned);
+    const action = created.clipAction(clip);
+    action.timeScale = Number(animator.data.speed ?? state?.speed ?? 1) * Number(alias?.speed ?? 1);
+    action.setLoop((state?.loop ?? alias?.loop) === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity).play();
+    mixer.current = created;
+    return () => { created.stopAllAction(); created.uncacheRoot(cloned); mixer.current = null; };
+  }, [animator, cloned, gltf.animations, metadata, resources.animations]);
+  useFrame((_state, delta) => mixer.current?.update(delta));
+  useEffect(() => () => { material?.dispose(); }, [material]);
+  return <primitive object={cloned}/>;
+}
+
 type RuntimeObjects = React.MutableRefObject<Map<string, THREE.Group>>;
 
-function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; runtimeObjects: RuntimeObjects; snap: boolean }) {
+function EntityMesh({ entity, project, resources, runtimeObjects, snap }: { entity: LillyEntity; project: LillyProject; resources: WorldResources; runtimeObjects: RuntimeObjects; snap: boolean }) {
   const selected = useStudioStore((state) => state.selectedEntityId === entity.id);
   const transformMode = useStudioStore((state) => state.transformMode);
   const playState = useStudioStore((state) => state.playState);
@@ -84,6 +221,8 @@ function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; run
   const group = useRef<THREE.Group>(null);
   const transform = component(entity, 'Transform');
   const mesh = component(entity, 'MeshRenderer');
+  const terrain = component(entity, 'Terrain');
+  const animator = component(entity, 'Animator');
   const light = component(entity, 'Light');
   const position = vector(transform?.data.position, { x: 0, y: 0, z: 0 });
   const rotation = vector(transform?.data.rotation, { x: 0, y: 0, z: 0 });
@@ -92,6 +231,19 @@ function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; run
   const isEnemy = entity.tags.includes('enemy');
   const isGate = entity.tags.includes('encounter-gate');
   const isCheckpoint = entity.tags.includes('checkpoint');
+  const roleGlow = isPickup || isEnemy || isGate || isCheckpoint || entity.tags.includes('goal');
+  const terrainResource = resources.terrains.find((entry) => entry.id === String(terrain?.data.terrainId || '')) || null;
+  const animation = resources.animations.find((entry) => entry.id === String(animator?.data.controllerId || '')) || null;
+  const animationState = animation?.states.find((entry) => entry.id === String(animator?.data.state || animation.defaultState)) || null;
+  const primitiveMaterial = useMemo(() => {
+    if (!mesh || mesh.data.assetId) return null;
+    const inline = (mesh.data.material || {}) as Record<string, unknown>;
+    return createEditorMaterial(project, resources, {
+      ...mesh.data,
+      material: roleGlow && !inline.emissive ? { ...inline, emissive: inline.color || '#4c1d95', emissiveIntensity: 0.35 } : inline,
+    }, selected);
+  }, [mesh, project.id, project.revision, resources, roleGlow, selected]);
+  useEffect(() => () => primitiveMaterial?.dispose(), [primitiveMaterial]);
 
   useEffect(() => {
     if (!group.current) return undefined;
@@ -110,6 +262,16 @@ function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; run
 
   useFrame((state, delta) => {
     if (!group.current) return;
+    if (animator?.data.autoplay !== false && animationState && animationState.mode !== 'clip') {
+      const phase = state.clock.elapsedTime * Number(animationState.frequency ?? 1) * Math.PI * 2;
+      const motionScale = editorReducedMotion ? 0.25 : 1;
+      if (animationState.mode === 'spin') group.current.rotation[animationState.axis || 'y'] = rotation[animationState.axis || 'y'] + state.clock.elapsedTime * Number(animator?.data.speed ?? animationState.speed ?? 1) * motionScale;
+      else if (animationState.mode === 'float') group.current.position.y = position.y + Math.sin(phase) * Number(animationState.amplitude ?? 0.2) * motionScale;
+      else if (animationState.mode === 'pulse') {
+        const pulse = 1 + Math.sin(phase) * Number(animationState.amplitude ?? 0.08) * motionScale;
+        group.current.scale.set(scale.x * pulse, scale.y * pulse, scale.z * pulse);
+      }
+    }
     if (isPickup) group.current.rotation.y += delta * 0.8;
     if (isEnemy && playState !== 'editing' && group.current.visible) {
       group.current.rotation.y += delta * (group.current.userData.phase === 'windup' ? 7 : 1.2);
@@ -138,7 +300,6 @@ function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; run
     });
   };
 
-  const roleGlow = isPickup || isEnemy || isGate || isCheckpoint || entity.tags.includes('goal');
   const object = <group
     ref={group}
     position={[position.x, position.y, position.z]}
@@ -148,20 +309,16 @@ function EntityMesh({ entity, runtimeObjects, snap }: { entity: LillyEntity; run
     onClick={(event) => { event.stopPropagation(); if (playState === 'editing') selectEntity(entity.id); }}
     userData={{ entityId: entity.id, phase: 'idle', checkpointActive: false }}
   >
-    {mesh && <mesh castShadow={mesh.data.castShadow !== false} receiveShadow={mesh.data.receiveShadow !== false}>
+    {terrain && terrainResource && <TerrainSurface project={project} definition={terrainResource} resources={resources} selected={selected} data={terrain.data}/>}
+    {mesh?.data.assetId && <AssetModel project={project} entity={entity} resources={resources} selected={selected}/>}
+    {mesh && !mesh.data.assetId && <mesh castShadow={mesh.data.castShadow !== false} receiveShadow={mesh.data.receiveShadow !== false}>
       <Geometry kind={String(mesh.data.geometry || 'box')}/>
-      <meshStandardMaterial
-        color={String((mesh.data.material as Record<string, unknown>)?.color || '#8ea7c4')}
-        roughness={Number((mesh.data.material as Record<string, unknown>)?.roughness ?? 0.65)}
-        metalness={Number((mesh.data.material as Record<string, unknown>)?.metalness ?? 0.05)}
-        emissive={selected ? '#0ea5e9' : String((mesh.data.material as Record<string, unknown>)?.emissive || (roleGlow ? (mesh.data.material as Record<string, unknown>)?.color || '#4c1d95' : '#000000'))}
-        emissiveIntensity={selected ? 0.45 : Number((mesh.data.material as Record<string, unknown>)?.emissiveIntensity || (roleGlow ? 0.35 : 0))}
-      />
+      {primitiveMaterial && <primitive object={primitiveMaterial} attach="material"/>}
       {selected && <Edges color="#7dd3fc" threshold={15}/>}
     </mesh>}
     {light?.data.kind === 'point' && <pointLight color={String(light.data.color || '#fff')} intensity={Number(light.data.intensity || 1)} distance={Number(light.data.range || 20)} castShadow={light.data.castShadow !== false}/>}
     {light && light.data.kind !== 'point' && <directionalLight color={String(light.data.color || '#fff')} intensity={Number(light.data.intensity || 1)} castShadow={light.data.castShadow !== false}/>}
-    {!mesh && !light && entity.components.some((entry) => entry.type === 'Camera') && <mesh><coneGeometry args={[0.28, 0.7, 4]}/><meshBasicMaterial color={selected ? '#7dd3fc' : '#526476'} wireframe/></mesh>}
+    {!mesh && !terrain && !light && entity.components.some((entry) => entry.type === 'Camera') && <mesh><coneGeometry args={[0.28, 0.7, 4]}/><meshBasicMaterial color={selected ? '#7dd3fc' : '#526476'} wireframe/></mesh>}
     {selected && playState === 'editing' && <Html position={[0, Math.max(1, scale.y), 0]} center className="selection-label"><span>{entity.name}</span><small>{entity.id}</small></Html>}
   </group>;
 
@@ -308,9 +465,10 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
   return null;
 }
 
-function EditorScene({ project, scene, snap, lighting, touchKeys, touchAttack, onGameplayState }: {
+function EditorScene({ project, scene, resources, snap, lighting, touchKeys, touchAttack, onGameplayState }: {
   project: LillyProject;
   scene: LillyScene;
+  resources: WorldResources;
   snap: boolean;
   lighting: string;
   touchKeys: Set<string>;
@@ -321,7 +479,7 @@ function EditorScene({ project, scene, snap, lighting, touchKeys, touchAttack, o
   const selectEntity = useStudioStore((state) => state.selectEntity);
   const playerEntity = scene.entities.find((entity) => entity.tags.includes('player'));
   const runtimeObjects = useRef(new Map<string, THREE.Group>());
-  const world = useMemo(() => collisionWorld(scene), [scene]);
+  const world = useMemo(() => collisionWorld(scene, resources), [scene, resources]);
   const cameraDistance = Math.max(14, Math.min(58, world.span * 0.9));
   return <>
     <color attach="background" args={[lighting === 'unlit' ? '#0d1117' : scene.environment.background || '#081018']}/>
@@ -329,7 +487,7 @@ function EditorScene({ project, scene, snap, lighting, touchKeys, touchAttack, o
     {lighting === 'unlit' && <ambientLight intensity={2}/>}
     {lighting === 'scene' && <hemisphereLight args={['#d8ecff', '#17202b', Number(scene.environment.ambientIntensity || 0.5)]}/>}
     <PerspectiveCamera makeDefault position={[world.center.x + cameraDistance * 0.72, cameraDistance * 0.58, world.center.z + cameraDistance]} fov={52}/>
-    {scene.entities.map((entity) => <EntityMesh key={entity.id} entity={entity} runtimeObjects={runtimeObjects} snap={snap}/>) }
+    {scene.entities.map((entity) => <EntityMesh key={entity.id} entity={entity} project={project} resources={resources} runtimeObjects={runtimeObjects} snap={snap}/>) }
     <GameplayBridge project={project} scene={scene} world={world} runtimeObjects={runtimeObjects} touchKeys={touchKeys} touchAttack={touchAttack} onState={onGameplayState}/>
     <Grid position={[world.center.x, 0.01, world.center.z]} args={[Math.max(40, world.span * 1.5), Math.max(40, world.span * 1.5)]} cellSize={0.5} cellThickness={0.5} cellColor="#23394a" sectionSize={5} sectionThickness={1} sectionColor="#3b6078" fadeDistance={Math.max(55, world.span * 1.3)} fadeStrength={1.5}/>
     <OrbitControls makeDefault enabled={playState === 'editing'} target={[world.center.x, 0.8, world.center.z]} minDistance={2} maxDistance={Math.max(70, world.span * 2)} maxPolarAngle={Math.PI * 0.49}/>
@@ -394,6 +552,12 @@ export function Viewport() {
   const [touchAttack, setTouchAttack] = useState(false);
   const [gameplayState, setGameplayState] = useState<GameplayState | null>(null);
   const scene = useMemo(() => currentScene(current), [current]);
+  const resources = useMemo<WorldResources>(() => ({
+    materials: current?.moduleSummary.materials || [],
+    assetMetadata: current?.moduleSummary.assets || [],
+    animations: current?.moduleSummary.animations || [],
+    terrains: current?.moduleSummary.terrains || [],
+  }), [current?.moduleSummary]);
   const design = current?.project.generatedLevels?.find((level) => level.sceneId === current.project.entryScene) || null;
   const recipe = design ? current?.project.levelRecipes?.find((levelRecipe) => levelRecipe.id === design.recipeId) || null : null;
   const setTouchCode = (code: string, pressed: boolean) => setTouchKeys((currentKeys) => {
@@ -433,7 +597,7 @@ export function Viewport() {
       {!rendererReady && <div className="viewport-loading"><span className="spinner-small"/><span>Starting WebGL2 renderer…</span></div>}
       <ViewportErrorBoundary>
         <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }} onCreated={({ gl }) => { gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.04; setRendererReady(true); }}>
-          <Suspense fallback={null}><EditorScene project={current.project} scene={scene} snap={snap} lighting={lighting} touchKeys={touchKeys} touchAttack={touchAttack} onGameplayState={setGameplayState}/></Suspense>
+          <Suspense fallback={null}><EditorScene project={current.project} scene={scene} resources={resources} snap={snap} lighting={lighting} touchKeys={touchKeys} touchAttack={touchAttack} onGameplayState={setGameplayState}/></Suspense>
         </Canvas>
       </ViewportErrorBoundary>
     </> : previewStatus === 'ready' && editorPreview ? <ExactPlayPreview previewUrl={editorPreview.previewUrl} projectId={current.project.id} playState={playState} stepToken={stepToken}/> : <div className={`viewport-loading preview-${previewStatus}`}><span className="spinner-small"/><span>{previewStatus === 'error' ? 'Exact Play preview blocked — open Console for diagnostics' : 'Compiling modules and preparing exact Play preview…'}</span></div>}

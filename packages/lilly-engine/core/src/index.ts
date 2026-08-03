@@ -12,7 +12,7 @@ import {
 
 export * from './level-generator';
 
-export const ENGINE_VERSION = '0.4.0';
+export const ENGINE_VERSION = '0.5.0';
 export const PROJECT_SCHEMA = 'LillyProject/v1' as const;
 export const SCENE_SCHEMA = 'LillyScene/v1' as const;
 export const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
@@ -24,6 +24,10 @@ export const GAME_MODULE_SCHEMA = 'LillyGameModule/v1' as const;
 export const MECHANIC_SCHEMA = 'LillyMechanic/v1' as const;
 export const PREFAB_SCHEMA = 'LillyPrefab/v1' as const;
 export const MECHANIC_TEST_SCHEMA = 'LillyMechanicTest/v1' as const;
+export const MATERIAL_SCHEMA = 'LillyMaterial/v1' as const;
+export const ASSET_METADATA_SCHEMA = 'LillyAssetMetadata/v1' as const;
+export const ANIMATION_CONTROLLER_SCHEMA = 'LillyAnimationController/v1' as const;
+export const TERRAIN_SCHEMA = 'LillyTerrain/v1' as const;
 
 export type Vec2 = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
@@ -34,6 +38,10 @@ export type LillySourceFileKind =
   | 'system'
   | 'prefab'
   | 'test'
+  | 'material'
+  | 'asset-metadata'
+  | 'animation-controller'
+  | 'terrain'
   | 'blueprint'
   | 'scene'
   | 'data';
@@ -56,6 +64,7 @@ export type LillyComponentType =
   | 'Collider'
   | 'AudioSource'
   | 'Animator'
+  | 'Terrain'
   | 'Blueprint'
   | 'Script'
   | 'ParticleEmitter'
@@ -93,6 +102,7 @@ export interface LillyPrefabDefinition {
   name: string;
   rootEntityId: string;
   entities: LillyEntity[];
+  variants?: LillyPrefabVariantDefinition[];
 }
 
 export interface LillyPrefabEntityOverride {
@@ -102,11 +112,108 @@ export interface LillyPrefabEntityOverride {
   components?: Partial<Record<LillyComponentType, Record<string, unknown>>>;
 }
 
+export interface LillyPrefabVariantDefinition {
+  id: string;
+  name?: string;
+  entities: Record<string, LillyPrefabEntityOverride>;
+}
+
 export interface LillyPrefabInstanceConfig {
+  /** Optional authored variant applied before instance-specific overrides. */
+  variant?: string;
   /** Translation added to the authored root Transform position. */
   position?: Vec3;
   /** Overrides keyed by the source entity id stored in LillyPrefab/v1. */
   entities?: Record<string, LillyPrefabEntityOverride>;
+}
+
+export type LillyMaterialTextureSlot = 'baseColor' | 'normal' | 'roughness' | 'metalness' | 'emissive';
+
+export interface LillyMaterialDefinition {
+  schema: typeof MATERIAL_SCHEMA;
+  id: string;
+  moduleId: string;
+  name: string;
+  shading: 'standard' | 'physical' | 'toon' | 'unlit';
+  color?: string;
+  emissive?: string;
+  emissiveIntensity?: number;
+  roughness?: number;
+  metalness?: number;
+  opacity?: number;
+  transparent?: boolean;
+  doubleSided?: boolean;
+  flatShading?: boolean;
+  wireframe?: boolean;
+  clearcoat?: number;
+  clearcoatRoughness?: number;
+  textures?: Partial<Record<LillyMaterialTextureSlot, string>>;
+  tiling?: Vec2;
+}
+
+export interface LillyAssetMetadataDefinition {
+  schema: typeof ASSET_METADATA_SCHEMA;
+  id: string;
+  moduleId: string;
+  assetId: string;
+  name: string;
+  kind: 'model' | 'texture' | 'audio';
+  scale?: Vec3;
+  pivot?: Vec3;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
+  collision?: {
+    shape: 'box' | 'sphere' | 'capsule' | 'cylinder';
+    size?: Vec3;
+    center?: Vec3;
+    sensor?: boolean;
+  } | null;
+  lods?: Array<{ assetId: string; maxDistance: number }>;
+  animations?: Array<{ name: string; clip: string; loop?: boolean; speed?: number }>;
+}
+
+export interface LillyAnimationStateDefinition {
+  id: string;
+  mode: 'clip' | 'spin' | 'float' | 'pulse';
+  clip?: string;
+  loop?: boolean;
+  speed?: number;
+  axis?: 'x' | 'y' | 'z';
+  amplitude?: number;
+  frequency?: number;
+  fadeSeconds?: number;
+}
+
+export interface LillyAnimationControllerDefinition {
+  schema: typeof ANIMATION_CONTROLLER_SCHEMA;
+  id: string;
+  moduleId: string;
+  name: string;
+  assetId?: string;
+  defaultState: string;
+  states: LillyAnimationStateDefinition[];
+}
+
+export interface LillyTerrainDefinition {
+  schema: typeof TERRAIN_SCHEMA;
+  id: string;
+  moduleId: string;
+  name: string;
+  size: Vec2;
+  resolution: number;
+  heights: number[];
+  heightScale: number;
+  materialId?: string;
+  collision?: boolean;
+  walkable?: boolean;
+}
+
+export interface LillyProjectAsset {
+  id: string;
+  name: string;
+  type: string;
+  uri: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LillyEnvironment {
@@ -178,7 +285,7 @@ export interface LillyProject {
   levelRecipes: LillyLevelRecipe[];
   generatedLevels: LillyGeneratedLevel[];
   files: LillySourceFile[];
-  assets: Array<{ id: string; name: string; type: string; uri: string; metadata?: Record<string, unknown> }>;
+  assets: LillyProjectAsset[];
   inputMap: LillyInputBinding[];
   settings: {
     renderer: 'webgl2' | 'webgpu-experimental';
@@ -257,12 +364,13 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
     validate: (value) => validateTransform(value),
   },
   Camera: { defaults: { projection: 'perspective', fov: 60, near: 0.1, far: 1000, primary: false }, validate: numericRangeValidator('fov', 1, 179) },
-  MeshRenderer: { defaults: { geometry: 'box', assetId: '', material: { color: '#8ea7c4', roughness: 0.65, metalness: 0.05 }, castShadow: true, receiveShadow: true }, validate: () => [] },
+  MeshRenderer: { defaults: { geometry: 'box', assetId: '', materialId: '', material: { color: '#8ea7c4', roughness: 0.65, metalness: 0.05 }, castShadow: true, receiveShadow: true }, validate: validateMeshRenderer },
   Light: { defaults: { kind: 'directional', color: '#fff4df', intensity: 2, castShadow: true }, validate: numericRangeValidator('intensity', 0, 100) },
   RigidBody: { defaults: { bodyType: 'dynamic', mass: 1, linearDamping: 0.1, angularDamping: 0.1, lockRotations: false }, validate: numericRangeValidator('mass', 0.0001, 100000) },
   Collider: { defaults: { shape: 'box', size: { x: 1, y: 1, z: 1 }, sensor: false, restitution: 0.1, friction: 0.7 }, validate: () => [] },
   AudioSource: { defaults: { assetId: '', volume: 0.8, loop: false, spatial: true, autoplay: false }, validate: numericRangeValidator('volume', 0, 1) },
-  Animator: { defaults: { assetId: '', clip: '', speed: 1, autoplay: true }, validate: numericRangeValidator('speed', -20, 20) },
+  Animator: { defaults: { assetId: '', controllerId: '', state: '', clip: '', speed: 1, autoplay: true }, validate: validateAnimator },
+  Terrain: { defaults: { terrainId: '', walkable: true, collision: true }, validate: validateTerrainComponent },
   Blueprint: { defaults: { graphId: '', enabled: true }, validate: () => [] },
   Script: { defaults: { source: '', enabled: true, timeoutMs: 8, capabilities: ['entity.read', 'entity.write', 'events.emit'] }, validate: numericRangeValidator('timeoutMs', 1, 16) },
   ParticleEmitter: { defaults: { rate: 12, lifetime: 0.8, color: '#7dd3fc', size: 0.08, burst: 0 }, validate: numericRangeValidator('rate', 0, 10000) },
@@ -362,6 +470,127 @@ function validateTransform(value: Record<string, unknown>) {
   return errors;
 }
 
+function validateMeshRenderer(value: Record<string, unknown>) {
+  const errors: string[] = [];
+  if (value.geometry !== undefined && !['box', 'sphere', 'capsule', 'cylinder', 'octahedron', 'torus', 'plane'].includes(String(value.geometry))) errors.push('geometry is not supported');
+  if (value.assetId !== undefined && typeof value.assetId !== 'string') errors.push('assetId must be a string');
+  if (value.materialId !== undefined && typeof value.materialId !== 'string') errors.push('materialId must be a string');
+  if (value.material !== undefined && !isPlainRecord(value.material)) errors.push('material must be an object');
+  const material = isPlainRecord(value.material) ? value.material : {};
+  for (const key of ['roughness', 'metalness', 'opacity', 'clearcoat', 'clearcoatRoughness']) {
+    if (material[key] !== undefined && (!Number.isFinite(Number(material[key])) || Number(material[key]) < 0 || Number(material[key]) > 1)) errors.push(`${key} must be between 0 and 1`);
+  }
+  if (material.emissiveIntensity !== undefined && (!Number.isFinite(Number(material.emissiveIntensity)) || Number(material.emissiveIntensity) < 0 || Number(material.emissiveIntensity) > 100)) errors.push('emissiveIntensity must be between 0 and 100');
+  return errors;
+}
+
+function validateAnimator(value: Record<string, unknown>) {
+  const errors = numericRangeValidator('speed', -20, 20)(value);
+  for (const key of ['assetId', 'controllerId', 'state', 'clip']) if (value[key] !== undefined && typeof value[key] !== 'string') errors.push(`${key} must be a string`);
+  if (value.autoplay !== undefined && typeof value.autoplay !== 'boolean') errors.push('autoplay must be boolean');
+  return errors;
+}
+
+function validateTerrainComponent(value: Record<string, unknown>) {
+  const errors: string[] = [];
+  if (value.terrainId !== undefined && typeof value.terrainId !== 'string') errors.push('terrainId must be a string');
+  if (value.walkable !== undefined && typeof value.walkable !== 'boolean') errors.push('walkable must be boolean');
+  if (value.collision !== undefined && typeof value.collision !== 'boolean') errors.push('collision must be boolean');
+  return errors;
+}
+
+const RESOURCE_ID_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+function resourceIssue(code: string, message: string, path: string): ValidationIssue {
+  return { code, message, path, severity: 'error' };
+}
+
+function validateResourceIdentity(value: { id?: string; moduleId?: string; name?: string } | null | undefined, kind: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (!RESOURCE_ID_PATTERN.test(String(value?.id || ''))) issues.push(resourceIssue(`INVALID_${kind}_ID`, `${kind.toLowerCase()} id is invalid`, 'id'));
+  if (!RESOURCE_ID_PATTERN.test(String(value?.moduleId || ''))) issues.push(resourceIssue(`${kind}_MODULE_REQUIRED`, `${kind.toLowerCase()} moduleId is invalid`, 'moduleId'));
+  if (!String(value?.name || '').trim()) issues.push(resourceIssue(`${kind}_NAME_REQUIRED`, `${kind.toLowerCase()} name is required`, 'name'));
+  return issues;
+}
+
+export function validateMaterialDefinition(value: LillyMaterialDefinition): ValidationIssue[] {
+  const issues = validateResourceIdentity(value, 'MATERIAL');
+  if (!value || value.schema !== MATERIAL_SCHEMA) issues.push(resourceIssue('INVALID_MATERIAL_SCHEMA', `Expected ${MATERIAL_SCHEMA}`, 'schema'));
+  if (!['standard', 'physical', 'toon', 'unlit'].includes(String(value?.shading || ''))) issues.push(resourceIssue('INVALID_MATERIAL_SHADING', 'shading must be standard, physical, toon, or unlit', 'shading'));
+  for (const key of ['color', 'emissive'] as const) if (value?.[key] !== undefined && !HEX_COLOR_PATTERN.test(String(value[key]))) issues.push(resourceIssue('INVALID_MATERIAL_COLOR', `${key} must be a six-digit hex color`, key));
+  for (const key of ['roughness', 'metalness', 'opacity', 'clearcoat', 'clearcoatRoughness'] as const) {
+    const number = Number(value?.[key]);
+    if (value?.[key] !== undefined && (!Number.isFinite(number) || number < 0 || number > 1)) issues.push(resourceIssue('INVALID_MATERIAL_RANGE', `${key} must be between 0 and 1`, key));
+  }
+  if (value?.emissiveIntensity !== undefined && (!Number.isFinite(Number(value.emissiveIntensity)) || Number(value.emissiveIntensity) < 0 || Number(value.emissiveIntensity) > 100)) issues.push(resourceIssue('INVALID_MATERIAL_RANGE', 'emissiveIntensity must be between 0 and 100', 'emissiveIntensity'));
+  if (value?.textures !== undefined && !isPlainRecord(value.textures)) issues.push(resourceIssue('INVALID_MATERIAL_TEXTURES', 'textures must be an object of project asset ids', 'textures'));
+  else for (const [slot, assetId] of Object.entries(value?.textures || {})) {
+    if (!['baseColor', 'normal', 'roughness', 'metalness', 'emissive'].includes(slot) || typeof assetId !== 'string' || !assetId.trim()) issues.push(resourceIssue('INVALID_MATERIAL_TEXTURE', `Texture slot ${slot} must reference a project asset id`, `textures.${slot}`));
+  }
+  if (value?.tiling !== undefined && (!value.tiling || !Number.isFinite(value.tiling.x) || !Number.isFinite(value.tiling.y) || value.tiling.x <= 0 || value.tiling.y <= 0)) issues.push(resourceIssue('INVALID_MATERIAL_TILING', 'tiling must be a positive Vector2', 'tiling'));
+  return issues;
+}
+
+export function validateAssetMetadataDefinition(value: LillyAssetMetadataDefinition): ValidationIssue[] {
+  const issues = validateResourceIdentity(value, 'ASSET_METADATA');
+  if (!value || value.schema !== ASSET_METADATA_SCHEMA) issues.push(resourceIssue('INVALID_ASSET_METADATA_SCHEMA', `Expected ${ASSET_METADATA_SCHEMA}`, 'schema'));
+  if (!String(value?.assetId || '').trim()) issues.push(resourceIssue('ASSET_REFERENCE_REQUIRED', 'assetId must reference an uploaded project asset', 'assetId'));
+  if (!['model', 'texture', 'audio'].includes(String(value?.kind || ''))) issues.push(resourceIssue('INVALID_ASSET_KIND', 'kind must be model, texture, or audio', 'kind'));
+  if (value?.scale !== undefined && (!isFiniteVec3(value.scale) || Object.values(value.scale).some((entry) => entry === 0))) issues.push(resourceIssue('INVALID_ASSET_SCALE', 'scale must be a non-zero finite Vector3', 'scale'));
+  if (value?.pivot !== undefined && !isFiniteVec3(value.pivot)) issues.push(resourceIssue('INVALID_ASSET_PIVOT', 'pivot must be a finite Vector3', 'pivot'));
+  if (value?.collision) {
+    if (!['box', 'sphere', 'capsule', 'cylinder'].includes(String(value.collision.shape || ''))) issues.push(resourceIssue('INVALID_ASSET_COLLISION', 'collision shape is not supported', 'collision.shape'));
+    if (value.collision.size !== undefined && (!isFiniteVec3(value.collision.size) || Object.values(value.collision.size).some((entry) => entry <= 0))) issues.push(resourceIssue('INVALID_ASSET_COLLISION', 'collision size must be a positive Vector3', 'collision.size'));
+    if (value.collision.center !== undefined && !isFiniteVec3(value.collision.center)) issues.push(resourceIssue('INVALID_ASSET_COLLISION', 'collision center must be a finite Vector3', 'collision.center'));
+  }
+  const distances = new Set<number>();
+  for (const [index, lod] of (value?.lods || []).entries()) {
+    const distance = Number(lod.maxDistance);
+    if (!String(lod.assetId || '').trim() || !Number.isFinite(distance) || distance <= 0 || distances.has(distance)) issues.push(resourceIssue('INVALID_ASSET_LOD', 'LOD entries require an asset id and unique positive maxDistance', `lods[${index}]`));
+    distances.add(distance);
+  }
+  const animationNames = new Set<string>();
+  for (const [index, animation] of (value?.animations || []).entries()) {
+    if (!String(animation.name || '').trim() || !String(animation.clip || '').trim() || animationNames.has(animation.name)) issues.push(resourceIssue('INVALID_ASSET_ANIMATION', 'Animation aliases require unique names and clip values', `animations[${index}]`));
+    if (animation.speed !== undefined && (!Number.isFinite(Number(animation.speed)) || Number(animation.speed) === 0)) issues.push(resourceIssue('INVALID_ASSET_ANIMATION', 'Animation speed must be a non-zero number', `animations[${index}].speed`));
+    animationNames.add(animation.name);
+  }
+  return issues;
+}
+
+export function validateAnimationControllerDefinition(value: LillyAnimationControllerDefinition): ValidationIssue[] {
+  const issues = validateResourceIdentity(value, 'ANIMATION_CONTROLLER');
+  if (!value || value.schema !== ANIMATION_CONTROLLER_SCHEMA) issues.push(resourceIssue('INVALID_ANIMATION_CONTROLLER_SCHEMA', `Expected ${ANIMATION_CONTROLLER_SCHEMA}`, 'schema'));
+  if (!Array.isArray(value?.states) || value.states.length === 0) {
+    issues.push(resourceIssue('ANIMATION_STATES_REQUIRED', 'Animation controllers require at least one state', 'states'));
+    return issues;
+  }
+  const stateIds = new Set<string>();
+  for (const [index, state] of value.states.entries()) {
+    const path = `states[${index}]`;
+    if (!RESOURCE_ID_PATTERN.test(String(state.id || '')) || stateIds.has(state.id)) issues.push(resourceIssue('INVALID_ANIMATION_STATE', 'Animation state ids must be unique resource identifiers', `${path}.id`));
+    if (!['clip', 'spin', 'float', 'pulse'].includes(String(state.mode || ''))) issues.push(resourceIssue('INVALID_ANIMATION_MODE', 'Animation mode must be clip, spin, float, or pulse', `${path}.mode`));
+    if (state.mode === 'clip' && !String(state.clip || '').trim()) issues.push(resourceIssue('ANIMATION_CLIP_REQUIRED', 'Clip animation states require clip', `${path}.clip`));
+    if (state.axis !== undefined && !['x', 'y', 'z'].includes(state.axis)) issues.push(resourceIssue('INVALID_ANIMATION_AXIS', 'axis must be x, y, or z', `${path}.axis`));
+    for (const key of ['speed', 'amplitude', 'frequency', 'fadeSeconds'] as const) if (state[key] !== undefined && (!Number.isFinite(Number(state[key])) || (key !== 'speed' && Number(state[key]) < 0))) issues.push(resourceIssue('INVALID_ANIMATION_VALUE', `${key} must be finite${key === 'speed' ? '' : ' and non-negative'}`, `${path}.${key}`));
+    stateIds.add(state.id);
+  }
+  if (!stateIds.has(String(value.defaultState || ''))) issues.push(resourceIssue('ANIMATION_DEFAULT_STATE_MISSING', 'defaultState must reference an authored state', 'defaultState'));
+  return issues;
+}
+
+export function validateTerrainDefinition(value: LillyTerrainDefinition): ValidationIssue[] {
+  const issues = validateResourceIdentity(value, 'TERRAIN');
+  if (!value || value.schema !== TERRAIN_SCHEMA) issues.push(resourceIssue('INVALID_TERRAIN_SCHEMA', `Expected ${TERRAIN_SCHEMA}`, 'schema'));
+  if (!value?.size || !Number.isFinite(value.size.x) || !Number.isFinite(value.size.y) || value.size.x <= 0 || value.size.y <= 0 || value.size.x > 4096 || value.size.y > 4096) issues.push(resourceIssue('INVALID_TERRAIN_SIZE', 'size must be a positive Vector2 up to 4096 units', 'size'));
+  const resolution = Number(value?.resolution);
+  if (!Number.isInteger(resolution) || resolution < 2 || resolution > 129) issues.push(resourceIssue('INVALID_TERRAIN_RESOLUTION', 'resolution must be an integer from 2 to 129', 'resolution'));
+  if (!Array.isArray(value?.heights) || !Number.isInteger(resolution) || value.heights.length !== resolution * resolution || value.heights.some((height) => !Number.isFinite(height) || height < -1 || height > 1)) issues.push(resourceIssue('INVALID_TERRAIN_HEIGHTS', 'heights must contain resolution squared normalized values from -1 to 1', 'heights'));
+  if (!Number.isFinite(Number(value?.heightScale)) || Number(value.heightScale) < 0 || Number(value.heightScale) > 2048) issues.push(resourceIssue('INVALID_TERRAIN_HEIGHT_SCALE', 'heightScale must be between 0 and 2048', 'heightScale'));
+  return issues;
+}
+
 export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -407,16 +636,29 @@ function normalizePrefabInstanceConfig(value: unknown, prefab: LillyPrefabDefini
   if (value == null) return {};
   if (!isPlainRecord(value)) throw Object.assign(new Error('Prefab config must be an object'), { code: 'INVALID_PREFAB_CONFIG' });
   assertSafeStructuredValue(value, 'config');
-  const unknownKeys = Object.keys(value).filter((key) => !['position', 'entities'].includes(key));
+  const unknownKeys = Object.keys(value).filter((key) => !['variant', 'position', 'entities'].includes(key));
   if (unknownKeys.length > 0) throw Object.assign(new Error(`Unknown prefab config field ${unknownKeys[0]}`), { code: 'INVALID_PREFAB_CONFIG' });
+  const variantId = value.variant === undefined ? '' : String(value.variant).trim();
+  if (value.variant !== undefined && (!variantId || !RESOURCE_ID_PATTERN.test(variantId))) {
+    throw Object.assign(new Error('Prefab config.variant must be a valid authored variant id'), { code: 'INVALID_PREFAB_VARIANT' });
+  }
+  const variant = variantId ? (prefab.variants || []).find((entry) => entry.id === variantId) : null;
+  if (variantId && !variant) throw Object.assign(new Error(`Prefab variant ${variantId} was not found`), { code: 'PREFAB_VARIANT_NOT_FOUND' });
   if (value.position !== undefined && !isFiniteVec3(value.position)) {
     throw Object.assign(new Error('Prefab config.position must be a finite Vector3'), { code: 'INVALID_PREFAB_CONFIG' });
   }
   if (value.entities !== undefined && !isPlainRecord(value.entities)) {
     throw Object.assign(new Error('Prefab config.entities must be an object keyed by source entity id'), { code: 'INVALID_PREFAB_CONFIG' });
   }
-  const entities: Record<string, LillyPrefabEntityOverride> = {};
+  const rawEntities: Record<string, unknown> = {};
+  for (const [entityId, rawOverride] of Object.entries(variant?.entities || {})) rawEntities[entityId] = deepClone(rawOverride);
   for (const [entityId, rawOverride] of Object.entries((value.entities || {}) as Record<string, unknown>)) {
+    rawEntities[entityId] = isPlainRecord(rawEntities[entityId]) && isPlainRecord(rawOverride)
+      ? mergeSafeRecords(rawEntities[entityId] as Record<string, unknown>, rawOverride)
+      : deepClone(rawOverride);
+  }
+  const entities: Record<string, LillyPrefabEntityOverride> = {};
+  for (const [entityId, rawOverride] of Object.entries(rawEntities)) {
     const sourceEntity = prefab.entities.find((entry) => entry.id === entityId);
     if (!sourceEntity) throw Object.assign(new Error(`Prefab config references unknown entity ${entityId}`), { code: 'PREFAB_CONFIG_ENTITY_NOT_FOUND' });
     if (!isPlainRecord(rawOverride)) throw Object.assign(new Error(`Prefab override ${entityId} must be an object`), { code: 'INVALID_PREFAB_CONFIG' });
@@ -452,6 +694,7 @@ function normalizePrefabInstanceConfig(value: unknown, prefab: LillyPrefabDefini
     entities[entityId] = override;
   }
   return {
+    ...(variantId ? { variant: variantId } : {}),
     ...(value.position === undefined ? {} : { position: deepClone(value.position as Vec3) }),
     ...(Object.keys(entities).length === 0 ? {} : { entities }),
   };
@@ -502,6 +745,18 @@ export function validatePrefabDefinition(prefab: LillyPrefabDefinition): Validat
     }
     if (root && entity.id !== root.id && cursor && cursor.id !== root.id) issues.push({ code: 'PREFAB_ENTITY_DISCONNECTED', message: `Prefab entity ${entity.id} must descend from root ${root.id}`, path: `entities[${index}].parentId`, severity: 'error' });
   }
+  if (prefab.variants !== undefined && !Array.isArray(prefab.variants)) issues.push({ code: 'INVALID_PREFAB_VARIANTS', message: 'Prefab variants must be an array', path: 'variants', severity: 'error' });
+  const variantIds = new Set<string>();
+  for (const [index, variant] of (Array.isArray(prefab.variants) ? prefab.variants : []).entries()) {
+    const variantPath = `variants[${index}]`;
+    if (!RESOURCE_ID_PATTERN.test(String(variant?.id || '')) || variantIds.has(variant.id)) issues.push({ code: 'INVALID_PREFAB_VARIANT', message: 'Prefab variant ids must be unique resource identifiers', path: `${variantPath}.id`, severity: 'error' });
+    if (!variant?.entities || !isPlainRecord(variant.entities)) issues.push({ code: 'INVALID_PREFAB_VARIANT', message: 'Prefab variants require entity overrides', path: `${variantPath}.entities`, severity: 'error' });
+    else {
+      try { normalizePrefabInstanceConfig({ entities: variant.entities }, { ...prefab, variants: [] }); }
+      catch (error) { issues.push({ code: String((error as { code?: string }).code || 'INVALID_PREFAB_VARIANT'), message: (error as Error).message, path: variantPath, severity: 'error' }); }
+    }
+    if (variant?.id) variantIds.add(variant.id);
+  }
   return issues;
 }
 
@@ -516,6 +771,10 @@ export function detectSourceFileKind(filePath: string): LillySourceFileKind {
   if (normalized.endsWith('.system.ts')) return 'system';
   if (normalized.endsWith('.prefab.json')) return 'prefab';
   if (normalized.endsWith('.spec.json')) return 'test';
+  if (normalized.endsWith('.material.json')) return 'material';
+  if (normalized.endsWith('.asset.json')) return 'asset-metadata';
+  if (normalized.endsWith('.animation.json')) return 'animation-controller';
+  if (normalized.endsWith('.terrain.json')) return 'terrain';
   if (normalized.endsWith('.blueprint.json')) return 'blueprint';
   if (normalized.endsWith('.scene.json')) return 'scene';
   return 'data';
@@ -556,6 +815,7 @@ export function normalizeSourceFile(input: Partial<LillySourceFile> & { path: st
 
 export function upgradeProject(projectInput: LillyProject): LillyProject {
   const project = deepClone(projectInput);
+  project.engineVersion = ENGINE_VERSION;
   project.levelRecipes = Array.isArray(project.levelRecipes)
     ? project.levelRecipes.map((recipe) => normalizeLevelRecipe(recipe))
     : [];
@@ -623,6 +883,33 @@ export function createsRecursiveParenting(scene: LillyScene, entityId: string, p
 export function validateProject(project: LillyProject): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (project.schema !== PROJECT_SCHEMA) issues.push({ code: 'INVALID_PROJECT_SCHEMA', message: `Expected ${PROJECT_SCHEMA}`, path: 'schema', severity: 'error' });
+  const projectAssets = Array.isArray(project.assets) ? project.assets : [];
+  const assetIds = new Set<string>();
+  for (const [assetIndex, asset] of projectAssets.entries()) {
+    const path = `assets[${assetIndex}]`;
+    if (!String(asset?.id || '').trim()) issues.push({ code: 'ASSET_ID_REQUIRED', message: 'Project assets require an id', path: `${path}.id`, severity: 'error' });
+    else if (assetIds.has(asset.id)) issues.push({ code: 'DUPLICATE_ASSET_ID', message: `Duplicate asset id ${asset.id}`, path: `${path}.id`, severity: 'error' });
+    if (asset?.id) assetIds.add(asset.id);
+    if (!String(asset?.name || '').trim()) issues.push({ code: 'ASSET_NAME_REQUIRED', message: 'Project assets require a name', path: `${path}.name`, severity: 'error' });
+    if (!String(asset?.type || '').trim()) issues.push({ code: 'ASSET_TYPE_REQUIRED', message: 'Project assets require a MIME type', path: `${path}.type`, severity: 'error' });
+    const uri = String(asset?.uri || '').replace(/\\/g, '/');
+    if (!uri || uri.startsWith('/') || uri.split('/').some((segment) => segment === '..')) issues.push({ code: 'INVALID_ASSET_URI', message: 'Project asset URIs must be safe relative paths', path: `${path}.uri`, severity: 'error' });
+  }
+  const sourceFiles = Array.isArray(project.files) ? project.files : [];
+  const resourceIds = {
+    material: new Set<string>(),
+    'animation-controller': new Set<string>(),
+    terrain: new Set<string>(),
+  };
+  for (const file of sourceFiles) {
+    if (!file.enabled || !(file.kind in resourceIds)) continue;
+    try {
+      const value = JSON.parse(file.content) as { id?: string };
+      if (String(value?.id || '').trim()) resourceIds[file.kind as keyof typeof resourceIds].add(String(value.id));
+    } catch (_error) {
+      // The module compiler reports source parse diagnostics with exact file paths.
+    }
+  }
   if (!project.scenes.some((scene) => scene.id === project.entryScene)) issues.push({ code: 'ENTRY_SCENE_MISSING', message: 'Entry scene does not exist', path: 'entryScene', severity: 'error' });
   for (const [sceneIndex, scene] of project.scenes.entries()) {
     const ids = new Set<string>();
@@ -639,10 +926,14 @@ export function validateProject(project: LillyProject): ValidationIssue[] {
         const definition = COMPONENT_DEFINITIONS[component.type];
         if (!definition) issues.push({ code: 'UNKNOWN_COMPONENT', message: `Unknown component ${component.type}`, path: `${path}.components[${componentIndex}]`, severity: 'error' });
         else definition.validate(component.data).forEach((message) => issues.push({ code: 'INVALID_COMPONENT_VALUE', message, path: `${path}.components[${componentIndex}].data`, severity: 'error' }));
+        const data = component.data || {};
+        if (['MeshRenderer', 'AudioSource', 'Animator'].includes(component.type) && String(data.assetId || '') && !assetIds.has(String(data.assetId))) issues.push({ code: 'ASSET_REFERENCE_MISSING', message: `${component.type} references missing asset ${data.assetId}`, path: `${path}.components[${componentIndex}].data.assetId`, severity: 'error' });
+        if (component.type === 'MeshRenderer' && String(data.materialId || '') && !resourceIds.material.has(String(data.materialId))) issues.push({ code: 'MATERIAL_REFERENCE_MISSING', message: `MeshRenderer references missing material ${data.materialId}`, path: `${path}.components[${componentIndex}].data.materialId`, severity: 'error' });
+        if (component.type === 'Animator' && String(data.controllerId || '') && !resourceIds['animation-controller'].has(String(data.controllerId))) issues.push({ code: 'ANIMATION_CONTROLLER_REFERENCE_MISSING', message: `Animator references missing controller ${data.controllerId}`, path: `${path}.components[${componentIndex}].data.controllerId`, severity: 'error' });
+        if (component.type === 'Terrain' && String(data.terrainId || '') && !resourceIds.terrain.has(String(data.terrainId))) issues.push({ code: 'TERRAIN_REFERENCE_MISSING', message: `Terrain component references missing terrain ${data.terrainId}`, path: `${path}.components[${componentIndex}].data.terrainId`, severity: 'error' });
       }
     }
   }
-  const sourceFiles = Array.isArray(project.files) ? project.files : [];
   const sourcePaths = new Set<string>();
   let sourceBytes = 0;
   if (sourceFiles.length > MAX_PROJECT_SOURCE_FILES) {

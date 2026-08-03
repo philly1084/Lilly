@@ -305,6 +305,7 @@ class GitLabClient {
             .map((entry) => ({
                 path: safePath(entry.path),
                 content: String(entry.content || ''),
+                ...(normalizeText(entry.encoding).toLowerCase() === 'base64' ? { encoding: 'base64' } : {}),
             }))
             .sort((left, right) => left.path.localeCompare(right.path));
 
@@ -327,6 +328,7 @@ class GitLabClient {
                 action: existing ? 'update' : 'create',
                 file_path: file.path,
                 content: file.content,
+                ...(file.encoding === 'base64' ? { encoding: 'base64' } : {}),
             });
         }
 

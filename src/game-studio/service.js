@@ -112,6 +112,35 @@ async function pathExists(targetPath) {
   }
 }
 
+function validateWorldReferences(project, moduleBundle) {
+  const issues = [];
+  const assetIds = new Set((project.assets || []).map((asset) => asset.id));
+  const materialIds = new Set((moduleBundle.materials || []).map((material) => material.id));
+  const animationIds = new Set((moduleBundle.animations || []).map((animation) => animation.id));
+  const terrainIds = new Set((moduleBundle.terrains || []).map((terrain) => terrain.id));
+  for (const scene of project.scenes || []) for (const entity of scene.entities || []) for (const component of entity.components || []) {
+    if (component.type === 'MeshRenderer' && component.data.materialId && !materialIds.has(String(component.data.materialId))) issues.push({ code: 'SCENE_MATERIAL_NOT_EXPORTED', message: `Entity ${entity.id} references material ${component.data.materialId}, which is not exported by a module`, path: `scenes.${scene.id}.entities.${entity.id}.MeshRenderer`, severity: 'error' });
+    if (component.type === 'Animator' && component.data.controllerId && !animationIds.has(String(component.data.controllerId))) issues.push({ code: 'SCENE_ANIMATION_NOT_EXPORTED', message: `Entity ${entity.id} references animation controller ${component.data.controllerId}, which is not exported by a module`, path: `scenes.${scene.id}.entities.${entity.id}.Animator`, severity: 'error' });
+    if (component.type === 'Terrain' && component.data.terrainId && !terrainIds.has(String(component.data.terrainId))) issues.push({ code: 'SCENE_TERRAIN_NOT_EXPORTED', message: `Entity ${entity.id} references terrain ${component.data.terrainId}, which is not exported by a module`, path: `scenes.${scene.id}.entities.${entity.id}.Terrain`, severity: 'error' });
+  }
+  for (const material of moduleBundle.materials || []) {
+    for (const [slot, assetId] of Object.entries(material.textures || {})) {
+      if (!assetIds.has(assetId)) issues.push({ code: 'MATERIAL_TEXTURE_ASSET_MISSING', message: `Material ${material.id} ${slot} texture references missing asset ${assetId}`, path: material.sourcePath, severity: 'error' });
+    }
+  }
+  for (const metadata of moduleBundle.assets || []) {
+    if (!assetIds.has(metadata.assetId)) issues.push({ code: 'ASSET_METADATA_TARGET_MISSING', message: `Asset metadata ${metadata.id} references missing project asset ${metadata.assetId}`, path: metadata.sourcePath, severity: 'error' });
+    for (const lod of metadata.lods || []) if (!assetIds.has(lod.assetId)) issues.push({ code: 'ASSET_METADATA_LOD_MISSING', message: `Asset metadata ${metadata.id} LOD references missing project asset ${lod.assetId}`, path: metadata.sourcePath, severity: 'error' });
+  }
+  for (const animation of moduleBundle.animations || []) {
+    if (animation.assetId && !assetIds.has(animation.assetId)) issues.push({ code: 'ANIMATION_ASSET_MISSING', message: `Animation controller ${animation.id} references missing project asset ${animation.assetId}`, path: animation.sourcePath, severity: 'error' });
+  }
+  for (const terrain of moduleBundle.terrains || []) {
+    if (terrain.materialId && !materialIds.has(terrain.materialId)) issues.push({ code: 'TERRAIN_MATERIAL_MISSING', message: `Terrain ${terrain.id} references missing material ${terrain.materialId}`, path: terrain.sourcePath, severity: 'error' });
+  }
+  return issues;
+}
+
 class GameStudioService {
   constructor(options = {}) {
     this.root = path.resolve(options.root || path.join(config.persistence.dataDir, 'game-studio'));
@@ -355,16 +384,19 @@ class GameStudioService {
     const blueprintIssues = project.blueprints.flatMap((graph) => validateBlueprint(graph).map((issue) => ({ ...issue, graphId: graph.id })));
     const moduleBundle = compileModuleBundle(project.files || []);
     const moduleIssues = moduleBundle.diagnostics;
+    const worldIssues = validateWorldReferences(project, moduleBundle);
     return {
       metadata,
       project,
       validation: {
         valid: !validateProject(project).some((issue) => issue.severity === 'error')
           && !blueprintIssues.some((issue) => issue.severity === 'error')
-          && !moduleIssues.some((issue) => issue.severity === 'error'),
+          && !moduleIssues.some((issue) => issue.severity === 'error')
+          && !worldIssues.some((issue) => issue.severity === 'error'),
         projectIssues: validateProject(project),
         blueprintIssues,
         moduleIssues,
+        worldIssues,
       },
       moduleSummary: {
         schema: moduleBundle.schema,
@@ -373,8 +405,12 @@ class GameStudioService {
         modules: moduleBundle.modules.map((module) => ({ id: module.id, name: module.name, version: module.version, sourcePath: module.sourcePath, capabilities: module.capabilities })),
         systems: moduleBundle.systems.map((system) => ({ moduleId: system.moduleId, path: system.path, sourceHash: system.sourceHash })),
         mechanics: moduleBundle.mechanics.map((mechanic) => ({ id: mechanic.id, moduleId: mechanic.moduleId, name: mechanic.name, sourcePath: mechanic.sourcePath, inputs: mechanic.inputs, events: mechanic.events })),
-        prefabs: moduleBundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath })),
+        prefabs: moduleBundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath, variants: (prefab.variants || []).map((variant) => ({ id: variant.id, name: variant.name || variant.id })) })),
         tests: moduleBundle.tests.map((test) => ({ id: test.id, moduleId: test.moduleId, name: test.name, sourcePath: test.sourcePath })),
+        materials: moduleBundle.materials.map((material) => ({ ...material })),
+        assets: moduleBundle.assets.map((asset) => ({ ...asset })),
+        animations: moduleBundle.animations.map((animation) => ({ ...animation })),
+        terrains: moduleBundle.terrains.map((terrain) => ({ ...terrain })),
       },
       builds: index.builds.filter((build) => build.projectId === project.id).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
       aiRuns: index.aiRuns.filter((run) => run.projectId === project.id).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))).slice(0, 20),
@@ -480,18 +516,24 @@ class GameStudioService {
       throw Object.assign(new Error('Compile revision no longer matches the saved project revision'), { statusCode: 409, code: 'COMPILE_REVISION_CONFLICT', currentRevision: result.project.revision });
     }
     const bundle = compileModuleBundle(result.project.files || []);
+    const worldIssues = validateWorldReferences(result.project, bundle);
     return {
       schema: bundle.schema,
       projectId,
       projectRevision: result.project.revision,
       sourceHash: bundle.sourceHash,
-      valid: !bundle.diagnostics.some((entry) => entry.severity === 'error'),
+      valid: !bundle.diagnostics.some((entry) => entry.severity === 'error') && !worldIssues.some((entry) => entry.severity === 'error'),
       loadOrder: bundle.loadOrder,
       modules: bundle.modules.map((module) => ({ id: module.id, name: module.name, version: module.version, sourcePath: module.sourcePath, capabilities: module.capabilities, dependencies: module.dependencies })),
       systems: bundle.systems.map((system) => ({ moduleId: system.moduleId, path: system.path, sourceHash: system.sourceHash })),
       mechanics: bundle.mechanics.map((mechanic) => ({ id: mechanic.id, moduleId: mechanic.moduleId, name: mechanic.name, sourcePath: mechanic.sourcePath, inputs: mechanic.inputs, events: mechanic.events })),
-      prefabs: bundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath, entityCount: prefab.entities.length })),
+      prefabs: bundle.prefabs.map((prefab) => ({ id: prefab.id, moduleId: prefab.moduleId, name: prefab.name, sourcePath: prefab.sourcePath, entityCount: prefab.entities.length, variants: (prefab.variants || []).map((variant) => ({ id: variant.id, name: variant.name || variant.id })) })),
       tests: bundle.tests.map((test) => ({ id: test.id, moduleId: test.moduleId, name: test.name, sourcePath: test.sourcePath, assertionCount: test.assertions.length })),
+      materials: bundle.materials.map((material) => ({ ...material })),
+      assets: bundle.assets.map((asset) => ({ ...asset })),
+      animations: bundle.animations.map((animation) => ({ ...animation })),
+      terrains: bundle.terrains.map((terrain) => ({ ...terrain })),
+      worldIssues,
       diagnostics: bundle.diagnostics,
     };
   }
@@ -555,7 +597,24 @@ class GameStudioService {
       const directory = path.join(this.projectDirectory(projectId), 'assets');
       await fs.mkdir(directory, { recursive: true });
       await fs.writeFile(path.join(directory, filename), buffer, { flag: 'wx' });
-      const asset = { id, name: String(input.name || input.filename || 'Asset').slice(0, 100), type: mimeType, uri: `assets/${filename}`, metadata: { sizeBytes: buffer.length, sha256: crypto.createHash('sha256').update(buffer).digest('hex') } };
+      const assetKind = mimeType.startsWith('model/') || /\.glb$/i.test(filename) ? 'model' : mimeType.startsWith('image/') ? 'texture' : mimeType.startsWith('audio/') ? 'audio' : 'binary';
+      const upAxis = ['Y', 'Z'].includes(String(input.metadata?.upAxis || '').toUpperCase()) ? String(input.metadata.upAxis).toUpperCase() : 'Y';
+      const unitsPerMeter = Number(input.metadata?.unitsPerMeter ?? 1);
+      const asset = {
+        id,
+        name: String(input.name || input.filename || 'Asset').slice(0, 100),
+        type: mimeType,
+        uri: `assets/${filename}`,
+        metadata: {
+          sizeBytes: buffer.length,
+          sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+          kind: assetKind,
+          originalFilename: safeFileName(input.filename),
+          upAxis,
+          unitsPerMeter: Number.isFinite(unitsPerMeter) && unitsPerMeter > 0 && unitsPerMeter <= 100000 ? unitsPerMeter : 1,
+          importedAt: now(),
+        },
+      };
       const project = await this.readProjectFile(this.currentPath(projectId));
       project.assets.push(asset);
       project.revision += 1;
@@ -565,6 +624,32 @@ class GameStudioService {
       await this.emit(projectId, 'asset.created', { asset, revision: project.revision });
       return { asset, project };
     });
+  }
+
+  async listAssets(projectId, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    return { schema: 'LillyAssetLibrary/v1', projectId, revision: result.project.revision, assets: result.project.assets };
+  }
+
+  async readAssetContent(projectId, assetId, ownerId = '') {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    const asset = result.project.assets.find((entry) => entry.id === String(assetId || ''));
+    if (!asset) throw Object.assign(new Error(`Asset ${assetId} was not found`), { statusCode: 404, code: 'ASSET_NOT_FOUND' });
+    const projectRoot = path.resolve(this.projectDirectory(projectId));
+    const relativePath = String(asset.uri || '').replace(/\\/g, '/');
+    if (!relativePath.startsWith('assets/') || relativePath.includes('../')) throw Object.assign(new Error('Asset URI is outside the project asset library'), { statusCode: 400, code: 'ASSET_URI_INVALID' });
+    const filePath = path.resolve(projectRoot, relativePath);
+    if (!filePath.startsWith(`${projectRoot}${path.sep}`)) throw Object.assign(new Error('Asset path escaped the project workspace'), { statusCode: 400, code: 'ASSET_PATH_INVALID' });
+    let content;
+    try { content = await fs.readFile(filePath); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw Object.assign(new Error(`Asset file for ${asset.name} is missing`), { statusCode: 404, code: 'ASSET_FILE_MISSING' });
+      throw error;
+    }
+    if (content.length > MAX_ASSET_BYTES) throw Object.assign(new Error('Stored asset exceeds the current read limit'), { statusCode: 413, code: 'ASSET_SIZE_INVALID' });
+    return { asset, content };
   }
 
   async runPlaytest(projectId, input = {}, ownerId = '') {
@@ -582,12 +667,20 @@ class GameStudioService {
     tests.push({ name: 'Blueprint compilation', status: compiledGraphs.length === project.blueprints.length ? 'passed' : 'failed', details: `${compiledGraphs.length}/${project.blueprints.length} graphs compiled` });
     const compiledModules = compileModuleBundle(project.files || []);
     const moduleErrors = compiledModules.diagnostics.filter((issue) => issue.severity === 'error');
+    const worldIssues = validateWorldReferences(project, compiledModules);
     tests.push({
       name: 'Agent module compilation and capability policy',
       status: moduleErrors.length ? 'failed' : 'passed',
       details: moduleErrors.length
         ? moduleErrors.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
         : `${compiledModules.modules.length} modules, ${compiledModules.systems.length} typed systems, ${compiledModules.mechanics.length} mechanics, ${compiledModules.prefabs.length} prefabs`,
+    });
+    tests.push({
+      name: 'World resources and authored asset metadata',
+      status: worldIssues.some((issue) => issue.severity === 'error') ? 'failed' : 'passed',
+      details: worldIssues.length
+        ? worldIssues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
+        : `${compiledModules.materials.length} materials, ${compiledModules.assets.length} asset descriptors, ${compiledModules.animations.length} animation controllers, ${compiledModules.terrains.length} terrains`,
     });
     let mechanicTestRun = { schema: 'LillyMechanicTestRun/v1', sourceHash: compiledModules.sourceHash, status: 'passed', tests: [], passed: 0, failed: 0 };
     if (!moduleErrors.length) mechanicTestRun = runMechanicTests(compiledModules, { executionBudgetMs: input.executionBudgetMs });
@@ -692,7 +785,7 @@ class GameStudioService {
     for (const asset of project.assets) {
       if (String(asset.uri || '').startsWith('assets/') && !await pathExists(path.join(this.projectDirectory(projectId), asset.uri))) missingAssets.push(asset.name);
     }
-    tests.push({ name: 'Asset references', status: missingAssets.length ? 'failed' : 'passed', details: missingAssets.length ? `Missing: ${missingAssets.join(', ')}` : `${project.assets.length} asset references resolved` });
+    tests.push({ name: 'Asset files and immutable packaging', status: missingAssets.length ? 'failed' : 'passed', details: missingAssets.length ? `Missing: ${missingAssets.join(', ')}` : `${project.assets.length} uploaded asset files resolved` });
     const playtest = {
       schema: 'LillyPlaytest/v1',
       id: randomUUID(),
@@ -835,10 +928,16 @@ class GameStudioService {
     }
     const deployer = managedAppService || this.managedAppService;
     if (!deployer?.isAvailable?.()) throw Object.assign(new Error('Publishing requires the configured PostgreSQL and managed-app/GitLab deployment lane'), { statusCode: 503, code: 'PUBLISH_LANE_UNAVAILABLE', previewUrl: build.previewUrl });
-    const files = await Promise.all(build.files.map(async (file) => ({
-      path: `public/${String(file.path).replace(/^public\//, '')}`,
-      content: await fs.readFile(this.buildWorkspaceFilePath(build.workspaceId, file.path), 'utf8'),
-    })));
+    const binaryAssetPaths = new Set((projectResult.project.assets || []).map((asset) => String(asset.uri || '').replace(/\\/g, '/')));
+    const files = await Promise.all(build.files.map(async (file) => {
+      const relativePath = String(file.path).replace(/^public\//, '').replace(/\\/g, '/');
+      const content = await fs.readFile(this.buildWorkspaceFilePath(build.workspaceId, file.path));
+      return {
+        path: `public/${relativePath}`,
+        content: binaryAssetPaths.has(relativePath) ? content.toString('base64') : content.toString('utf8'),
+        ...(binaryAssetPaths.has(relativePath) ? { encoding: 'base64' } : {}),
+      };
+    }));
     const publicHost = String(input.publicHost || `${projectResult.project.slug}.demoserver2.buzz`).trim().toLowerCase();
     if (!/^[a-z0-9-]+\.demoserver2\.buzz$/.test(publicHost)) throw Object.assign(new Error('Game Studio publishes to a concrete *.demoserver2.buzz host'), { statusCode: 400, code: 'INVALID_PUBLIC_HOST' });
     const managedResult = await deployer.createApp({
@@ -920,7 +1019,7 @@ class GameStudioService {
       try {
         const prompt = mode === 'level'
           ? `You are Lilly's game director. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit, reach-exit, or secure-and-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30; encounterCount 0-4; enemyCount 0-4. Combat encounters must fit non-spawn/non-goal rooms, enemyCount must be at least encounterCount, and zero encounters require zero enemies. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
-          : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of scene.create, scene.delete, scene.rename, entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, blueprint.delete, file.upsert, file.delete, prefab.instantiate, input.replace, project.set-entry-scene, project.set-settings, level.generate. For original mechanics, prefer small versioned .module.json, .mechanic.json, .system.ts, .prefab.json, and .spec.json files through file.upsert rather than hiding behavior in scene data. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, sceneIds: project.scenes.map((entry) => entry.id), entityCount: scene.entities.length, sourcePaths: project.files.map((file) => file.path), blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
+          : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of scene.create, scene.delete, scene.rename, entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, blueprint.delete, file.upsert, file.delete, prefab.instantiate, input.replace, project.set-entry-scene, project.set-settings, level.generate. For original mechanics and world art direction, prefer small versioned .module.json, .mechanic.json, .system.ts, .prefab.json, .spec.json, .material.json, .asset.json, .animation.json, and .terrain.json files through file.upsert rather than hiding behavior or rendering state in scene data. Module manifests may export materials, assets, animations, and terrains alongside systems, mechanics, prefabs, and tests. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, sceneIds: project.scenes.map((entry) => entry.id), entityCount: scene.entities.length, assetIds: project.assets.map((asset) => asset.id), sourcePaths: project.files.map((file) => file.path), blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
         const response = await this.complete(prompt);
         const parsed = parseLenientJson(String(response || ''));
         if (mode === 'level' && parsed?.recipe) {
@@ -1009,6 +1108,8 @@ class GameStudioService {
       case 'inspect-scene': return this.inspectScene(params.projectId, params.sceneId, ownerId);
       case 'list-files': return this.listSourceFiles(params.projectId, ownerId);
       case 'read-file': return this.readSourceFile(params.projectId, params.path, ownerId);
+      case 'list-assets': return this.listAssets(params.projectId, ownerId);
+      case 'upload-asset': return this.saveAsset(params.projectId, params, ownerId);
       case 'write-files': return this.writeSourceFiles(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'delete-files': return this.deleteSourceFiles(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'compile-project': return this.compileProjectModules(params.projectId, params, ownerId);

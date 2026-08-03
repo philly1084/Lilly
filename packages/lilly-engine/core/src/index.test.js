@@ -4,16 +4,25 @@ const {
   PROJECT_SCHEMA,
   SCENE_SCHEMA,
   SOURCE_FILE_SCHEMA,
+  MATERIAL_SCHEMA,
+  ASSET_METADATA_SCHEMA,
+  ANIMATION_CONTROLLER_SCHEMA,
+  TERRAIN_SCHEMA,
   FixedStepClock,
   CommandHistory,
   applyCommandBatch,
   createArenaProject,
   createBlankProject,
   createLevelRecipeFromPrompt,
+  detectSourceFileKind,
   generateLevel,
   upgradeProject,
   validateGeneratedLevel,
+  validateAnimationControllerDefinition,
+  validateAssetMetadataDefinition,
+  validateMaterialDefinition,
   validateProject,
+  validateTerrainDefinition,
 } = require('../../dist/core/src');
 
 function command(project, operation, target, payload = {}) {
@@ -41,11 +50,25 @@ describe('Lilly engine core contracts', () => {
 
   test('creates a blank project that agents can build from scratch in versioned files', () => {
     const project = createBlankProject({ id: 'blank-agent-game', name: 'Agent Game' });
-    expect(project.engineVersion).toBe('0.4.0');
+    expect(project.engineVersion).toBe('0.5.0');
     expect(project.files).toEqual([]);
     expect(project.levelRecipes).toEqual([]);
     expect(project.scenes).toEqual([expect.objectContaining({ id: 'main', entities: [expect.objectContaining({ id: 'world' })] })]);
     expect(validateProject(project)).toEqual([]);
+  });
+
+  test('validates Lilly-owned world resources and detects their source contracts', () => {
+    const material = { schema: MATERIAL_SCHEMA, id: 'world-stone', moduleId: 'world-kit', name: 'World Stone', shading: 'physical', color: '#335c57', roughness: 0.82, metalness: 0.06, clearcoat: 0.1 };
+    const asset = { schema: ASSET_METADATA_SCHEMA, id: 'arch-model', moduleId: 'world-kit', assetId: 'asset-glb', name: 'Arch Model', kind: 'model', scale: { x: 1, y: 1, z: 1 }, pivot: { x: 0, y: 0, z: 0 }, collision: { shape: 'box', size: { x: 2, y: 3, z: 1 } }, lods: [{ assetId: 'asset-glb-low', maxDistance: 30 }], animations: [{ name: 'idle', clip: 'Idle', loop: true, speed: 1 }] };
+    const animation = { schema: ANIMATION_CONTROLLER_SCHEMA, id: 'arch-motion', moduleId: 'world-kit', name: 'Arch Motion', defaultState: 'float', states: [{ id: 'float', mode: 'float', amplitude: 0.2, frequency: 0.5 }, { id: 'turn', mode: 'spin', axis: 'y', speed: 0.8 }] };
+    const terrain = { schema: TERRAIN_SCHEMA, id: 'courtyard', moduleId: 'world-kit', name: 'Courtyard', size: { x: 20, y: 20 }, resolution: 3, heights: [0, 0.1, 0, 0.1, 0.4, 0.1, 0, 0.1, 0], heightScale: 4, materialId: material.id, collision: true, walkable: true };
+    expect(validateMaterialDefinition(material)).toEqual([]);
+    expect(validateAssetMetadataDefinition(asset)).toEqual([]);
+    expect(validateAnimationControllerDefinition(animation)).toEqual([]);
+    expect(validateTerrainDefinition(terrain)).toEqual([]);
+    expect(['surface.material.json', 'arch.asset.json', 'arch.animation.json', 'courtyard.terrain.json'].map(detectSourceFileKind)).toEqual(['material', 'asset-metadata', 'animation-controller', 'terrain']);
+    expect(validateTerrainDefinition({ ...terrain, heights: [0] })).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'INVALID_TERRAIN_HEIGHTS' })]));
+    expect(validateAnimationControllerDefinition({ ...animation, defaultState: 'missing' })).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'ANIMATION_DEFAULT_STATE_MISSING' })]));
   });
 
   test('applies a command batch transactionally and advances one revision', () => {
@@ -101,6 +124,7 @@ describe('Lilly engine core contracts', () => {
           ] },
           { schema: ENTITY_SCHEMA, id: 'trail', name: 'Trail', parentId: 'root', enabled: true, tags: ['fx'], components: [] },
         ],
+        variants: [{ id: 'charged', name: 'Charged', entities: { root: { components: { MeshRenderer: { material: { emissive: '#ff0088', emissiveIntensity: 0.9 } } } } } }],
       }),
     };
     const scene = { schema: SCENE_SCHEMA, id: 'arena-two', name: 'Arena Two', environment: { background: '#000', ambientIntensity: 1 }, entities: [{ schema: ENTITY_SCHEMA, id: 'root-two', name: 'Root', parentId: null, enabled: true, tags: ['root'], components: [] }], blueprintGraphIds: [] };
@@ -111,6 +135,7 @@ describe('Lilly engine core contracts', () => {
       command(project, 'prefab.instantiate', { sceneId: 'main', path: prefab.path, prefabId: 'projectile', instanceId: 'shot-1' }, {
         parentId: 'world',
         config: {
+          variant: 'charged',
           position: { x: 4, y: -1, z: -5 },
           entities: {
             root: { name: 'Charged Shot', tags: ['projectile', 'charged'], components: { MeshRenderer: { material: { color: '#ff33aa' } } } },
@@ -127,7 +152,7 @@ describe('Lilly engine core contracts', () => {
     ]));
     const root = result.project.scenes[0].entities.find((entry) => entry.id === 'shot-1:root');
     expect(root.components.find((entry) => entry.type === 'Transform').data.position).toEqual({ x: 5, y: 1, z: -2 });
-    expect(root.components.find((entry) => entry.type === 'MeshRenderer').data.material).toEqual({ color: '#ff33aa', roughness: 0.35 });
+    expect(root.components.find((entry) => entry.type === 'MeshRenderer').data.material).toEqual({ color: '#ff33aa', roughness: 0.35, emissive: '#ff0088', emissiveIntensity: 0.9 });
     expect(validateProject(result.project)).toEqual([]);
   });
 
@@ -166,6 +191,7 @@ describe('Lilly engine core contracts', () => {
     }, { parentId: 'world', config })], written.revision);
 
     expect(() => instantiate({ prefabId: 'not-marker' }, {})).toThrow(/does not match source id/);
+    expect(() => instantiate({}, { variant: 'missing' })).toThrow(/variant missing was not found/);
     expect(() => instantiate({}, { entities: { missing: { name: 'Nope' } } })).toThrow(/unknown entity missing/);
     expect(() => instantiate({}, { entities: { root: { components: { MeshRenderer: { material: { color: '#fff' } } } } } })).toThrow(/does not contain component MeshRenderer/);
     expect(() => instantiate({}, { entities: { root: { components: { Transform: { scale: { x: 0, y: 1, z: 1 } } } } } })).toThrow(/non-zero finite Vector3/);
@@ -309,7 +335,7 @@ describe('Lilly engine core contracts', () => {
     history.record([forward], applied.inverses);
 
     expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
-    expect(applied.project.engineVersion).toBe('0.4.0');
+    expect(applied.project.engineVersion).toBe('0.5.0');
     const undone = history.undo(applied.project);
     expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
     expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);

@@ -4,6 +4,10 @@ const {
   MECHANIC_TEST_SCHEMA,
   PREFAB_SCHEMA,
   SOURCE_FILE_SCHEMA,
+  MATERIAL_SCHEMA,
+  ASSET_METADATA_SCHEMA,
+  ANIMATION_CONTROLLER_SCHEMA,
+  TERRAIN_SCHEMA,
 } = require('../../dist/core/src');
 const {
   MODULE_BUNDLE_SCHEMA,
@@ -17,6 +21,10 @@ function source(path, content) {
       : path.endsWith('.system.ts') ? 'system'
         : path.endsWith('.prefab.json') ? 'prefab'
           : path.endsWith('.spec.json') ? 'test'
+            : path.endsWith('.material.json') ? 'material'
+              : path.endsWith('.asset.json') ? 'asset-metadata'
+                : path.endsWith('.animation.json') ? 'animation-controller'
+                  : path.endsWith('.terrain.json') ? 'terrain'
             : 'data';
   return {
     schema: SOURCE_FILE_SCHEMA,
@@ -92,6 +100,45 @@ export default defineSystem({
 }
 
 describe('Lilly agent-authored module architecture', () => {
+  test('compiles reusable materials, asset metadata, animation controllers, terrain, and prefab variants', () => {
+    const heights = [0, 0.1, 0, 0.1, 0.4, 0.1, 0, 0.1, 0];
+    const files = [
+      source('world/kit/kit.module.json', { schema: GAME_MODULE_SCHEMA, id: 'world-kit', name: 'World Kit', version: '1.0.0', dependencies: [], capabilities: [], systems: [], mechanics: [], prefabs: ['./patch.prefab.json'], tests: [], materials: ['./stone.material.json'], assets: ['./arch.asset.json'], animations: ['./motion.animation.json'], terrains: ['./patch.terrain.json'] }),
+      source('world/kit/stone.material.json', { schema: MATERIAL_SCHEMA, id: 'world-stone', moduleId: 'world-kit', name: 'World Stone', shading: 'physical', color: '#335c57', roughness: 0.82, metalness: 0.06 }),
+      source('world/kit/arch.asset.json', { schema: ASSET_METADATA_SCHEMA, id: 'arch-model', moduleId: 'world-kit', assetId: 'uploaded-arch', name: 'Arch Model', kind: 'model', scale: { x: 1, y: 1, z: 1 }, collision: { shape: 'box', size: { x: 2, y: 3, z: 1 } } }),
+      source('world/kit/motion.animation.json', { schema: ANIMATION_CONTROLLER_SCHEMA, id: 'landmark-motion', moduleId: 'world-kit', name: 'Landmark Motion', defaultState: 'float', states: [{ id: 'float', mode: 'float', amplitude: 0.2, frequency: 0.5 }, { id: 'spin', mode: 'spin', axis: 'y', speed: 0.8 }] }),
+      source('world/kit/patch.terrain.json', { schema: TERRAIN_SCHEMA, id: 'courtyard', moduleId: 'world-kit', name: 'Courtyard', size: { x: 20, y: 20 }, resolution: 3, heights, heightScale: 4, materialId: 'world-stone', collision: true, walkable: true }),
+      source('world/kit/patch.prefab.json', { schema: PREFAB_SCHEMA, id: 'world-patch', moduleId: 'world-kit', name: 'World Patch', rootEntityId: 'terrain', entities: [{ schema: 'LillyEntity/v1', id: 'terrain', name: 'Terrain', parentId: null, enabled: true, tags: ['ground'], components: [{ type: 'Terrain', enabled: true, data: { terrainId: 'courtyard', walkable: true, collision: true } }] }, { schema: 'LillyEntity/v1', id: 'landmark', name: 'Landmark', parentId: 'terrain', enabled: true, tags: ['landmark'], components: [{ type: 'MeshRenderer', enabled: true, data: { geometry: 'octahedron', materialId: 'world-stone' } }, { type: 'Animator', enabled: true, data: { controllerId: 'landmark-motion', state: 'float', speed: 1, autoplay: true } }] }], variants: [{ id: 'sentinel', entities: { landmark: { components: { Animator: { state: 'spin' } } } } }] }),
+    ];
+    const bundle = compileModuleBundle(files);
+    expect(bundle.diagnostics).toEqual([]);
+    expect(bundle.modules[0]).toMatchObject({ id: 'world-kit', materials: ['world/kit/stone.material.json'], assets: ['world/kit/arch.asset.json'], animations: ['world/kit/motion.animation.json'], terrains: ['world/kit/patch.terrain.json'] });
+    expect(bundle.materials).toEqual([expect.objectContaining({ id: 'world-stone', shading: 'physical' })]);
+    expect(bundle.assets).toEqual([expect.objectContaining({ id: 'arch-model', assetId: 'uploaded-arch' })]);
+    expect(bundle.animations).toEqual([expect.objectContaining({ id: 'landmark-motion', defaultState: 'float' })]);
+    expect(bundle.terrains).toEqual([expect.objectContaining({ id: 'courtyard', heights })]);
+    expect(bundle.prefabs[0].variants).toEqual([expect.objectContaining({ id: 'sentinel' })]);
+  });
+
+  test('blocks malformed heightfields and unresolved prefab world references', () => {
+    const files = dashModuleFiles();
+    const manifestFile = files.find((file) => file.kind === 'module-manifest');
+    const manifest = JSON.parse(manifestFile.content);
+    manifest.terrains = ['./broken.terrain.json'];
+    manifestFile.content = JSON.stringify(manifest);
+    files.push(source('modules/dash/broken.terrain.json', { schema: TERRAIN_SCHEMA, id: 'broken-ground', moduleId: 'player-dash', name: 'Broken Ground', size: { x: 20, y: 20 }, resolution: 4, heights: [0, 1], heightScale: 4, materialId: 'missing-material' }));
+    const prefab = files.find((file) => file.kind === 'prefab');
+    const prefabValue = JSON.parse(prefab.content);
+    prefabValue.entities[0].components.push({ type: 'Terrain', enabled: true, data: { terrainId: 'missing-terrain', walkable: true, collision: true } });
+    prefab.content = JSON.stringify(prefabValue);
+    const diagnostics = compileModuleBundle(files).diagnostics;
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'INVALID_TERRAIN_HEIGHTS', severity: 'error' }),
+      expect.objectContaining({ code: 'TERRAIN_MATERIAL_MISSING', severity: 'error' }),
+      expect.objectContaining({ code: 'PREFAB_TERRAIN_MISSING', severity: 'error' }),
+    ]));
+  });
+
   test('compiles a typed multi-file mechanic package and resolves its dependency graph', () => {
     const bundle = compileModuleBundle(dashModuleFiles());
     expect(bundle.schema).toBe(MODULE_BUNDLE_SCHEMA);

@@ -7,14 +7,15 @@ Actions:
 - `create-project` creates either a truly `blank` project for agent-led architecture or an `expedition` starter. `list-projects` discovers durable projects owned by the caller.
 - `inspect-project` and `inspect-scene` read the saved Lilly contracts and validation state.
 - `list-files` returns the project source tree and module diagnostics. `read-file` returns one exact source file.
+- `list-assets` inventories uploaded project assets. `upload-asset` accepts one bounded base64 GLB, glTF, texture, or audio file plus optional up-axis and unit metadata; binary content remains in the project asset workspace rather than source JSON.
 - `write-files` transactionally upserts up to 100 project files against `baseRevision`; `delete-files` removes paths the same way. A stale revision never overwrites another agent's work.
 - `compile-project` resolves module dependencies, validates JSON contracts, type-checks `.system.ts`, enforces the capability policy, and produces `LillyModuleBundle/v1` metadata.
 - `run-mechanic-tests` executes project `.spec.json` files in a bounded Node VM using the same lifecycle and capability semantics as the player sandbox.
-- `instantiate-prefab` expands a `.prefab.json` entity hierarchy into a scene with stable instance-prefixed IDs as one undoable command. Optional `config.position` translates the authored root, while `config.entities[sourceId]` can override `name`, `enabled`, `tags`, or deeply merge data into components already declared by the prefab. Unknown entities/components, invalid component values, and unsafe structured keys are rejected.
+- `instantiate-prefab` expands a `.prefab.json` entity hierarchy into a scene with stable instance-prefixed IDs as one undoable command. Optional `config.variant` applies an authored prefab variant first, `config.position` translates the root, and `config.entities[sourceId]` can then override `name`, `enabled`, `tags`, or deeply merge data into existing components. Unknown variants/entities/components, invalid values, and unsafe structured keys are rejected.
 - `generate-level` takes `projectId`, `baseRevision`, a plain-language `prompt`, and optional `seed`/`difficulty`. It returns a validated deterministic `LillyLevelRecipe/v1` proposal as a `level.generate` command without mutating the saved revision; review it, then use `apply-commands`.
 - `apply-commands` requires `projectId`, `baseRevision`, and a `LillyCommand/v1` batch. A stale base revision fails; it never overwrites newer edits.
 - `edit-blueprint` replaces one validated `LillyBlueprint/v1` graph.
-- `run-playtest` validates the project, assets, control contract, Blueprint typing/Graph IR, module dependency graph, system compilation, capability policy, and every agent-authored mechanic specification.
+- `run-playtest` validates the project, uploaded asset files, material/asset/animation/terrain references, control contract, Blueprint typing/Graph IR, module dependency graph, system compilation, capability policy, and every agent-authored mechanic specification.
 - `build` creates an immutable tested browser-player artifact for the current revision.
 - `publish` requires a successful `buildId` and promotes its exact files through the managed-app GitLab/k3s lane.
 - `rollback` restores an earlier saved revision as a new auditable revision.
@@ -34,6 +35,10 @@ Use multiple focused files instead of one generated script:
 - `*.system.ts` — typed `defineSystem({...})` lifecycle code importing only `@lilly/engine-runtime`.
 - `*.prefab.json` — `LillyPrefab/v1`; reusable entity hierarchies that can be instantiated transactionally.
 - `*.spec.json` — `LillyMechanicTest/v1`; deterministic events and assertions executed before a build.
+- `*.material.json` — `LillyMaterial/v1`; reusable standard, physical, toon, or unlit parameters plus uploaded texture slots.
+- `*.asset.json` — `LillyAssetMetadata/v1`; explicit scale, pivot, shadows, collision proxy, LOD, and GLB animation aliases for an uploaded asset id.
+- `*.animation.json` — `LillyAnimationController/v1`; named GLB clip states or deterministic spin, float, and pulse states.
+- `*.terrain.json` — `LillyTerrain/v1`; a bounded normalized heightfield, size, resolution, height scale, material reference, and collision/walkable intent.
 - `*.blueprint.json` and `*.scene.json` — visual-graph and scene interchange sources.
 
 System code can calculate arbitrary gameplay rules using normal synchronous TypeScript, loops, functions, local state, entity queries, inputs, deterministic random, and capability calls. Browser globals, network, DOM, storage, dynamic imports, async work, `Date`, and `Math.random` are rejected. Declare every required engine capability in the owning module manifest.
@@ -41,7 +46,7 @@ System code can calculate arbitrary gameplay rules using normal synchronous Type
 Recommended outside-agent loop:
 
 1. `create-project` with `template: "blank"`, or inspect an existing project.
-2. `list-files`, then author one module manifest plus small mechanic/system/prefab/spec files with `write-files`.
+2. `list-files` and `list-assets`, upload needed binaries, then author one module manifest plus focused mechanic/system/prefab/spec and world-resource files with `write-files`.
 3. `compile-project`; fix every error diagnostic.
 4. `run-mechanic-tests`; fix failed assertions.
 5. Compose scenes/entities/input maps through `apply-commands` and `instantiate-prefab`.

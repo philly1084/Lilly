@@ -9,6 +9,8 @@ const ACTIONS = [
   'inspect-scene',
   'list-files',
   'read-file',
+  'list-assets',
+  'upload-asset',
   'write-files',
   'delete-files',
   'compile-project',
@@ -29,8 +31,8 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '2.0.0',
-      description: 'Create complete browser games as versioned Lilly projects. Agents can author typed multi-file modules (.module.json, .mechanic.json, .system.ts, .prefab.json, .spec.json), compile capability-sandboxed systems, run deterministic mechanic tests, compose scenes and Blueprints through revision-safe commands, build immutable players, publish, and roll back.',
+      version: '3.0.0',
+      description: 'Create complete browser games as versioned Lilly projects. Agents can author typed multi-file modules, reusable materials, GLB metadata, animation controllers, terrain heightfields, prefab variants, capability-sandboxed systems, deterministic tests, scenes, and Blueprints; upload bounded assets; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
           const gameStudioService = context.gameStudioService;
@@ -82,7 +84,18 @@ class GameStudioTool extends ToolBase {
           parentId: { type: 'string', maxLength: 120 },
           config: {
             type: 'object',
-            description: 'Strict prefab instance overrides: optional position Vector3 and entities keyed by source entity id with name, enabled, tags, or existing component data patches.',
+            description: 'Strict prefab instance overrides: optional variant, position Vector3, and entities keyed by source entity id with name, enabled, tags, or existing component data patches.',
+          },
+          filename: { type: 'string', maxLength: 120 },
+          mimeType: { type: 'string', enum: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'image/jpeg', 'image/png', 'image/webp', 'model/gltf-binary', 'model/gltf+json', 'application/octet-stream'] },
+          contentBase64: { type: 'string', maxLength: 11200000 },
+          metadata: {
+            type: 'object',
+            properties: {
+              upAxis: { type: 'string', enum: ['Y', 'Z'] },
+              unitsPerMeter: { type: 'number', exclusiveMinimum: 0, maximum: 100000 },
+            },
+            additionalProperties: false,
           },
           graph: { type: 'object' },
           prompt: { type: 'string' },

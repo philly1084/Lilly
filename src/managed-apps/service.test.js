@@ -18,6 +18,31 @@ const TEST_IMAGE_DIGEST = `sha256:${'a'.repeat(64)}`;
 const EXPECTED_BUILD_IMAGE_DIGEST = `sha256:${'b'.repeat(64)}`;
 
 describe('ManagedAppService', () => {
+    test('preserves base64 file encoding while merging explicit binary assets into repository source', async () => {
+        const service = new ManagedAppService();
+        service.getEffectiveGiteaConfig = () => ({ registryHost: 'registry.example.test' });
+        service.buildBuildEventsUrl = () => 'https://kimibuilt.example.test/api/integrations/gitlab/build-events';
+        const content = Buffer.from([0, 255, 17, 128]).toString('base64');
+
+        const files = await service.buildRepositoryFiles({
+            appName: 'World Authoring Canary',
+            slug: 'world-authoring-canary',
+            publicHost: 'world-authoring-canary.example.test',
+            namespace: 'app-world-authoring-canary',
+            sourcePrompt: 'Publish a Lilly Game Studio world.',
+            repoOwner: 'agent-apps',
+            imageRepo: 'registry.example.test/agent-apps/world-authoring-canary',
+        }, {
+            files: [{ path: 'public/assets/model.glb', content, encoding: 'base64' }],
+        });
+
+        expect(files).toEqual(expect.arrayContaining([{
+            path: 'public/assets/model.glb',
+            content,
+            encoding: 'base64',
+        }]));
+    });
+
     test('proves repository authentication and organization access before Push-to-Web', async () => {
         const gitlabClient = {
             isConfigured: jest.fn(() => true),

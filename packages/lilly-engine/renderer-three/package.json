@@ -1,6 +1,6 @@
 {
   "name": "@lilly/engine-renderer-three",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "private": true,
   "main": "../dist/renderer-three/src/index.js",
   "types": "../dist/renderer-three/src/index.d.ts"
