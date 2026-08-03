@@ -331,8 +331,9 @@ function applyModuleActions(actions) {
     } else if (action.type === 'entity.destroy' && object) {
       removeRuntimeEntityTree(action.entityId);
     } else if (action.type === 'hud.message') {
-      objective.textContent = String(action.text || '');
-      setStatus(String(action.options?.status || 'Mechanic'), action.options?.state || 'playing');
+      const message = String(action.text || action.options?.status || 'Mechanic');
+      objective.textContent = message;
+      setStatus(String(action.options?.status || message), action.options?.state || 'playing');
     } else if (action.type === 'audio.play') {
       playTone(Number(action.options?.frequency || 620), Number(action.options?.duration || 0.16));
     } else if (action.type === 'particles.emit') {
