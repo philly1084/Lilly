@@ -39,7 +39,16 @@ export const studioApi = {
   compileModules: (projectId: string, revision: number) => request<ModuleCompileReport>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/compile`, { method: 'POST', body: JSON.stringify({ revision }) }),
   runMechanicTests: (projectId: string, revision: number, testIds?: string[]) => request<MechanicTestRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/mechanic-tests`, { method: 'POST', body: JSON.stringify({ revision, testIds }) }),
   instantiatePrefab: (projectId: string, baseRevision: number, input: { sceneId: string; path: string; instanceId: string; parentId?: string | null; config?: Record<string, unknown> }) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/prefab-instances`, { method: 'POST', body: JSON.stringify({ baseRevision, ...input }) }),
-  uploadAsset: (projectId: string, input: { filename: string; name: string; mimeType: string; contentBase64: string; metadata?: { upAxis?: 'Y' | 'Z'; unitsPerMeter?: number } }) => request<{ asset: LillyProjectAsset; project: LillyProject }>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/assets`, { method: 'POST', body: JSON.stringify(input) }),
+  uploadAsset: (projectId: string, input: { file: Blob; filename: string; name: string; mimeType: string; metadata?: { upAxis?: 'Y' | 'Z'; unitsPerMeter?: number } }) => {
+    const query = new URLSearchParams({
+      filename: input.filename,
+      name: input.name,
+      mimeType: input.mimeType,
+      upAxis: input.metadata?.upAxis || 'Y',
+      unitsPerMeter: String(input.metadata?.unitsPerMeter || 1),
+    });
+    return request<{ asset: LillyProjectAsset; project: LillyProject }>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/assets?${query}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: input.file });
+  },
   assetContentUrl: (projectId: string, assetId: string, revision?: number) => `/api/game-studio/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content${revision ? `?revision=${revision}` : ''}`,
   proposeAi: (projectId: string, baseRevision: number, prompt: string, options: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number } = {}) => request<AiRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs`, { method: 'POST', body: JSON.stringify({ baseRevision, prompt, ...options }) }),
   playtest: (projectId: string) => request<Playtest>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/playtests`, { method: 'POST', body: '{}' }),

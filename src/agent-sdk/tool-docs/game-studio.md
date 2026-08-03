@@ -7,7 +7,7 @@ Actions:
 - `create-project` creates either a truly `blank` project for agent-led architecture or an `expedition` starter. `list-projects` discovers durable projects owned by the caller.
 - `inspect-project` and `inspect-scene` read the saved Lilly contracts and validation state.
 - `list-files` returns the project source tree and module diagnostics. `read-file` returns one exact source file.
-- `list-assets` inventories uploaded project assets. `upload-asset` accepts one bounded base64 GLB, glTF, texture, or audio file plus optional up-axis and unit metadata; binary content remains in the project asset workspace rather than source JSON.
+- `list-assets` inventories uploaded project assets. `upload-asset` accepts one bounded canonical-Base64 GLB, glTF, texture, or audio file plus optional up-axis and unit metadata; binary content remains in the project asset workspace rather than source JSON. The AI tool JSON lane caps Base64 at 9,500,000 characters (about 6.8 MiB decoded) so it stays below the platform 10 MiB request envelope; the browser editor streams raw binary through its separate 8 MiB route.
 - `write-files` transactionally upserts up to 100 project files against `baseRevision`; `delete-files` removes paths the same way. A stale revision never overwrites another agent's work.
 - `compile-project` resolves module dependencies, validates JSON contracts, type-checks `.system.ts`, enforces the capability policy, and produces `LillyModuleBundle/v1` metadata.
 - `run-mechanic-tests` executes project `.spec.json` files in a bounded Node VM using the same lifecycle and capability semantics as the player sandbox.

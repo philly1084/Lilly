@@ -114,6 +114,27 @@ describe('Game Studio API', () => {
     await request(app).get(`/api/game-studio/projects/${id}/assets/missing/content`).expect(404).expect((response) => expect(response.body.error.code).toBe('ASSET_NOT_FOUND'));
   });
 
+  test('accepts the full 8 MiB raw asset lane and rejects malformed Base64 compatibility payloads', async () => {
+    const created = await request(app).post('/api/game-studio/projects').send({ name: 'Bounded Asset Routes' }).expect(201);
+    const id = created.body.project.id;
+    const bytes = Buffer.alloc(8 * 1024 * 1024, 0xa5);
+    const uploaded = await request(app)
+      .post(`/api/game-studio/projects/${id}/assets`)
+      .query({ filename: 'maximum.glb', name: 'Maximum GLB', mimeType: 'model/gltf-binary', upAxis: 'Y', unitsPerMeter: 1 })
+      .set('Content-Type', 'application/octet-stream')
+      .send(bytes)
+      .expect(201);
+    expect(uploaded.body.asset.metadata).toMatchObject({ sizeBytes: bytes.length, kind: 'model' });
+
+    const malformed = await request(app).post(`/api/game-studio/projects/${id}/assets`).send({
+      filename: 'malformed.glb',
+      name: 'Malformed',
+      mimeType: 'model/gltf-binary',
+      contentBase64: 'not!!!canonical===',
+    }).expect(400);
+    expect(malformed.body.error.code).toBe('ASSET_BASE64_INVALID');
+  }, 20_000);
+
   test('runs AI review, playtest, and build endpoints', async () => {
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'Pipeline' }).expect(201);
     const id = created.body.project.id;

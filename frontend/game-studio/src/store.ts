@@ -104,15 +104,6 @@ function assetMimeType(file: File) {
   return 'application/octet-stream';
 }
 
-function fileBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error('Asset could not be read'));
-    reader.onload = () => resolve(String(reader.result || '').split(',').at(-1) || '');
-    reader.readAsDataURL(file);
-  });
-}
-
 export const useStudioStore = create<StudioState>((set, get) => ({
   status: 'loading',
   error: '',
@@ -202,12 +193,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }
     set({ saveStatus: 'saving' });
     try {
-      const contentBase64 = await fileBase64(file);
       const result = await studioApi.uploadAsset(current.project.id, {
+        file,
         filename: file.name,
         name: file.name.replace(/\.[^.]+$/, ''),
         mimeType: assetMimeType(file),
-        contentBase64,
         metadata: { upAxis: 'Y', unitsPerMeter: 1 },
       });
       const refreshed = await studioApi.getProject(current.project.id);

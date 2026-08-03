@@ -134,21 +134,7 @@ async function run() {
   const projectId = created.project.id;
   report.projectId = projectId;
   const modelBytes = createTriangleGlb();
-  const uploaded = await requestJson(`${origin}/api/game-studio/projects/${projectId}/assets`, {
-    method: 'POST',
-    headers: apiAuthHeaders,
-    body: JSON.stringify({
-      filename: 'lilly-triangle.glb',
-      name: 'Lilly Triangle Model',
-      mimeType: 'model/gltf-binary',
-      contentBase64: modelBytes.toString('base64'),
-      metadata: { upAxis: 'Y', unitsPerMeter: 1 },
-    }),
-  });
-  const uploadedResponse = await fetch(`${origin}/api/game-studio/projects/${projectId}/assets/${uploaded.asset.id}/content`, { headers: apiAuthHeaders });
-  const uploadedBytes = Buffer.from(await uploadedResponse.arrayBuffer());
-  assert(uploadedResponse.ok && uploadedBytes.readUInt32LE(0) === 0x46546c67, 'Uploaded GLB did not replay byte-for-byte through the authenticated asset route');
-  report.assetProof = { id: uploaded.asset.id, sizeBytes: uploadedBytes.length, kind: uploaded.asset.metadata?.kind, glbMagic: uploadedBytes.subarray(0, 4).toString('hex') };
+  let uploaded = null;
 
   const executablePath = await existingBrowser();
   const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
@@ -204,6 +190,19 @@ async function run() {
       await page.goto(args.url, { waitUntil: 'domcontentloaded' });
       await page.locator('.studio-app').waitFor({ state: 'visible' });
       await page.getByText(projectName, { exact: true }).first().waitFor({ state: 'visible' });
+    });
+
+    await record('raw-binary-asset-upload-and-byte-replay', async () => {
+      const uploadResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/assets$/.test(new URL(response.url()).pathname));
+      await page.locator('#game-studio-import-asset').setInputFiles({ name: 'Lilly Triangle Model.glb', mimeType: 'model/gltf-binary', buffer: modelBytes });
+      const response = await uploadResponse;
+      assert(response.ok(), `Raw binary GLB upload failed with HTTP ${response.status()}`);
+      uploaded = await response.json();
+      await page.getByRole('button', { name: 'Lilly Triangle Model model', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      const uploadedResponse = await fetch(`${origin}/api/game-studio/projects/${projectId}/assets/${uploaded.asset.id}/content`, { headers: apiAuthHeaders });
+      const uploadedBytes = Buffer.from(await uploadedResponse.arrayBuffer());
+      assert(uploadedResponse.ok && uploadedBytes.equals(modelBytes), 'Uploaded GLB did not replay byte-for-byte through the authenticated asset route');
+      report.assetProof = { id: uploaded.asset.id, sizeBytes: uploadedBytes.length, kind: uploaded.asset.metadata?.kind, glbMagic: uploadedBytes.subarray(0, 4).toString('hex'), transport: 'application/octet-stream' };
     });
 
     await record('hierarchy-and-inspector-edit', async () => {

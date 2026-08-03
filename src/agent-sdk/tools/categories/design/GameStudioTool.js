@@ -88,7 +88,7 @@ class GameStudioTool extends ToolBase {
           },
           filename: { type: 'string', maxLength: 120 },
           mimeType: { type: 'string', enum: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'image/jpeg', 'image/png', 'image/webp', 'model/gltf-binary', 'model/gltf+json', 'application/octet-stream'] },
-          contentBase64: { type: 'string', maxLength: 11200000 },
+          contentBase64: { type: 'string', maxLength: 9500000, description: 'Canonical Base64 only. The AI tool JSON lane is capped below the platform 10 MiB request envelope; the browser editor uses the separate raw-binary 8 MiB asset route.' },
           metadata: {
             type: 'object',
             properties: {

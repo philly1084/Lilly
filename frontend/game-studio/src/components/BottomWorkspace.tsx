@@ -53,7 +53,13 @@ function ContentBrowser() {
   ].filter((item) => (category === 'all' || item.category === category) && item.name.toLowerCase().includes(query.toLowerCase())), [current, scene, query, category]);
   const createWorldPack = async () => {
     if (!current) return;
-    const index = current.moduleSummary.modules.length + 1;
+    const occupiedWorldPacks = new Set(current.moduleSummary.modules.map((entry) => entry.id));
+    for (const file of current.project.files) {
+      const match = file.path.match(/^world\/(world-pack-\d+)(?:\/|$)/);
+      if (match) occupiedWorldPacks.add(match[1]);
+    }
+    let index = 1;
+    while (occupiedWorldPacks.has(`world-pack-${index}`)) index += 1;
     const id = `world-pack-${index}`;
     const directory = `world/${id}`;
     const resolution = 17;

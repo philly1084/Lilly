@@ -1,8 +1,19 @@
 'use strict';
 
-const { Router } = require('express');
+const { Router, raw } = require('express');
 
 const router = Router();
+const parseBinaryAsset = raw({ type: 'application/octet-stream', limit: '8mb' });
+
+function boundedBinaryAsset(req, res, next) {
+  parseBinaryAsset(req, res, (error) => {
+    if (error) {
+      error.statusCode = error.status || 413;
+      error.code = error.code || 'ASSET_SIZE_INVALID';
+    }
+    next(error);
+  });
+}
 
 function ownerId(req) {
   return String(req.user?.username || req.user?.id || '').trim();
@@ -232,11 +243,23 @@ router.get('/projects/:id/assets', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/projects/:id/assets', async (req, res, next) => {
+router.post('/projects/:id/assets', boundedBinaryAsset, async (req, res, next) => {
   try {
     const gameStudio = ensureAvailable(req, res);
     if (!gameStudio) return;
-    const result = await gameStudio.saveAsset(req.params.id, req.body || {}, ownerId(req));
+    const input = Buffer.isBuffer(req.body)
+      ? {
+          filename: String(req.query.filename || ''),
+          name: String(req.query.name || req.query.filename || ''),
+          mimeType: String(req.query.mimeType || 'application/octet-stream'),
+          contentBuffer: req.body,
+          metadata: {
+            upAxis: String(req.query.upAxis || 'Y'),
+            unitsPerMeter: Number(req.query.unitsPerMeter || 1),
+          },
+        }
+      : (req.body || {});
+    const result = await gameStudio.saveAsset(req.params.id, input, ownerId(req));
     if (!result) return notFound(res);
     res.status(201).json(result);
   } catch (error) { next(error); }

@@ -112,6 +112,19 @@ async function pathExists(targetPath) {
   }
 }
 
+function decodeCanonicalBase64(value) {
+  const source = String(value || '').trim();
+  const canonicalPattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  if (!source || source.length % 4 !== 0 || !canonicalPattern.test(source)) {
+    throw Object.assign(new Error('Asset content must be canonical Base64'), { statusCode: 400, code: 'ASSET_BASE64_INVALID' });
+  }
+  const buffer = Buffer.from(source, 'base64');
+  if (!buffer.length || buffer.toString('base64') !== source) {
+    throw Object.assign(new Error('Asset content must be canonical Base64'), { statusCode: 400, code: 'ASSET_BASE64_INVALID' });
+  }
+  return buffer;
+}
+
 function validateWorldReferences(project, moduleBundle) {
   const issues = [];
   const assetIds = new Set((project.assets || []).map((asset) => asset.id));
@@ -589,8 +602,9 @@ class GameStudioService {
       if (!metadata) return null;
       const mimeType = String(input.mimeType || 'application/octet-stream').toLowerCase();
       if (!ALLOWED_ASSET_TYPES.has(mimeType)) throw Object.assign(new Error(`Asset type ${mimeType} is not allowed`), { statusCode: 415, code: 'ASSET_TYPE_NOT_ALLOWED' });
-      let buffer;
-      try { buffer = Buffer.from(String(input.contentBase64 || ''), 'base64'); } catch (_error) { buffer = Buffer.alloc(0); }
+      const buffer = Buffer.isBuffer(input.contentBuffer)
+        ? Buffer.from(input.contentBuffer)
+        : decodeCanonicalBase64(input.contentBase64);
       if (buffer.length === 0 || buffer.length > MAX_ASSET_BYTES) throw Object.assign(new Error(`Assets must be between 1 byte and ${MAX_ASSET_BYTES} bytes`), { statusCode: 413, code: 'ASSET_SIZE_INVALID' });
       const id = randomUUID();
       const filename = `${id}-${safeFileName(input.filename)}`;
