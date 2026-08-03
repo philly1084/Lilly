@@ -281,6 +281,8 @@ describe('GameStudioService', () => {
     expect(playerSource).toContain('let fixedStep = 1 / 60');
     expect(playerSource).toContain('__LILLY_GAME__');
     expect(playerSource).toContain('LillyPlayerDebug/v3');
+    expect(playerSource).toContain("const message = String(action.text || action.options?.status || 'Mechanic');");
+    expect(playerSource).toContain("setStatus(String(action.options?.status || message), action.options?.state || 'playing');");
     const playerHtml = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
     expect(playerHtml).toContain('class="touch-controls"');
     expect(playerHtml).toContain('id="level-name"');
