@@ -1,4 +1,4 @@
-import type { AiRun, EditorPreview, LillyCommand, LillyProject, LillyProjectAsset, LillySourceFile, MechanicTestRun, ModuleCompileReport, Playtest, StudioBuild, StudioMetadata, StudioProjectResponse } from './types';
+import type { AiRun, EditorPreview, LillyCommand, LillyProject, LillyProjectAsset, LillyProjectTemplateId, LillySourceFile, MechanicTestRun, ModuleCompileReport, Playtest, StudioBuild, StudioMetadata, StudioProjectResponse } from './types';
 
 type ApiErrorPayload = { error?: { code?: string; message?: string; currentRevision?: number; issues?: unknown[] } };
 
@@ -31,7 +31,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const studioApi = {
   listProjects: () => request<{ projects: StudioMetadata[]; count: number }>('/api/game-studio/projects'),
-  createProject: (input: { name: string; slug?: string; prompt?: string; seed?: string; template?: 'blank' | 'expedition'; project?: unknown; importBundle?: unknown }) => request<StudioProjectResponse>('/api/game-studio/projects', { method: 'POST', body: JSON.stringify(input) }),
+  createProject: (input: { name: string; slug?: string; prompt?: string; seed?: string; template?: LillyProjectTemplateId; project?: unknown; importBundle?: unknown }) => request<StudioProjectResponse>('/api/game-studio/projects', { method: 'POST', body: JSON.stringify(input) }),
   getProject: (projectId: string) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}`),
   applyCommands: (projectId: string, baseRevision: number, commands: Partial<LillyCommand>[], source = 'editor') => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/commands`, { method: 'POST', body: JSON.stringify({ baseRevision, commands, source }) }),
   writeFiles: (projectId: string, baseRevision: number, files: Array<Pick<LillySourceFile, 'path' | 'content'> & Partial<Pick<LillySourceFile, 'enabled'>>>) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/files`, { method: 'PUT', body: JSON.stringify({ baseRevision, files }) }),

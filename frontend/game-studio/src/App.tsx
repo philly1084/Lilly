@@ -9,6 +9,7 @@ import { MobileCreator } from './components/LevelCreator';
 import { Toolbar } from './components/Toolbar';
 import { Viewport } from './components/Viewport';
 import { useStudioStore } from './store';
+import type { LillyProjectTemplateId } from './types';
 
 type Layout = { left: number; right: number; bottom: number; leftOpen: boolean; rightOpen: boolean; bottomOpen: boolean };
 const defaultLayout: Layout = { left: 260, right: 310, bottom: 300, leftOpen: true, rightOpen: true, bottomOpen: true };
@@ -35,9 +36,15 @@ function EmptyState() {
   const createProject = useStudioStore((state) => state.createProject);
   const [name, setName] = useState('My Lilly Game');
   const [brief, setBrief] = useState('A winding neon ruin with glowing energy cores, fair pulse traps, strong landmarks, and a final exit beacon.');
-  const [template, setTemplate] = useState<'blank' | 'expedition'>('blank');
+  const [template, setTemplate] = useState<LillyProjectTemplateId>('third-person-explorer');
+  const templates: Array<{ id: LillyProjectTemplateId; name: string; description: string }> = [
+    { id: 'third-person-explorer', name: 'Third-person explorer', description: 'Open landscape, follow camera, discoveries' },
+    { id: 'top-down-action', name: 'Top-down action', description: 'Tactical camera, pulse mechanic, targets' },
+    { id: 'blank', name: 'Blank architecture', description: 'Agents author every system and scene' },
+    { id: 'expedition', name: 'Procedural expedition', description: 'Seeded rooms, guardians, checkpoints' },
+  ];
   const create = () => {
-    if (name.trim() && (template === 'blank' || brief.trim())) createProject(name.trim(), template === 'blank' ? undefined : brief.trim(), template);
+    if (name.trim() && (template !== 'expedition' || brief.trim())) createProject(name.trim(), template === 'expedition' ? brief.trim() : undefined, template);
   };
   return <div className="full-state onboarding-state">
     <div className="onboarding-art"><div className="art-grid"/><div className="art-player"/><div className="art-shard one"/><div className="art-shard two"/><div className="art-shard three"/></div>
@@ -45,12 +52,12 @@ function EmptyState() {
       <div className="brand-mark large">L</div>
       <span className="panel-kicker">Lilly AI Game Studio</span>
       <h1>Build the game in parts.</h1>
-      <p>Start from a blank project for agent-authored mechanics, systems, prefabs, scenes, and tests—or generate a playable expedition and replace any part.</p>
-      <div className="onboarding-template" role="group" aria-label="Project starting point"><button type="button" className={template === 'blank' ? 'active' : ''} onClick={() => setTemplate('blank')}><strong>Blank architecture</strong><span>Agents author the game from scratch</span></button><button type="button" className={template === 'expedition' ? 'active' : ''} onClick={() => setTemplate('expedition')}><strong>Playable expedition</strong><span>Begin with a generated 3D world</span></button></div>
+      <p>Start with a playable multi-genre game kit, a fully blank architecture, or the preserved procedural expedition. Every kit uses the same components, modules, tests, builds, and AI command contracts.</p>
+      <div className="onboarding-template" role="group" aria-label="Project starting point">{templates.map((entry) => <button key={entry.id} type="button" className={template === entry.id ? 'active' : ''} onClick={() => setTemplate(entry.id)}><strong>{entry.name}</strong><span>{entry.description}</span></button>)}</div>
       <label>Game name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       {template === 'expedition' && <label>What should the level feel like?<textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) create(); }}/></label>}
-      <button type="button" onClick={create} disabled={!name.trim() || (template === 'expedition' && !brief.trim())}><Icon name={template === 'blank' ? 'code' : 'spark'}/>{template === 'blank' ? 'Create blank game project' : 'Create playable world'}</button>
-      <div className="onboarding-proof"><span>Typed systems</span><span>Versioned mechanics</span><span>Reusable prefabs</span><span>Deterministic specs</span><span>HTTPS publishing</span></div>
+      <button type="button" onClick={create} disabled={!name.trim() || (template === 'expedition' && !brief.trim())}><Icon name={template === 'blank' ? 'code' : 'spark'}/>{template === 'blank' ? 'Create blank game project' : template === 'expedition' ? 'Generate expedition' : 'Create playable game kit'}</button>
+      <div className="onboarding-proof"><span>Component controllers</span><span>Typed systems</span><span>Multi-genre kits</span><span>Deterministic specs</span><span>HTTPS publishing</span></div>
     </div>
   </div>;
 }

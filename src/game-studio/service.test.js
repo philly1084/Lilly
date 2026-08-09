@@ -27,10 +27,16 @@ describe('GameStudioService', () => {
   });
 
   test('creates a durable versioned canary project', async () => {
+    const registry = await service.executeToolAction('list-templates', {}, { userId: 'phil' });
+    expect(registry).toMatchObject({
+      schema: 'LillyProjectTemplateRegistry/v1',
+      engineVersion: '0.6.0',
+      templates: expect.arrayContaining([expect.objectContaining({ id: 'third-person-explorer' }), expect.objectContaining({ id: 'top-down-action' })]),
+    });
     const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
-    expect(result.project.engineVersion).toBe('0.5.0');
+    expect(result.project.engineVersion).toBe('0.6.0');
     expect(result.project.blueprints).toHaveLength(2);
     expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
     expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
@@ -38,6 +44,29 @@ describe('GameStudioService', () => {
     expect(result.validation.valid).toBe(true);
     await expect(fs.access(service.revisionPath(result.project.id, 1))).resolves.toBeUndefined();
   });
+
+  test.each(['third-person-explorer', 'top-down-action'])('creates, tests, and packages the %s game kit', async (template) => {
+    const created = await service.createProject({ name: `${template} canary`, template }, 'phil');
+    expect(created.project.settings.runtimeProfile).toBe('module-driven');
+    expect(created.project.levelRecipes).toEqual([]);
+    expect(created.project.files).toHaveLength(4);
+    expect(created.validation.valid).toBe(true);
+    const compiled = await service.compileProjectModules(created.project.id, { revision: 1 }, 'phil');
+    expect(compiled).toMatchObject({ valid: true, modules: [expect.any(Object)], tests: [expect.any(Object)] });
+    const playtest = await service.runPlaytest(created.project.id, {}, 'phil');
+    expect(playtest.status).toBe('passed');
+    expect(playtest.tests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Agent-authored mechanic specifications', status: 'passed' }),
+      expect.objectContaining({ name: 'Procedural level topology', status: 'passed' }),
+    ]));
+    const build = await service.createBuild(created.project.id, { projectRevision: 1 }, 'phil');
+    expect(build).toMatchObject({ status: 'success', engineVersion: '0.6.0' });
+    const html = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
+    const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
+    expect(html).toContain('Lilly module-driven runtime');
+    expect(html).not.toContain('Lilly generated expedition');
+    expect(manifest).toMatchObject({ engineVersion: '0.6.0', moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
+  }, 20_000);
 
   test('bounds every immutable build workspace and file below the shared sandbox root', () => {
     expect(service.buildWorkspaceDirectory('game-studio-safe-r1-12345678')).toBe(

@@ -52,6 +52,7 @@ router.get('/contracts', async (req, res, next) => {
     res.json({
       schema: 'LillyGameStudioContracts/v1',
       engineVersion: core.ENGINE_VERSION,
+      projectTemplates: core.PROJECT_TEMPLATES,
       contracts: {
         project: core.PROJECT_SCHEMA,
         scene: core.SCENE_SCHEMA,

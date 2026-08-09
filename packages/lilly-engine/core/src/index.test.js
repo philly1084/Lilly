@@ -13,6 +13,7 @@ const {
   applyCommandBatch,
   createArenaProject,
   createBlankProject,
+  createProjectFromTemplate,
   createLevelRecipeFromPrompt,
   detectSourceFileKind,
   generateLevel,
@@ -50,11 +51,39 @@ describe('Lilly engine core contracts', () => {
 
   test('creates a blank project that agents can build from scratch in versioned files', () => {
     const project = createBlankProject({ id: 'blank-agent-game', name: 'Agent Game' });
-    expect(project.engineVersion).toBe('0.5.0');
+    expect(project.engineVersion).toBe('0.6.0');
+    expect(project.settings.runtimeProfile).toBe('module-driven');
     expect(project.files).toEqual([]);
     expect(project.levelRecipes).toEqual([]);
     expect(project.scenes).toEqual([expect.objectContaining({ id: 'main', entities: [expect.objectContaining({ id: 'world' })] })]);
     expect(validateProject(project)).toEqual([]);
+  });
+
+  test('offers validated multi-genre kits without procedural room topology', () => {
+    const explorer = createProjectFromTemplate({ id: 'explorer-kit', name: 'Explorer Kit', template: 'third-person-explorer' });
+    const action = createProjectFromTemplate({ id: 'action-kit', name: 'Action Kit', template: 'top-down-action' });
+    for (const project of [explorer, action]) {
+      expect(project.settings.runtimeProfile).toBe('module-driven');
+      expect(project.levelRecipes).toEqual([]);
+      expect(project.generatedLevels).toEqual([]);
+      expect(project.scenes[0].entities.some((entity) => entity.tags.includes('room') || entity.tags.includes('wall'))).toBe(false);
+      expect(project.scenes[0].entities.find((entity) => entity.tags.includes('player')).components).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'CharacterController' }),
+      ]));
+      expect(project.files.map((file) => file.kind)).toEqual(expect.arrayContaining(['module-manifest', 'system', 'mechanic', 'test']));
+      expect(validateProject(project)).toEqual([]);
+    }
+    expect(explorer.scenes[0].entities.filter((entity) => entity.tags.includes('landmark'))).toHaveLength(3);
+    expect(action.inputMap).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'Fire', kind: 'button' })]));
+  });
+
+  test('upgrades legacy projects into the compatible runtime profile', () => {
+    const expedition = createArenaProject({ id: 'legacy-expedition-profile' });
+    const authored = createBlankProject({ id: 'legacy-authored-profile' });
+    delete expedition.settings.runtimeProfile;
+    delete authored.settings.runtimeProfile;
+    expect(upgradeProject(expedition).settings.runtimeProfile).toBe('expedition');
+    expect(upgradeProject(authored).settings.runtimeProfile).toBe('module-driven');
   });
 
   test('validates Lilly-owned world resources and detects their source contracts', () => {
@@ -335,7 +364,7 @@ describe('Lilly engine core contracts', () => {
     history.record([forward], applied.inverses);
 
     expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
-    expect(applied.project.engineVersion).toBe('0.5.0');
+    expect(applied.project.engineVersion).toBe('0.6.0');
     const undone = history.undo(applied.project);
     expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
     expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);

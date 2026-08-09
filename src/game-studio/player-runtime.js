@@ -27,6 +27,9 @@ let gameplay;
 let gameplayState;
 let levelDesign;
 let levelRecipe;
+let runtimeProfile = 'module-driven';
+let playerEntityData;
+let cameraComponentData;
 let moduleBundle;
 let moduleHost;
 let moduleRuntimeState = { states: {}, saves: {} };
@@ -62,7 +65,8 @@ const gateObjects = new Map();
 const checkpointObjects = new Map();
 const animationMixers = [];
 const proceduralAnimations = [];
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
+timer.connect(document);
 const playerVelocity = new THREE.Vector3();
 const playerSpawn = new THREE.Vector3();
 const playerRadius = 0.44;
@@ -171,12 +175,21 @@ function createModuleHost(bundle) {
     }
   };
   addEventListener('message', onMessage);
-  const dispatch = (type, event = '', payload = {}) => {
+  let dispatchChain = Promise.resolve();
+  const dispatchNow = (type, event = '', payload = {}) => {
     const requestId = `module-${++sequence}`;
     return new Promise((resolve, reject) => {
       pending.set(requestId, { resolve, reject });
       iframe.contentWindow.postMessage({ schema: 'LillyModuleSandboxMessage/v1', type, event, payload, requestId, ...(type === 'restore' ? payload : {}) }, '*');
     });
+  };
+  const dispatch = (type, event = '', payload = {}) => {
+    const request = dispatchChain.then(
+      () => dispatchNow(type, event, payload),
+      () => dispatchNow(type, event, payload),
+    );
+    dispatchChain = request.catch(() => {});
+    return request;
   };
   return readyPromise.then((ready) => ({
     sourceHash: ready.sourceHash,
@@ -706,6 +719,7 @@ async function setupScene() {
   levelRecipe = levelDesign
     ? (project.levelRecipes || []).find((entry) => entry.id === levelDesign.recipeId) || null
     : null;
+  runtimeProfile = project.settings?.runtimeProfile === 'expedition' ? 'expedition' : 'module-driven';
   fixedStep = 1 / Math.max(1, Math.min(240, Number(project.settings?.fixedStepHz || 60)));
   gameplay = new GameplaySimulation(project);
   gameplayState = gameplay.getState();
@@ -728,13 +742,19 @@ async function setupScene() {
     if (!object) return;
     const parent = entity.parentId ? objectMap.get(entity.parentId) : null;
     (parent || scene).add(object);
-    if (entity.tags.includes('player')) player = object;
+    if (entity.tags.includes('player')) {
+      player = object;
+      playerEntityData = entity;
+    }
     if (entity.tags.includes('pickup')) pickups.push({ id: entity.id, object });
     if (entity.tags.includes('goal')) goal = object;
     if (entity.tags.includes('enemy')) enemyObjects.set(entity.id, object);
     if (entity.tags.includes('encounter-gate')) gateObjects.set(entity.id, object);
     if (entity.tags.includes('checkpoint')) checkpointObjects.set(entity.id, object);
-    if (component(entity, 'Camera')?.data.primary === true) camera = object;
+    if (component(entity, 'Camera')?.data.primary === true) {
+      camera = object;
+      cameraComponentData = component(entity, 'Camera').data;
+    }
     registerCollisionRole(entity, object);
     if (object.userData.assetId) assetLoads.push(loadAssetObject(entity, object));
     else registerEntityAnimation(entity, object);
@@ -747,7 +767,10 @@ async function setupScene() {
     camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 1000);
     scene.add(camera);
   }
-  camera.position.set(playerSpawn.x + 7, playerSpawn.y + 7, playerSpawn.z + 11);
+  const initialCameraOffset = runtimeProfile === 'expedition'
+    ? new THREE.Vector3(7, 7, 11)
+    : vector(cameraComponentData?.followOffset, { x: 7, y: 7, z: 11 });
+  camera.position.set(playerSpawn.x + initialCameraOffset.x, playerSpawn.y + initialCameraOffset.y, playerSpawn.z + initialCameraOffset.z);
   camera.lookAt(player.position);
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -755,7 +778,7 @@ async function setupScene() {
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   scoreTotal.textContent = String(totalPickups);
-  levelName.textContent = levelRecipe?.name || project.name;
+  levelName.textContent = levelRecipe?.name || sceneData.name || project.name;
   resize();
 }
 
@@ -822,6 +845,15 @@ function objectiveRequirementsMet() {
 }
 
 function updateObjective() {
+  if (runtimeProfile !== 'expedition') {
+    const sceneData = project.scenes.find((entry) => entry.id === project.entryScene);
+    const authoredObjective = sceneData?.entities
+      .flatMap((entity) => entity.components || [])
+      .find((entry) => entry.type === 'UIAnchor' && entry.enabled !== false && String(entry.data?.text || '').trim());
+    objective.textContent = String(authoredObjective?.data?.text || 'Module-driven game running. Author behavior with components, Blueprints, and typed systems.');
+    setStatus('Playing');
+    return;
+  }
   if (won) {
     objective.textContent = 'Expedition complete. Seeded level '
       + (levelDesign?.checksum || 'verified')
@@ -981,8 +1013,8 @@ function actionPressed(action, fallback = []) {
   return touchActions.has(action) || actionCodes(action, fallback).some(pressed);
 }
 
-function movementInput() {
-  const codes = actionCodes('Move', ['KeyW', 'KeyS', 'KeyA', 'KeyD']);
+function movementInput(action = 'Move') {
+  const codes = actionCodes(action, ['KeyW', 'KeyS', 'KeyA', 'KeyD']);
   const [forward = 'KeyW', backward = 'KeyS', left = 'KeyA', right = 'KeyD'] = codes;
   return new THREE.Vector3(
     Number(pressed(right)) - Number(pressed(left)),
@@ -1024,7 +1056,7 @@ async function dispatchModuleSimulationStep(delta) {
   }
 }
 
-function simulate(delta) {
+function simulateExpedition(delta) {
   hazardCooldown = Math.max(0, hazardCooldown - delta);
   const input = movementInput();
   if (input.lengthSq() > 0) input.normalize();
@@ -1048,6 +1080,29 @@ function simulate(delta) {
     if (hazard.object.position.distanceTo(player.position) < hazard.radius + playerRadius) takeHazardDamage();
   });
   evaluateGoal();
+}
+
+function simulateModuleDriven(delta) {
+  const controller = component(playerEntityData, 'CharacterController');
+  if (!controller) return;
+  const input = movementInput(String(controller.data.moveAction || 'Move'));
+  if (input.lengthSq() > 0) input.normalize();
+  const speed = Math.max(0, Number(controller.data.speed || 0));
+  playerVelocity.x = THREE.MathUtils.damp(playerVelocity.x, input.x * speed, 10, delta);
+  playerVelocity.z = THREE.MathUtils.damp(playerVelocity.z, input.z * speed, 10, delta);
+  const previousRadius = Number(controller.data.collisionRadius || playerRadius);
+  const nextX = player.position.x + playerVelocity.x * delta;
+  if (onWalkableGround(nextX, player.position.z) && !hitsObstacle(nextX, player.position.z, previousRadius)) player.position.x = nextX;
+  else playerVelocity.x = 0;
+  const nextZ = player.position.z + playerVelocity.z * delta;
+  if (onWalkableGround(player.position.x, nextZ) && !hitsObstacle(player.position.x, nextZ, previousRadius)) player.position.z = nextZ;
+  else playerVelocity.z = 0;
+  if (controller.data.rotateToMovement !== false && input.lengthSq() > 0) player.rotation.y = Math.atan2(input.x, input.z);
+}
+
+function simulate(delta) {
+  if (runtimeProfile === 'expedition') simulateExpedition(delta);
+  else simulateModuleDriven(delta);
   queueModuleCollisions(scanCollisionTransitions());
   dispatchModuleSimulationStep(delta);
 }
@@ -1099,13 +1154,21 @@ function animateWorld(elapsed, delta) {
     goal.rotation.y += delta * 0.85;
     goal.rotation.x = Math.sin(elapsed * 0.7) * 0.12;
   }
-  const targetCamera = new THREE.Vector3(player.position.x + 6.5, player.position.y + 6.2, player.position.z + 8.5);
-  camera.position.lerp(targetCamera, 1 - Math.pow(0.0004, delta));
-  camera.lookAt(player.position.x, player.position.y + 0.7, player.position.z);
+  const authoredFollow = cameraComponentData?.followTargetTag === 'player' || cameraComponentData?.followTargetId === playerEntityData?.id;
+  if (runtimeProfile === 'expedition' || authoredFollow) {
+    const offset = runtimeProfile === 'expedition'
+      ? new THREE.Vector3(6.5, 6.2, 8.5)
+      : vector(cameraComponentData?.followOffset, { x: 6.5, y: 6.2, z: 8.5 });
+    const smoothing = Math.max(0.000001, Math.min(0.999999, Number(cameraComponentData?.smoothing || 0.0004)));
+    const targetCamera = new THREE.Vector3(player.position.x + offset.x, player.position.y + offset.y, player.position.z + offset.z);
+    camera.position.lerp(targetCamera, 1 - Math.pow(smoothing, delta));
+    camera.lookAt(player.position.x, player.position.y + Number(cameraComponentData?.lookAtHeight ?? 0.7), player.position.z);
+  }
 }
 
-function frame() {
-  const frameDelta = clock.getDelta();
+function frame(timestamp) {
+  timer.update(timestamp);
+  const frameDelta = timer.getDelta();
   let renderDelta = 0;
   if (!editorPaused) {
     const schedule = scheduleGameplaySteps(accumulator, frameDelta, fixedStep);
@@ -1136,7 +1199,8 @@ function reset(fullReset = true) {
   won = false;
   attackHeld = false;
   hazardCooldown = 0.8;
-  syncGameplay(gameplay.reset());
+  gameplayState = gameplay.reset();
+  if (runtimeProfile === 'expedition') syncGameplay(gameplayState);
   if (fullReset) {
     pickupCount = 0;
     pickups.forEach(({ object }) => { object.visible = true; });
@@ -1157,7 +1221,7 @@ function saveSnapshot() {
     position: player.position.toArray(),
     pickupCount,
     hiddenPickupIds: pickups.filter(({ object }) => !object.visible).map(({ id }) => id),
-    gameplay: gameplay.serialize(),
+    gameplay: runtimeProfile === 'expedition' ? gameplay.serialize() : null,
     modules: moduleRuntimeState,
     won,
   };
@@ -1166,7 +1230,7 @@ function saveSnapshot() {
 function applySaveSnapshot(snapshot, restoreModules = true) {
   if (!snapshot || !Array.isArray(snapshot.position) || snapshot.position.length !== 3) return false;
   if (snapshot.levelChecksum && levelDesign?.checksum && snapshot.levelChecksum !== levelDesign.checksum) return false;
-  if (snapshot.schema === 'LillyPlayerSave/v2' && snapshot.gameplay && !gameplay.restore(snapshot.gameplay)) return false;
+  if (runtimeProfile === 'expedition' && snapshot.schema === 'LillyPlayerSave/v2' && snapshot.gameplay && !gameplay.restore(snapshot.gameplay)) return false;
   else if (snapshot.schema !== 'LillyPlayerSave/v1' && snapshot.schema !== 'LillyPlayerSave/v2') return false;
   player.position.fromArray(snapshot.position.map(Number));
   pickupCount = Math.max(0, Math.min(totalPickups, Number(snapshot.pickupCount) || 0));
@@ -1174,8 +1238,9 @@ function applySaveSnapshot(snapshot, restoreModules = true) {
     ? new Set(snapshot.hiddenPickupIds || [])
     : new Set(pickups.filter((_pickup, index) => Boolean(snapshot.hidden?.[index])).map(({ id }) => id));
   pickups.forEach(({ id, object }) => { object.visible = !hiddenIds.has(id); });
-  syncGameplay(gameplay.getState());
-  won = snapshot.won === true && objectiveRequirementsMet();
+  gameplayState = gameplay.getState();
+  if (runtimeProfile === 'expedition') syncGameplay(gameplayState);
+  won = runtimeProfile === 'expedition' && snapshot.won === true && objectiveRequirementsMet();
   if (restoreModules && snapshot.modules && moduleHost) moduleHost.restore(snapshot.modules).catch(showRuntimeError);
   scoreValue.textContent = String(pickupCount);
   updateObjective();
@@ -1476,6 +1541,7 @@ async function start() {
     window.__LILLY_GAME__ = {
       schema: 'LillyPlayerDebug/v3',
       getState: () => ({
+        runtimeProfile,
         pickupCount,
         totalPickups,
         health: gameplayState.player.health,

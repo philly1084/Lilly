@@ -15,10 +15,11 @@ const {
   BLUEPRINT_SCHEMA,
   BUILD_SCHEMA,
   COMMAND_SCHEMA,
+  ENGINE_VERSION,
   PROJECT_SCHEMA,
   applyCommandBatch,
-  createArenaProject,
-  createBlankProject,
+  createProjectFromTemplate,
+  PROJECT_TEMPLATES,
   createLevelRecipeFromPrompt,
   deepClone,
   generateLevel,
@@ -314,10 +315,10 @@ class GameStudioService {
     const slug = slugify(input.slug || name);
     const imported = input.project?.schema === PROJECT_SCHEMA ? upgradeProject(deepClone(input.project)) : null;
     const importedBundle = normalizeImportBundle(input.importBundle);
-    const template = input.template === 'blank' ? 'blank' : 'expedition';
-    const project = upgradeProject(imported || (template === 'blank'
-      ? createBlankProject({ id, name, slug })
-      : createArenaProject({ id, name, slug, prompt: input.prompt, seed: input.seed })));
+    const requestedTemplate = String(input.template || 'expedition');
+    const template = PROJECT_TEMPLATES.some((entry) => entry.id === requestedTemplate) ? requestedTemplate : null;
+    if (!imported && !template) throw Object.assign(new Error(`Unknown Lilly project template ${requestedTemplate}`), { statusCode: 400, code: 'PROJECT_TEMPLATE_NOT_FOUND' });
+    const project = upgradeProject(imported || createProjectFromTemplate({ id, name, slug, prompt: input.prompt, seed: input.seed, template }));
     project.id = id;
     project.name = name;
     project.slug = slug;
@@ -335,6 +336,11 @@ class GameStudioService {
     const issues = validateProject(project).filter((issue) => issue.severity === 'error');
     if (issues.length) throw Object.assign(new Error('Imported project is invalid'), { statusCode: 400, code: 'INVALID_PROJECT', issues });
     const createdAt = now();
+    const templateSource = template === 'blank'
+      ? 'template:blank-agent-project'
+      : template === 'expedition'
+        ? 'template:ai-procedural-expedition'
+        : `template:${template}`;
     const metadata = {
       id,
       ownerId,
@@ -344,7 +350,7 @@ class GameStudioService {
       engineVersion: project.engineVersion,
       createdAt,
       updatedAt: createdAt,
-      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : `template:${template === 'blank' ? 'blank-agent-project' : 'ai-procedural-expedition'}`),
+      source: imported ? 'import:lilly-project' : (importedBundle ? 'import:compatible-web-bundle' : templateSource),
       importedBundle: importedBundle ? {
         schema: 'LillyImportedBundle/v1',
         entry: importedBundle.entry,
@@ -1116,6 +1122,7 @@ class GameStudioService {
   async executeToolAction(action, params = {}, context = {}) {
     const ownerId = String(context.userId || context.ownerId || '').trim();
     switch (action) {
+      case 'list-templates': return { schema: 'LillyProjectTemplateRegistry/v1', engineVersion: ENGINE_VERSION, templates: PROJECT_TEMPLATES };
       case 'create-project': return this.createProject(params, ownerId);
       case 'list-projects': return { projects: await this.listProjects(ownerId) };
       case 'inspect-project': return this.getProject(params.projectId, ownerId);
