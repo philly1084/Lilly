@@ -45,7 +45,7 @@ describe('Lilly Game CLI', () => {
   test('returns a non-zero validation code for failed server checks', async () => {
     const stdout = stream();
     const exitCode = await runCli(['validate', '--project', 'broken'], {}, { stdout, stderr: stream() }, async () => response({
-      project: { id: 'broken', revision: 2, engineVersion: '0.6.0', settings: { runtimeProfile: 'module-driven' } },
+      project: { id: 'broken', revision: 2, engineVersion: '0.7.0', settings: { runtimeProfile: 'module-driven' } },
       validation: { valid: false, projectIssues: [{ code: 'BROKEN' }] },
     }));
     expect(exitCode).toBe(2);
@@ -55,5 +55,17 @@ describe('Lilly Game CLI', () => {
   test('redacts token values from API errors', async () => {
     const client = new StudioCliClient({ baseUrl: 'https://lilly.example', token: 'secret-token', fetch: async () => response({ error: { code: 'DENIED', message: 'No access' } }, 403) });
     await expect(client.request('/api/game-studio/projects')).rejects.toMatchObject({ code: 'DENIED', status: 403, message: 'No access' });
+  });
+
+  test('builds a selected versioned profile from the headless CLI', async () => {
+    const calls = [];
+    const stdout = stream();
+    const exitCode = await runCli(['build', '--project', 'game-1', '--revision', '7', '--profile', 'performance-canary'], {}, { stdout, stderr: stream() }, async (url, options) => {
+      calls.push({ url, options });
+      return response({ schema: 'LillyBuild/v1', status: 'success', buildProfileId: 'performance-canary' }, 201);
+    });
+    expect(exitCode).toBe(0);
+    expect(calls[0].url).toContain('/projects/game-1/builds');
+    expect(JSON.parse(calls[0].options.body)).toEqual({ projectRevision: 7, buildProfileId: 'performance-canary' });
   });
 });

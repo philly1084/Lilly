@@ -5,9 +5,11 @@ import type {
   BottomTab,
   EditorPreview,
   LillyCommand,
+  LillyBuildProfile,
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  LillyDataAsset,
   MechanicTestRun,
   ModuleCompileReport,
   PlayState,
@@ -76,8 +78,15 @@ type StudioState = {
   compileModules(): Promise<void>;
   runMechanicTests(): Promise<void>;
   instantiatePrefab(path: string, instanceId: string, variant?: string): Promise<void>;
+  refreshPrefab(instanceId: string): Promise<void>;
+  unpackPrefab(instanceId: string): Promise<void>;
+  upsertDataAsset(dataAsset: LillyDataAsset): Promise<boolean>;
+  deleteDataAsset(dataAssetId: string): Promise<boolean>;
+  upsertBuildProfile(buildProfile: LillyBuildProfile): Promise<boolean>;
+  deleteBuildProfile(buildProfileId: string): Promise<boolean>;
+  setActiveBuildProfile(buildProfileId: string): Promise<boolean>;
   runPlaytest(): Promise<void>;
-  build(): Promise<void>;
+  build(buildProfileId?: string): Promise<void>;
   publish(build: StudioBuild): Promise<void>;
   rollback(revision: number): Promise<void>;
   log(level: StudioConsoleItem['level'], message: string): void;
@@ -409,8 +418,33 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     try {
       const result = await studioApi.instantiatePrefab(current.project.id, current.project.revision, { sceneId: current.project.entryScene, path, instanceId, parentId: 'world', ...(variant ? { config: { variant } } : {}) });
       set({ current: result, saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle' });
-      get().log('success', `Instantiated ${path}${variant ? ` variant ${variant}` : ''} as ${instanceId}`);
+      get().log('success', `Linked ${path}${variant ? ` variant ${variant}` : ''} as ${instanceId}; source updates will propagate while instance overrides survive`);
     } catch (error) { get().log('error', error instanceof Error ? error.message : 'Prefab instantiation failed'); }
+  },
+  async refreshPrefab(instanceId) {
+    const current = get().current;
+    if (!current) return;
+    await get().dispatch([{ operation: 'prefab.refresh', target: { sceneId: selectedSceneId(current), instanceId }, payload: {} }]);
+  },
+  async unpackPrefab(instanceId) {
+    const current = get().current;
+    if (!current) return;
+    if (await get().dispatch([{ operation: 'prefab.unpack', target: { sceneId: selectedSceneId(current), instanceId }, payload: {} }])) get().log('warning', `Unpacked ${instanceId}; its entities are now independent from the prefab source`);
+  },
+  async upsertDataAsset(dataAsset) {
+    return get().dispatch([{ operation: 'data-asset.upsert', target: { dataAssetId: dataAsset.id }, payload: { dataAsset } }]);
+  },
+  async deleteDataAsset(dataAssetId) {
+    return get().dispatch([{ operation: 'data-asset.delete', target: { dataAssetId }, payload: {} }]);
+  },
+  async upsertBuildProfile(buildProfile) {
+    return get().dispatch([{ operation: 'build-profile.upsert', target: { buildProfileId: buildProfile.id }, payload: { buildProfile } }]);
+  },
+  async deleteBuildProfile(buildProfileId) {
+    return get().dispatch([{ operation: 'build-profile.delete', target: { buildProfileId }, payload: {} }]);
+  },
+  async setActiveBuildProfile(buildProfileId) {
+    return get().dispatch([{ operation: 'project.set-active-build-profile', target: { buildProfileId }, payload: { buildProfileId } }]);
   },
 
   async runPlaytest() {
@@ -423,15 +457,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       get().log(latestPlaytest.status === 'passed' ? 'success' : 'error', `Playtest ${latestPlaytest.status}: ${latestPlaytest.tests.filter((test) => test.status === 'passed').length}/${latestPlaytest.tests.length} checks passed`);
     } catch (error) { set({ buildStatus: 'error' }); get().log('error', error instanceof Error ? error.message : 'Playtest failed'); }
   },
-  async build() {
+  async build(buildProfileId) {
     const current = get().current;
     if (!current) return;
     set({ buildStatus: 'building', bottomTab: 'build' });
     try {
-      const build = await studioApi.build(current.project.id, current.project.revision);
+      const build = await studioApi.build(current.project.id, current.project.revision, buildProfileId);
       const refreshed = await studioApi.getProject(current.project.id);
       set({ current: refreshed, buildStatus: 'success' });
-      get().log('success', `Immutable build ${build.id.slice(0, 8)} created for r${build.projectRevision}`);
+      get().log('success', `Immutable ${build.buildProfile?.name || build.buildProfileId} build ${build.id.slice(0, 8)} created for r${build.projectRevision}`);
     } catch (error) { set({ buildStatus: 'error' }); get().log('error', error instanceof Error ? error.message : 'Build failed'); }
   },
   async publish(build) {

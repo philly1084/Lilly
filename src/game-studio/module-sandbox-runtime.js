@@ -62,6 +62,8 @@
     function makeContext(system, message, actions) {
       const payload = message.payload || {};
       const world = clone(payload.world || { playerId: 'player', entities: [] });
+      if (!Array.isArray(world.entities)) world.entities = [];
+      if (!Array.isArray(world.dataAssets)) world.dataAssets = [];
       const input = payload.input || {};
       const requireCapability = (capability) => {
         if (!system.capabilities.has(capability)) {
@@ -84,6 +86,12 @@
         input: {
           button(name) { requireCapability('input.read'); return input.buttons?.[name] === true; },
           axis2d(name) { requireCapability('input.read'); return clone(input.axes?.[name] || { x: 0, y: 0 }); },
+        },
+        data: {
+          get(assetId) {
+            requireCapability('data.read');
+            return clone(world.dataAssets.find((asset) => asset.id === String(assetId))?.data || null);
+          },
         },
         random() { requireCapability('random.read'); return random(); },
         entities: {

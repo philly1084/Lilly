@@ -127,7 +127,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
       <button type="button" onClick={() => setPlayState(playState === 'playing' ? 'editing' : 'playing')}>
         <Icon name={playState === 'playing' ? 'close' : 'play'}/>{playState === 'playing' ? 'Edit' : 'Play'}
       </button>
-      <button type="button" onClick={build} disabled={buildStatus === 'building' || buildStatus === 'testing'}>
+      <button type="button" onClick={() => build()} disabled={buildStatus === 'building' || buildStatus === 'testing'}>
         <Icon name="build"/>{buildStatus === 'building' ? 'Building...' : 'Build'}
       </button>
       {matchingBuild && matchingBuild.status !== 'published' && <button type="button" onClick={() => publish(matchingBuild)} disabled={buildStatus === 'publishing'}>

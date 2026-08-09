@@ -200,6 +200,34 @@ export default defineSystem({
     ]));
   });
 
+  test('reads shared project data through the declared data capability', () => {
+    const files = dashModuleFiles();
+    const manifestFile = files.find((file) => file.kind === 'module-manifest');
+    const manifest = JSON.parse(manifestFile.content);
+    manifest.capabilities.push('data.read');
+    manifestFile.content = JSON.stringify(manifest);
+    const system = files.find((file) => file.kind === 'system');
+    system.content = `import { defineSystem } from '@lilly/engine-runtime';
+export default defineSystem({
+  id: 'player-dash',
+  state: { cooldown: 0 },
+  onFixedUpdate(ctx) {
+    const tuning = ctx.data.get('dash-tuning') as { cooldown?: number } | null;
+    if (!ctx.input.button('Dash')) return;
+    ctx.physics.impulse(ctx.world.playerId, { x: 8, y: 0, z: 0 });
+    ctx.state.cooldown = Number(tuning?.cooldown || 0.75);
+  },
+});`;
+    const test = files.find((file) => file.kind === 'test');
+    const testDefinition = JSON.parse(test.content);
+    testDefinition.steps[0].world.dataAssets = [{ id: 'dash-tuning', name: 'Dash tuning', type: 'stats', tags: ['gameplay'], data: { cooldown: 0.25 } }];
+    testDefinition.assertions = [{ path: 'systems.player-dash.state.cooldown', operator: 'equals', value: 0.25 }];
+    test.content = JSON.stringify(testDefinition);
+    const bundle = compileModuleBundle(files);
+    expect(bundle.diagnostics).toEqual([]);
+    expect(runMechanicTests(bundle)).toMatchObject({ status: 'passed', passed: 1, failed: 0 });
+  });
+
   test('rejects browser, network, nondeterministic random, and undeclared TypeScript APIs', () => {
     const files = dashModuleFiles();
     const system = files.find((file) => file.kind === 'system');

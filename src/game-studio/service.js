@@ -255,6 +255,16 @@ class GameStudioService {
     return upgradeProject(JSON.parse(await fs.readFile(targetPath, 'utf8')));
   }
 
+  resolveBuildProfile(project, requestedId = '', fallbackId = '') {
+    const profileId = String(requestedId || fallbackId || project.activeBuildProfileId || '').trim();
+    const buildProfile = (project.buildProfiles || []).find((entry) => entry.id === profileId) || null;
+    if (!buildProfile) throw Object.assign(new Error(`Build profile ${profileId || '(active)'} was not found`), { statusCode: 400, code: 'BUILD_PROFILE_NOT_FOUND' });
+    if (buildProfile.renderer === 'webgpu-experimental' && config.gameStudio?.experimentalWebGPU !== true) {
+      throw Object.assign(new Error('This server has not enabled experimental WebGPU builds; select WebGL2 or enable GAME_STUDIO_WEBGPU_EXPERIMENTAL'), { statusCode: 422, code: 'GAME_STUDIO_WEBGPU_DISABLED' });
+    }
+    return buildProfile;
+  }
+
   async persistSnapshot(project, audit = {}) {
     await this.writeJsonAtomic(this.revisionPath(project.id, project.revision), project);
     await this.writeJsonAtomic(this.currentPath(project.id), project);
@@ -585,6 +595,63 @@ class GameStudioService {
     }, ownerId);
   }
 
+  async updatePrefabInstance(projectId, input = {}, ownerId = '') {
+    const operation = String(input.operation || 'refresh');
+    if (!['refresh', 'update-instance', 'unpack'].includes(operation)) throw Object.assign(new Error(`Unsupported prefab instance operation ${operation}`), { statusCode: 400, code: 'INVALID_PREFAB_INSTANCE_OPERATION' });
+    const payload = {};
+    if (operation === 'update-instance' && Object.prototype.hasOwnProperty.call(input, 'parentId')) payload.parentId = input.parentId;
+    if (operation === 'update-instance' && Object.prototype.hasOwnProperty.call(input, 'config')) payload.config = input.config;
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-prefab-api',
+      commands: [{
+        operation: `prefab.${operation}`,
+        target: { sceneId: input.sceneId, instanceId: input.instanceId },
+        payload,
+      }],
+    }, ownerId);
+  }
+
+  async upsertDataAsset(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-data-api',
+      commands: [{ operation: 'data-asset.upsert', target: { dataAssetId: input.dataAsset?.id || input.dataAssetId }, payload: { dataAsset: input.dataAsset } }],
+    }, ownerId);
+  }
+
+  async deleteDataAsset(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-data-api',
+      commands: [{ operation: 'data-asset.delete', target: { dataAssetId: input.dataAssetId }, payload: {} }],
+    }, ownerId);
+  }
+
+  async upsertBuildProfile(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-build-profile-api',
+      commands: [{ operation: 'build-profile.upsert', target: { buildProfileId: input.buildProfile?.id || input.buildProfileId }, payload: { buildProfile: input.buildProfile } }],
+    }, ownerId);
+  }
+
+  async deleteBuildProfile(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-build-profile-api',
+      commands: [{ operation: 'build-profile.delete', target: { buildProfileId: input.buildProfileId }, payload: {} }],
+    }, ownerId);
+  }
+
+  async setActiveBuildProfile(projectId, input = {}, ownerId = '') {
+    return this.applyCommands(projectId, {
+      baseRevision: input.baseRevision,
+      source: input.source || 'game-studio-build-profile-api',
+      commands: [{ operation: 'project.set-active-build-profile', target: { buildProfileId: input.buildProfileId }, payload: { buildProfileId: input.buildProfileId } }],
+    }, ownerId);
+  }
+
   async rollback(projectId, input = {}, ownerId = '') {
     return this.withProjectLock(projectId, async () => {
       const { metadata, index } = await this.getMetadata(projectId, ownerId);
@@ -830,6 +897,7 @@ class GameStudioService {
       if (!metadata) return null;
       const project = await this.readProjectFile(this.currentPath(projectId));
       if (input.projectRevision != null && Number(input.projectRevision) !== project.revision) throw Object.assign(new Error('Build revision no longer matches the saved project revision'), { statusCode: 409, code: 'BUILD_REVISION_CONFLICT' });
+      const buildProfile = this.resolveBuildProfile(project, input.buildProfileId || input.profileId);
       const playtest = await this.runPlaytest(projectId, input, ownerId);
       if (playtest.status !== 'passed') throw Object.assign(new Error('Build blocked by failed project or Blueprint validation'), { statusCode: 422, code: 'PLAYTEST_FAILED', tests: playtest.tests });
       const id = randomUUID();
@@ -841,6 +909,7 @@ class GameStudioService {
         graphIr: playtest.compiledGraphs,
         moduleBundle: playtest.compiledModules,
         projectDirectory: this.projectDirectory(projectId),
+        buildProfile,
       });
       const build = {
         schema: BUILD_SCHEMA,
@@ -849,6 +918,8 @@ class GameStudioService {
         ownerId,
         projectRevision: project.revision,
         engineVersion: project.engineVersion,
+        buildProfileId: buildProfile.id,
+        buildProfile,
         status: 'success',
         tests: playtest.tests,
         files,
@@ -864,10 +935,10 @@ class GameStudioService {
       await this.writeJsonAtomic(path.join(this.projectDirectory(projectId), 'builds', `${id}.json`), build);
       if (this.postgres?.enabled) {
         try {
-          await this.postgres.query(`INSERT INTO game_studio_builds (id, project_id, owner_id, project_revision, status, tests, files, preview_url, metadata) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9::jsonb)`, [id, projectId, ownerId, project.revision, build.status, JSON.stringify(build.tests), JSON.stringify(build.files), build.previewUrl, JSON.stringify({ workspaceId })]);
+          await this.postgres.query(`INSERT INTO game_studio_builds (id, project_id, owner_id, project_revision, status, tests, files, preview_url, metadata) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9::jsonb)`, [id, projectId, ownerId, project.revision, build.status, JSON.stringify(build.tests), JSON.stringify(build.files), build.previewUrl, JSON.stringify({ workspaceId, buildProfileId: buildProfile.id, buildProfile })]);
         } catch (error) { console.warn(`[GameStudio] PostgreSQL build mirror failed: ${error.message}`); }
       }
-      await this.emit(projectId, 'build.completed', { id, status: build.status, revision: project.revision, previewUrl: build.previewUrl });
+      await this.emit(projectId, 'build.completed', { id, status: build.status, revision: project.revision, buildProfileId: buildProfile.id, previewUrl: build.previewUrl });
       return build;
     });
   }
@@ -885,7 +956,9 @@ class GameStudioService {
         throw Object.assign(new Error('Editor Play is blocked by failed project, module, Blueprint, or mechanic validation'), { statusCode: 422, code: 'EDITOR_PREVIEW_PLAYTEST_FAILED', tests: playtest.tests });
       }
       const sourceHash = playtest.compiledModules?.sourceHash || '00000000';
-      const workspaceId = `game-studio-editor-${project.id}-r${project.revision}-${sourceHash}-${PLAYER_RUNTIME_HASH}`;
+      const buildProfile = this.resolveBuildProfile(project, input.buildProfileId || input.profileId, 'development');
+      const profileHash = crypto.createHash('sha256').update(JSON.stringify(buildProfile)).digest('hex').slice(0, 8);
+      const workspaceId = `game-studio-editor-${project.id}-r${project.revision}-${sourceHash}-${buildProfile.id}-${profileHash}-${PLAYER_RUNTIME_HASH}`;
       const directory = this.buildWorkspaceDirectory(workspaceId);
       const manifestPath = path.join(directory, 'build-manifest.json');
       let cached = false;
@@ -896,6 +969,7 @@ class GameStudioService {
             && manifest.projectId === project.id
             && Number(manifest.revision) === project.revision
             && String(manifest.moduleSourceHash || '00000000') === sourceHash
+            && manifest.buildProfileId === buildProfile.id
             && manifest.playerRuntimeHash === PLAYER_RUNTIME_HASH;
         } catch (_error) {
           cached = false;
@@ -913,12 +987,15 @@ class GameStudioService {
           graphIr: playtest.compiledGraphs,
           moduleBundle: playtest.compiledModules,
           projectDirectory: this.projectDirectory(projectId),
+          buildProfile,
         });
       }
       const preview = {
         schema: 'LillyEditorPreview/v1',
         projectId,
         projectRevision: project.revision,
+        buildProfileId: buildProfile.id,
+        buildProfile,
         moduleSourceHash: sourceHash,
         playerRuntimeHash: PLAYER_RUNTIME_HASH,
         workspaceId,
@@ -928,7 +1005,7 @@ class GameStudioService {
         tests: playtest.tests,
         createdAt: now(),
       };
-      await this.emit(projectId, 'editor-preview.ready', { revision: project.revision, sourceHash, workspaceId, cached });
+      await this.emit(projectId, 'editor-preview.ready', { revision: project.revision, sourceHash, buildProfileId: buildProfile.id, workspaceId, cached });
       return preview;
     });
   }
@@ -1136,6 +1213,14 @@ class GameStudioService {
       case 'compile-project': return this.compileProjectModules(params.projectId, params, ownerId);
       case 'run-mechanic-tests': return this.runMechanicTestSuite(params.projectId, params, ownerId);
       case 'instantiate-prefab': return this.instantiatePrefab(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'refresh-prefab': return this.updatePrefabInstance(params.projectId, { ...params, operation: 'refresh', source: 'game-studio-tool' }, ownerId);
+      case 'update-prefab-instance': return this.updatePrefabInstance(params.projectId, { ...params, operation: 'update-instance', source: 'game-studio-tool' }, ownerId);
+      case 'unpack-prefab': return this.updatePrefabInstance(params.projectId, { ...params, operation: 'unpack', source: 'game-studio-tool' }, ownerId);
+      case 'upsert-data-asset': return this.upsertDataAsset(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'delete-data-asset': return this.deleteDataAsset(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'upsert-build-profile': return this.upsertBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'delete-build-profile': return this.deleteBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
+      case 'set-active-build-profile': return this.setActiveBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'generate-level': return this.createAiRun(params.projectId, { ...params, mode: 'level' }, ownerId);
       case 'apply-commands': return this.applyCommands(params.projectId, params, ownerId);
       case 'edit-blueprint': {

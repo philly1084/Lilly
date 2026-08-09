@@ -32,6 +32,7 @@ export type LillyScriptCapability =
   | 'clock.read'
   | 'random.read'
   | 'input.read'
+  | 'data.read'
   | 'entity.query'
   | 'entity.read'
   | 'entity.write'
@@ -51,6 +52,7 @@ export const SCRIPT_CAPABILITIES: readonly LillyScriptCapability[] = Object.free
   'clock.read',
   'random.read',
   'input.read',
+  'data.read',
   'entity.query',
   'entity.read',
   'entity.write',
@@ -695,8 +697,9 @@ declare module '@lilly/engine-runtime' {
     readonly frame: number;
     readonly elapsed: number;
     readonly state: State;
-    readonly world: { readonly playerId: string; readonly entities: ReadonlyArray<{ id: string; tags: string[]; components?: unknown[] }> };
+    readonly world: { readonly playerId: string; readonly entities: ReadonlyArray<{ id: string; tags: string[]; components?: unknown[] }>; readonly dataAssets: ReadonlyArray<{ id: string; name: string; type: string; tags: string[]; data: Record<string, unknown> }> };
     readonly input: { button(action: string): boolean; axis2d(action: string): LillyVector2 };
+    readonly data: { get(assetId: string): Readonly<Record<string, unknown>> | null };
     random(): number;
     entities: { query(tag: string): string[]; read(entityId: string): unknown; patch(entityId: string, component: string, values: Record<string, unknown>): void; spawn(prefabId: string, options?: Record<string, unknown>): void; destroy(entityId: string): void };
     physics: { force(entityId: string, value: LillyVector3): void; impulse(entityId: string, value: LillyVector3): void; raycast(origin: LillyVector3, direction: LillyVector3, maxDistance: number): void };

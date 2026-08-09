@@ -1,6 +1,6 @@
 {
   "name": "@lilly/engine-runtime",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "main": "../dist/runtime/src/index.js",
   "types": "../dist/runtime/src/index.d.ts"

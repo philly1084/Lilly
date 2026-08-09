@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router, raw } = require('express');
+const { config } = require('../config');
 
 const router = Router();
 const parseBinaryAsset = raw({ type: 'application/octet-stream', limit: '8mb' });
@@ -52,6 +53,7 @@ router.get('/contracts', async (req, res, next) => {
     res.json({
       schema: 'LillyGameStudioContracts/v1',
       engineVersion: core.ENGINE_VERSION,
+      features: { experimentalWebGPU: config.gameStudio?.experimentalWebGPU === true },
       projectTemplates: core.PROJECT_TEMPLATES,
       contracts: {
         project: core.PROJECT_SCHEMA,
@@ -63,6 +65,9 @@ router.get('/contracts', async (req, res, next) => {
         module: core.GAME_MODULE_SCHEMA,
         mechanic: core.MECHANIC_SCHEMA,
         prefab: core.PREFAB_SCHEMA,
+        prefabInstance: core.PREFAB_INSTANCE_SCHEMA,
+        dataAsset: core.DATA_ASSET_SCHEMA,
+        buildProfile: core.BUILD_PROFILE_SCHEMA,
         mechanicTest: core.MECHANIC_TEST_SCHEMA,
         material: core.MATERIAL_SCHEMA,
         assetMetadata: core.ASSET_METADATA_SCHEMA,
@@ -191,6 +196,106 @@ router.post('/projects/:id/prefab-instances', async (req, res, next) => {
     const result = await gameStudio.instantiatePrefab(req.params.id, req.body || {}, ownerId(req));
     if (!result) return notFound(res);
     res.status(201).json(result);
+  } catch (error) { next(error); }
+});
+
+router.patch('/projects/:id/prefab-instances/:instanceId', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.updatePrefabInstance(req.params.id, { ...(req.body || {}), instanceId: req.params.instanceId, operation: 'update-instance' }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/prefab-instances/:instanceId/refresh', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.updatePrefabInstance(req.params.id, { ...(req.body || {}), instanceId: req.params.instanceId, operation: 'refresh' }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/prefab-instances/:instanceId/unpack', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.updatePrefabInstance(req.params.id, { ...(req.body || {}), instanceId: req.params.instanceId, operation: 'unpack' }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/data-assets', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.getProject(req.params.id, ownerId(req));
+    if (!result) return notFound(res);
+    res.json({ schema: 'LillyDataAssetLibrary/v1', projectId: req.params.id, revision: result.project.revision, dataAssets: result.project.dataAssets });
+  } catch (error) { next(error); }
+});
+
+router.put('/projects/:id/data-assets/:dataAssetId', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.upsertDataAsset(req.params.id, { ...(req.body || {}), dataAssetId: req.params.dataAssetId, dataAsset: { ...(req.body?.dataAsset || {}), id: req.params.dataAssetId } }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.delete('/projects/:id/data-assets/:dataAssetId', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.deleteDataAsset(req.params.id, { ...(req.body || {}), dataAssetId: req.params.dataAssetId }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/projects/:id/build-profiles', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.getProject(req.params.id, ownerId(req));
+    if (!result) return notFound(res);
+    res.json({ schema: 'LillyBuildProfileLibrary/v1', projectId: req.params.id, revision: result.project.revision, activeBuildProfileId: result.project.activeBuildProfileId, buildProfiles: result.project.buildProfiles });
+  } catch (error) { next(error); }
+});
+
+router.put('/projects/:id/build-profiles/:buildProfileId', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.upsertBuildProfile(req.params.id, { ...(req.body || {}), buildProfileId: req.params.buildProfileId, buildProfile: { ...(req.body?.buildProfile || {}), id: req.params.buildProfileId } }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.delete('/projects/:id/build-profiles/:buildProfileId', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.deleteBuildProfile(req.params.id, { ...(req.body || {}), buildProfileId: req.params.buildProfileId }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/build-profiles/:buildProfileId/activate', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.setActiveBuildProfile(req.params.id, { ...(req.body || {}), buildProfileId: req.params.buildProfileId }, ownerId(req));
+    if (!result) return notFound(res);
+    res.json(result);
   } catch (error) { next(error); }
 });
 

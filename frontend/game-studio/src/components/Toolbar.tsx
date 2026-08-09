@@ -51,7 +51,7 @@ export function Toolbar({ onCommandPalette }: { onCommandPalette(): void }) {
     </div>
     <div className="toolbar-spacer" />
     <ToolButton label="Create" icon="spark" onClick={() => setAiOpen(true)}/>
-    <ToolButton label={buildStatus === 'building' ? 'Building…' : 'Build'} icon="build" disabled={buildStatus === 'building'} onClick={build}/>
+    <ToolButton label={buildStatus === 'building' ? 'Building…' : 'Build'} icon="build" disabled={buildStatus === 'building'} onClick={() => build()}/>
     <button className="command-button" type="button" onClick={onCommandPalette} title="Command palette (Ctrl+K)"><Icon name="command"/><kbd>⌘ K</kbd></button>
   </header>;
 }

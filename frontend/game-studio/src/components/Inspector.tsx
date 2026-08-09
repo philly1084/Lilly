@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { COMPONENT_DEFINITIONS } from '../../../../packages/lilly-engine/core/src';
 import type { LillyComponent, LillyComponentType, Vec3 } from '../types';
-import { currentEntity, useStudioStore } from '../store';
+import { currentEntity, currentScene, useStudioStore } from '../store';
 import { Icon } from './Icon';
 
 function NumberField({ label, value, onCommit, step = 0.1 }: { label: string; value: number; onCommit(value: number): void; step?: number }) {
@@ -36,6 +36,11 @@ function ComponentBody({ component, onChange }: { component: LillyComponent; onC
       <label className="check-row"><input type="checkbox" checked={data.receiveShadow !== false} onChange={(event) => onChange({ ...component, data: { ...data, receiveShadow: event.target.checked } })}/><span>Receive shadows</span></label>
     </>;
   }
+  if (component.type === 'DataReference') return <>
+    <div className="property-row"><span className="property-label">Shared data</span><select value={String(data.assetId || '')} onChange={(event) => onChange({ ...component, data: { ...data, assetId: event.target.value } })}><option value="">Select data asset</option>{(current?.project.dataAssets || []).map((asset) => <option key={asset.id} value={asset.id}>{asset.name} · {asset.type}</option>)}</select></div>
+    <div className="property-row"><span className="property-label">Alias</span><input value={String(data.alias || 'data')} onChange={(event) => onChange({ ...component, data: { ...data, alias: event.target.value } })}/></div>
+    <div className="property-hint">One shared asset can tune many entities and sandboxed gameplay systems without duplicating values.</div>
+  </>;
   if (component.type === 'Terrain') return <>
     <div className="property-row"><span className="property-label">Heightfield</span><select value={String(data.terrainId || '')} onChange={(event) => onChange({ ...component, data: { ...data, terrainId: event.target.value } })}><option value="">Select terrain</option>{(current?.moduleSummary.terrains || []).map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.resolution}²</option>)}</select></div>
     <label className="check-row"><input type="checkbox" checked={data.walkable !== false} onChange={(event) => onChange({ ...component, data: { ...data, walkable: event.target.checked } })}/><span>Walkable surface</span></label>
@@ -104,7 +109,9 @@ export function Inspector() {
   const current = useStudioStore((state) => state.current);
   const selectedEntityId = useStudioStore((state) => state.selectedEntityId);
   const entity = currentEntity(current, selectedEntityId);
-  const { renameEntity, addComponent } = useStudioStore();
+  const scene = currentScene(current);
+  const linkedInstance = entity ? scene?.prefabInstances.find((instance) => entity.id.startsWith(`${instance.instanceId}:`)) || null : null;
+  const { renameEntity, addComponent, refreshPrefab, unpackPrefab } = useStudioStore();
   const [name, setName] = useState(entity?.name || '');
   const [addOpen, setAddOpen] = useState(false);
   useEffect(() => setName(entity?.name || ''), [entity?.id, entity?.name]);
@@ -114,7 +121,8 @@ export function Inspector() {
     <div className="panel-heading"><div><span className="panel-kicker">Properties</span><strong>Inspector</strong></div><button type="button" className="icon-button"><Icon name="dots"/></button></div>
     <div className="entity-header"><div className="entity-avatar"><Icon name="cube"/></div><div><input className="entity-name-input" value={name} onChange={(event) => setName(event.target.value)} onBlur={() => { if (name.trim() && name.trim() !== entity.name) renameEntity(entity.id, name.trim()); else setName(entity.name); }}/><small>{entity.id}</small></div></div>
     <div className="tag-list">{entity.tags.map((tag) => <span key={tag}>{tag}</span>)}<button type="button">+ tag</button></div>
+    {linkedInstance && <div className="prefab-link-banner"><div><Icon name="cube" size={15}/><span><strong>Linked prefab</strong><small>{linkedInstance.prefabPath} · {linkedInstance.status}</small></span></div><div><button type="button" onClick={() => refreshPrefab(linkedInstance.instanceId)}>Refresh</button><button type="button" className="danger-subtle" onClick={() => unpackPrefab(linkedInstance.instanceId)}>Unpack</button></div></div>}
     <div className="component-scroll">{entity.components.map((component) => <ComponentCard key={component.type} component={component} entityId={entity.id}/>)}</div>
-    <div className="add-component-wrap"><button type="button" className="add-component-button" onClick={() => setAddOpen((value) => !value)}><Icon name="add"/>Add component</button>{addOpen && <div className="add-component-menu surface-popover"><div className="menu-label">Component registry</div>{available.map((type) => <button key={type} type="button" onClick={() => { addComponent(entity.id, { type, enabled: true, data: structuredClone(COMPONENT_DEFINITIONS[type].defaults) }); setAddOpen(false); }}><span>{type}</span><small>{type === 'Script' ? 'Sandboxed' : 'Lilly Engine'}</small></button>)}</div>}</div>
+    <div className="add-component-wrap"><button type="button" className="add-component-button" onClick={() => setAddOpen((value) => !value)} disabled={Boolean(linkedInstance)} title={linkedInstance ? 'Unpack the linked prefab before changing its component structure' : 'Add component'}><Icon name="add"/>Add component</button>{addOpen && <div className="add-component-menu surface-popover"><div className="menu-label">Component registry</div>{available.map((type) => <button key={type} type="button" disabled={type === 'DataReference' && !current?.project.dataAssets.length} onClick={() => { const data = structuredClone(COMPONENT_DEFINITIONS[type].defaults); if (type === 'DataReference' && current?.project.dataAssets[0]) data.assetId = current.project.dataAssets[0].id; addComponent(entity.id, { type, enabled: true, data }); setAddOpen(false); }}><span>{type}</span><small>{type === 'Script' ? 'Sandboxed' : type === 'DataReference' ? 'Shared game data' : 'Lilly Engine'}</small></button>)}</div>}</div>
   </aside>;
 }

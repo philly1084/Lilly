@@ -17,6 +17,14 @@ const ACTIONS = [
   'compile-project',
   'run-mechanic-tests',
   'instantiate-prefab',
+  'refresh-prefab',
+  'update-prefab-instance',
+  'unpack-prefab',
+  'upsert-data-asset',
+  'delete-data-asset',
+  'upsert-build-profile',
+  'delete-build-profile',
+  'set-active-build-profile',
   'generate-level',
   'apply-commands',
   'edit-blueprint',
@@ -32,8 +40,8 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '3.1.0',
-      description: 'Create complete multi-genre browser games as versioned Lilly projects. Start from blank, third-person explorer, top-down action, or procedural expedition templates; author component controllers, typed modules, reusable materials, GLB metadata, animation controllers, terrain heightfields, prefab variants, capability-sandboxed systems, deterministic tests, scenes, and Blueprints; then build immutable players, publish, and roll back.',
+      version: '3.2.0',
+      description: 'Create complete multi-genre browser games as versioned Lilly projects. Author linked prefab instances and variants, shared gameplay data assets, component controllers, typed capability-sandboxed modules, deterministic tests, scenes, Blueprints, assets, animation, and terrain; select versioned development or release build profiles; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
           const gameStudioService = context.gameStudioService;
@@ -82,10 +90,20 @@ class GameStudioTool extends ToolBase {
           executionBudgetMs: { type: 'integer', minimum: 1, maximum: 100 },
           prefabId: { type: 'string', maxLength: 100 },
           instanceId: { type: 'string', maxLength: 80 },
+          dataAssetId: { type: 'string', maxLength: 80 },
+          buildProfileId: { type: 'string', maxLength: 80 },
           parentId: { type: 'string', maxLength: 120 },
           config: {
             type: 'object',
             description: 'Strict prefab instance overrides: optional variant, position Vector3, and entities keyed by source entity id with name, enabled, tags, or existing component data patches.',
+          },
+          dataAsset: {
+            type: 'object',
+            description: 'A LillyDataAsset/v1 shared gameplay configuration, stats, table, dialogue, or custom data object.',
+          },
+          buildProfile: {
+            type: 'object',
+            description: 'A LillyBuildProfile/v1 browser target with scene, renderer, mode, quality, debug, and mobile-control settings.',
           },
           filename: { type: 'string', maxLength: 120 },
           mimeType: { type: 'string', enum: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'image/jpeg', 'image/png', 'image/webp', 'model/gltf-binary', 'model/gltf+json', 'application/octet-stream'] },
