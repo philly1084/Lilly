@@ -128,6 +128,51 @@ describe('web-chat artifact cards and promotion', () => {
         expect(markup).toContain('Loading page preview');
     });
 
+    test('renders graph artifacts as accessible visualization cards without duplicate HTML previews', () => {
+        const artifactManager = loadArtifactManager();
+
+        const markup = artifactManager.buildGalleryMarkup([{
+            id: 'graph-1',
+            filename: 'regional-growth.svg',
+            format: 'svg',
+            mimeType: 'image/svg+xml',
+            sizeBytes: 4096,
+            downloadUrl: '/api/artifacts/graph-1/download',
+            previewUrl: '/api/artifacts/graph-1/preview',
+            metadata: {
+                toolId: 'graph-diagram',
+                visualization: {
+                    kind: 'data-visualization',
+                    insightTitle: 'North leads regional growth',
+                    chartType: 'bar',
+                    summary: 'North grew twice as quickly as South.',
+                    altText: 'Bar chart comparing regional growth.',
+                    sourceLabel: 'Quarterly operating report',
+                    sourceUrl: 'https://example.test/report',
+                    caveat: 'Provisional values.',
+                },
+                nativeGraph: {
+                    title: 'Regional growth',
+                    type: 'bar',
+                    series: [
+                        { label: 'North', value: 12 },
+                        { label: 'South', value: 6 },
+                    ],
+                },
+            },
+        }]);
+
+        expect(markup).toContain('is-visualization');
+        expect(markup).toContain('North leads regional growth');
+        expect(markup).toContain('North grew twice as quickly as South.');
+        expect(markup).toContain('Quarterly operating report');
+        expect(markup).toContain('Provisional values.');
+        expect(markup).toContain('alt="Bar chart comparing regional growth."');
+        expect(markup).toContain('View chart data');
+        expect(markup).toContain('<th scope="row">North</th>');
+        expect(markup).not.toContain('artifact-html-preview');
+    });
+
     test('normalizes snake case artifact metadata before rendering cards', () => {
         const artifactManager = loadArtifactManager();
 

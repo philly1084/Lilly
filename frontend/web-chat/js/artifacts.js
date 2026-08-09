@@ -345,6 +345,118 @@
                 font-weight: 600;
                 margin-bottom: 4px;
             }
+
+            .artifact-generated-card.is-visualization {
+                border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+                background: color-mix(in srgb, var(--accent) 6%, var(--bg-primary));
+            }
+
+            .artifact-visualization-header {
+                margin-bottom: 12px;
+            }
+
+            .artifact-visualization-kicker {
+                display: inline-flex;
+                align-items: center;
+                min-height: 24px;
+                margin-bottom: 8px;
+                padding: 3px 8px;
+                border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+                border-radius: 999px;
+                background: color-mix(in srgb, var(--accent) 10%, transparent);
+                color: var(--accent);
+                font-size: 11px;
+                font-weight: 750;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+
+            .artifact-visualization-title {
+                margin: 0 0 6px;
+                color: var(--text-primary);
+                font-size: 17px;
+                line-height: 1.3;
+            }
+
+            .artifact-visualization-summary,
+            .artifact-visualization-note {
+                margin: 0;
+                color: var(--text-secondary);
+                font-size: 13px;
+                line-height: 1.5;
+            }
+
+            .artifact-visualization-note {
+                margin-top: 7px;
+            }
+
+            .artifact-visualization-note strong {
+                color: var(--text-primary);
+            }
+
+            .artifact-visualization-note a {
+                color: var(--accent);
+                text-decoration: underline;
+                text-underline-offset: 2px;
+            }
+
+            .artifact-visualization-details {
+                margin: 0 0 12px;
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+            }
+
+            .artifact-visualization-details summary {
+                min-height: 42px;
+                padding: 10px 12px;
+                color: var(--text-primary);
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .artifact-visualization-table-wrap {
+                max-width: 100%;
+                overflow-x: auto;
+                border-top: 1px solid var(--border);
+                overscroll-behavior-inline: contain;
+            }
+
+            .artifact-visualization-table {
+                width: 100%;
+                min-width: 360px;
+                border-collapse: collapse;
+                color: var(--text-primary);
+                font-size: 12px;
+            }
+
+            .artifact-visualization-table th,
+            .artifact-visualization-table td {
+                padding: 8px 10px;
+                border-bottom: 1px solid var(--border);
+                text-align: left;
+                white-space: nowrap;
+            }
+
+            .artifact-visualization-table th {
+                color: var(--text-secondary);
+                font-weight: 700;
+            }
+
+            .artifact-visualization-outline {
+                margin: 0;
+                padding: 0 16px 12px 32px;
+                color: var(--text-secondary);
+                font-size: 12px;
+                line-height: 1.55;
+            }
+
+            .artifact-visualization-truncated {
+                margin: 8px 12px 12px;
+                color: var(--text-tertiary);
+                font-size: 11px;
+            }
             
             .artifact-generated-card .file-meta {
                 font-size: 13px;
@@ -955,6 +1067,173 @@
             || /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
     }
 
+    function getVisualizationMetadata(artifact = null) {
+        const metadata = artifact?.metadata && typeof artifact.metadata === 'object'
+            ? artifact.metadata
+            : {};
+        const nativeGraph = metadata.nativeGraph && typeof metadata.nativeGraph === 'object'
+            ? metadata.nativeGraph
+            : {};
+        const explicit = metadata.visualization && typeof metadata.visualization === 'object'
+            ? metadata.visualization
+            : {};
+        const isVisualization = explicit.kind === 'data-visualization'
+            || metadata.toolId === 'graph-diagram'
+            || Object.keys(nativeGraph).length > 0;
+        if (!isVisualization) {
+            return null;
+        }
+
+        const text = (value = '', maxLength = 1200) => String(value || '').trim().slice(0, maxLength);
+        const title = text(explicit.title || nativeGraph.title || artifact?.filename || 'Visualization', 240);
+        const chartType = text(explicit.chartType || nativeGraph.type || metadata.graphType || 'visualization', 80);
+        const summary = text(explicit.summary || nativeGraph.summary || nativeGraph.metadata?.summary || '');
+        const series = Array.isArray(nativeGraph.series) ? nativeGraph.series.slice(0, 50) : [];
+        const nodes = Array.isArray(nativeGraph.nodes) ? nativeGraph.nodes.slice(0, 50) : [];
+        const edges = Array.isArray(nativeGraph.edges) ? nativeGraph.edges.slice(0, 50) : [];
+        return {
+            title,
+            insightTitle: text(explicit.insightTitle || nativeGraph.insightTitle || title, 240),
+            chartType,
+            summary,
+            altText: text(
+                explicit.altText
+                || nativeGraph.altText
+                || `${chartType} visualization titled "${title}".${summary ? ` ${summary}` : ''}`,
+            ),
+            sourceLabel: text(explicit.sourceLabel || nativeGraph.sourceLabel || '', 300),
+            sourceUrl: text(explicit.sourceUrl || nativeGraph.sourceUrl || '', 1000),
+            caveat: text(explicit.caveat || nativeGraph.caveat || ''),
+            series,
+            nodes,
+            edges,
+            truncated: (
+                (Array.isArray(nativeGraph.series) && nativeGraph.series.length > series.length)
+                || (Array.isArray(nativeGraph.nodes) && nativeGraph.nodes.length > nodes.length)
+                || (Array.isArray(nativeGraph.edges) && nativeGraph.edges.length > edges.length)
+            ),
+        };
+    }
+
+    function formatVisualizationType(value = '') {
+        const normalized = String(value || 'visualization').trim().toLowerCase().replace(/[-_]+/g, ' ');
+        if (['bar', 'line', 'scatter'].includes(normalized)) {
+            return `${normalized} chart`;
+        }
+        if (normalized === 'er') {
+            return 'ER diagram';
+        }
+        if (['flowchart', 'mindmap'].includes(normalized)) {
+            return normalized === 'flowchart' ? 'Flowchart' : 'Mind map';
+        }
+        return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}${normalized.includes('chart') || normalized.includes('diagram') ? '' : ' diagram'}`;
+    }
+
+    function getSafeSourceUrl(value = '') {
+        try {
+            const url = new URL(String(value || '').trim(), window.location.href);
+            return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    function buildVisualizationHeaderMarkup(visualization = null) {
+        if (!visualization) {
+            return '';
+        }
+        const sourceUrl = getSafeSourceUrl(visualization.sourceUrl);
+        const sourceValue = visualization.sourceLabel || sourceUrl;
+        const sourceMarkup = sourceValue
+            ? `
+                <p class="artifact-visualization-note">
+                    <strong>Source:</strong>
+                    ${sourceUrl
+                        ? `<a href="${escapeHtmlAttr(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceValue)}</a>`
+                        : escapeHtml(sourceValue)}
+                </p>
+            `
+            : '';
+        const caveatMarkup = visualization.caveat
+            ? `<p class="artifact-visualization-note"><strong>Caveat:</strong> ${escapeHtml(visualization.caveat)}</p>`
+            : '';
+
+        return `
+            <div class="artifact-visualization-header">
+                <span class="artifact-visualization-kicker">${escapeHtml(formatVisualizationType(visualization.chartType))}</span>
+                <h4 class="artifact-visualization-title">${escapeHtml(visualization.insightTitle)}</h4>
+                ${visualization.summary ? `<p class="artifact-visualization-summary">${escapeHtml(visualization.summary)}</p>` : ''}
+                ${sourceMarkup}
+                ${caveatMarkup}
+            </div>
+        `;
+    }
+
+    function buildVisualizationDetailsMarkup(visualization = null) {
+        if (!visualization) {
+            return '';
+        }
+        const truncatedMarkup = visualization.truncated
+            ? '<p class="artifact-visualization-truncated">Showing the first 50 items. Download the artifact for the complete view.</p>'
+            : '';
+        if (visualization.series.length > 0) {
+            const hasGroups = visualization.series.some((point) => String(point?.group || '').trim());
+            const rows = visualization.series.map((point) => `
+                <tr>
+                    <th scope="row">${escapeHtml(point?.label || '')}</th>
+                    ${hasGroups ? `<td>${escapeHtml(point?.group || '—')}</td>` : ''}
+                    <td>${escapeHtml(point?.value ?? '')}</td>
+                </tr>
+            `).join('');
+            return `
+                <details class="artifact-visualization-details">
+                    <summary>View chart data</summary>
+                    <div class="artifact-visualization-table-wrap" tabindex="0" aria-label="Scrollable chart data">
+                        <table class="artifact-visualization-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Label</th>
+                                    ${hasGroups ? '<th scope="col">Series</th>' : ''}
+                                    <th scope="col">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                    ${truncatedMarkup}
+                </details>
+            `;
+        }
+
+        if (visualization.nodes.length > 0 || visualization.edges.length > 0) {
+            const nodeLabels = new Map(
+                visualization.nodes.map((node) => [String(node?.id || ''), String(node?.label || node?.id || '')]),
+            );
+            const nodeItems = visualization.nodes.map((node) => {
+                const description = String(node?.description || '').trim();
+                return `<li><strong>${escapeHtml(node?.label || node?.id || 'Node')}</strong>${description ? ` — ${escapeHtml(description)}` : ''}</li>`;
+            });
+            const edgeItems = visualization.edges.map((edge) => {
+                const from = nodeLabels.get(String(edge?.from || '')) || edge?.from || 'Unknown';
+                const to = nodeLabels.get(String(edge?.to || '')) || edge?.to || 'Unknown';
+                const relationship = String(edge?.label || edge?.type || '').trim();
+                return `<li>${escapeHtml(from)} → ${escapeHtml(to)}${relationship ? ` — ${escapeHtml(relationship)}` : ''}</li>`;
+            });
+            return `
+                <details class="artifact-visualization-details">
+                    <summary>View diagram outline</summary>
+                    <ul class="artifact-visualization-outline">
+                        ${nodeItems.join('')}
+                        ${edgeItems.join('')}
+                    </ul>
+                    ${truncatedMarkup}
+                </details>
+            `;
+        }
+
+        return '';
+    }
+
     function isPdfArtifact(artifact = null) {
         const format = String(artifact?.format || '').toLowerCase();
         const mimeType = String(artifact?.mimeType || '').toLowerCase();
@@ -1189,7 +1468,7 @@
             return false;
         }
 
-        if (isPdfArtifact(artifact)) {
+        if (isPdfArtifact(artifact) || isImageArtifact(artifact) || isMermaidArtifact(artifact)) {
             return false;
         }
 
@@ -1216,6 +1495,9 @@
         const artifactFilename = artifact.filename || artifact.fileName || artifact.file_name || artifact.name || artifact.id || 'artifact';
         const iconClass = getFileIconClass(artifactFilename, artifact);
         const iconName = getFileIcon(artifactFilename, artifact);
+        const visualization = getVisualizationMetadata(artifact);
+        const visualizationHeader = buildVisualizationHeaderMarkup(visualization);
+        const visualizationDetails = buildVisualizationDetailsMarkup(visualization);
         const mermaidArtifact = isMermaidArtifact(artifact);
         const mermaidSource = mermaidArtifact ? getMermaidSourceFromArtifact(artifact) : '';
         const mermaidBaseName = getArtifactBaseName(artifactFilename);
@@ -1257,7 +1539,7 @@
                 <div class="artifact-image-preview">
                     <img
                         src="${escapeHtmlAttr(imagePreviewUrl)}"
-                        alt="${escapeHtmlAttr(artifactFilename || 'Uploaded image')}"
+                        alt="${escapeHtmlAttr(visualization?.altText || artifactFilename || 'Uploaded image')}"
                         loading="lazy"
                         onerror="uiHelpers.handleImageLoadError(this)"
                         referrerpolicy="no-referrer"
@@ -1315,18 +1597,19 @@
         const downloadLabel = artifact?.bundleDownloadUrl ? 'Bundle Zip' : 'Download';
 
         return `
-            <div class="artifact-generated-card">
+            <div class="artifact-generated-card${visualization ? ' is-visualization' : ''}">
                 <div class="file-icon ${iconClass}">
                     <i data-lucide="${iconName}" class="w-5 h-5"></i>
                 </div>
-                <h4>${escapeHtml(artifactFilename)}</h4>
+                ${visualizationHeader || `<h4>${escapeHtml(artifactFilename)}</h4>`}
                 <div class="file-meta">
-                    ${artifact.format?.toUpperCase() || 'FILE'} | ${formatFileSize(artifact.sizeBytes)}
+                    ${visualization ? `${escapeHtml(artifactFilename)} | ` : ''}${artifact.format?.toUpperCase() || 'FILE'} | ${formatFileSize(artifact.sizeBytes)}
                 </div>
                 ${imagePreview}
                 ${mermaidPreview}
                 ${htmlPreview}
                 ${textPreview}
+                ${visualizationDetails}
                 ${privacyPreviewNote}
                 <div class="file-actions">
                     ${htmlActions}

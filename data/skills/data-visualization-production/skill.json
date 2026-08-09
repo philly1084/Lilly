@@ -1,0 +1,63 @@
+{
+  "id": "data-visualization-production",
+  "name": "Production Data Visualization",
+  "description": "Choose, build, present, and verify accessible charts, diagrams, dashboards, maps, schedules, and interactive visual reports as durable KimiBuilt artifacts.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "graph-diagram",
+    "code-sandbox",
+    "document-workflow",
+    "web-search",
+    "web-fetch",
+    "web-scrape"
+  ],
+  "triggerPatterns": [
+    "data visualization",
+    "data visualisation",
+    "visualize this data",
+    "visualise this data",
+    "build a chart",
+    "create a chart",
+    "interactive chart",
+    "visual report",
+    "interactive dashboard",
+    "analytics dashboard",
+    "architecture diagram",
+    "system diagram",
+    "gantt chart",
+    "project timeline",
+    "data map",
+    "chart accessibility",
+    "visualization card",
+    "web chat chart"
+  ],
+  "chain": [
+    {
+      "step": "Lock the analytical job, data shape, claim title, audience, caveats, and mobile reading path.",
+      "tool": null
+    },
+    {
+      "step": "Use graph-diagram for durable SVG comparison, time, relationship, and software-structure visuals.",
+      "tool": "graph-diagram"
+    },
+    {
+      "step": "Use code-sandbox project mode for richer interactive, statistical, geospatial, Gantt, coordinated, or live views.",
+      "tool": "code-sandbox"
+    },
+    {
+      "step": "Package report, slide, PDF, spreadsheet, or Markdown figures through the document workflow when requested.",
+      "tool": "document-workflow"
+    },
+    {
+      "step": "Verify source claims when data is current or external, then run desktop and mobile browser QA.",
+      "tool": "web-scrape"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 3400,
+    "exposeBody": true
+  },
+  "createdAt": "2026-07-25T00:00:00.000Z",
+  "updatedAt": "2026-07-25T00:00:00.000Z"
+}

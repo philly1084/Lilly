@@ -87,6 +87,25 @@ describe('SkillStore', () => {
     expect(context).not.toContain('podcast-cleanup');
   });
 
+  test('discovers the production visualization workflow from the shipped skill catalog', () => {
+    const rootDir = path.join(__dirname, '..', '..', 'data', 'skills');
+    const store = new SkillStore({ rootDir });
+    const context = store.buildContext({
+      text: 'Build an accessible interactive chart and show it in a web chat card',
+      surface: 'web-chat',
+      limit: 2,
+    });
+
+    expect(context.selectedSkills).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'data-visualization-production',
+        tools: expect.arrayContaining(['graph-diagram', 'code-sandbox']),
+      }),
+    ]));
+    expect(context.block).toContain('id=data-visualization-production');
+    expect(context.block).toContain('Pass `insightTitle`');
+  });
+
   test('builds rich context blocks with match reasons and selected skill parity', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({
