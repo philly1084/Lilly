@@ -85,6 +85,50 @@ function normalizeDocumentTarget(value = '') {
   return 'markdown';
 }
 
+function normalizeVisualizationText(value = '', maxLength = 1200) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function buildVisualizationMetadata(graph = {}) {
+  const metadata = graph.metadata && typeof graph.metadata === 'object' ? graph.metadata : {};
+  const insightTitle = normalizeVisualizationText(
+    graph.insightTitle || metadata.insightTitle || metadata.claim || graph.title,
+    240,
+  );
+  const summary = normalizeVisualizationText(
+    graph.summary || metadata.summary || metadata.takeaway || '',
+  );
+  const altText = normalizeVisualizationText(
+    graph.altText
+      || metadata.altText
+      || (
+        graph.series?.length
+          ? `${graph.type} chart titled "${graph.title}" with ${graph.series.length} data points.${summary ? ` ${summary}` : ''}`
+          : `${graph.type} diagram titled "${graph.title}" with ${graph.nodes?.length || 0} nodes and ${graph.edges?.length || 0} relationships.${summary ? ` ${summary}` : ''}`
+      ),
+  );
+
+  return {
+    kind: 'data-visualization',
+    title: graph.title,
+    insightTitle,
+    chartType: graph.type,
+    summary,
+    altText,
+    sourceLabel: normalizeVisualizationText(
+      graph.sourceLabel || metadata.sourceLabel || metadata.source || '',
+      300,
+    ),
+    sourceUrl: normalizeVisualizationText(
+      graph.sourceUrl || metadata.sourceUrl || '',
+      1000,
+    ),
+    caveat: normalizeVisualizationText(
+      graph.caveat || metadata.caveat || metadata.note || '',
+    ),
+  };
+}
+
 function toHtmlFigureEmbed(image = {}, graph = {}) {
   const title = escapeXml(graph.title || image.title || graph.id || 'Diagram');
   const src = escapeXml(image.url || '');
@@ -198,6 +242,7 @@ function normalizeGraphSpec(input = {}, index = 0) {
   });
 
   const series = normalizeSeries(spec.data, spec.series);
+  const metadata = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : {};
   return {
     id: normalizeId(spec.id || spec.name || spec.title || `graph-${index + 1}`, `graph_${index + 1}`),
     title: normalizeLabel(spec.title || spec.name || `Graph ${index + 1}`),
@@ -212,7 +257,13 @@ function normalizeGraphSpec(input = {}, index = 0) {
     })),
     series,
     source: typeof spec.source === 'string' ? spec.source : '',
-    metadata: spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : {},
+    insightTitle: normalizeVisualizationText(spec.insightTitle || spec.claim || metadata.insightTitle || metadata.claim || ''),
+    summary: normalizeVisualizationText(spec.summary || spec.takeaway || metadata.summary || metadata.takeaway || ''),
+    altText: normalizeVisualizationText(spec.altText || metadata.altText || ''),
+    sourceLabel: normalizeVisualizationText(spec.sourceLabel || metadata.sourceLabel || metadata.source || '', 300),
+    sourceUrl: normalizeVisualizationText(spec.sourceUrl || metadata.sourceUrl || '', 1000),
+    caveat: normalizeVisualizationText(spec.caveat || spec.note || metadata.caveat || metadata.note || ''),
+    metadata,
   };
 }
 
@@ -489,6 +540,12 @@ class GraphDiagramTool extends ToolBase {
           data: { type: 'array' },
           series: { type: 'array' },
           source: { type: 'string', description: 'Native JSON, Mermaid, or descriptive source.' },
+          insightTitle: { type: 'string', description: 'Claim-style title shown on visualization cards.' },
+          summary: { type: 'string', description: 'Immediate takeaway kept visible without hover.' },
+          altText: { type: 'string', description: 'Text alternative for the rendered chart or diagram.' },
+          sourceLabel: { type: 'string', description: 'Human-readable source or method note.' },
+          sourceUrl: { type: 'string', description: 'Optional HTTP(S) source URL.' },
+          caveat: { type: 'string', description: 'Uncertainty, missingness, or interpretation caveat.' },
           outputFormats: {
             type: 'array',
             items: { type: 'string', enum: ['native', 'json', 'mermaid', 'dot', 'svg', 'html'] },
@@ -610,6 +667,7 @@ class GraphDiagramTool extends ToolBase {
           });
           result.artifact = imageArtifact;
           result.image = imageDescriptor;
+          imageDescriptor.visualization = buildVisualizationMetadata(graph);
         }
       }
 
@@ -697,6 +755,7 @@ class GraphDiagramTool extends ToolBase {
         graphId: graph.id,
         graphType: graph.type,
         nativeGraph: graph,
+        visualization: buildVisualizationMetadata(graph),
       },
       vectorize: false,
     });

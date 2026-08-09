@@ -550,6 +550,12 @@ describe('ToolManager image tools', () => {
         },
         {
           title: 'Evidence Mix',
+          insightTitle: 'Sources outnumber images two to one',
+          summary: 'The evidence package contains six sources and three images.',
+          altText: 'Bar chart showing six sources and three images.',
+          sourceLabel: 'Prepared evidence inventory',
+          sourceUrl: 'https://example.test/evidence',
+          caveat: 'Counts exclude drafts.',
           type: 'bar',
           data: [
             { label: 'Sources', value: 6 },
@@ -571,6 +577,21 @@ describe('ToolManager image tools', () => {
     expect(result.data.graphs[0].formats.mermaid).toContain('flowchart');
     expect(result.data.graphs[0].formats.svg).toContain('<svg');
     expect(result.data.graphs[1].formats.svg).toContain('Evidence Mix');
+    expect(result.data.graphs[1].native).toEqual(expect.objectContaining({
+      insightTitle: 'Sources outnumber images two to one',
+      summary: 'The evidence package contains six sources and three images.',
+      altText: 'Bar chart showing six sources and three images.',
+      sourceLabel: 'Prepared evidence inventory',
+      sourceUrl: 'https://example.test/evidence',
+      caveat: 'Counts exclude drafts.',
+    }));
+    expect(result.data.artifacts[1].metadata.visualization).toEqual(expect.objectContaining({
+      kind: 'data-visualization',
+      chartType: 'bar',
+      insightTitle: 'Sources outnumber images two to one',
+      sourceLabel: 'Prepared evidence inventory',
+      caveat: 'Counts exclude drafts.',
+    }));
     expect(result.data.images).toHaveLength(2);
     expect(result.data.markdownImages[0]).toContain('/api/artifacts/artifact-Agent_Tool_Flow/download');
     expect(artifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
