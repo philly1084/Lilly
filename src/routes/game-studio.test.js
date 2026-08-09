@@ -60,11 +60,12 @@ describe('Game Studio API', () => {
     const contracts = await request(app).get('/api/game-studio/contracts').expect(200);
     expect(contracts.body).toMatchObject({
       schema: 'LillyGameStudioContracts/v1',
-      engineVersion: '0.5.0',
+      engineVersion: '0.6.0',
       contracts: { sourceFile: 'LillySourceFile/v1', module: 'LillyGameModule/v1', mechanic: 'LillyMechanic/v1', prefab: 'LillyPrefab/v1', mechanicTest: 'LillyMechanicTest/v1', material: 'LillyMaterial/v1', assetMetadata: 'LillyAssetMetadata/v1', animationController: 'LillyAnimationController/v1', terrain: 'LillyTerrain/v1' },
       sandbox: { network: 'denied', dom: 'denied' },
     });
     expect(contracts.body.runtimeTypeDeclarations).toContain("declare module '@lilly/engine-runtime'");
+    expect(contracts.body.projectTemplates.map((entry) => entry.id)).toEqual(expect.arrayContaining(['blank', 'expedition', 'third-person-explorer', 'top-down-action']));
     expect(contracts.body.sourceFileTypes.map((entry) => entry.extension)).toEqual(expect.arrayContaining(['.material.json', '.asset.json', '.animation.json', '.terrain.json']));
 
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'External Agent Project', template: 'blank' }).expect(201);

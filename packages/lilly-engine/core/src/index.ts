@@ -12,7 +12,7 @@ import {
 
 export * from './level-generator';
 
-export const ENGINE_VERSION = '0.5.0';
+export const ENGINE_VERSION = '0.6.0';
 export const PROJECT_SCHEMA = 'LillyProject/v1' as const;
 export const SCENE_SCHEMA = 'LillyScene/v1' as const;
 export const ENTITY_SCHEMA = 'LillyEntity/v1' as const;
@@ -31,6 +31,18 @@ export const TERRAIN_SCHEMA = 'LillyTerrain/v1' as const;
 
 export type Vec2 = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
+export type LillyRuntimeProfile = 'expedition' | 'module-driven';
+export type LillyProjectTemplateId = 'blank' | 'expedition' | 'third-person-explorer' | 'top-down-action';
+
+export interface LillyProjectTemplateDefinition {
+  id: LillyProjectTemplateId;
+  name: string;
+  description: string;
+  genre: string;
+  runtimeProfile: LillyRuntimeProfile;
+  playable: boolean;
+  tags: string[];
+}
 
 export type LillySourceFileKind =
   | 'module-manifest'
@@ -58,6 +70,7 @@ export interface LillySourceFile {
 export type LillyComponentType =
   | 'Transform'
   | 'Camera'
+  | 'CharacterController'
   | 'MeshRenderer'
   | 'Light'
   | 'RigidBody'
@@ -292,6 +305,7 @@ export interface LillyProject {
     fixedStepHz: number;
     gravity: Vec3;
     mobileMode: 'play-review' | 'author-play';
+    runtimeProfile: LillyRuntimeProfile;
     legacyImport?: Record<string, unknown>;
   };
 }
@@ -364,6 +378,17 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
     validate: (value) => validateTransform(value),
   },
   Camera: { defaults: { projection: 'perspective', fov: 60, near: 0.1, far: 1000, primary: false }, validate: numericRangeValidator('fov', 1, 179) },
+  CharacterController: {
+    defaults: { moveAction: 'Move', speed: 6, rotateToMovement: true, collisionRadius: 0.44 },
+    validate: (value) => {
+      const issues = [
+        ...numericRangeValidator('speed', 0, 100)(value),
+        ...numericRangeValidator('collisionRadius', 0.05, 20)(value),
+      ];
+      if (!String(value.moveAction || '').trim()) issues.push('moveAction must be a non-empty input action');
+      return issues;
+    },
+  },
   MeshRenderer: { defaults: { geometry: 'box', assetId: '', materialId: '', material: { color: '#8ea7c4', roughness: 0.65, metalness: 0.05 }, castShadow: true, receiveShadow: true }, validate: validateMeshRenderer },
   Light: { defaults: { kind: 'directional', color: '#fff4df', intensity: 2, castShadow: true }, validate: numericRangeValidator('intensity', 0, 100) },
   RigidBody: { defaults: { bodyType: 'dynamic', mass: 1, linearDamping: 0.1, angularDamping: 0.1, lockRotations: false }, validate: numericRangeValidator('mass', 0.0001, 100000) },
@@ -840,11 +865,17 @@ export function upgradeProject(projectInput: LillyProject): LillyProject {
     : [];
   project.assets = Array.isArray(project.assets) ? project.assets : [];
   project.inputMap = Array.isArray(project.inputMap) ? project.inputMap : [];
+  const inferredRuntimeProfile: LillyRuntimeProfile = project.levelRecipes.length || project.generatedLevels.length
+    ? 'expedition'
+    : 'module-driven';
   project.settings = {
     renderer: project.settings?.renderer === 'webgpu-experimental' ? 'webgpu-experimental' : 'webgl2',
     fixedStepHz: Number(project.settings?.fixedStepHz || 60),
     gravity: project.settings?.gravity || { x: 0, y: -9.81, z: 0 },
     mobileMode: project.settings?.mobileMode === 'play-review' ? 'play-review' : 'author-play',
+    runtimeProfile: project.settings?.runtimeProfile === 'expedition' || project.settings?.runtimeProfile === 'module-driven'
+      ? project.settings.runtimeProfile
+      : inferredRuntimeProfile,
     ...(project.settings?.legacyImport ? { legacyImport: deepClone(project.settings.legacyImport) } : {}),
   };
   return project;
@@ -883,6 +914,8 @@ export function createsRecursiveParenting(scene: LillyScene, entityId: string, p
 export function validateProject(project: LillyProject): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (project.schema !== PROJECT_SCHEMA) issues.push({ code: 'INVALID_PROJECT_SCHEMA', message: `Expected ${PROJECT_SCHEMA}`, path: 'schema', severity: 'error' });
+  if (!['expedition', 'module-driven'].includes(project.settings?.runtimeProfile)) issues.push({ code: 'INVALID_RUNTIME_PROFILE', message: 'settings.runtimeProfile must be expedition or module-driven', path: 'settings.runtimeProfile', severity: 'error' });
+  if (!Number.isFinite(project.settings?.fixedStepHz) || project.settings.fixedStepHz < 1 || project.settings.fixedStepHz > 240) issues.push({ code: 'INVALID_FIXED_STEP', message: 'settings.fixedStepHz must be between 1 and 240', path: 'settings.fixedStepHz', severity: 'error' });
   const projectAssets = Array.isArray(project.assets) ? project.assets : [];
   const assetIds = new Set<string>();
   for (const [assetIndex, asset] of projectAssets.entries()) {
@@ -1506,6 +1539,7 @@ export function applyCommand(projectInput: LillyProject, command: LillyCommand):
       project.levelRecipes = [...(project.levelRecipes || []).filter((entry) => entry.sceneId !== scene.id), generated.recipe];
       project.generatedLevels = [...(project.generatedLevels || []).filter((entry) => entry.sceneId !== scene.id), generated.design];
       project.settings.mobileMode = 'author-play';
+      project.settings.runtimeProfile = 'expedition';
       const player = scene.entities.find((entity) => entity.tags.includes('player')) || null;
       const playerTransform = player ? getComponent(player, 'Transform') : null;
       if (playerTransform) playerTransform.data.position = deepClone(generated.design.spawn.position);
@@ -1707,7 +1741,7 @@ export function createProceduralProject(input: {
       { action: 'Attack', kind: 'button', keys: ['Space', 'Enter'] },
       { action: 'Reset', kind: 'button', keys: ['KeyR'] },
     ],
-    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play' },
+    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play', runtimeProfile: 'expedition' },
   };
 }
 
@@ -1739,6 +1773,298 @@ export function createBlankProject(input: { id: string; name?: string; slug?: st
     files: [],
     assets: [],
     inputMap: [],
-    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play' },
+    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play', runtimeProfile: 'module-driven' },
   };
+}
+
+export const PROJECT_TEMPLATES: readonly LillyProjectTemplateDefinition[] = Object.freeze([
+  {
+    id: 'blank',
+    name: 'Blank architecture',
+    description: 'An empty module-driven scene for fully custom games and imported systems.',
+    genre: 'Custom',
+    runtimeProfile: 'module-driven',
+    playable: false,
+    tags: ['empty-scene', 'agent-ready', 'advanced'],
+  },
+  {
+    id: 'third-person-explorer',
+    name: 'Third-person explorer',
+    description: 'An open 3D landscape with a component-driven controller, follow camera, landmarks, and a discovery mechanic.',
+    genre: 'Exploration',
+    runtimeProfile: 'module-driven',
+    playable: true,
+    tags: ['open-world', 'third-person', 'landmarks'],
+  },
+  {
+    id: 'top-down-action',
+    name: 'Top-down action',
+    description: 'A readable action sandbox with an overhead camera, movement controller, targets, and a tested pulse mechanic.',
+    genre: 'Action',
+    runtimeProfile: 'module-driven',
+    playable: true,
+    tags: ['top-down', 'combat', 'systems'],
+  },
+  {
+    id: 'expedition',
+    name: 'Procedural expedition',
+    description: 'The preserved seeded room-and-encounter generator with checkpoints, pickups, guardians, and exits.',
+    genre: 'Expedition',
+    runtimeProfile: 'expedition',
+    playable: true,
+    tags: ['procedural', 'rooms', 'legacy-compatible'],
+  },
+]);
+
+function templateSourceFile(path: string, value: string | Record<string, unknown>): LillySourceFile {
+  return normalizeSourceFile({
+    path,
+    content: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+    enabled: true,
+  });
+}
+
+function baseAuthoredProject(input: { id: string; name?: string; slug?: string }, scene: LillyScene, files: LillySourceFile[]): LillyProject {
+  return {
+    schema: PROJECT_SCHEMA,
+    id: input.id,
+    name: input.name || 'Untitled Lilly Game',
+    slug: input.slug || 'untitled-lilly-game',
+    engineVersion: ENGINE_VERSION,
+    revision: 1,
+    entryScene: scene.id,
+    scenes: [scene],
+    blueprints: [],
+    levelRecipes: [],
+    generatedLevels: [],
+    files,
+    assets: [],
+    inputMap: [
+      { action: 'Move', kind: 'axis2d', keys: ['KeyW', 'KeyS', 'KeyA', 'KeyD'] },
+      { action: 'Reset', kind: 'button', keys: ['KeyR'] },
+    ],
+    settings: { renderer: 'webgl2', fixedStepHz: 60, gravity: { x: 0, y: -9.81, z: 0 }, mobileMode: 'author-play', runtimeProfile: 'module-driven' },
+  };
+}
+
+export function createThirdPersonExplorerProject(input: { id: string; name?: string; slug?: string } = { id: 'third-person-explorer' }): LillyProject {
+  const moduleId = 'explorer-discovery';
+  const files = [
+    templateSourceFile('modules/explorer/explorer.module.json', {
+      schema: GAME_MODULE_SCHEMA,
+      id: moduleId,
+      name: 'Explorer Discovery',
+      version: '1.0.0',
+      description: 'Landmark discovery behavior for an open third-person world.',
+      dependencies: [],
+      capabilities: ['hud.write', 'particles.emit', 'audio.play'],
+      systems: ['./discovery.system.ts'],
+      mechanics: ['./discovery.mechanic.json'],
+      prefabs: [],
+      tests: ['./discovery.spec.json'],
+    }),
+    templateSourceFile('modules/explorer/discovery.mechanic.json', {
+      schema: MECHANIC_SCHEMA,
+      id: moduleId,
+      moduleId,
+      name: 'Landmark Discovery',
+      description: 'Turns trigger collisions with landmarks into visible discoveries.',
+      systems: ['./discovery.system.ts'],
+      inputs: ['Move'],
+      events: ['landmark.discovered'],
+      components: [{ id: 'discovery-state', fields: [{ name: 'discoveries', type: 'number', defaultValue: 0 }] }],
+    }),
+    templateSourceFile('modules/explorer/discovery.system.ts', `import { defineSystem } from '@lilly/engine-runtime';
+
+export default defineSystem({
+  id: 'explorer-discovery',
+  state: { discoveries: 0, discovered: [] as string[] },
+  onStart(ctx) {
+    ctx.hud.message('Explore the open field and discover all three signal monuments.');
+  },
+  onCollision(ctx) {
+    if (ctx.collision.phase !== 'start') return;
+    const playerIsA = ctx.collision.entityA === ctx.world.playerId;
+    const playerIsB = ctx.collision.entityB === ctx.world.playerId;
+    const landmarkIsA = ctx.collision.tagsA.includes('landmark');
+    const landmarkIsB = ctx.collision.tagsB.includes('landmark');
+    if ((!playerIsA || !landmarkIsB) && (!playerIsB || !landmarkIsA)) return;
+    const landmarkId = landmarkIsA ? ctx.collision.entityA : ctx.collision.entityB;
+    if (ctx.state.discovered.includes(landmarkId)) return;
+    ctx.state.discovered.push(landmarkId);
+    ctx.state.discoveries = ctx.state.discovered.length;
+    ctx.hud.message('Signal monument discovered: ' + ctx.state.discoveries + '/3', { status: 'Discovery', state: 'success' });
+    ctx.particles.emit('landmark-discovery', landmarkId);
+    ctx.audio.play('discovery-chime', { frequency: 720 + ctx.state.discoveries * 60, duration: 0.22 });
+  },
+});`),
+    templateSourceFile('modules/explorer/discovery.spec.json', {
+      schema: MECHANIC_TEST_SCHEMA,
+      id: 'landmark-discovery-fires',
+      moduleId,
+      name: 'Landmark collision announces a discovery',
+      seed: 11,
+      steps: [
+        {
+          event: 'collision',
+          payload: { type: 'trigger', phase: 'start', entityA: 'player', entityB: 'monument-a', tagsA: ['player'], tagsB: ['landmark'] },
+          world: { playerId: 'player', entities: [{ id: 'player', tags: ['player'] }, { id: 'monument-a', tags: ['landmark'] }] },
+        },
+        {
+          event: 'collision',
+          payload: { type: 'trigger', phase: 'start', entityA: 'player', entityB: 'monument-a', tagsA: ['player'], tagsB: ['landmark'] },
+          world: { playerId: 'player', entities: [{ id: 'player', tags: ['player'] }, { id: 'monument-a', tags: ['landmark'] }] },
+        },
+      ],
+      assertions: [
+        { path: 'systems.explorer-discovery.state.discoveries', operator: 'equals', value: 1 },
+        { path: 'actions[0].type', operator: 'equals', value: 'hud.message' },
+        { path: 'actions[1].type', operator: 'equals', value: 'particles.emit' },
+      ],
+    }),
+  ];
+  const landmark = (id: string, name: string, position: Vec3, color: string): LillyEntity => ({
+    schema: ENTITY_SCHEMA,
+    id,
+    name,
+    parentId: 'world',
+    enabled: true,
+    tags: ['landmark', 'discoverable'],
+    components: [
+      transform(position, { x: 1.4, y: 2.8, z: 1.4 }),
+      component('MeshRenderer', { geometry: 'octahedron', material: { color, roughness: 0.22, metalness: 0.62, emissive: color, emissiveIntensity: 0.32 } }),
+      component('Collider', { shape: 'sphere', size: { x: 3.2, y: 4, z: 3.2 }, sensor: true }),
+      component('Animator', { state: 'spin', speed: 0.35, autoplay: true }),
+    ],
+  });
+  const scene: LillyScene = {
+    schema: SCENE_SCHEMA,
+    id: 'open-field',
+    name: 'Open Signal Field',
+    environment: { background: '#071923', ambientIntensity: 0.72, fog: { color: '#102d38', near: 34, far: 92 } },
+    blueprintGraphIds: [],
+    entities: [
+      { schema: ENTITY_SCHEMA, id: 'world', name: 'Open World', parentId: null, enabled: true, tags: ['root'], components: [] },
+      { schema: ENTITY_SCHEMA, id: 'sun', name: 'Sun', parentId: 'world', enabled: true, tags: ['lighting'], components: [transform({ x: 9, y: 18, z: 7 }), component('Light', { kind: 'directional', intensity: 3.2, color: '#d8f3ff', castShadow: true })] },
+      { schema: ENTITY_SCHEMA, id: 'ground', name: 'Open Ground', parentId: 'world', enabled: true, tags: ['ground'], components: [transform({ x: 0, y: -0.15, z: 0 }, { x: 44, y: 0.3, z: 44 }), component('MeshRenderer', { geometry: 'box', material: { color: '#194b48', roughness: 0.92, metalness: 0.02 } }), component('Collider', { shape: 'box', size: { x: 44, y: 0.3, z: 44 } })] },
+      { schema: ENTITY_SCHEMA, id: 'player', name: 'Explorer', parentId: 'world', enabled: true, tags: ['player'], components: [transform({ x: 0, y: 0.72, z: 8 }), component('MeshRenderer', { geometry: 'capsule', material: { color: '#67e8f9', roughness: 0.26, metalness: 0.38, emissive: '#0e7490', emissiveIntensity: 0.22 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.4, z: 0.9 } }), component('CharacterController', { moveAction: 'Move', speed: 6.2, rotateToMovement: true, collisionRadius: 0.44 })] },
+      { schema: ENTITY_SCHEMA, id: 'camera', name: 'Explorer Camera', parentId: 'world', enabled: true, tags: ['camera'], components: [transform({ x: 7, y: 7, z: 19 }), component('Camera', { primary: true, fov: 58, followTargetTag: 'player', followOffset: { x: 6.5, y: 6.2, z: 8.5 }, lookAtHeight: 0.7, smoothing: 0.0004 })] },
+      { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Discovery Objective', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('UIAnchor', { anchor: 'top-left', text: 'Explore the open field and discover all three signal monuments.' })] },
+      landmark('monument-a', 'Azure Signal', { x: -13, y: 2, z: -7 }, '#38bdf8'),
+      landmark('monument-b', 'Violet Signal', { x: 14, y: 2, z: -10 }, '#a78bfa'),
+      landmark('monument-c', 'Amber Signal', { x: 10, y: 2, z: 13 }, '#fbbf24'),
+    ],
+  };
+  return baseAuthoredProject(input, scene, files);
+}
+
+export function createTopDownActionProject(input: { id: string; name?: string; slug?: string } = { id: 'top-down-action' }): LillyProject {
+  const moduleId = 'pulse-action';
+  const files = [
+    templateSourceFile('modules/action/action.module.json', {
+      schema: GAME_MODULE_SCHEMA,
+      id: moduleId,
+      name: 'Pulse Action',
+      version: '1.0.0',
+      description: 'A testable top-down pulse weapon authored as a sandboxed system.',
+      dependencies: [],
+      capabilities: ['input.read', 'entity.read', 'physics.raycast', 'particles.emit', 'audio.play', 'hud.write'],
+      systems: ['./pulse.system.ts'],
+      mechanics: ['./pulse.mechanic.json'],
+      prefabs: [],
+      tests: ['./pulse.spec.json'],
+    }),
+    templateSourceFile('modules/action/pulse.mechanic.json', {
+      schema: MECHANIC_SCHEMA,
+      id: moduleId,
+      moduleId,
+      name: 'Pulse Fire',
+      description: 'Fires a forward raycast with visible and audible feedback.',
+      systems: ['./pulse.system.ts'],
+      inputs: ['Move', 'Fire'],
+      events: ['pulse.fired'],
+      components: [{ id: 'pulse-state', fields: [{ name: 'cooldown', type: 'number', defaultValue: 0 }] }],
+    }),
+    templateSourceFile('modules/action/pulse.system.ts', `import { defineSystem } from '@lilly/engine-runtime';
+
+export default defineSystem({
+  id: 'pulse-action',
+  state: { cooldown: 0 },
+  onStart(ctx) {
+    ctx.hud.message('Move with WASD and fire a pulse with Space.');
+  },
+  onFixedUpdate(ctx) {
+    ctx.state.cooldown = Math.max(0, ctx.state.cooldown - ctx.delta);
+    if (!ctx.input.button('Fire') || ctx.state.cooldown > 0) return;
+    const player = ctx.entities.read(ctx.world.playerId) as { position?: { x: number; y: number; z: number } };
+    const origin = player?.position || { x: 0, y: 0.7, z: 0 };
+    ctx.physics.raycast(origin, { x: 0, y: 0, z: -1 }, 30);
+    ctx.particles.emit('pulse-muzzle', ctx.world.playerId);
+    ctx.audio.play('pulse-shot', { frequency: 560, duration: 0.1 });
+    ctx.hud.message('Pulse fired', { status: 'Armed', state: 'success' });
+    ctx.state.cooldown = 0.28;
+  },
+});`),
+    templateSourceFile('modules/action/pulse.spec.json', {
+      schema: MECHANIC_TEST_SCHEMA,
+      id: 'pulse-fires-on-input',
+      moduleId,
+      name: 'Fire input emits a raycast and starts cooldown',
+      seed: 29,
+      steps: [{ event: 'fixed-update', delta: 1 / 60, input: { buttons: { Fire: true }, axes: { Move: { x: 0, y: 0 } } }, world: { playerId: 'player', entities: [{ id: 'player', tags: ['player'], position: { x: 0, y: 0.7, z: 4 } }] } }],
+      assertions: [
+        { path: 'actions[0].type', operator: 'equals', value: 'physics.raycast' },
+        { path: 'actions[1].type', operator: 'equals', value: 'particles.emit' },
+        { path: 'systems.pulse-action.state.cooldown', operator: 'equals', value: 0.28 },
+      ],
+    }),
+  ];
+  const target = (id: string, position: Vec3, color: string): LillyEntity => ({
+    schema: ENTITY_SCHEMA,
+    id,
+    name: `Pulse Target ${id.slice(-1).toUpperCase()}`,
+    parentId: 'world',
+    enabled: true,
+    tags: ['target', 'obstacle'],
+    components: [transform(position, { x: 1.5, y: 2.4, z: 1.5 }), component('MeshRenderer', { geometry: 'cylinder', material: { color, roughness: 0.34, metalness: 0.42, emissive: color, emissiveIntensity: 0.18 } }), component('Collider', { shape: 'cylinder', size: { x: 1.5, y: 2.4, z: 1.5 } })],
+  });
+  const scene: LillyScene = {
+    schema: SCENE_SCHEMA,
+    id: 'action-floor',
+    name: 'Pulse Training Floor',
+    environment: { background: '#090d18', ambientIntensity: 0.58, fog: null },
+    blueprintGraphIds: [],
+    entities: [
+      { schema: ENTITY_SCHEMA, id: 'world', name: 'Action World', parentId: null, enabled: true, tags: ['root'], components: [] },
+      { schema: ENTITY_SCHEMA, id: 'sun', name: 'Arena Light', parentId: 'world', enabled: true, tags: ['lighting'], components: [transform({ x: 5, y: 16, z: 7 }), component('Light', { kind: 'directional', intensity: 3.6, color: '#e0f2fe', castShadow: true })] },
+      { schema: ENTITY_SCHEMA, id: 'ground', name: 'Action Floor', parentId: 'world', enabled: true, tags: ['ground'], components: [transform({ x: 0, y: -0.15, z: 0 }, { x: 30, y: 0.3, z: 30 }), component('MeshRenderer', { geometry: 'box', material: { color: '#18253a', roughness: 0.76, metalness: 0.16 } }), component('Collider', { shape: 'box', size: { x: 30, y: 0.3, z: 30 } })] },
+      { schema: ENTITY_SCHEMA, id: 'player', name: 'Pulse Runner', parentId: 'world', enabled: true, tags: ['player'], components: [transform({ x: 0, y: 0.72, z: 8 }), component('MeshRenderer', { geometry: 'capsule', material: { color: '#f472b6', roughness: 0.24, metalness: 0.46, emissive: '#9d174d', emissiveIntensity: 0.26 } }), component('RigidBody', { bodyType: 'dynamic', mass: 1, lockRotations: true }), component('Collider', { shape: 'capsule', size: { x: 0.9, y: 1.4, z: 0.9 } }), component('CharacterController', { moveAction: 'Move', speed: 7.2, rotateToMovement: true, collisionRadius: 0.44 })] },
+      { schema: ENTITY_SCHEMA, id: 'camera', name: 'Tactical Camera', parentId: 'world', enabled: true, tags: ['camera'], components: [transform({ x: 0, y: 22, z: 18 }), component('Camera', { primary: true, fov: 52, followTargetTag: 'player', followOffset: { x: 0, y: 21, z: 10 }, lookAtHeight: 0, smoothing: 0.001 })] },
+      { schema: ENTITY_SCHEMA, id: 'game-rules', name: 'Pulse Objective', parentId: 'world', enabled: true, tags: ['gameplay'], components: [component('UIAnchor', { anchor: 'top-left', text: 'Move with WASD and fire a pulse with Space.' })] },
+      target('target-a', { x: -7, y: 1.2, z: -6 }, '#38bdf8'),
+      target('target-b', { x: 0, y: 1.2, z: -10 }, '#fbbf24'),
+      target('target-c', { x: 7, y: 1.2, z: -6 }, '#a78bfa'),
+      { schema: ENTITY_SCHEMA, id: 'cover-left', name: 'Cover Left', parentId: 'world', enabled: true, tags: ['obstacle', 'cover'], components: [transform({ x: -5, y: 0.8, z: 3 }, { x: 4, y: 1.6, z: 1 }), component('MeshRenderer', { geometry: 'box', material: { color: '#334155', roughness: 0.7, metalness: 0.15 } }), component('Collider', { shape: 'box', size: { x: 4, y: 1.6, z: 1 } })] },
+      { schema: ENTITY_SCHEMA, id: 'cover-right', name: 'Cover Right', parentId: 'world', enabled: true, tags: ['obstacle', 'cover'], components: [transform({ x: 5, y: 0.8, z: 1 }, { x: 4, y: 1.6, z: 1 }), component('MeshRenderer', { geometry: 'box', material: { color: '#334155', roughness: 0.7, metalness: 0.15 } }), component('Collider', { shape: 'box', size: { x: 4, y: 1.6, z: 1 } })] },
+    ],
+  };
+  const project = baseAuthoredProject(input, scene, files);
+  project.inputMap.splice(1, 0, { action: 'Fire', kind: 'button', keys: ['Space', 'Enter'] });
+  return project;
+}
+
+export function createProjectFromTemplate(input: {
+  id: string;
+  name?: string;
+  slug?: string;
+  prompt?: string;
+  seed?: string;
+  template?: LillyProjectTemplateId;
+}): LillyProject {
+  const template = input.template || 'expedition';
+  if (template === 'blank') return createBlankProject(input);
+  if (template === 'third-person-explorer') return createThirdPersonExplorerProject(input);
+  if (template === 'top-down-action') return createTopDownActionProject(input);
+  if (template === 'expedition') return createProceduralProject(input);
+  throw Object.assign(new Error(`Unknown Lilly project template ${String(template)}`), { code: 'PROJECT_TEMPLATE_NOT_FOUND' });
 }

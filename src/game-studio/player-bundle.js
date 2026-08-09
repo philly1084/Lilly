@@ -29,6 +29,11 @@ function escapeHtml(value = '') {
 
 function buildIndexHtml(project) {
   const title = escapeHtml(project.name || 'Lilly Game');
+  const runtimeProfile = project.settings?.runtimeProfile === 'expedition' ? 'expedition' : 'module-driven';
+  const entryScene = (project.scenes || []).find((scene) => scene.id === project.entryScene) || null;
+  const authoredObjective = entryScene?.entities
+    ?.flatMap((entity) => entity.components || [])
+    .find((component) => component.type === 'UIAnchor' && component.enabled !== false && String(component.data?.text || '').trim());
   const levelRecipe = (project.levelRecipes || []).find((recipe) => recipe.sceneId === project.entryScene) || null;
   const levelDesign = levelRecipe
     ? (project.generatedLevels || []).find((design) => design.recipeId === levelRecipe.id) || null
@@ -37,6 +42,9 @@ function buildIndexHtml(project) {
   const pickupCount = Number(levelDesign?.metrics?.pickupCount || 0);
   const encounterCount = Number(levelDesign?.metrics?.encounterCount || 0);
   const enemyCount = Number(levelDesign?.metrics?.enemyCount || 0);
+  const hasAttackAction = (project.inputMap || []).some((binding) => binding.action === 'Attack' || binding.action === 'Fire');
+  const objectiveLabel = escapeHtml(authoredObjective?.data?.text || (runtimeProfile === 'expedition' ? 'Reach the first objective.' : 'Module-driven game ready.'));
+  const controlLabel = runtimeProfile === 'expedition' ? 'WASD move · Space attack · R reset' : `WASD move${hasAttackAction ? ' · Space action' : ''} · R reset`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -47,10 +55,10 @@ function buildIndexHtml(project) {
   <title>${title}</title>
   <style>
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#05090e;color:#edf7ff;--safe-top:max(14px,env(safe-area-inset-top));--safe-right:max(14px,env(safe-area-inset-right));--safe-bottom:max(14px,env(safe-area-inset-bottom));--safe-left:max(14px,env(safe-area-inset-left))}
-    *{box-sizing:border-box}html,body,#game-canvas{width:100%;height:100%;margin:0;overflow:hidden}body{overscroll-behavior:none}button{font:inherit}#game-canvas{display:block;background:#081018;touch-action:none}
+    *{box-sizing:border-box}html,body,#game-canvas{width:100%;height:100%;margin:0;overflow:hidden}body{overscroll-behavior:none}[hidden]{display:none!important}button{font:inherit}#game-canvas{display:block;background:#081018;touch-action:none}
     .hud{position:fixed;inset:0;pointer-events:none;padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);display:flex;flex-direction:column;justify-content:space-between;z-index:2}
     .hud-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.panel{background:rgba(7,15,23,.86);border:1px solid rgba(125,211,252,.24);box-shadow:0 18px 60px rgba(0,0,0,.3);backdrop-filter:blur(12px);border-radius:12px;padding:11px 13px}
-    .eyebrow{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#7dd3fc}.level-name{max-width:min(62vw,420px);margin-top:3px;color:#d9e8f2;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.score-line{display:flex;align-items:flex-end;gap:14px;margin-top:7px}.score{font-size:26px;font-weight:780;line-height:1}.health,.combat{font-size:11px;color:#fda4af}.health strong{font-size:16px;color:#fecdd3}.combat{color:#bae6fd}.combat strong{font-size:16px;color:#7dd3fc}.objective{max-width:min(70vw,500px);font-size:12px;line-height:1.45;color:#c9d8e6;margin-top:5px}
+    .eyebrow{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#7dd3fc}.level-name{max-width:min(62vw,420px);margin-top:3px;color:#d9e8f2;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.score-line{display:flex;align-items:flex-end;gap:14px;margin-top:7px}.score{font-size:26px;font-weight:780;line-height:1}.health,.combat{font-size:11px;color:#fda4af}.health strong{font-size:16px;color:#fecdd3}.combat{color:#bae6fd}.combat strong{font-size:16px;color:#7dd3fc}.runtime-profile{color:#6ee7b7;font-size:10px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}.objective{max-width:min(70vw,500px);font-size:12px;line-height:1.45;color:#c9d8e6;margin-top:5px}
     .status{font-size:10px;font-weight:750;color:#7dd3fc;background:rgba(7,15,23,.84);border:1px solid currentColor;border-radius:999px;padding:7px 10px;backdrop-filter:blur(10px)}.status[data-state=success]{color:#6ee7b7}.status[data-state=warning]{color:#fbbf24}
     .controls{pointer-events:auto;align-self:flex-end;display:flex;align-items:center;gap:7px}.controls span{font-size:10px;color:#9fb2c4;margin-right:5px}.controls button{min-height:38px;border:1px solid #314657;background:#101b25;color:#edf7ff;border-radius:9px;padding:8px 12px;cursor:pointer}.controls button:hover,.controls button:focus-visible{border-color:#38bdf8;background:#14283a;outline:2px solid rgba(56,189,248,.22);outline-offset:2px}
     .touch-controls{display:none;pointer-events:auto;position:fixed;left:var(--safe-left);bottom:var(--safe-bottom);z-index:3;width:142px;height:142px;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:5px;touch-action:none}.touch-controls button{border:1px solid rgba(125,211,252,.38);border-radius:14px;background:rgba(8,19,27,.82);color:#e0f2fe;font-size:20px;font-weight:800;box-shadow:0 8px 22px rgba(0,0,0,.3);backdrop-filter:blur(10px);touch-action:none;user-select:none;-webkit-user-select:none}.touch-controls button[data-pressed=true]{background:#1d6587;border-color:#7dd3fc;transform:scale(.96)}.touch-up{grid-column:2;grid-row:1}.touch-left{grid-column:1;grid-row:2}.touch-down{grid-column:2;grid-row:3}.touch-right{grid-column:3;grid-row:2}
@@ -66,14 +74,14 @@ function buildIndexHtml(project) {
   <div class="hud">
     <div class="hud-row">
       <div class="panel">
-        <div class="eyebrow">Lilly generated expedition</div>
+        <div class="eyebrow">${runtimeProfile === 'expedition' ? 'Lilly generated expedition' : 'Lilly module-driven runtime'}</div>
         <div class="level-name" id="level-name">${levelLabel}</div>
-        <div class="score-line"><div class="score"><span id="score-value">0</span> / <span id="score-total">${pickupCount}</span></div><div class="health">Shield <strong id="health-value">3</strong></div>${encounterCount ? `<div class="combat">Guardians <strong id="enemy-value">${enemyCount}</strong></div>` : '<span id="enemy-value" hidden>0</span>'}</div>
-        <div class="objective" id="objective">Reach the first objective.</div>
+        <div class="score-line">${runtimeProfile === 'expedition' ? `<div class="score"><span id="score-value">0</span> / <span id="score-total">${pickupCount}</span></div><div class="health">Shield <strong id="health-value">3</strong></div>${encounterCount ? `<div class="combat">Guardians <strong id="enemy-value">${enemyCount}</strong></div>` : '<span id="enemy-value" hidden>0</span>'}` : '<div class="runtime-profile">Components + Blueprints + typed systems</div><span id="score-value" hidden>0</span><span id="score-total" hidden>0</span><span id="health-value" hidden>0</span><span id="enemy-value" hidden>0</span>'}</div>
+        <div class="objective" id="objective">${objectiveLabel}</div>
       </div>
       <div class="status" id="status-pill" data-state="playing">Playing</div>
     </div>
-    <div class="controls panel"><span>WASD move · Space attack · R reset</span><button id="save-button" type="button">Save</button><button id="reset-button" type="button">Reset</button></div>
+    <div class="controls panel"><span>${controlLabel}</span><button id="save-button" type="button">Save</button><button id="reset-button" type="button">Reset</button></div>
   </div>
   <div class="touch-controls" aria-label="Touch movement controls">
     <button class="touch-up" type="button" data-move-code="KeyW" aria-label="Move forward">↑</button>
@@ -81,8 +89,8 @@ function buildIndexHtml(project) {
     <button class="touch-down" type="button" data-move-code="KeyS" aria-label="Move backward">↓</button>
     <button class="touch-right" type="button" data-move-code="KeyD" aria-label="Move right">→</button>
   </div>
-  <button class="touch-action" id="attack-button" type="button" aria-label="Attack">Strike</button>
-  <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><strong>Building ${levelLabel}</strong><p>Replaying the saved Lilly level recipe and preparing the WebGL2 runtime...</p></div></div>
+  <button class="touch-action" id="attack-button" type="button" aria-label="Action"${hasAttackAction ? '' : ' hidden'}>${runtimeProfile === 'expedition' ? 'Strike' : 'Action'}</button>
+  <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><strong>Building ${levelLabel}</strong><p>${runtimeProfile === 'expedition' ? 'Replaying the saved Lilly level recipe' : 'Compiling the authored component and module graph'} and preparing the WebGL2 runtime...</p></div></div>
   <div id="error-overlay" class="error" hidden><div class="error-card"><div class="eyebrow">Runtime error</div><h1>Game could not start</h1><strong>Unknown error</strong><p>Open Build Output in Lilly Game Studio for diagnostics.</p></div></div>
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
   <script type="module" src="./player.js"></script>

@@ -46,7 +46,7 @@ type StudioState = {
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   initialize(): Promise<void>;
-  createProject(name: string, prompt?: string, template?: 'blank' | 'expedition'): Promise<void>;
+  createProject(name: string, prompt?: string, template?: import('./types').LillyProjectTemplateId): Promise<void>;
   importProject(file: File): Promise<void>;
   uploadAsset(file: File): Promise<void>;
   openProject(id: string): Promise<void>;
@@ -155,7 +155,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       set({ status: 'ready', projects: listing.projects, current, selectedEntityId: 'player', selectedGraphId: current.project.blueprints[0]?.id || null, undoStack: [], redoStack: [], playState: 'editing', editorPreview: null, previewStatus: 'idle' });
       get().log('success', template === 'blank'
         ? `Created blank ${current.project.name} for agent-authored scenes and modules`
-        : `Created ${current.project.name} from a deterministic AI level recipe`);
+        : template === 'expedition'
+          ? `Created ${current.project.name} from a deterministic AI level recipe`
+          : `Created playable ${current.project.name} from the ${template} module-driven kit`);
     } catch (error) { set({ status: 'error', error: error instanceof Error ? error.message : 'Project creation failed' }); }
   },
 

@@ -583,7 +583,12 @@ export function Viewport() {
   const cleared = gameplayState?.encounters.filter((entry) => entry.cleared).length || 0;
   const encounters = gameplayState?.encounters.length || design?.metrics.encounterCount || 0;
   const enemies = gameplayState?.enemies.filter((entry) => entry.health > 0).length ?? design?.metrics.enemyCount ?? 0;
-  const objectiveText = recipe?.objective === 'reach-exit'
+  const authoredObjective = scene.entities
+    .flatMap((entity) => entity.components)
+    .find((component) => component.type === 'UIAnchor' && component.enabled !== false && String(component.data.text || '').trim());
+  const objectiveText = current.project.settings.runtimeProfile === 'module-driven'
+    ? String(authoredObjective?.data.text || 'Author gameplay with components, Blueprints, and typed systems')
+    : recipe?.objective === 'reach-exit'
     ? 'Reach the exit beacon'
     : recipe?.objective === 'secure-and-exit'
       ? `${cleared}/${encounters} encounters secured · ${enemies} guardians remain`

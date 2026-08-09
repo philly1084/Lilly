@@ -3,6 +3,7 @@
 const { ToolBase } = require('../../ToolBase');
 
 const ACTIONS = [
+  'list-templates',
   'create-project',
   'list-projects',
   'inspect-project',
@@ -31,8 +32,8 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '3.0.0',
-      description: 'Create complete browser games as versioned Lilly projects. Agents can author typed multi-file modules, reusable materials, GLB metadata, animation controllers, terrain heightfields, prefab variants, capability-sandboxed systems, deterministic tests, scenes, and Blueprints; upload bounded assets; then build immutable players, publish, and roll back.',
+      version: '3.1.0',
+      description: 'Create complete multi-genre browser games as versioned Lilly projects. Start from blank, third-person explorer, top-down action, or procedural expedition templates; author component controllers, typed modules, reusable materials, GLB metadata, animation controllers, terrain heightfields, prefab variants, capability-sandboxed systems, deterministic tests, scenes, and Blueprints; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
           const gameStudioService = context.gameStudioService;
@@ -53,7 +54,7 @@ class GameStudioTool extends ToolBase {
           action: { type: 'string', enum: ACTIONS },
           name: { type: 'string', maxLength: 100 },
           slug: { type: 'string', maxLength: 60 },
-          template: { type: 'string', enum: ['blank', 'expedition'] },
+          template: { type: 'string', enum: ['blank', 'third-person-explorer', 'top-down-action', 'expedition'] },
           projectId: { type: 'string' },
           sceneId: { type: 'string' },
           buildId: { type: 'string' },
