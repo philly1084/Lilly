@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { useWorkspacePreviewAccess } from '../preview-access';
-import type { BottomTab, StudioBuild } from '../types';
+import type { BottomTab, LillyBuildProfile, LillyDataAsset, StudioBuild } from '../types';
 import { currentScene, useStudioStore } from '../store';
 import { BlueprintEditor } from './BlueprintEditor';
 import { Icon } from './Icon';
 
 const tabs: Array<{ id: BottomTab; label: string; icon: Parameters<typeof Icon>[0]['name'] }> = [
   { id: 'content', label: 'Content Browser', icon: 'content' },
+  { id: 'data', label: 'Game Data', icon: 'database' },
   { id: 'blueprints', label: 'Blueprints', icon: 'blueprint' },
   { id: 'typescript', label: 'Code & Modules', icon: 'code' },
   { id: 'console', label: 'Console', icon: 'console' },
@@ -117,6 +118,43 @@ function ContentBrowser() {
   </div>;
 }
 
+function DataWorkspace() {
+  const current = useStudioStore((state) => state.current);
+  const upsertDataAsset = useStudioStore((state) => state.upsertDataAsset);
+  const deleteDataAsset = useStudioStore((state) => state.deleteDataAsset);
+  const dataAssets = current?.project.dataAssets || [];
+  const [selectedId, setSelectedId] = useState('');
+  const selected = dataAssets.find((asset) => asset.id === selectedId) || dataAssets[0] || null;
+  const [draft, setDraft] = useState('');
+  const [draftError, setDraftError] = useState('');
+  useEffect(() => {
+    if (!selectedId && dataAssets[0]) setSelectedId(dataAssets[0].id);
+    if (selected) {
+      setDraft(JSON.stringify(selected, null, 2));
+      setDraftError('');
+    }
+  }, [selected?.id, current?.project.revision, selectedId, dataAssets.length]);
+  const createAsset = async () => {
+    const occupied = new Set(dataAssets.map((asset) => asset.id));
+    let index = dataAssets.length + 1;
+    while (occupied.has(`game-data-${index}`)) index += 1;
+    const asset: LillyDataAsset = { schema: 'LillyDataAsset/v1', id: `game-data-${index}`, name: `Game Data ${index}`, type: 'config', tags: ['gameplay'], data: { value: 1 } };
+    if (await upsertDataAsset(asset)) setSelectedId(asset.id);
+  };
+  const save = async () => {
+    try {
+      const parsed = JSON.parse(draft) as LillyDataAsset;
+      if (!parsed.id || !parsed.name || !parsed.data || Array.isArray(parsed.data)) throw new Error('Data assets require id, name, and a JSON object in data');
+      setDraftError('');
+      if (await upsertDataAsset(parsed)) setSelectedId(parsed.id);
+    } catch (error) { setDraftError(error instanceof Error ? error.message : 'Invalid data asset JSON'); }
+  };
+  return <div className="data-workspace">
+    <aside className="data-asset-list"><div className="workspace-subheading"><span>Shared assets</span><button type="button" onClick={createAsset}><Icon name="add" size={12}/></button></div>{dataAssets.map((asset) => <button type="button" key={asset.id} className={selected?.id === asset.id ? 'active' : ''} onClick={() => setSelectedId(asset.id)}><Icon name="database" size={13}/><span><strong>{asset.name}</strong><small>{asset.type} · {Object.keys(asset.data).length} fields</small></span></button>)}{!dataAssets.length && <div className="data-empty"><strong>No shared data yet</strong><span>Create balance values, dialogue, tables, and configs without duplicating them across entities.</span></div>}</aside>
+    <section className="data-editor"><header><div><span className="panel-kicker">Scriptable data</span><strong>{selected?.name || 'No data selected'}</strong></div><div><button type="button" onClick={createAsset}>New</button>{selected && <button type="button" className="danger-subtle" onClick={async () => { if (await deleteDataAsset(selected.id)) setSelectedId(''); }}>Delete</button>}<button type="button" className="primary-small" onClick={save} disabled={!selected}>Save data</button></div></header>{draftError && <div className="data-error">{draftError}</div>}<Editor height="100%" language="json" theme="vs-dark" value={draft} onChange={(value) => setDraft(value || '')} options={{ minimap: { enabled: false }, fontSize: 12, padding: { top: 14 }, scrollBeyondLastLine: false, wordWrap: 'on', automaticLayout: true }}/></section>
+  </div>;
+}
+
 const starterScript = `import type { LillyScriptApi } from '@lilly/engine-runtime';
 
 export default function playerBoost(api: LillyScriptApi) {
@@ -223,7 +261,7 @@ function BuildCard({ build }: { build: StudioBuild }) {
   const publish = useStudioStore((state) => state.publish);
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewAccess = useWorkspacePreviewAccess(build.previewUrl, previewOpen);
-  return <div className="build-card"><div className="build-card-head"><div className={`build-state ${build.status}`}><span/>{build.status}</div><strong>r{build.projectRevision}</strong><code>{build.id.slice(0, 8)}</code><time>{new Date(build.createdAt).toLocaleString()}</time></div><div className="build-proof">{build.tests.map((test) => <span key={test.name} className={test.status}>{test.status === 'passed' ? '✓' : '!'} {test.name}</span>)}</div><div className="build-actions"><button type="button" onClick={() => setPreviewOpen((value) => !value)}><Icon name="play" size={13}/>{previewOpen ? 'Close preview' : 'Private preview'}</button><button type="button" className="primary-small" onClick={() => publish(build)} disabled={build.status === 'published'}><Icon name="publish" size={13}/>{build.status === 'published' ? 'Published' : 'Publish HTTPS'}</button>{build.publicUrl && <a href={build.publicUrl} target="_blank" rel="noreferrer">{build.publicUrl}</a>}</div>{previewOpen && <div className="build-preview-wrap">{previewAccess.status === 'ready' ? <iframe src={previewAccess.url} title={`Private preview for revision ${build.projectRevision}`} sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"/> : <div className="preview-access-state" role="status">{previewAccess.status === 'error' ? <><strong>Private preview blocked</strong><span>{previewAccess.error}</span></> : <><span className="spinner-small"/><span>Signing the immutable player…</span></>}</div>}</div>}</div>;
+  return <div className="build-card"><div className="build-card-head"><div className={`build-state ${build.status}`}><span/>{build.status}</div><strong>r{build.projectRevision}</strong><code>{build.id.slice(0, 8)}</code><span className="build-profile-pill">{build.buildProfile?.name || build.buildProfileId}</span><time>{new Date(build.createdAt).toLocaleString()}</time></div><div className="build-proof">{build.tests.map((test) => <span key={test.name} className={test.status}>{test.status === 'passed' ? '✓' : '!'} {test.name}</span>)}</div><div className="build-actions"><button type="button" onClick={() => setPreviewOpen((value) => !value)}><Icon name="play" size={13}/>{previewOpen ? 'Close preview' : 'Private preview'}</button><button type="button" className="primary-small" onClick={() => publish(build)} disabled={build.status === 'published'}><Icon name="publish" size={13}/>{build.status === 'published' ? 'Published' : 'Publish HTTPS'}</button>{build.publicUrl && <a href={build.publicUrl} target="_blank" rel="noreferrer">{build.publicUrl}</a>}</div>{previewOpen && <div className="build-preview-wrap">{previewAccess.status === 'ready' ? <iframe src={previewAccess.url} title={`Private preview for revision ${build.projectRevision}`} sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"/> : <div className="preview-access-state" role="status">{previewAccess.status === 'error' ? <><strong>Private preview blocked</strong><span>{previewAccess.error}</span></> : <><span className="spinner-small"/><span>Signing the immutable player…</span></>}</div>}</div>}</div>;
 }
 
 function BuildWorkspace() {
@@ -231,7 +269,54 @@ function BuildWorkspace() {
   const buildStatus = useStudioStore((state) => state.buildStatus);
   const build = useStudioStore((state) => state.build);
   const rollback = useStudioStore((state) => state.rollback);
-  return <div className="build-workspace"><div className="build-summary"><div><span className="panel-kicker">Immutable artifacts</span><strong>{current?.builds.length || 0} builds</strong><small>Each build is tied to one saved revision and tested Graph IR.</small></div><div className="build-summary-actions">{(current?.project.revision || 1) > 1 && <button type="button" onClick={() => rollback(1)}>Rollback to r1</button>}<button type="button" className="primary-small" onClick={build} disabled={buildStatus === 'building'}>{buildStatus === 'building' ? 'Building fixed bundle…' : 'Build current revision'}</button></div></div><div className="build-list">{current?.builds.map((entry) => <BuildCard key={entry.id} build={entry}/>) || null}{!current?.builds.length && <div className="workspace-empty"><Icon name="build" size={26}/><strong>No builds yet</strong><span>Run a playtest, then create an immutable private preview.</span></div>}</div></div>;
+  const upsertBuildProfile = useStudioStore((state) => state.upsertBuildProfile);
+  const deleteBuildProfile = useStudioStore((state) => state.deleteBuildProfile);
+  const setActiveBuildProfile = useStudioStore((state) => state.setActiveBuildProfile);
+  const profiles = current?.project.buildProfiles || [];
+  const [selectedId, setSelectedId] = useState('');
+  const selected = profiles.find((profile) => profile.id === selectedId) || profiles.find((profile) => profile.id === current?.project.activeBuildProfileId) || profiles[0] || null;
+  const [draft, setDraft] = useState<LillyBuildProfile | null>(selected ? structuredClone(selected) : null);
+  useEffect(() => {
+    if (!selectedId && selected) setSelectedId(selected.id);
+    if (selected) setDraft(structuredClone(selected));
+  }, [selected?.id, current?.project.revision, selectedId]);
+  const update = <K extends keyof LillyBuildProfile,>(key: K, value: LillyBuildProfile[K]) => setDraft((profile) => profile ? { ...profile, [key]: value } : profile);
+  const createProfile = async () => {
+    if (!current) return;
+    const occupied = new Set(profiles.map((profile) => profile.id));
+    let index = profiles.length + 1;
+    while (occupied.has(`custom-${index}`)) index += 1;
+    const profile: LillyBuildProfile = {
+      ...(selected ? structuredClone(selected) : {
+        schema: 'LillyBuildProfile/v1',
+        entryScene: current.project.entryScene,
+        target: 'browser',
+        mode: 'development',
+        quality: 'balanced',
+        renderer: 'webgl2',
+        debugOverlay: true,
+        mobileControls: true,
+      }),
+      id: `custom-${index}`,
+      name: `Custom ${index}`,
+    };
+    if (await upsertBuildProfile(profile)) setSelectedId(profile.id);
+  };
+  return <div className="build-workspace">
+    <div className="profile-editor">{draft && <>
+      <label><span>Build profile</span><select value={draft.id} onChange={(event) => setSelectedId(event.target.value)}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}{profile.id === current?.project.activeBuildProfileId ? ' · active' : ''}</option>)}</select></label>
+      <label><span>Name</span><input value={draft.name} onChange={(event) => update('name', event.target.value)}/></label>
+      <label><span>Scene</span><select value={draft.entryScene} onChange={(event) => update('entryScene', event.target.value)}>{current?.project.scenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.name}</option>)}</select></label>
+      <label><span>Mode</span><select value={draft.mode} onChange={(event) => update('mode', event.target.value as LillyBuildProfile['mode'])}><option value="development">Development</option><option value="release">Release</option></select></label>
+      <label><span>Quality</span><select value={draft.quality} onChange={(event) => update('quality', event.target.value as LillyBuildProfile['quality'])}><option value="performance">Performance</option><option value="balanced">Balanced</option><option value="quality">Quality</option></select></label>
+      <label><span>Renderer</span><select value={draft.renderer} onChange={(event) => update('renderer', event.target.value as LillyBuildProfile['renderer'])}><option value="webgl2">WebGL2</option><option value="webgpu-experimental">WebGPU experimental</option></select></label>
+      <label className="profile-check"><input type="checkbox" checked={draft.debugOverlay} onChange={(event) => update('debugOverlay', event.target.checked)}/><span>Debug overlay</span></label>
+      <label className="profile-check"><input type="checkbox" checked={draft.mobileControls} onChange={(event) => update('mobileControls', event.target.checked)}/><span>Mobile controls</span></label>
+      <div className="profile-actions"><button type="button" onClick={createProfile}>Duplicate as new</button><button type="button" onClick={() => upsertBuildProfile(draft)}>Save profile</button><button type="button" onClick={() => setActiveBuildProfile(draft.id)} disabled={draft.id === current?.project.activeBuildProfileId}>Make active</button><button type="button" className="danger-subtle" onClick={() => deleteBuildProfile(draft.id)} disabled={draft.id === current?.project.activeBuildProfileId || profiles.length <= 1}>Delete</button></div>
+    </>}</div>
+    <div className="build-summary"><div><span className="panel-kicker">Immutable artifacts</span><strong>{current?.builds.length || 0} builds</strong><small>Profiles version the scene, renderer, quality, debug, and mobile player settings.</small></div><div className="build-summary-actions">{(current?.project.revision || 1) > 1 && <button type="button" onClick={() => rollback(1)}>Rollback to r1</button>}<button type="button" className="primary-small" onClick={() => build(draft?.id)} disabled={buildStatus === 'building'}>{buildStatus === 'building' ? 'Building selected profile…' : `Build ${draft?.name || 'current revision'}`}</button></div></div>
+    <div className="build-list">{current?.builds.map((entry) => <BuildCard key={entry.id} build={entry}/>) || null}{!current?.builds.length && <div className="workspace-empty"><Icon name="build" size={26}/><strong>No builds yet</strong><span>Run a playtest, then create an immutable private preview.</span></div>}</div>
+  </div>;
 }
 
 export function BottomWorkspace() {
@@ -239,5 +324,5 @@ export function BottomWorkspace() {
   const setActive = useStudioStore((state) => state.setBottomTab);
   const current = useStudioStore((state) => state.current);
   const consoleCount = useStudioStore((state) => state.consoleItems.filter((item) => item.level === 'error').length);
-  return <section className="bottom-workspace studio-panel"><div className="workspace-tabs">{tabs.map((tab) => <button type="button" key={tab.id} className={active === tab.id ? 'active' : ''} onClick={() => setActive(tab.id)}><Icon name={tab.icon} size={14}/><span>{tab.label}</span>{tab.id === 'console' && consoleCount > 0 && <em>{consoleCount}</em>}{tab.id === 'blueprints' && current && <small>{current.project.blueprints.length}</small>}{tab.id === 'typescript' && current && <small>{current.moduleSummary.systems.length}</small>}</button>)}<div className="workspace-tab-spacer"/><span className={`engine-health ${current?.validation.valid ? 'healthy' : 'invalid'}`}><i/>{current?.validation.valid ? 'Engine ready' : 'Validation blocked'}</span></div><div className="workspace-content">{active === 'content' && <ContentBrowser/>}{active === 'blueprints' && <BlueprintEditor/>}{active === 'typescript' && <ModuleWorkspace/>}{active === 'console' && <ConsoleWorkspace/>}{active === 'tests' && <TestsWorkspace/>}{active === 'build' && <BuildWorkspace/>}</div></section>;
+  return <section className="bottom-workspace studio-panel"><div className="workspace-tabs">{tabs.map((tab) => <button type="button" key={tab.id} className={active === tab.id ? 'active' : ''} onClick={() => setActive(tab.id)}><Icon name={tab.icon} size={14}/><span>{tab.label}</span>{tab.id === 'console' && consoleCount > 0 && <em>{consoleCount}</em>}{tab.id === 'data' && current && <small>{current.project.dataAssets.length}</small>}{tab.id === 'blueprints' && current && <small>{current.project.blueprints.length}</small>}{tab.id === 'typescript' && current && <small>{current.moduleSummary.systems.length}</small>}</button>)}<div className="workspace-tab-spacer"/><span className={`engine-health ${current?.validation.valid ? 'healthy' : 'invalid'}`}><i/>{current?.validation.valid ? 'Engine ready' : 'Validation blocked'}</span></div><div className="workspace-content">{active === 'content' && <ContentBrowser/>}{active === 'data' && <DataWorkspace/>}{active === 'blueprints' && <BlueprintEditor/>}{active === 'typescript' && <ModuleWorkspace/>}{active === 'console' && <ConsoleWorkspace/>}{active === 'tests' && <TestsWorkspace/>}{active === 'build' && <BuildWorkspace/>}</div></section>;
 }

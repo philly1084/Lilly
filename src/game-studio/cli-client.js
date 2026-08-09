@@ -92,7 +92,16 @@ Usage:
   lilly-game test --project ID
   lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level]
   lilly-game apply --project ID --base-revision N --commands commands.json
-  lilly-game build --project ID --revision N
+  lilly-game data-list --project ID
+  lilly-game data-set --project ID --base-revision N --file data-asset.json
+  lilly-game data-delete --project ID --base-revision N --data-asset ID
+  lilly-game profiles --project ID
+  lilly-game profile-set --project ID --base-revision N --file build-profile.json
+  lilly-game profile-use --project ID --base-revision N --profile ID
+  lilly-game prefab-add --project ID --base-revision N --scene ID --path FILE --instance ID [--config overrides.json]
+  lilly-game prefab-refresh --project ID --base-revision N --scene ID --instance ID
+  lilly-game prefab-unpack --project ID --base-revision N --scene ID --instance ID
+  lilly-game build --project ID --revision N [--profile ID]
   lilly-game publish --build ID [--host game.demoserver2.buzz]
   lilly-game rollback --project ID --revision N
 
@@ -191,9 +200,49 @@ async function executeCommand(client, command, options) {
       body: { baseRevision: integer(options, 'base-revision', command), commands, source: 'lilly-game-cli' },
     });
   }
+  if (command === 'data-list') {
+    const projectId = required(options, 'project', command);
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/data-assets`);
+  }
+  if (command === 'data-set') {
+    const projectId = required(options, 'project', command);
+    const dataAsset = JSON.parse(await fs.readFile(required(options, 'file', command), 'utf8'));
+    const dataAssetId = String(dataAsset.id || required(options, 'data-asset', command));
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/data-assets/${encodeURIComponent(dataAssetId)}`, { method: 'PUT', body: { baseRevision: integer(options, 'base-revision', command), dataAsset } });
+  }
+  if (command === 'data-delete') {
+    const projectId = required(options, 'project', command);
+    const dataAssetId = required(options, 'data-asset', command);
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/data-assets/${encodeURIComponent(dataAssetId)}`, { method: 'DELETE', body: { baseRevision: integer(options, 'base-revision', command) } });
+  }
+  if (command === 'profiles') {
+    const projectId = required(options, 'project', command);
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/build-profiles`);
+  }
+  if (command === 'profile-set') {
+    const projectId = required(options, 'project', command);
+    const buildProfile = JSON.parse(await fs.readFile(required(options, 'file', command), 'utf8'));
+    const buildProfileId = String(buildProfile.id || required(options, 'profile', command));
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/build-profiles/${encodeURIComponent(buildProfileId)}`, { method: 'PUT', body: { baseRevision: integer(options, 'base-revision', command), buildProfile } });
+  }
+  if (command === 'profile-use') {
+    const projectId = required(options, 'project', command);
+    const buildProfileId = required(options, 'profile', command);
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/build-profiles/${encodeURIComponent(buildProfileId)}/activate`, { method: 'POST', body: { baseRevision: integer(options, 'base-revision', command) } });
+  }
+  if (command === 'prefab-add') {
+    const projectId = required(options, 'project', command);
+    const config = options.config ? JSON.parse(await fs.readFile(String(options.config), 'utf8')) : {};
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/prefab-instances`, { method: 'POST', body: { baseRevision: integer(options, 'base-revision', command), sceneId: required(options, 'scene', command), path: required(options, 'path', command), instanceId: required(options, 'instance', command), ...(options.parent ? { parentId: options.parent } : {}), config } });
+  }
+  if (command === 'prefab-refresh' || command === 'prefab-unpack') {
+    const projectId = required(options, 'project', command);
+    const action = command === 'prefab-refresh' ? 'refresh' : 'unpack';
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/prefab-instances/${encodeURIComponent(required(options, 'instance', command))}/${action}`, { method: 'POST', body: { baseRevision: integer(options, 'base-revision', command), sceneId: required(options, 'scene', command) } });
+  }
   if (command === 'build') {
     const projectId = required(options, 'project', command);
-    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: { projectRevision: integer(options, 'revision', command) } });
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: { projectRevision: integer(options, 'revision', command), ...(options.profile ? { buildProfileId: options.profile } : {}) } });
   }
   if (command === 'publish') return client.request(`/api/game-studio/builds/${encodeURIComponent(required(options, 'build', command))}/publish`, {
     method: 'POST',

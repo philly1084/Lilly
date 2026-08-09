@@ -52,8 +52,8 @@ export const studioApi = {
   assetContentUrl: (projectId: string, assetId: string, revision?: number) => `/api/game-studio/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content${revision ? `?revision=${revision}` : ''}`,
   proposeAi: (projectId: string, baseRevision: number, prompt: string, options: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number } = {}) => request<AiRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs`, { method: 'POST', body: JSON.stringify({ baseRevision, prompt, ...options }) }),
   playtest: (projectId: string) => request<Playtest>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/playtests`, { method: 'POST', body: '{}' }),
-  editorPreview: (projectId: string, projectRevision: number) => request<EditorPreview>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/editor-preview`, { method: 'POST', body: JSON.stringify({ projectRevision }) }),
-  build: (projectId: string, projectRevision: number) => request<StudioBuild>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: JSON.stringify({ projectRevision }) }),
+  editorPreview: (projectId: string, projectRevision: number, buildProfileId = 'development') => request<EditorPreview>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/editor-preview`, { method: 'POST', body: JSON.stringify({ projectRevision, buildProfileId }) }),
+  build: (projectId: string, projectRevision: number, buildProfileId?: string) => request<StudioBuild>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: JSON.stringify({ projectRevision, buildProfileId }) }),
   publish: (buildId: string, publicHost?: string) => request<{ build: StudioBuild; previewPreservedUntilHttpsVerified: boolean }>(`/api/game-studio/builds/${encodeURIComponent(buildId)}/publish`, { method: 'POST', body: JSON.stringify({ publicHost }) }),
   rollback: (projectId: string, revision: number) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/rollback`, { method: 'POST', body: JSON.stringify({ revision }) }),
 };

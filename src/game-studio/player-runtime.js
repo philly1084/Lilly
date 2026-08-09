@@ -90,6 +90,7 @@ function moduleWorldSnapshot() {
   const sceneData = project?.scenes?.find((entry) => entry.id === project.entryScene);
   return {
     playerId: player?.userData?.entityId || 'player',
+    dataAssets: (project?.dataAssets || []).map((asset) => ({ id: asset.id, name: asset.name, type: asset.type, tags: asset.tags, data: asset.data })),
     entities: (sceneData?.entities || []).map((entity) => {
       const object = objectMap.get(entity.id);
       return {
@@ -102,6 +103,10 @@ function moduleWorldSnapshot() {
       };
     }),
   };
+}
+
+function buildQuality() {
+  return project?.settings?.buildProfile?.quality || 'quality';
 }
 
 function moduleInputSnapshot(overrides = null) {
@@ -772,11 +777,15 @@ async function setupScene() {
     : vector(cameraComponentData?.followOffset, { x: 7, y: 7, z: 11 });
   camera.position.set(playerSpawn.x + initialCameraOffset.x, playerSpawn.y + initialCameraOffset.y, playerSpawn.z + initialCameraOffset.z);
   camera.lookAt(player.position);
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const quality = buildQuality();
+  const wantsWebGPU = project.settings?.renderer === 'webgpu-experimental';
+  const Renderer = wantsWebGPU && typeof THREE.WebGPURenderer === 'function' ? THREE.WebGPURenderer : THREE.WebGLRenderer;
+  renderer = new Renderer({ canvas, antialias: quality !== 'performance', powerPreference: 'high-performance' });
+  if (typeof renderer.init === 'function') await renderer.init();
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = quality !== 'performance';
   scoreTotal.textContent = String(totalPickups);
   levelName.textContent = levelRecipe?.name || sceneData.name || project.name;
   resize();
@@ -1323,7 +1332,8 @@ function setupTouchControls() {
 
 function resize() {
   if (!renderer || !camera) return;
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+  const pixelRatioCap = buildQuality() === 'performance' ? 1 : buildQuality() === 'balanced' ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(pixelRatioCap, devicePixelRatio || 1));
   renderer.setSize(innerWidth, innerHeight, false);
   if (camera.isPerspectiveCamera) {
     camera.aspect = innerWidth / innerHeight;
@@ -1542,6 +1552,7 @@ async function start() {
       schema: 'LillyPlayerDebug/v3',
       getState: () => ({
         runtimeProfile,
+        renderer: project.settings?.renderer || 'webgl2',
         pickupCount,
         totalPickups,
         health: gameplayState.player.health,

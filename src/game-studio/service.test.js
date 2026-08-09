@@ -30,13 +30,13 @@ describe('GameStudioService', () => {
     const registry = await service.executeToolAction('list-templates', {}, { userId: 'phil' });
     expect(registry).toMatchObject({
       schema: 'LillyProjectTemplateRegistry/v1',
-      engineVersion: '0.6.0',
+      engineVersion: '0.7.0',
       templates: expect.arrayContaining([expect.objectContaining({ id: 'third-person-explorer' }), expect.objectContaining({ id: 'top-down-action' })]),
     });
     const result = await service.createProject({ name: 'Canary Arena', prompt: 'A frozen vault with seven rooms and three relics', seed: 'canary-seed' }, 'phil');
     expect(result.project.schema).toBe('LillyProject/v1');
     expect(result.project.revision).toBe(1);
-    expect(result.project.engineVersion).toBe('0.6.0');
+    expect(result.project.engineVersion).toBe('0.7.0');
     expect(result.project.blueprints).toHaveLength(2);
     expect(result.project.levelRecipes).toEqual([expect.objectContaining({ schema: 'LillyLevelRecipe/v1', seed: 'canary-seed', theme: 'frost-vault' })]);
     expect(result.project.generatedLevels).toEqual([expect.objectContaining({ schema: 'LillyGeneratedLevel/v1', metrics: expect.objectContaining({ roomCount: 7 }) })]);
@@ -60,12 +60,28 @@ describe('GameStudioService', () => {
       expect.objectContaining({ name: 'Procedural level topology', status: 'passed' }),
     ]));
     const build = await service.createBuild(created.project.id, { projectRevision: 1 }, 'phil');
-    expect(build).toMatchObject({ status: 'success', engineVersion: '0.6.0' });
+    expect(build).toMatchObject({ status: 'success', engineVersion: '0.7.0', buildProfileId: 'release' });
     const html = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
     const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
     expect(html).toContain('Lilly module-driven runtime');
     expect(html).not.toContain('Lilly generated expedition');
-    expect(manifest).toMatchObject({ engineVersion: '0.6.0', moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
+    expect(manifest).toMatchObject({ engineVersion: '0.7.0', buildProfileId: 'release', moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
+  }, 20_000);
+
+  test('honors an authored build profile in the immutable manifest and player project', async () => {
+    const created = await service.createProject({ name: 'Profiled Player', template: 'third-person-explorer' }, 'phil');
+    const buildProfile = { schema: 'LillyBuildProfile/v1', id: 'lean-canary', name: 'Lean canary', target: 'browser', mode: 'development', entryScene: 'open-field', renderer: 'webgl2', quality: 'performance', debugOverlay: true, mobileControls: false };
+    const updated = await service.upsertBuildProfile(created.project.id, { baseRevision: 1, buildProfile }, 'phil');
+    const build = await service.createBuild(created.project.id, { projectRevision: updated.project.revision, buildProfileId: buildProfile.id }, 'phil');
+    expect(build).toMatchObject({ buildProfileId: 'lean-canary', buildProfile: { quality: 'performance', mobileControls: false } });
+    const directory = path.join(service.buildRoot, build.workspaceId);
+    const manifest = JSON.parse(await fs.readFile(path.join(directory, 'build-manifest.json'), 'utf8'));
+    const packagedProject = JSON.parse(await fs.readFile(path.join(directory, 'project.json'), 'utf8'));
+    const html = await fs.readFile(path.join(directory, 'index.html'), 'utf8');
+    expect(manifest).toMatchObject({ buildProfileId: 'lean-canary', buildProfile: { mode: 'development', quality: 'performance' } });
+    expect(packagedProject.settings.buildProfile).toEqual(buildProfile);
+    expect(html).toContain('Lean canary');
+    expect(html).toContain('class="touch-controls" aria-label="Touch movement controls" hidden');
   }, 20_000);
 
   test('bounds every immutable build workspace and file below the shared sandbox root', () => {

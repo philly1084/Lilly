@@ -3,10 +3,13 @@ import type {
   LillyBlueprintNode,
   LillyBlueprintPin,
   LillyBuild,
+  LillyBuildProfile,
   LillyCommand,
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  LillyDataAsset,
+  LillyPrefabInstance,
   LillyGeneratedLevel,
   LillyLevelRecipe,
   LillyProject,
@@ -27,10 +30,13 @@ export type {
   LillyBlueprintNode,
   LillyBlueprintPin,
   LillyBuild,
+  LillyBuildProfile,
   LillyCommand,
   LillyComponent,
   LillyComponentType,
   LillyEntity,
+  LillyDataAsset,
+  LillyPrefabInstance,
   LillyGeneratedLevel,
   LillyLevelRecipe,
   LillyProject,
@@ -70,6 +76,8 @@ export type EditorPreview = {
   schema: 'LillyEditorPreview/v1';
   projectId: string;
   projectRevision: number;
+  buildProfileId: string;
+  buildProfile: LillyBuildProfile;
   moduleSourceHash: string;
   playerRuntimeHash: string;
   workspaceId: string;
@@ -191,4 +199,4 @@ export type MechanicTestRun = {
 
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 export type PlayState = 'editing' | 'playing' | 'paused';
-export type BottomTab = 'content' | 'blueprints' | 'typescript' | 'console' | 'tests' | 'build';
+export type BottomTab = 'content' | 'data' | 'blueprints' | 'typescript' | 'console' | 'tests' | 'build';

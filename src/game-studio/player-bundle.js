@@ -29,6 +29,9 @@ function escapeHtml(value = '') {
 
 function buildIndexHtml(project) {
   const title = escapeHtml(project.name || 'Lilly Game');
+  const buildProfile = project.settings?.buildProfile || null;
+  const mobileControls = buildProfile?.mobileControls !== false;
+  const debugOverlay = buildProfile?.debugOverlay === true;
   const runtimeProfile = project.settings?.runtimeProfile === 'expedition' ? 'expedition' : 'module-driven';
   const entryScene = (project.scenes || []).find((scene) => scene.id === project.entryScene) || null;
   const authoredObjective = entryScene?.entities
@@ -79,17 +82,17 @@ function buildIndexHtml(project) {
         <div class="score-line">${runtimeProfile === 'expedition' ? `<div class="score"><span id="score-value">0</span> / <span id="score-total">${pickupCount}</span></div><div class="health">Shield <strong id="health-value">3</strong></div>${encounterCount ? `<div class="combat">Guardians <strong id="enemy-value">${enemyCount}</strong></div>` : '<span id="enemy-value" hidden>0</span>'}` : '<div class="runtime-profile">Components + Blueprints + typed systems</div><span id="score-value" hidden>0</span><span id="score-total" hidden>0</span><span id="health-value" hidden>0</span><span id="enemy-value" hidden>0</span>'}</div>
         <div class="objective" id="objective">${objectiveLabel}</div>
       </div>
-      <div class="status" id="status-pill" data-state="playing">Playing</div>
+      <div class="status" id="status-pill" data-state="playing">Playing${debugOverlay ? ` · ${escapeHtml(buildProfile?.name || 'Development')}` : ''}</div>
     </div>
     <div class="controls panel"><span>${controlLabel}</span><button id="save-button" type="button">Save</button><button id="reset-button" type="button">Reset</button></div>
   </div>
-  <div class="touch-controls" aria-label="Touch movement controls">
+  <div class="touch-controls" aria-label="Touch movement controls"${mobileControls ? '' : ' hidden'}>
     <button class="touch-up" type="button" data-move-code="KeyW" aria-label="Move forward">↑</button>
     <button class="touch-left" type="button" data-move-code="KeyA" aria-label="Move left">←</button>
     <button class="touch-down" type="button" data-move-code="KeyS" aria-label="Move backward">↓</button>
     <button class="touch-right" type="button" data-move-code="KeyD" aria-label="Move right">→</button>
   </div>
-  <button class="touch-action" id="attack-button" type="button" aria-label="Action"${hasAttackAction ? '' : ' hidden'}>${runtimeProfile === 'expedition' ? 'Strike' : 'Action'}</button>
+  <button class="touch-action" id="attack-button" type="button" aria-label="Action"${hasAttackAction && mobileControls ? '' : ' hidden'}>${runtimeProfile === 'expedition' ? 'Strike' : 'Action'}</button>
   <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><strong>Building ${levelLabel}</strong><p>${runtimeProfile === 'expedition' ? 'Replaying the saved Lilly level recipe' : 'Compiling the authored component and module graph'} and preparing the WebGL2 runtime...</p></div></div>
   <div id="error-overlay" class="error" hidden><div class="error-card"><div class="eyebrow">Runtime error</div><h1>Game could not start</h1><strong>Unknown error</strong><p>Open Build Output in Lilly Game Studio for diagnostics.</p></div></div>
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
@@ -123,20 +126,29 @@ function buildModuleSandboxHtml(moduleBundle) {
 </html>`;
 }
 
-async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, projectDirectory = '' }) {
+async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, projectDirectory = '', buildProfile = null }) {
   moduleBundle = moduleBundle || { schema: 'LillyModuleBundle/v1', sourceHash: '00000000', loadOrder: [], modules: [], systems: [], mechanics: [], prefabs: [], tests: [], materials: [], assets: [], animations: [], terrains: [], diagnostics: [] };
+  const selectedProfile = buildProfile || (project.buildProfiles || []).find((profile) => profile.id === project.activeBuildProfileId) || null;
+  if (!selectedProfile) throw Object.assign(new Error('An authored build profile is required'), { code: 'BUILD_PROFILE_NOT_FOUND' });
+  const effectiveProject = JSON.parse(JSON.stringify(project));
+  effectiveProject.entryScene = selectedProfile.entryScene;
+  effectiveProject.settings = {
+    ...effectiveProject.settings,
+    renderer: selectedProfile.renderer,
+    buildProfile: selectedProfile,
+  };
   await fs.mkdir(directory, { recursive: false });
   const threeBuildDirectory = path.dirname(require.resolve('three'));
   const [threeModule, threeCore, gltfLoader, bufferGeometryUtils, skeletonUtils] = await Promise.all([
-    fs.readFile(path.join(threeBuildDirectory, 'three.module.js'), 'utf8'),
+    fs.readFile(path.join(threeBuildDirectory, selectedProfile.renderer === 'webgpu-experimental' ? 'three.webgpu.js' : 'three.module.js'), 'utf8'),
     fs.readFile(path.join(threeBuildDirectory, 'three.core.js'), 'utf8'),
     fs.readFile(path.join(threeBuildDirectory, '../examples/jsm/loaders/GLTFLoader.js'), 'utf8'),
     fs.readFile(path.join(threeBuildDirectory, '../examples/jsm/utils/BufferGeometryUtils.js'), 'utf8'),
     fs.readFile(path.join(threeBuildDirectory, '../examples/jsm/utils/SkeletonUtils.js'), 'utf8'),
   ]);
-  const levelDesign = (project.generatedLevels || []).find((design) => design.sceneId === project.entryScene) || null;
+  const levelDesign = (effectiveProject.generatedLevels || []).find((design) => design.sceneId === effectiveProject.entryScene) || null;
   const files = [
-    ['index.html', buildIndexHtml(project)],
+    ['index.html', buildIndexHtml(effectiveProject)],
     ['player.js', PLAYER_JAVASCRIPT],
     ['gameplay.js', GAMEPLAY_JAVASCRIPT],
     ['module-sandbox.html', buildModuleSandboxHtml(moduleBundle)],
@@ -146,13 +158,15 @@ async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, 
     ['vendor/addons/loaders/GLTFLoader.js', gltfLoader],
     ['vendor/addons/utils/BufferGeometryUtils.js', bufferGeometryUtils],
     ['vendor/addons/utils/SkeletonUtils.js', skeletonUtils],
-    ['project.json', `${JSON.stringify(project, null, 2)}\n`],
+    ['project.json', `${JSON.stringify(effectiveProject, null, 2)}\n`],
     ['blueprints.json', `${JSON.stringify(graphIr, null, 2)}\n`],
     ['build-manifest.json', `${JSON.stringify({
       schema: 'LillyPlayerBundle/v2',
-      projectId: project.id,
-      revision: project.revision,
-      engineVersion: project.engineVersion,
+      projectId: effectiveProject.id,
+      revision: effectiveProject.revision,
+      engineVersion: effectiveProject.engineVersion,
+      buildProfileId: selectedProfile.id,
+      buildProfile: selectedProfile,
       levelChecksum: levelDesign?.checksum || null,
       moduleSourceHash: moduleBundle?.sourceHash || null,
       playerRuntimeHash: PLAYER_RUNTIME_HASH,
@@ -174,7 +188,7 @@ async function writeImmutableBuild({ directory, project, graphIr, moduleBundle, 
   const packagedPaths = files.map(([relativePath]) => relativePath);
   if (projectDirectory) {
     const sourceRoot = path.resolve(projectDirectory);
-    for (const asset of project.assets || []) {
+    for (const asset of effectiveProject.assets || []) {
       const relativePath = String(asset.uri || '').replace(/\\/g, '/');
       if (!relativePath.startsWith('assets/') || relativePath.includes('../')) continue;
       const sourcePath = path.resolve(sourceRoot, relativePath);

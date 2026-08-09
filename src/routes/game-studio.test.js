@@ -60,11 +60,12 @@ describe('Game Studio API', () => {
     const contracts = await request(app).get('/api/game-studio/contracts').expect(200);
     expect(contracts.body).toMatchObject({
       schema: 'LillyGameStudioContracts/v1',
-      engineVersion: '0.6.0',
-      contracts: { sourceFile: 'LillySourceFile/v1', module: 'LillyGameModule/v1', mechanic: 'LillyMechanic/v1', prefab: 'LillyPrefab/v1', mechanicTest: 'LillyMechanicTest/v1', material: 'LillyMaterial/v1', assetMetadata: 'LillyAssetMetadata/v1', animationController: 'LillyAnimationController/v1', terrain: 'LillyTerrain/v1' },
+      engineVersion: '0.7.0',
+      contracts: { sourceFile: 'LillySourceFile/v1', module: 'LillyGameModule/v1', mechanic: 'LillyMechanic/v1', prefab: 'LillyPrefab/v1', prefabInstance: 'LillyPrefabInstance/v1', dataAsset: 'LillyDataAsset/v1', buildProfile: 'LillyBuildProfile/v1', mechanicTest: 'LillyMechanicTest/v1', material: 'LillyMaterial/v1', assetMetadata: 'LillyAssetMetadata/v1', animationController: 'LillyAnimationController/v1', terrain: 'LillyTerrain/v1' },
       sandbox: { network: 'denied', dom: 'denied' },
     });
     expect(contracts.body.runtimeTypeDeclarations).toContain("declare module '@lilly/engine-runtime'");
+    expect(contracts.body.capabilities).toContain('data.read');
     expect(contracts.body.projectTemplates.map((entry) => entry.id)).toEqual(expect.arrayContaining(['blank', 'expedition', 'third-person-explorer', 'top-down-action']));
     expect(contracts.body.sourceFileTypes.map((entry) => entry.extension)).toEqual(expect.arrayContaining(['.material.json', '.asset.json', '.animation.json', '.terrain.json']));
 
@@ -91,6 +92,27 @@ describe('Game Studio API', () => {
 
     const conflict = await request(app).put(`/api/game-studio/projects/${id}/files`).send({ baseRevision: 2, files: [{ path: 'data/config.json', content: '{}' }] }).expect(409);
     expect(conflict.body.error).toMatchObject({ code: 'REVISION_CONFLICT', currentRevision: 3 });
+  }, 20_000);
+
+  test('manages shared data, build profiles, and linked prefab lifecycle through dedicated APIs', async () => {
+    const created = await request(app).post('/api/game-studio/projects').send({ name: 'Authoring Contracts', template: 'blank' }).expect(201);
+    const id = created.body.project.id;
+    const dataAsset = { schema: 'LillyDataAsset/v1', id: 'difficulty', name: 'Difficulty', type: 'config', tags: ['gameplay'], data: { enemySpeed: 4.2 } };
+    await request(app).put(`/api/game-studio/projects/${id}/data-assets/${dataAsset.id}`).send({ baseRevision: 1, dataAsset }).expect(200).expect((response) => expect(response.body.project.revision).toBe(2));
+    await request(app).get(`/api/game-studio/projects/${id}/data-assets`).expect(200).expect((response) => expect(response.body).toMatchObject({ schema: 'LillyDataAssetLibrary/v1', dataAssets: [dataAsset] }));
+
+    const buildProfile = { schema: 'LillyBuildProfile/v1', id: 'qa-mobile', name: 'QA mobile', target: 'browser', mode: 'development', entryScene: 'main', renderer: 'webgl2', quality: 'balanced', debugOverlay: true, mobileControls: true };
+    await request(app).put(`/api/game-studio/projects/${id}/build-profiles/${buildProfile.id}`).send({ baseRevision: 2, buildProfile }).expect(200);
+    await request(app).post(`/api/game-studio/projects/${id}/build-profiles/${buildProfile.id}/activate`).send({ baseRevision: 3 }).expect(200);
+    await request(app).get(`/api/game-studio/projects/${id}/build-profiles`).expect(200).expect((response) => expect(response.body).toMatchObject({ activeBuildProfileId: 'qa-mobile', buildProfiles: expect.arrayContaining([buildProfile]) }));
+
+    await request(app).put(`/api/game-studio/projects/${id}/files`).send({ baseRevision: 4, files: dashModuleFiles() }).expect(200);
+    const instance = await request(app).post(`/api/game-studio/projects/${id}/prefab-instances`).send({ baseRevision: 5, sceneId: 'main', path: 'modules/traversal/dash-trail.prefab.json', instanceId: 'trail-linked', parentId: 'world' }).expect(201);
+    expect(instance.body.project.scenes[0].prefabInstances).toEqual([expect.objectContaining({ instanceId: 'trail-linked', status: 'linked' })]);
+    await request(app).post(`/api/game-studio/projects/${id}/prefab-instances/trail-linked/refresh`).send({ baseRevision: 6, sceneId: 'main' }).expect(200);
+    const unpacked = await request(app).post(`/api/game-studio/projects/${id}/prefab-instances/trail-linked/unpack`).send({ baseRevision: 7, sceneId: 'main' }).expect(200);
+    expect(unpacked.body.project.scenes[0].prefabInstances).toEqual([]);
+    expect(unpacked.body.project.scenes[0].entities.find((entity) => entity.id === 'trail-linked:trail').tags).not.toContain('instance:trail-linked');
   }, 20_000);
 
   test('uploads, inventories, and streams authenticated world assets', async () => {

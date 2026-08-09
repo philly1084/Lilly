@@ -51,7 +51,8 @@ describe('Lilly engine core contracts', () => {
 
   test('creates a blank project that agents can build from scratch in versioned files', () => {
     const project = createBlankProject({ id: 'blank-agent-game', name: 'Agent Game' });
-    expect(project.engineVersion).toBe('0.6.0');
+    expect(project.engineVersion).toBe('0.7.0');
+    expect(project.buildProfiles).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'development' }), expect.objectContaining({ id: 'release' })]));
     expect(project.settings.runtimeProfile).toBe('module-driven');
     expect(project.files).toEqual([]);
     expect(project.levelRecipes).toEqual([]);
@@ -229,6 +230,98 @@ describe('Lilly engine core contracts', () => {
     expect({}.polluted).toBeUndefined();
   });
 
+  test('keeps prefab instances linked to source updates while preserving and undoing local overrides', () => {
+    const project = createBlankProject({ id: 'linked-prefab' });
+    const definition = {
+      schema: 'LillyPrefab/v1',
+      id: 'signal-tower',
+      moduleId: 'world',
+      name: 'Signal Tower',
+      rootEntityId: 'root',
+      entities: [
+        { schema: ENTITY_SCHEMA, id: 'root', name: 'Tower', parentId: null, enabled: true, tags: ['tower'], components: [
+          { type: 'Transform', enabled: true, data: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+          { type: 'MeshRenderer', enabled: true, data: { geometry: 'box', material: { color: '#225577', roughness: 0.6 } } },
+        ] },
+        { schema: ENTITY_SCHEMA, id: 'beacon', name: 'Beacon v1', parentId: 'root', enabled: true, tags: ['beacon'], components: [] },
+      ],
+    };
+    const file = { schema: SOURCE_FILE_SCHEMA, path: 'world/signal-tower.prefab.json', kind: 'prefab', language: 'json', content: JSON.stringify(definition), enabled: true };
+    const written = applyCommandBatch(project, [command(project, 'file.upsert', { path: file.path }, { file })], project.revision).project;
+    const placed = applyCommandBatch(written, [command(written, 'prefab.instantiate', { sceneId: 'main', path: file.path, instanceId: 'tower-a' }, { parentId: 'world', config: {} })], written.revision).project;
+    expect(placed.scenes[0].prefabInstances).toEqual([expect.objectContaining({ instanceId: 'tower-a', prefabPath: file.path, status: 'linked' })]);
+
+    const rename = command(placed, 'entity.rename', { sceneId: 'main', entityId: 'tower-a:root' }, { name: 'Player Tower' });
+    const renamed = applyCommandBatch(placed, [rename], placed.revision);
+    const history = new CommandHistory();
+    history.record([rename], renamed.inverses);
+    const undoRename = history.undo(renamed.project);
+    expect(undoRename.scenes[0].entities.find((entity) => entity.id === 'tower-a:root').name).toBe('Tower');
+    expect(undoRename.scenes[0].prefabInstances[0].overrides.entities).toBeUndefined();
+
+    const local = applyCommandBatch(undoRename, [command(undoRename, 'entity.rename', { sceneId: 'main', entityId: 'tower-a:root' }, { name: 'Player Tower' })], undoRename.revision).project;
+    const rootBeforeOverride = local.scenes[0].entities.find((entity) => entity.id === 'tower-a:root');
+    const meshBeforeOverride = rootBeforeOverride.components.find((entry) => entry.type === 'MeshRenderer');
+    const overridden = applyCommandBatch(local, [command(local, 'component.set', { sceneId: 'main', entityId: rootBeforeOverride.id, componentType: 'MeshRenderer' }, { enabled: true, data: { ...meshBeforeOverride.data, material: { ...meshBeforeOverride.data.material, roughness: 0.2 } } })], local.revision).project;
+    const nextDefinition = JSON.parse(JSON.stringify(definition));
+    nextDefinition.entities[0].name = 'Tower from source v2';
+    nextDefinition.entities[0].components[1].data.material.color = '#ff8800';
+    nextDefinition.entities[0].components[1].data.material.roughness = 0.9;
+    nextDefinition.entities[1].name = 'Beacon v2';
+    const refreshed = applyCommandBatch(overridden, [command(overridden, 'file.upsert', { path: file.path }, { file: { ...file, content: JSON.stringify(nextDefinition) } })], overridden.revision).project;
+    expect(refreshed.scenes[0].entities.find((entity) => entity.id === 'tower-a:root')).toMatchObject({ name: 'Player Tower' });
+    expect(refreshed.scenes[0].entities.find((entity) => entity.id === 'tower-a:root').components.find((entry) => entry.type === 'MeshRenderer').data.material.color).toBe('#ff8800');
+    expect(refreshed.scenes[0].entities.find((entity) => entity.id === 'tower-a:root').components.find((entry) => entry.type === 'MeshRenderer').data.material.roughness).toBe(0.2);
+    expect(refreshed.scenes[0].prefabInstances[0].overrides.entities.root.components.MeshRenderer).toEqual({ material: { roughness: 0.2 } });
+    expect(refreshed.scenes[0].entities.find((entity) => entity.id === 'tower-a:beacon').name).toBe('Beacon v2');
+    expect(() => applyCommandBatch(refreshed, [command(refreshed, 'file.delete', { path: file.path })], refreshed.revision)).toThrow(/still used by linked instances/);
+
+    const unpacked = applyCommandBatch(refreshed, [command(refreshed, 'prefab.unpack', { sceneId: 'main', instanceId: 'tower-a' })], refreshed.revision).project;
+    expect(unpacked.scenes[0].prefabInstances).toEqual([]);
+    expect(unpacked.scenes[0].entities.find((entity) => entity.id === 'tower-a:root').tags).not.toContain('instance:tower-a');
+    expect(validateProject(unpacked)).toEqual([]);
+  });
+
+  test('authors shared data and versioned build profiles transactionally with reference guards', () => {
+    const project = createBlankProject({ id: 'data-and-profiles' });
+    const dataAsset = { schema: 'LillyDataAsset/v1', id: 'player-balance', name: 'Player balance', type: 'stats', tags: ['gameplay'], data: { speed: 7.5, jumpHeight: 2.4 } };
+    const profile = { schema: 'LillyBuildProfile/v1', id: 'performance-canary', name: 'Performance canary', target: 'browser', mode: 'development', entryScene: 'main', renderer: 'webgl2', quality: 'performance', debugOverlay: true, mobileControls: false };
+    const commands = [
+      command(project, 'data-asset.upsert', { dataAssetId: dataAsset.id }, { dataAsset }),
+      command(project, 'component.set', { sceneId: 'main', entityId: 'world', componentType: 'DataReference' }, { data: { assetId: dataAsset.id, alias: 'balance' } }),
+      command(project, 'build-profile.upsert', { buildProfileId: profile.id }, { buildProfile: profile }),
+      command(project, 'project.set-active-build-profile', { buildProfileId: profile.id }, { buildProfileId: profile.id }),
+    ];
+    const applied = applyCommandBatch(project, commands, project.revision);
+    expect(applied.project.dataAssets).toEqual([dataAsset]);
+    expect(applied.project.activeBuildProfileId).toBe(profile.id);
+    expect(applied.project.buildProfiles).toEqual(expect.arrayContaining([profile]));
+    expect(validateProject(applied.project)).toEqual([]);
+    expect(() => applyCommandBatch(applied.project, [command(applied.project, 'data-asset.delete', { dataAssetId: dataAsset.id })], applied.project.revision)).toThrow(/still referenced/);
+
+    const history = new CommandHistory();
+    history.record(commands, applied.inverses);
+    const undone = history.undo(applied.project);
+    expect(undone.dataAssets).toEqual([]);
+    expect(undone.activeBuildProfileId).toBe('release');
+    expect(undone.buildProfiles.some((entry) => entry.id === profile.id)).toBe(false);
+    expect(validateProject(undone)).toEqual([]);
+  });
+
+  test('upgrades older projects with prefab link, data asset, and build profile collections', () => {
+    const legacy = JSON.parse(JSON.stringify(createBlankProject({ id: 'legacy-v06-project' })));
+    delete legacy.scenes[0].prefabInstances;
+    delete legacy.dataAssets;
+    delete legacy.buildProfiles;
+    delete legacy.activeBuildProfileId;
+    legacy.engineVersion = '0.6.0';
+    const upgraded = upgradeProject(legacy);
+    expect(upgraded).toMatchObject({ engineVersion: '0.7.0', dataAssets: [], activeBuildProfileId: 'release' });
+    expect(upgraded.scenes[0].prefabInstances).toEqual([]);
+    expect(upgraded.buildProfiles).toHaveLength(2);
+    expect(validateProject(upgraded)).toEqual([]);
+  });
+
   test('rejects stale revisions before modifying project state', () => {
     const project = createArenaProject({ id: 'stale' });
     expect(() => applyCommandBatch(project, [], 0)).toThrow(/Revision conflict/);
@@ -364,7 +457,7 @@ describe('Lilly engine core contracts', () => {
     history.record([forward], applied.inverses);
 
     expect(applied.project.generatedLevels[0].checksum).not.toBe(previousChecksum);
-    expect(applied.project.engineVersion).toBe('0.6.0');
+    expect(applied.project.engineVersion).toBe('0.7.0');
     const undone = history.undo(applied.project);
     expect(undone.generatedLevels[0].checksum).toBe(previousChecksum);
     expect(undone.scenes[0].entities.find((entity) => entity.id === 'player').components.find((entry) => entry.type === 'Transform').data.position).toEqual(previousPlayer);

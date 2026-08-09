@@ -192,6 +192,18 @@ async function run() {
       await page.getByText(projectName, { exact: true }).first().waitFor({ state: 'visible' });
     });
 
+    await record('shared-game-data', async () => {
+      await page.getByRole('button', { name: /^Game Data/ }).click();
+      await page.locator('.data-workspace').waitFor({ state: 'visible' });
+      const initialAssets = await page.locator('.data-asset-list > button').count();
+      await waitForCommand(page, () => page.locator('.data-editor').getByRole('button', { name: 'New', exact: true }).click());
+      await page.locator('.data-asset-list > button').nth(initialAssets).waitFor({ state: 'visible' });
+      const dataResponse = await requestJson(`${origin}/api/game-studio/projects/${projectId}/data-assets`, { headers: apiAuthHeaders });
+      assert(dataResponse.dataAssets.length === initialAssets + 1, `Shared data asset did not persist: ${JSON.stringify(dataResponse)}`);
+      report.sharedDataProof = { dataAssetId: dataResponse.dataAssets.at(-1).id, count: dataResponse.dataAssets.length };
+      await page.getByRole('button', { name: /^Content Browser/ }).click();
+    });
+
     await record('raw-binary-asset-upload-and-byte-replay', async () => {
       const uploadResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/assets$/.test(new URL(response.url()).pathname));
       await page.locator('#game-studio-import-asset').setInputFiles({ name: 'Lilly Triangle Model.glb', mimeType: 'model/gltf-binary', buffer: modelBytes });
@@ -315,6 +327,13 @@ async function run() {
       const placedProject = await placed.json();
       const sentinel = placedProject.project.scenes.flatMap((scene) => scene.entities).find((entity) => entity.name === 'Sentinel Landmark');
       assert(sentinel, 'Selected prefab variant did not create the Sentinel Landmark entity');
+      const linkedRoot = placedProject.project.scenes.flatMap((scene) => scene.entities).find((entity) => entity.tags.some((tag) => tag.startsWith('instance:')) && entity.parentId === 'world');
+      assert(linkedRoot, 'Placed prefab did not preserve a linked instance root');
+      await page.locator('.tree-row').filter({ hasText: linkedRoot.name }).last().click();
+      const prefabBanner = page.locator('.prefab-link-banner');
+      await prefabBanner.getByText('Linked prefab', { exact: true }).waitFor({ state: 'visible' });
+      assert(await page.getByRole('button', { name: 'Add component', exact: true }).isDisabled(), 'Linked prefab allowed a destructive component-structure edit');
+      await waitForCommand(page, () => prefabBanner.getByRole('button', { name: 'Refresh', exact: true }).click());
 
       const layoutProof = [];
       for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
@@ -391,8 +410,17 @@ async function run() {
 
     await record('immutable-build-and-private-replay', async () => {
       await page.getByRole('button', { name: 'Build Output', exact: true }).click();
-      await page.getByRole('button', { name: 'Build current revision', exact: true }).click();
+      const profileSelect = page.locator('.profile-editor label').filter({ hasText: 'Build profile' }).locator('select');
+      const initialProfileCount = await profileSelect.locator('option').count();
+      await waitForCommand(page, () => page.getByRole('button', { name: 'Duplicate as new', exact: true }).click());
+      await profileSelect.locator('option').nth(initialProfileCount).waitFor({ state: 'attached' });
+      const selectedProfileId = await profileSelect.inputValue();
+      const selectedProfileName = await page.locator('.profile-editor label').filter({ hasText: 'Name' }).locator('input').inputValue();
+      assert(selectedProfileId.startsWith('custom-'), `Versioned build profile was not created: ${selectedProfileId}`);
+      await page.locator('.build-summary-actions').getByRole('button', { name: `Build ${selectedProfileName}`, exact: true }).click();
       await page.getByRole('button', { name: 'Private preview', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
+      const buildCard = page.locator('.build-card').filter({ hasText: selectedProfileName });
+      await buildCard.locator('.build-profile-pill').filter({ hasText: selectedProfileName }).waitFor({ state: 'visible' });
       await page.getByRole('button', { name: 'Private preview', exact: true }).click();
       const previewIframe = page.locator('.build-preview-wrap iframe');
       await previewIframe.waitFor({ state: 'visible', timeout: 30000 });
@@ -417,7 +445,7 @@ async function run() {
       assert(authoredModule?.passed === true && authoredModule?.systems?.length === 1, `Agent module runtime test failed: ${JSON.stringify(authoredModule)}`);
       const collision = await frame.locator('body').evaluate(() => window.__LILLY_GAME__?.collisionTest?.() || null);
       assert(collision?.passed === true && collision?.detected === true && collision?.handled === true, `Agent collision lifecycle test failed: ${JSON.stringify(collision)}`);
-      report.runtimeProof = { control, combat, authoredModule, collision, worldState, previewPath: redactPreviewTokens(previewSrc) };
+      report.runtimeProof = { control, combat, authoredModule, collision, worldState, buildProfileId: selectedProfileId, buildProfileName: selectedProfileName, previewPath: redactPreviewTokens(previewSrc) };
       await page.locator('.build-preview-wrap').screenshot({ path: path.join(args.outDir, 'lilly-generated-player.png') });
       await frame.getByRole('button', { name: 'Save', exact: true }).click();
       const savedAcknowledged = await frame.locator('#status-pill').filter({ hasText: 'Saved' }).waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);

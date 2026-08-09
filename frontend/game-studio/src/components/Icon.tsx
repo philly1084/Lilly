@@ -24,6 +24,7 @@ const paths: Record<string, React.ReactNode> = {
   console: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></>,
   test: <><path d="M9 3h6M10 3v5l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17l-5-9V3"/><path d="M7 16h10"/></>,
   content: <><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></>,
+  database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></>,
   add: <><path d="M12 5v14M5 12h14"/></>,
   close: <><path d="M6 6l12 12M18 6 6 18"/></>,
   dots: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
