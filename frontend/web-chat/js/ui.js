@@ -10427,7 +10427,11 @@ class UIHelpers {
         
         const result = this.searchResults[this.currentSearchIndex];
         if (result) {
-            result.message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+            result.message.scrollIntoView({
+                behavior: prefersReducedMotion ? 'auto' : 'smooth',
+                block: 'center',
+            });
             result.message.classList.add('highlighted');
             
             // Highlight current match

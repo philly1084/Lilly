@@ -2421,6 +2421,10 @@ a {
 .shadow-lg { box-shadow: var(--shadow-lg); }
 .shadow-blue-500\/20 { box-shadow: 0 14px 36px rgba(59, 130, 246, 0.2); }
 .scroll-smooth { scroll-behavior: smooth; }
+
+@media (prefers-reduced-motion: reduce) {
+    .scroll-smooth { scroll-behavior: auto; }
+}
 .animate-spin { animation: spin 1s linear infinite; }
 .backdrop-blur {
     backdrop-filter: blur(12px);

@@ -355,6 +355,7 @@ describe('web-chat index redirect', () => {
     test('message search exposes empty results and disables dead navigation', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
 
         expect(html).toContain('id="search-previous-btn"');
         expect(html).toContain('id="search-next-btn"');
@@ -364,6 +365,9 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('const navigationDisabled = resultCount < 2;');
         expect(uiSource).toContain("previousButton?.toggleAttribute('disabled', navigationDisabled);");
         expect(uiSource).toContain("nextButton?.toggleAttribute('disabled', navigationDisabled);");
+        expect(uiSource).toContain("window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true");
+        expect(uiSource).toContain("behavior: prefersReducedMotion ? 'auto' : 'smooth'");
+        expect(css).toContain('@media (prefers-reduced-motion: reduce) {\n    .scroll-smooth { scroll-behavior: auto; }');
     });
 
     test('composer input toggle exposes its controlled expanded state', () => {
