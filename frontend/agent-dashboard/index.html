@@ -1388,9 +1388,10 @@
                                     <circle cx="11" cy="11" r="8"/>
                                     <path d="M21 21l-4.35-4.35"/>
                                 </svg>
-                                <input type="text" placeholder="Search tools..." id="skillSearch">
+                                <label class="sr-only" for="skillSearch">Search tool catalog</label>
+                                <input type="search" placeholder="Search tools..." id="skillSearch">
                             </div>
-                            <button class="btn btn-primary" id="discoverSkillsBtn">
+                            <button class="btn btn-primary" id="discoverSkillsBtn" type="button">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M23 4v6h-6"/>
                                     <path d="M1 20v-6h6"/>
@@ -1411,6 +1412,7 @@
                             <!-- Populated by JS -->
                         </div>
                         <div class="tool-toolbar-actions">
+                            <label class="sr-only" for="toolSupportFilter">Filter tools by support level</label>
                             <select class="select-sm" id="toolSupportFilter">
                                 <option value="all">All support levels</option>
                                 <option value="stable">Stable</option>

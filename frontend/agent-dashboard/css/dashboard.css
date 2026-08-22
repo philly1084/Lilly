@@ -2403,6 +2403,10 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning::b
     color: var(--warning-light);
 }
 
+body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_setup {
+    color: #6b4300;
+}
+
 .support-badge.experimental {
     border-color: rgba(248, 81, 73, 0.4);
     color: var(--danger-light);

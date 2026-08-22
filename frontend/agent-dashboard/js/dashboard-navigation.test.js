@@ -453,6 +453,18 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('labels tool catalog search and support filters', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const search = dom.window.document.getElementById('skillSearch');
+        const supportFilter = dom.window.document.getElementById('toolSupportFilter');
+
+        expect(search.getAttribute('type')).toBe('search');
+        expect(search.labels[0].textContent.trim()).toBe('Search tool catalog');
+        expect(supportFilter.labels[0].textContent.trim()).toBe('Filter tools by support level');
+        expect(dom.window.document.getElementById('discoverSkillsBtn').getAttribute('type')).toBe('button');
+    });
+
     test('associates the Perplexity research setting with its label and guidance', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
@@ -605,6 +617,13 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('body[data-ui-surface="admin"] select.form-control option');
         expect(css).toContain('background-color: var(--admin-menu-bg)');
         expect(css).toContain('--danger-light: #9b1c1c');
+    });
+
+    test('keeps setup-required tool badges readable in the light theme', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_setup');
+        expect(css).toContain('color: #6b4300;');
     });
 
     test('labels logs icon controls with their live state and target', () => {
