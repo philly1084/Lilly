@@ -553,13 +553,37 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
+        const dragOverlay = dom.window.document.getElementById('dragOverlay');
+        expect(dragOverlay.hidden).toBe(true);
+        expect(dragOverlay.getAttribute('role')).toBe('status');
+        expect(dragOverlay.getAttribute('aria-live')).toBe('polite');
+        expect(dragOverlay.getAttribute('aria-atomic')).toBe('true');
+        expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260822a');
+        expect(indexMarkup).toContain('js/app.js?v=20260822b');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
+    });
+
+    test('keeps the file drop status hidden except while a drag target is active', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<div id="dragOverlay" class="drag-overlay" hidden></div>');
+        app.dragOverlay = dom.window.document.getElementById('dragOverlay');
+        app.dragEnterCounter = 2;
+
+        app.setDragOverlayActive(true);
+
+        expect(app.dragOverlay.hidden).toBe(false);
+        expect(app.dragOverlay.classList.contains('active')).toBe(true);
+
+        app.cancelDrag();
+
+        expect(app.dragEnterCounter).toBe(0);
+        expect(app.dragOverlay.hidden).toBe(true);
+        expect(app.dragOverlay.classList.contains('active')).toBe(false);
     });
 
     test('stops the active AI request and exposes pending cancellation state', () => {

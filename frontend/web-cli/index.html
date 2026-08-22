@@ -2199,10 +2199,10 @@
     </div>
 
     <!-- Drag Overlay -->
-    <div id="dragOverlay" class="drag-overlay">
+    <div id="dragOverlay" class="drag-overlay" role="status" aria-live="polite" aria-atomic="true" hidden>
         <div class="drag-overlay-text">📁 Drop files to process</div>
         <div class="drag-overlay-hint">Supports: DOCX, PDF, HTML, MD, TXT, JSON, code files</div>
-        <button class="btn" onclick="app.cancelDrag()" style="margin-top: 16px;">Cancel</button>
+        <button class="btn" type="button" onclick="app.cancelDrag()" style="margin-top: 16px;">Cancel</button>
     </div>
 
     <!-- Shortcuts Modal -->
@@ -2224,6 +2224,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260822a"></script>
+    <script defer src="js/app.js?v=20260822b"></script>
 </body>
 </html>

@@ -3246,9 +3246,7 @@ class CodeCLIApp {
         document.addEventListener('dragenter', (e) => {
             e.preventDefault();
             this.dragEnterCounter++;
-            if (this.dragOverlay) {
-                this.dragOverlay.classList.add('active');
-            }
+            this.setDragOverlayActive(true);
             this.roamVoxelPet('alert', 'guard', 1400);
         });
         
@@ -3259,18 +3257,16 @@ class CodeCLIApp {
         document.addEventListener('dragleave', (e) => {
             e.preventDefault();
             this.dragEnterCounter--;
-            if (this.dragEnterCounter <= 0 && this.dragOverlay) {
+            if (this.dragEnterCounter <= 0) {
                 this.dragEnterCounter = 0;
-                this.dragOverlay.classList.remove('active');
+                this.setDragOverlayActive(false);
             }
         });
         
         document.addEventListener('drop', (e) => {
             e.preventDefault();
             this.dragEnterCounter = 0;
-            if (this.dragOverlay) {
-                this.dragOverlay.classList.remove('active');
-            }
+            this.setDragOverlayActive(false);
             
             const files = Array.from(e.dataTransfer.files);
             this.roamVoxelPet('alert', 'scout', 1400);
@@ -11205,11 +11201,19 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.fileManagerReturnFocus = null;
     }
     
+    setDragOverlayActive(isActive) {
+        if (!this.dragOverlay) {
+            return;
+        }
+
+        const active = Boolean(isActive);
+        this.dragOverlay.hidden = !active;
+        this.dragOverlay.classList.toggle('active', active);
+    }
+
     cancelDrag() {
         this.dragEnterCounter = 0;
-        if (this.dragOverlay) {
-            this.dragOverlay.classList.remove('active');
-        }
+        this.setDragOverlayActive(false);
     }
     
     /**
