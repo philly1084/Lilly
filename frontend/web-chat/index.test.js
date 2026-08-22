@@ -148,6 +148,9 @@ describe('web-chat index redirect', () => {
 
         expect(html).toContain('aria-describedby="export-description"');
         expect(html).toContain('id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title" aria-describedby="export-description" aria-hidden="true"');
+        expect(html).toContain('id="export-btn"');
+        expect(html).toContain('id="export-chat-btn"');
+        expect(html.match(/aria-haspopup="dialog" aria-expanded="false" aria-controls="export-modal"/g)).toHaveLength(2);
         expect(html).toContain('id="export-description"');
         expect(html).toContain('id="export-progress-bar"');
         expect(html).toContain('role="progressbar"');
@@ -158,6 +161,9 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
         expect(uiSource).toContain('this.closeExportModal();');
+        expect(uiSource).toContain("document.querySelectorAll('[aria-controls=\"export-modal\"]')");
+        expect(uiSource).toContain('this.syncExportModalTriggers(true);');
+        expect(uiSource).toContain('this.syncExportModalTriggers(false);');
         expect(uiSource).toContain("if (!modal || modal.classList.contains('hidden'))");
         expect(uiSource).toContain('this.lastFocusedElement.focus();');
     });

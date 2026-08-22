@@ -11254,6 +11254,12 @@ class UIHelpers {
     // Export Modal - Enhanced with progress
     // ============================================
 
+    syncExportModalTriggers(expanded) {
+        document.querySelectorAll('[aria-controls="export-modal"]').forEach((trigger) => {
+            trigger.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+
     openExportModal() {
         if (!sessionManager.currentSessionId) {
             this.showToast('No active conversation to export', 'warning');
@@ -11265,6 +11271,7 @@ class UIHelpers {
         this.lastFocusedElement = document.activeElement;
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
+        this.syncExportModalTriggers(true);
         
         // Hide progress
         const progress = modal.querySelector('#export-progress');
@@ -11330,6 +11337,7 @@ class UIHelpers {
         }
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
+        this.syncExportModalTriggers(false);
         this.hideExportProgress();
         if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
             this.lastFocusedElement.focus();
