@@ -4699,6 +4699,22 @@ body.agent-chat-open .main-content {
     height: 34px;
   }
 
+  .agent-avatar::before {
+    content: 'AI';
+    width: auto;
+    height: auto;
+    background: transparent;
+    box-shadow: none;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .agent-avatar::after {
+    inset: 3px;
+  }
+
   .agent-chat-modal {
     padding: 6px;
   }

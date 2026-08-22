@@ -124,6 +124,13 @@ function loadAgentUI() {
 }
 
 describe('Notes AgentUI dialog accessibility', () => {
+    test('keeps the compact mobile launcher visibly identifiable as AI', () => {
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
+
+        expect(styles).toMatch(/@media \(max-width: 430px\)[\s\S]*\.agent-widget-btn\s*{[^}]*width: 48px;/);
+        expect(styles).toMatch(/@media \(max-width: 430px\)[\s\S]*\.agent-avatar::before\s*{[^}]*content: 'AI';/);
+    });
+
     test('opens as a controlled dialog, closes on Escape, and restores focus', () => {
         const { dom, AgentUI, timers } = loadAgentUI();
         const widgetBtn = dom.window.document.getElementById('agent-widget-btn');
