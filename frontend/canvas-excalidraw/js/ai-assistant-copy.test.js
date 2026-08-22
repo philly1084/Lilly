@@ -91,6 +91,36 @@ function createAssistant(AIAssistant) {
 }
 
 describe('canvas AI assistant copy handoffs', () => {
+    test('keeps the Canvas AI trigger and panel visibility state synchronized', () => {
+        const trigger = { setAttribute: jest.fn() };
+        const panel = {
+            classList: {
+                contains: jest.fn(() => false),
+                remove: jest.fn(),
+            },
+            setAttribute: jest.fn(),
+        };
+        const document = createDocumentStub();
+        document.getElementById = jest.fn((id) => id === 'aiAssistantBtn' ? trigger : null);
+        const { AIAssistant } = loadAIAssistant({ document });
+        const assistant = createAssistant(AIAssistant);
+        assistant.panel = panel;
+
+        assistant.syncPanelState();
+
+        expect(trigger.setAttribute).toHaveBeenCalledWith('aria-expanded', 'false');
+        expect(panel.setAttribute).toHaveBeenCalledWith('aria-hidden', 'true');
+
+        panel.classList.contains.mockReturnValue(true);
+        assistant.syncPanelState();
+
+        expect(trigger.setAttribute).toHaveBeenLastCalledWith('aria-expanded', 'true');
+        expect(panel.setAttribute).toHaveBeenLastCalledWith('aria-hidden', 'false');
+
+        assistant.hidePanel();
+        expect(panel.classList.remove).toHaveBeenCalledWith('active');
+    });
+
     test('falls back to textarea copy when navigator clipboard rejects', async () => {
         const execCommand = jest.fn(() => true);
         const document = createDocumentStub(execCommand);

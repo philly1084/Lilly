@@ -114,6 +114,8 @@ class AIAssistant {
         document.getElementById('closeAiPanel')?.addEventListener('click', () => {
             this.hidePanel();
         });
+
+        this.syncPanelState();
         
         // Generate button
         this.generateBtn?.addEventListener('click', () => {
@@ -3234,6 +3236,7 @@ class AIAssistant {
             document.getElementById('propertiesPanel')?.classList.remove('active');
         }
         this.panel?.classList.toggle('active');
+        this.syncPanelState();
         if (this.panel?.classList.contains('active')) {
             this.prepareOpenPanelScroll();
         }
@@ -3245,7 +3248,15 @@ class AIAssistant {
         if (!this.panel?.classList.contains('active')) {
             this.panel?.classList.add('active');
         }
+        this.syncPanelState();
         this.prepareOpenPanelScroll();
+    }
+
+    syncPanelState() {
+        const isOpen = Boolean(this.panel?.classList.contains('active'));
+        const trigger = document.getElementById('aiAssistantBtn');
+        trigger?.setAttribute('aria-expanded', String(isOpen));
+        this.panel?.setAttribute('aria-hidden', String(!isOpen));
     }
 
     prepareOpenPanelScroll() {
@@ -3269,6 +3280,7 @@ class AIAssistant {
     
     hidePanel() {
         this.panel?.classList.remove('active');
+        this.syncPanelState();
     }
 
     getEffectiveScope() {

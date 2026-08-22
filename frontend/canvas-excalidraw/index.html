@@ -462,7 +462,7 @@
                     </svg>
                     <span class="key-hint">G</span>
                 </button>
-                <button class="tool-btn ai-btn ai-prominent" id="aiAssistantBtn" data-key="z" title="Canvas Agent (Z)">
+                <button class="tool-btn ai-btn ai-prominent" id="aiAssistantBtn" data-key="z" title="Canvas Agent (Z)" aria-label="Open Canvas AI" aria-controls="aiPanel" aria-expanded="false">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M7.5 2C7.5 2 8.5 5.5 12 5.5C15.5 5.5 16.5 2 16.5 2C16.5 2 15 9.5 12 9.5C9 9.5 7.5 2 7.5 2ZM2 12.5C2 12.5 5.5 11.5 5.5 15C5.5 18.5 2 19.5 2 19.5C2 19.5 9.5 18 9.5 15C9.5 12 2 12.5 2 12.5ZM22 12.5C22 12.5 14.5 12 14.5 15C14.5 18 22 19.5 22 19.5C22 19.5 18.5 18.5 18.5 15C18.5 11.5 22 12.5 22 12.5ZM7.5 22C7.5 22 9 15.5 12 15.5C15 15.5 16.5 22 16.5 22C16.5 22 15.5 18.5 12 18.5C8.5 18.5 7.5 22 7.5 22Z"/>
                     </svg>
@@ -1652,9 +1652,9 @@
     </div>
 
     <!-- AI Assistant Panel -->
-    <div class="ai-panel" id="aiPanel">
+    <div class="ai-panel" id="aiPanel" role="region" aria-labelledby="aiPanelTitle" aria-hidden="true">
         <div class="ai-panel-header">
-            <h3>
+            <h3 id="aiPanelTitle">
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">
                     <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
@@ -2225,7 +2225,7 @@
     <script defer src="js/layers.js?v=20260712a"></script>
     <script defer src="js/templates.js"></script>
     <script defer src="js/stickers.js"></script>
-    <script defer src="js/ai-assistant.js?v=20260614q"></script>
+    <script defer src="js/ai-assistant.js?v=20260822a"></script>
     <script defer src="js/import-export.js"></script>
     <script defer src="js/app.js?v=20260718a"></script>
 </body>
