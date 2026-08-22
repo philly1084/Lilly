@@ -3597,7 +3597,10 @@ body {
         left: 0;
         width: 100%;
         height: 100%;
+        padding: 0;
+        border: 0;
         background: rgba(0, 0, 0, 0.5);
+        cursor: pointer;
         z-index: 500;
         opacity: 0;
         pointer-events: none;

@@ -276,7 +276,9 @@ const Sidebar = (function() {
         
         mobileToggle = document.createElement('button');
         mobileToggle.className = 'mobile-menu-toggle';
-        mobileToggle.setAttribute('aria-label', 'Toggle menu');
+        mobileToggle.type = 'button';
+        mobileToggle.setAttribute('aria-label', 'Open sidebar');
+        mobileToggle.setAttribute('title', 'Open sidebar');
         mobileToggle.setAttribute('aria-controls', 'sidebar');
         mobileToggle.setAttribute('aria-expanded', 'false');
         mobileToggle.innerHTML = `
@@ -326,9 +328,9 @@ const Sidebar = (function() {
         let backdrop = document.querySelector('.sidebar-backdrop');
         if (isOpen) {
             if (!backdrop) {
-                backdrop = document.createElement('div');
+                backdrop = document.createElement('button');
                 backdrop.className = 'sidebar-backdrop';
-                backdrop.setAttribute('role', 'button');
+                backdrop.type = 'button';
                 backdrop.setAttribute('aria-label', 'Close sidebar');
                 backdrop.addEventListener('click', () => {
                     sidebarEl.classList.remove('open');
@@ -1079,6 +1081,8 @@ const Sidebar = (function() {
         const toggle = mobileToggleEl || document.querySelector('.mobile-menu-toggle');
         if (toggle) {
             toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            toggle.setAttribute('aria-label', isOpen ? 'Close sidebar' : 'Open sidebar');
+            toggle.setAttribute('title', isOpen ? 'Close sidebar' : 'Open sidebar');
             toggle.classList.toggle('is-open', isOpen);
         }
         document.body.classList.toggle('notes-sidebar-open', isOpen);

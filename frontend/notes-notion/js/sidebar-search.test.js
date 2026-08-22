@@ -91,6 +91,26 @@ describe('Notes collapsed sidebar handle accessibility', () => {
     });
 });
 
+describe('Notes mobile sidebar accessibility', () => {
+    test('names the mobile trigger from its current state', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain("mobileToggle.setAttribute('aria-label', 'Open sidebar')");
+        expect(source).toContain("toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false')");
+        expect(source).toContain("toggle.setAttribute('aria-label', isOpen ? 'Close sidebar' : 'Open sidebar')");
+        expect(source).toContain("toggle.setAttribute('title', isOpen ? 'Close sidebar' : 'Open sidebar')");
+    });
+
+    test('uses a native button for the mobile dismiss backdrop', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain("backdrop = document.createElement('button')");
+        expect(source).toContain("backdrop.type = 'button'");
+        expect(source).toContain("backdrop.setAttribute('aria-label', 'Close sidebar')");
+        expect(source).not.toContain("backdrop.setAttribute('role', 'button')");
+    });
+});
+
 describe('Notes export menu accessibility', () => {
     test('wires the export dropdown as an announced keyboard menu', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
