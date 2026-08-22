@@ -8160,7 +8160,7 @@ class Dashboard {
                         <input type="checkbox" class="pii-detector-enabled" data-detector="${this.escapeHtml(detector.id)}" ${checked ? 'checked' : ''}>
                         <span>${this.escapeHtml(detector.label)}</span>
                     </label>
-                    <select class="form-control pii-detector-action" data-detector="${this.escapeHtml(detector.id)}">
+                    <select class="form-control pii-detector-action" data-detector="${this.escapeHtml(detector.id)}" aria-label="${this.escapeHtml(`${detector.label} action`)}">
                         <option value="vault-placeholder" ${action === 'vault-placeholder' ? 'selected' : ''}>Vault</option>
                         <option value="mask" ${action === 'mask' ? 'selected' : ''}>Mask only</option>
                         <option value="remove" ${action === 'remove' ? 'selected' : ''}>Remove</option>

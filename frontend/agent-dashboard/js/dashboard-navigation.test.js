@@ -80,6 +80,24 @@ function createSettingsHarness() {
     return { dashboard };
 }
 
+function createPrivacyDetectorHarness() {
+    const dom = new JSDOM('<div id="piiDetectorGrid"></div>', {
+        url: 'http://localhost:3000/admin/?view=settings',
+    });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    dashboard.piiDetectorDefinitions = [
+        { id: 'email', label: 'Email' },
+        { id: 'creditCard', label: 'Credit card' },
+    ];
+
+    return { dom, dashboard };
+}
+
 function createThemeHarness({ prefersLight = false, storedTheme = '' } = {}) {
     const dom = new JSDOM(`
         <body data-ui-surface="admin">
@@ -1071,6 +1089,24 @@ describe('agent dashboard navigation accessibility', () => {
 
             expect(labelElement?.textContent.trim()).toBe(label);
         });
+    });
+
+    test('labels Privacy and PII detector action dropdowns by detector', () => {
+        const { dom, dashboard } = createPrivacyDetectorHarness();
+
+        dashboard.renderPrivacyDetectorGrid({
+            detectors: ['email'],
+            detectorActions: { email: 'mask' },
+        });
+
+        const selects = Array.from(dom.window.document.querySelectorAll('.pii-detector-action'));
+        expect(selects).toHaveLength(2);
+        expect(selects.map((select) => select.getAttribute('aria-label'))).toEqual([
+            'Email action',
+            'Credit card action',
+        ]);
+        expect(selects[0].value).toBe('mask');
+        expect(selects[1].value).toBe('vault-placeholder');
     });
 
     test('ships admin modals as labelled dialogs with safe button types', () => {
