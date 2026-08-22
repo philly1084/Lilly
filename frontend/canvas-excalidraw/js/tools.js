@@ -66,6 +66,11 @@ class ToolManager {
     init() {
         // Tool button clicks
         document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+            const title = String(btn.getAttribute('title') || '').trim();
+            if (title && !btn.hasAttribute('aria-label')) {
+                btn.setAttribute('aria-label', title);
+            }
+
             btn.addEventListener('click', () => {
                 this.setTool(btn.dataset.tool);
             });

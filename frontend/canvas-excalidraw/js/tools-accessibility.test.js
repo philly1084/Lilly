@@ -33,9 +33,9 @@ function createToolsDom() {
         <div id="selectionBox"></div>
         <div id="textEditor"></div>
         <div id="aiImageTooltip"></div>
-        <button class="tool-btn active" data-tool="selection" data-key="v">Select</button>
-        <button class="tool-btn" data-tool="rectangle" data-key="r">Rectangle</button>
-        <button class="tool-btn" data-tool="freedraw" data-key="p">Pencil</button>
+        <button class="tool-btn active" data-tool="selection" data-key="v" title="Selection (V or 1)">V</button>
+        <button class="tool-btn" data-tool="rectangle" data-key="r" title="Rectangle (R or 2)">R</button>
+        <button class="tool-btn" data-tool="freedraw" data-key="p" title="Pencil (P or 7)" aria-label="Custom pencil label">P</button>
     `, { url: 'http://localhost:3000/canvas/' });
 }
 
@@ -57,6 +57,20 @@ describe('canvas tool button accessibility', () => {
             ['selection', 'true', true],
             ['rectangle', 'false', false],
             ['freedraw', 'false', false],
+        ]);
+    });
+
+    test('names shortcut-only tools from their tooltip without replacing explicit labels', () => {
+        const dom = createToolsDom();
+        const ToolManager = loadToolManager(dom);
+        new ToolManager();
+        const labels = Array.from(dom.window.document.querySelectorAll('.tool-btn'))
+            .map((button) => button.getAttribute('aria-label'));
+
+        expect(labels).toEqual([
+            'Selection (V or 1)',
+            'Rectangle (R or 2)',
+            'Custom pencil label',
         ]);
     });
 
