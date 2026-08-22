@@ -2009,10 +2009,10 @@
                     <span id="statusDot" class="status-dot connecting" aria-hidden="true"></span>
                     <span id="statusText">Connecting...</span>
                 </div>
-                <span id="headerModelDisplay" class="header-model" title="Current AI model">--</span>
+                <span id="headerModelDisplay" class="header-model" title="Current AI model" aria-hidden="true">--</span>
             </div>
             <div class="toolbar" data-command-toolbar>
-                <select id="modelSelect" class="header-model-select" aria-label="Current AI model" title="Current AI model">
+                <select id="modelSelect" class="header-model-select" aria-label="Choose AI model. Current model: loading" title="Choose AI model">
                     <option>Loading models...</option>
                 </select>
                 <button class="btn btn-sm btn-primary" data-short="New" onclick="app.startNewSession('', { clear: true })" title="Start a new isolated chat session" aria-label="Start new isolated chat session">
@@ -2224,6 +2224,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260719a"></script>
+    <script defer src="js/app.js?v=20260822a"></script>
 </body>
 </html>

@@ -9616,6 +9616,9 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
                 this.modelSelect.insertBefore(tempOption, this.modelSelect.firstChild);
                 this.modelSelect.value = model;
             }
+
+            this.modelSelect.setAttribute('aria-label', `Choose AI model. Current model: ${model}`);
+            this.modelSelect.title = `Choose AI model. Current model: ${model}`;
         }
         
         // Update header model display

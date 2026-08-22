@@ -538,8 +538,9 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(statusIndicator.getAttribute('aria-atomic')).toBe('true');
         expect(statusIndicator.textContent).toContain('Connection status:');
         expect(statusDot.getAttribute('aria-hidden')).toBe('true');
-        expect(modelSelect.getAttribute('aria-label')).toBe('Current AI model');
+        expect(modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: loading');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
+        expect(dom.window.document.getElementById('headerModelDisplay').getAttribute('aria-hidden')).toBe('true');
         expect(indexMarkup).toMatch(/\.header-model-select option\s*{[^}]*color:\s*var\(--text-primary\);[^}]*background-color:\s*var\(--bg-secondary\);/s);
         expect(commandInput.getAttribute('aria-label')).toBe('Web CLI command input');
         expect(commandInput.getAttribute('aria-describedby')).toBe('commandAssist');
@@ -554,7 +555,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260719a');
+        expect(indexMarkup).toContain('js/app.js?v=20260822a');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -997,6 +998,30 @@ describe('web-cli theme control state', () => {
         expect(app.themeButton.querySelector('span').textContent).toBe('Light');
         expect(app.themeButton.getAttribute('title')).toBe('Theme: Light');
         expect(app.themeButton.getAttribute('aria-label')).toBe('Cycle theme. Current theme: Light');
+    });
+});
+
+describe('web-cli model control state', () => {
+    test('announces the chooser action and current model without duplicating the visual readout', () => {
+        const dom = new JSDOM(`
+            <select id="modelSelect"><option value="auto">auto</option></select>
+            <span id="headerModelDisplay" aria-hidden="true">--</span>
+        `);
+        const api = { currentModel: 'gpt-5.6' };
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({
+            api,
+            document: dom.window.document,
+        });
+        const app = Object.create(CodeCLIApp.prototype);
+        app.modelSelect = dom.window.document.getElementById('modelSelect');
+
+        app.updateModelInfo();
+
+        expect(app.modelSelect.value).toBe('gpt-5.6');
+        expect(app.modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: gpt-5.6');
+        expect(app.modelSelect.title).toBe('Choose AI model. Current model: gpt-5.6');
+        expect(dom.window.document.getElementById('headerModelDisplay').textContent).toBe('gpt-5.6');
+        expect(dom.window.document.getElementById('headerModelDisplay').getAttribute('aria-hidden')).toBe('true');
     });
 });
 
