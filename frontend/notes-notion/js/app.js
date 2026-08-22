@@ -631,11 +631,14 @@
         
         commandPaletteOpen = true;
         commandPaletteSelectedIndex = 0;
+        palette.classList.remove('is-hidden');
+        palette.classList.add('is-open');
         palette.style.display = 'flex';
         
         const input = document.getElementById('command-palette-input');
         if (input) {
             input.value = '';
+            input.setAttribute('aria-expanded', 'true');
             input.focus();
         }
         
@@ -645,7 +648,14 @@
     function closeCommandPalette() {
         const palette = document.getElementById('command-palette');
         if (palette) {
+            palette.classList.remove('is-open');
+            palette.classList.add('is-hidden');
             palette.style.display = 'none';
+        }
+        const input = document.getElementById('command-palette-input');
+        if (input) {
+            input.setAttribute('aria-expanded', 'false');
+            input.removeAttribute('aria-activedescendant');
         }
         commandPaletteOpen = false;
     }
@@ -662,11 +672,12 @@
         
         if (filtered.length === 0) {
             resultsContainer.innerHTML = '<div class="command-palette-section"><div class="command-palette-section-title">No results</div></div>';
+            document.getElementById('command-palette-input')?.removeAttribute('aria-activedescendant');
             return;
         }
         
         const html = filtered.map((cmd, index) => `
-            <div class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-index="${index}">
+            <div id="command-palette-option-${index}" class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-index="${index}" role="option" aria-selected="${index === commandPaletteSelectedIndex}">
                 <div class="command-palette-item-icon">${cmd.icon}</div>
                 <div class="command-palette-item-info">
                     <div class="command-palette-item-name">${cmd.name}</div>
@@ -676,6 +687,7 @@
         `).join('');
         
         resultsContainer.innerHTML = `<div class="command-palette-section">${html}</div>`;
+        renderCommandPaletteSelection();
         
         // Add click handlers
         resultsContainer.querySelectorAll('.command-palette-item').forEach(item => {
@@ -693,8 +705,17 @@
     function renderCommandPaletteSelection() {
         const items = document.querySelectorAll('.command-palette-item');
         items.forEach((item, index) => {
-            item.classList.toggle('selected', index === commandPaletteSelectedIndex);
+            const isSelected = index === commandPaletteSelectedIndex;
+            item.classList.toggle('selected', isSelected);
+            item.setAttribute('aria-selected', String(isSelected));
         });
+        const input = document.getElementById('command-palette-input');
+        const activeItem = items[commandPaletteSelectedIndex];
+        if (activeItem) {
+            input?.setAttribute('aria-activedescendant', activeItem.id);
+        } else {
+            input?.removeAttribute('aria-activedescendant');
+        }
     }
     
     function executeCommand(index) {

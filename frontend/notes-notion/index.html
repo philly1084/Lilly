@@ -649,7 +649,7 @@
 
 
     <!-- Command Palette (Lilly-style) -->
-    <div id="command-palette" class="command-palette" style="display: none;">
+    <div id="command-palette" class="command-palette is-hidden" style="display: none;" role="dialog" aria-modal="true" aria-label="Command palette">
         <div class="command-palette-overlay" onclick="closeCommandPalette()"></div>
         <div class="command-palette-content">
             <div class="command-palette-input-wrapper">
@@ -663,9 +663,14 @@
                     class="command-palette-input" 
                     placeholder="Type a command or search..."
                     autocomplete="off"
+                    role="combobox"
+                    aria-label="Search commands"
+                    aria-controls="command-palette-results"
+                    aria-expanded="false"
+                    aria-autocomplete="list"
                 >
             </div>
-            <div id="command-palette-results" class="command-palette-results">
+            <div id="command-palette-results" class="command-palette-results" role="listbox" aria-label="Commands">
                 <!-- Results will be populated here -->
             </div>
             <div class="command-palette-footer">
@@ -731,7 +736,7 @@
     <script defer src="js/agent.js?v=20260718a"></script>
     <script defer src="js/agent-ui.js"></script>
     <script defer src="js/tts.js?v=20260524c"></script>
-    <script defer src="js/app.js"></script>
+    <script defer src="js/app.js?v=20260822-command-palette"></script>
 
     <!-- Agent Chat Modal -->
     <div id="agent-chat-modal" class="agent-chat-modal" role="dialog" aria-modal="true" aria-labelledby="agent-chat-model-name" aria-hidden="true" style="display: none;">
