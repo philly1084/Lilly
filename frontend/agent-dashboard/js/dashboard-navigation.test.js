@@ -1047,6 +1047,26 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('names podcast audio controls for their track', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const tracks = [
+            ['intro', 'intro'],
+            ['outro', 'outro'],
+            ['musicBed', 'music bed'],
+        ];
+
+        tracks.forEach(([track, label]) => {
+            const input = dom.window.document.querySelector(`.podcast-audio-input[data-track="${track}"]`);
+            const upload = dom.window.document.querySelector(`.podcast-audio-upload[data-track="${track}"]`);
+            const remove = dom.window.document.querySelector(`.podcast-audio-remove[data-track="${track}"]`);
+
+            expect(input.getAttribute('aria-label')).toBe(`Choose ${label} audio file`);
+            expect(upload.getAttribute('aria-label')).toBe(`Upload ${label} audio`);
+            expect(remove.getAttribute('aria-label')).toBe(`Remove ${label} audio`);
+        });
+    });
+
     test('labels settings password reveal controls with field state', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
