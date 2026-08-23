@@ -523,6 +523,7 @@ describe('web-cli sandbox command routing', () => {
 describe('web-cli command drawer keyboard navigation', () => {
     test('matches menu semantics in the rendered toolbar markup', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const enterpriseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'enterprise.css'), 'utf8');
         const dom = new JSDOM(indexMarkup);
         const modelSelect = dom.window.document.getElementById('modelSelect');
         const commandInput = dom.window.document.getElementById('commandInput');
@@ -544,6 +545,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(terminalOutput.getAttribute('aria-label')).toBe('CLI transcript');
         expect(terminalOutput.tabIndex).toBe(0);
         expect(indexMarkup).toMatch(/\.terminal-output:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);/s);
+        expect(indexMarkup).toContain('css/enterprise.css?v=20260823a');
+        expect(enterpriseStyles).toMatch(/\.command-center-actions button:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);[^}]*outline-offset:\s*2px;/s);
         expect(modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: loading');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
         expect(dom.window.document.getElementById('headerModelDisplay').getAttribute('aria-hidden')).toBe('true');
