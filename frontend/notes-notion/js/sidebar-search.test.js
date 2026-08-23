@@ -287,6 +287,16 @@ describe('Notes block action menu accessibility', () => {
     });
 });
 
+describe('Notes page title accessibility', () => {
+    test('gives the editable title a stable purpose-based name', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(html).toContain('id="page-title"');
+        expect(html).toContain('placeholder="Untitled"');
+        expect(html).toContain('aria-label="Page title"');
+    });
+});
+
 describe('Notes theme toggle accessibility', () => {
     test('announces the target theme action while exposing pressed state', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
