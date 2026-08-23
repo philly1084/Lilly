@@ -10012,6 +10012,7 @@ class UIHelpers {
         if (sidebarButton) {
             sidebarButton.setAttribute('title', buttonTitle);
             sidebarButton.setAttribute('aria-label', buttonTitle);
+            sidebarButton.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');
             sidebarButton.classList.toggle('is-active', isMinimal);
         }
 

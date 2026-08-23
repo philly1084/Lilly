@@ -443,6 +443,16 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.setThemeGalleryTriggerExpanded(false);');
     });
 
+    test('both focus mode controls expose their synchronized toggle state', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('id="minimalist-toggle-sidebar" class="btn-secondary w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-medium transition-all" aria-label="Enter minimalist mode" title="Toggle minimalist mode" aria-pressed="false"');
+        expect(html).toContain('id="minimalist-toggle-btn" class="btn-icon minimalist-toggle-btn px-3 rounded-lg" title="Enter minimalist mode" aria-label="Enter minimalist mode" aria-pressed="false"');
+        expect(uiSource).toContain("sidebarButton.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');");
+        expect(uiSource).toContain("button.setAttribute('aria-pressed', isMinimal ? 'true' : 'false');");
+    });
+
     test('content studio exposes a plan-first podcast launch kit workflow', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
