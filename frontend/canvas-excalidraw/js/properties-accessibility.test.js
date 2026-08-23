@@ -108,6 +108,27 @@ describe('canvas custom color input accessibility', () => {
     });
 });
 
+describe('canvas color preset accessibility', () => {
+    test('keeps each preset pressed state synchronized with the active color pair', () => {
+        const dom = new JSDOM(`
+            <button class="color-preset-btn active" data-stroke="#1f2937" data-fill="#f8fafc">Paper</button>
+            <button class="color-preset-btn" data-stroke="#075985" data-fill="#e0f2fe">Flow</button>
+        `);
+        dom.window.toolManager = { defaultProperties: {} };
+        const PropertiesManager = loadPropertiesManager(dom);
+        const manager = new PropertiesManager();
+        const paper = dom.window.document.querySelector('[data-stroke="#1f2937"]');
+        const flow = dom.window.document.querySelector('[data-stroke="#075985"]');
+
+        manager.markColorPresetActive('#075985', '#e0f2fe');
+
+        expect(paper.classList.contains('active')).toBe(false);
+        expect(paper.getAttribute('aria-pressed')).toBe('false');
+        expect(flow.classList.contains('active')).toBe(true);
+        expect(flow.getAttribute('aria-pressed')).toBe('true');
+    });
+});
+
 describe('canvas advanced color disclosure accessibility', () => {
     test('names each disclosure with its visible section context and controlled panel', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');

@@ -885,9 +885,10 @@ class PropertiesManager {
         const stroke = String(strokeColor || '#000000').toLowerCase();
         const fill = String(fillColor || 'transparent').toLowerCase();
         document.querySelectorAll('.color-preset-btn').forEach((btn) => {
-            btn.classList.toggle('active',
-                String(btn.dataset.stroke || '').toLowerCase() === stroke
-                && String(btn.dataset.fill || '').toLowerCase() === fill);
+            const active = String(btn.dataset.stroke || '').toLowerCase() === stroke
+                && String(btn.dataset.fill || '').toLowerCase() === fill;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', String(active));
         });
     }
     
