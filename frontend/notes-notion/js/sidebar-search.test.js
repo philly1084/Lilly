@@ -154,7 +154,7 @@ describe('Notes template chooser accessibility', () => {
         expect(source).toContain("modal.querySelector('.template-card')?.focus({ preventScroll: true })");
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
+        expect(html).toContain('css/styles.css?v=20260823a');
         expect(html).toContain('js/sidebar.js?v=20260716-trash-dialog');
     });
 });
@@ -232,7 +232,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons"');
         expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
         expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
-        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
+        expect(html).toContain('css/styles.css?v=20260823a');
         expect(html).toContain('js/sidebar.js?v=20260716-trash-dialog');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
@@ -359,13 +359,24 @@ describe('Notes cover picker selection state', () => {
     });
 });
 
+describe('Notes cover action keyboard visibility', () => {
+    test('reveals hover-only cover actions when keyboard focus enters their region', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
+
+        expect(html).toContain('css/styles.css?v=20260823a');
+        expect(styles).toMatch(/\.cover-area:focus-within \.cover-change-btn,\s*\.cover-area:focus-within \.cover-remove-btn\s*{\s*opacity:\s*1;/s);
+        expect(styles).toMatch(/\.page-header:hover \.add-cover-btn,\s*\.page-header:focus-within \.add-cover-btn\s*{\s*opacity:\s*1;/s);
+    });
+});
+
 describe('Notes mobile content containment', () => {
     test('keeps wide blocks inside the editor while preserving local horizontal scrolling', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
         const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260716-icon-toolbar');
+        expect(html).toContain('css/styles.css?v=20260823a');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
         expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
         expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);

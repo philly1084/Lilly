@@ -596,7 +596,9 @@ body {
 }
 
 .cover-area:hover .cover-change-btn,
-.cover-area:hover .cover-remove-btn {
+.cover-area:hover .cover-remove-btn,
+.cover-area:focus-within .cover-change-btn,
+.cover-area:focus-within .cover-remove-btn {
     opacity: 1;
 }
 
@@ -726,7 +728,8 @@ body {
     transition: opacity 0.15s, background 0.15s;
 }
 
-.page-header:hover .add-cover-btn {
+.page-header:hover .add-cover-btn,
+.page-header:focus-within .add-cover-btn {
     opacity: 1;
 }
 
