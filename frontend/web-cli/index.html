@@ -347,6 +347,11 @@
             scrollbar-width: thin;
         }
 
+        .terminal-output:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
+
         /* ===== Terminal Lines ===== */
         .line {
             margin: 2px 0;
@@ -2056,7 +2061,7 @@
         <div class="main-content">
             <!-- Terminal Output -->
             <div class="terminal-container">
-                <div id="terminalOutput" class="terminal-output"></div>
+                <div id="terminalOutput" class="terminal-output" role="region" aria-label="CLI transcript" tabindex="0"></div>
                 
                 <!-- Input Area -->
                 <div class="input-container">
