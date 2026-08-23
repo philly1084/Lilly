@@ -1133,6 +1133,25 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('associates notification toggles with their visible names and descriptions', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const controls = [
+            ['notifyEmail', 'Email Notifications', 'Receive email alerts for system events'],
+            ['notifyErrors', 'Error Alerts', 'Get notified when errors occur'],
+            ['notifyDaily', 'Daily Summary', 'Receive daily usage summary'],
+        ];
+
+        controls.forEach(([controlId, label, description]) => {
+            const control = dom.window.document.getElementById(controlId);
+            const labelElement = dom.window.document.getElementById(control.getAttribute('aria-labelledby'));
+            const descriptionElement = dom.window.document.getElementById(control.getAttribute('aria-describedby'));
+
+            expect(labelElement?.textContent.trim()).toBe(label);
+            expect(descriptionElement?.textContent.trim()).toBe(description);
+        });
+    });
+
     test('labels Privacy and PII detector action dropdowns by detector', () => {
         const { dom, dashboard } = createPrivacyDetectorHarness();
 
