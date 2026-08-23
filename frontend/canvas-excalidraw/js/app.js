@@ -1303,7 +1303,9 @@ class App {
             if (!button) return;
             this.objectLibraryFilter = button.dataset.objectFilter || 'all';
             document.querySelectorAll('[data-object-filter]').forEach((chip) => {
-                chip.classList.toggle('active', chip === button);
+                const isActive = chip === button;
+                chip.classList.toggle('active', isActive);
+                chip.setAttribute('aria-pressed', String(isActive));
             });
             this.renderObjectLibrary();
         });

@@ -1363,11 +1363,11 @@
                     </svg>
                     <input id="objectLibrarySearch" type="search" placeholder="Find objects" autocomplete="off" aria-label="Find board objects">
                 </label>
-                <div class="object-filter-chips" id="objectFilterChips" aria-label="Filter objects">
-                    <button type="button" class="active" data-object-filter="all">All</button>
-                    <button type="button" data-object-filter="drawing">Draw</button>
-                    <button type="button" data-object-filter="production">Media</button>
-                    <button type="button" data-object-filter="diagram">Diagram</button>
+                <div class="object-filter-chips" id="objectFilterChips" role="group" aria-label="Filter board objects">
+                    <button type="button" class="active" data-object-filter="all" aria-pressed="true">All</button>
+                    <button type="button" data-object-filter="drawing" aria-pressed="false">Draw</button>
+                    <button type="button" data-object-filter="production" aria-pressed="false">Media</button>
+                    <button type="button" data-object-filter="diagram" aria-pressed="false">Diagram</button>
                 </div>
             </div>
             <div class="object-library-list" id="objectLibraryList">
@@ -2227,6 +2227,6 @@
     <script defer src="js/stickers.js"></script>
     <script defer src="js/ai-assistant.js?v=20260822a"></script>
     <script defer src="js/import-export.js"></script>
-    <script defer src="js/app.js?v=20260718a"></script>
+    <script defer src="js/app.js?v=20260823a"></script>
 </body>
 </html>

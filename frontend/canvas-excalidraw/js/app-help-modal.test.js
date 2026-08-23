@@ -274,6 +274,11 @@ function createPanelTabsHarness() {
         <div id="canvasPanelObjects" role="tabpanel" aria-labelledby="canvasPanelTabObjects" data-canvas-panel="objects" hidden></div>
         <div id="canvasPanelCreative" role="tabpanel" aria-labelledby="canvasPanelTabCreative" data-canvas-panel="creative" hidden></div>
         <div id="canvasPanelLibrary" role="tabpanel" aria-labelledby="canvasPanelTabLibrary" data-canvas-panel="library" hidden></div>
+        <div id="objectFilterChips" role="group" aria-label="Filter board objects">
+            <button type="button" class="active" data-object-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-object-filter="drawing" aria-pressed="false">Draw</button>
+            <button type="button" data-object-filter="production" aria-pressed="false">Media</button>
+        </div>
     `, { url: 'http://localhost:3000/canvas/' });
     const App = loadAppClass(dom);
     const app = Object.create(App.prototype);
@@ -1054,6 +1059,26 @@ describe('canvas side panel tabs accessibility', () => {
         });
 
         expect(dom.window.document.getElementById('objectLibrarySearch').getAttribute('aria-label')).toBe('Find board objects');
+
+        const objectFilters = dom.window.document.getElementById('objectFilterChips');
+        expect(objectFilters.getAttribute('role')).toBe('group');
+        expect(objectFilters.getAttribute('aria-label')).toBe('Filter board objects');
+        expect(Array.from(objectFilters.querySelectorAll('button')).map((button) => button.getAttribute('aria-pressed')))
+            .toEqual(['true', 'false', 'false', 'false']);
+    });
+
+    test('exposes the active board object filter', () => {
+        const { dom, app } = createPanelTabsHarness();
+        const filters = Array.from(document.querySelectorAll('[data-object-filter]'));
+
+        app.setupCanvasSideRail();
+        app.renderObjectLibrary.mockClear();
+        filters[1].click();
+
+        expect(app.objectLibraryFilter).toBe('drawing');
+        expect(filters.map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+        expect(filters.map((button) => button.classList.contains('active'))).toEqual([false, true, false]);
+        expect(app.renderObjectLibrary).toHaveBeenCalledTimes(1);
     });
 
     test('supports arrow and edge-key tab navigation with roving focus', () => {
