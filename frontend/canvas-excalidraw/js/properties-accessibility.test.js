@@ -129,9 +129,9 @@ describe('canvas advanced color disclosure accessibility', () => {
 });
 
 describe('canvas grid snapping accessibility', () => {
-    test('keeps the toggle pressed state synchronized with grid snapping', () => {
+    test('keeps the toggle state and next action synchronized with grid snapping', () => {
         const dom = new JSDOM(`
-            <button id="snapToGridBtn" class="action-btn" type="button" aria-pressed="false">
+            <button id="snapToGridBtn" class="action-btn" type="button" title="Enable grid snapping" aria-label="Enable grid snapping" aria-pressed="false">
                 Snap to Grid
             </button>
         `);
@@ -150,9 +150,13 @@ describe('canvas grid snapping accessibility', () => {
         button.click();
         expect(button.classList.contains('active')).toBe(true);
         expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(button.getAttribute('aria-label')).toBe('Disable grid snapping');
+        expect(button.title).toBe('Disable grid snapping');
 
         button.click();
         expect(button.classList.contains('active')).toBe(false);
         expect(button.getAttribute('aria-pressed')).toBe('false');
+        expect(button.getAttribute('aria-label')).toBe('Enable grid snapping');
+        expect(button.title).toBe('Enable grid snapping');
     });
 });

@@ -277,11 +277,7 @@ class PropertiesManager {
         document.getElementById('snapToGridBtn')?.addEventListener('click', () => {
             const canvas = window.infiniteCanvas;
             const enabled = canvas.toggleSnapToGrid();
-            const btn = document.getElementById('snapToGridBtn');
-            if (btn) {
-                btn.classList.toggle('active', enabled);
-                btn.setAttribute('aria-pressed', String(enabled));
-            }
+            this.syncSnapToGridButton(enabled);
         });
         
         // Corner radius slider
@@ -319,6 +315,17 @@ class PropertiesManager {
         
         // Initialize color history UI
         this.updateColorHistoryUI();
+    }
+
+    syncSnapToGridButton(enabled) {
+        const button = document.getElementById('snapToGridBtn');
+        if (!button) return;
+
+        const actionLabel = enabled ? 'Disable grid snapping' : 'Enable grid snapping';
+        button.classList.toggle('active', enabled);
+        button.setAttribute('aria-pressed', String(enabled));
+        button.setAttribute('aria-label', actionLabel);
+        button.title = actionLabel;
     }
     
     // Switch color tab
