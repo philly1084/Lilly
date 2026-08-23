@@ -5257,6 +5257,9 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
         // Update indicator only (side panel removed)
         if (this.queueIndicator) {
             this.queueIndicator.textContent = count;
+            const queueLabel = count === 1 ? '1 command queued' : `${count} commands queued`;
+            this.queueIndicator.setAttribute('aria-label', queueLabel);
+            this.queueIndicator.setAttribute('title', queueLabel);
             this.queueIndicator.classList.toggle('hidden', count === 0);
         }
     }

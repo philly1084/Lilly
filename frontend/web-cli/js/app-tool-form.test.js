@@ -528,6 +528,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         const commandInput = dom.window.document.getElementById('commandInput');
         const commandAssist = dom.window.document.getElementById('commandAssist');
         const cancelRequestButton = dom.window.document.getElementById('cancelRequestButton');
+        const queueIndicator = dom.window.document.getElementById('queueIndicator');
         const statusIndicator = dom.window.document.querySelector('.status-indicator');
         const statusDot = dom.window.document.getElementById('statusDot');
         const drawer = dom.window.document.getElementById('commandDrawer');
@@ -551,6 +552,9 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dom.window.document.getElementById('autocomplete').getAttribute('role')).toBe('listbox');
         expect(commandAssist.getAttribute('role')).toBe('status');
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
+        expect(queueIndicator.getAttribute('role')).toBe('status');
+        expect(queueIndicator.getAttribute('aria-live')).toBe('polite');
+        expect(queueIndicator.getAttribute('aria-atomic')).toBe('true');
         expect(cancelRequestButton.hidden).toBe(true);
         expect(cancelRequestButton.getAttribute('aria-label')).toBe('Stop current AI request');
         const dragOverlay = dom.window.document.getElementById('dragOverlay');
@@ -561,7 +565,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260822b');
+        expect(indexMarkup).toContain('js/app.js?v=20260823a');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -601,6 +605,29 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(app.cancelRequestButton.textContent).toBe('Stopping...');
         expect(app.cancelRequestButton.getAttribute('aria-label')).toBe('Stopping current AI request');
         expect(app.cancelCurrentRequest()).toBe(false);
+    });
+
+    test('announces the command queue count with meaningful singular and plural labels', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<span id="queueIndicator" class="queue-indicator hidden"></span>');
+        app.queueIndicator = dom.window.document.getElementById('queueIndicator');
+        app.commandQueue = ['first'];
+
+        app.updateQueueDisplay();
+
+        expect(app.queueIndicator.textContent).toBe('1');
+        expect(app.queueIndicator.getAttribute('aria-label')).toBe('1 command queued');
+        expect(app.queueIndicator.getAttribute('title')).toBe('1 command queued');
+        expect(app.queueIndicator.classList.contains('hidden')).toBe(false);
+
+        app.commandQueue.push('second');
+        app.updateQueueDisplay();
+        expect(app.queueIndicator.getAttribute('aria-label')).toBe('2 commands queued');
+
+        app.commandQueue = [];
+        app.updateQueueDisplay();
+        expect(app.queueIndicator.getAttribute('aria-label')).toBe('0 commands queued');
+        expect(app.queueIndicator.classList.contains('hidden')).toBe(true);
     });
 
     test('lets users stop long-running image generation without an error banner', async () => {

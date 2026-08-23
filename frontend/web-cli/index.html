@@ -2102,7 +2102,7 @@
                         <span>•</span>
                         <span id="cliStatus" class="cli-status ready">Ready</span>
                         <span id="voxelPetStatus" class="voxel-pet-status">Agent companion available</span>
-                        <span id="queueIndicator" class="queue-indicator hidden" title="Commands queued"></span>
+                        <span id="queueIndicator" class="queue-indicator hidden" role="status" aria-live="polite" aria-atomic="true" title="No commands queued"></span>
                         <span id="commandAssist" class="command-assist is-ready" role="status" aria-live="polite">Type /help for the command menu, or / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
                     </div>
@@ -2224,6 +2224,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260822b"></script>
+    <script defer src="js/app.js?v=20260823a"></script>
 </body>
 </html>
