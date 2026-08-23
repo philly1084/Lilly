@@ -515,7 +515,8 @@ const Editor = (function() {
             button.addEventListener('click', () => {
                 const blockEl = document.querySelector(`.block[data-block-id="${entry.block.id}"]`);
                 if (blockEl) {
-                    blockEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+                    blockEl.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
                 }
                 focusBlock(entry.block.id, 'start');
             });
