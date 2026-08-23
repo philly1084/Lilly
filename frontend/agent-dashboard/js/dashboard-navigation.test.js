@@ -2322,6 +2322,13 @@ describe('agent dashboard navigation accessibility', () => {
     });
 
     test('labels storage cleanup selections and destructive row actions', () => {
+        const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const indexDom = new JSDOM(indexHtml);
+        const storageCaption = indexDom.window.document.querySelector('.storage-table caption');
+
+        expect(storageCaption.classList.contains('sr-only')).toBe(true);
+        expect(storageCaption.textContent.trim()).toBe('Managed storage records');
+
         const dom = new JSDOM(`
             <span id="storageTotalCount"></span>
             <span id="storageTotalBytes"></span>
