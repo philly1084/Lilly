@@ -1571,6 +1571,7 @@ const Sidebar = (function() {
         const triggerElement = event?.currentTarget || document.activeElement;
 
         const modal = document.createElement('div');
+        modal.id = 'trash-modal';
         modal.className = 'ai-modal';
         modal.style.display = 'flex';
         modal.setAttribute('role', 'dialog');
@@ -1599,6 +1600,7 @@ const Sidebar = (function() {
         
         const closeButton = modal.querySelector('.close-modal');
         const closeTrash = () => {
+            triggerElement?.setAttribute?.('aria-expanded', 'false');
             modal.remove();
             if (triggerElement?.isConnected) {
                 triggerElement.focus({ preventScroll: true });
@@ -1648,6 +1650,7 @@ const Sidebar = (function() {
         });
         
         document.body.appendChild(modal);
+        triggerElement?.setAttribute?.('aria-expanded', 'true');
         closeButton.focus({ preventScroll: true });
     }
     

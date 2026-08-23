@@ -155,7 +155,7 @@ describe('Notes template chooser accessibility', () => {
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
         expect(html).toContain('css/styles.css?v=20260823a');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
     });
 });
 
@@ -175,7 +175,7 @@ describe('Notes storage information accessibility', () => {
         expect(source).toContain("if (e.key !== 'Tab') return;");
         expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
     });
 });
 
@@ -185,7 +185,7 @@ describe('Notes settings dialog accessibility', () => {
         const source = readSidebarSource();
 
         expect(html).toContain('id="settings-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal"');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
         expect(source).toMatch(/function openSettings\(event\)[\s\S]*?modal\.id = 'settings-modal';\s*modal\.className = 'ai-modal is-open'/);
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'false')");
@@ -206,9 +206,12 @@ describe('Notes trash dialog accessibility', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const source = readSidebarSource();
 
-        expect(html).toContain('id="trash-btn" class="footer-btn" type="button" aria-haspopup="dialog"');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('id="trash-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="trash-modal"');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
         expect(source).toContain('function showTrash(event)');
+        expect(source).toContain("modal.id = 'trash-modal'");
+        expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
+        expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'false')");
         expect(source).toContain("modal.setAttribute('role', 'dialog')");
         expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
         expect(source).toContain("modal.setAttribute('aria-labelledby', 'trash-modal-title')");
@@ -235,7 +238,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
         expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
         expect(html).toContain('css/styles.css?v=20260823a');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)");
@@ -356,7 +359,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260823-settings-state-v2');
+        expect(html).toContain('js/sidebar.js?v=20260823-trash-state');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });
