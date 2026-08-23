@@ -78,6 +78,8 @@ describe('web-chat index redirect', () => {
         expect(css).toContain('transform: none;');
         expect(artifactsSource).toContain('class="toolbar-btn" type="button" title="Upload file"');
         expect(artifactsSource).toContain('class="toolbar-btn primary" type="button" title="Open files"');
+        expect(artifactsSource).toContain('id="artifact-selected-count" class="selected-count" role="status" aria-live="polite" aria-atomic="true">0 files selected</span>');
+        expect(artifactsSource).toContain("selectedCount === 1 ? 'file' : 'files'");
         expect(artifactsSource).toContain('background: transparent;\n                border: 0;');
     });
 

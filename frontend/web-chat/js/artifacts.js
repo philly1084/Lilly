@@ -1002,7 +1002,8 @@
     function updateSelectedCount() {
         const countEl = document.getElementById('artifact-selected-count');
         if (countEl) {
-            countEl.textContent = `${state.selectedArtifactIds.length} selected`;
+            const selectedCount = state.selectedArtifactIds.length;
+            countEl.textContent = `${selectedCount} ${selectedCount === 1 ? 'file' : 'files'} selected`;
         }
     }
 
@@ -1722,7 +1723,7 @@
                 <span>Files</span>
             </button>
             <span class="toolbar-divider"></span>
-            <span id="artifact-selected-count" class="selected-count">0 selected</span>
+            <span id="artifact-selected-count" class="selected-count" role="status" aria-live="polite" aria-atomic="true">0 files selected</span>
             <input id="artifact-file-input" type="file" hidden multiple>
         `;
         
