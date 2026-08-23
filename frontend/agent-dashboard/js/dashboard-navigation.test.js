@@ -482,6 +482,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('limits request chart labels to the available plot width', () => {
+        const dom = new JSDOM('<canvas id="requestVolumeCanvas"></canvas>');
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+        const labels = Array.from({ length: 24 }, (_, index) => `Hour ${index + 1}`);
+
+        expect(dashboard.getRequestChartLabelCount(labels, 238)).toBe(2);
+        expect(dashboard.getRequestChartLabelCount(labels, 640)).toBe(6);
+        expect(dashboard.getRequestChartLabelCount(['Now'], 238)).toBe(1);
+    });
+
     test('labels tool catalog search and support filters', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);

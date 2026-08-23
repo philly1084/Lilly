@@ -6863,7 +6863,7 @@ class Dashboard {
         context.textAlign = 'center';
         context.textBaseline = 'top';
         context.font = '11px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-        const labelCount = Math.min(6, labels.length);
+        const labelCount = this.getRequestChartLabelCount(labels, plotWidth);
         if (labelCount === 1) {
             context.fillText(String(labels[0] || ''), leftPad + (plotWidth / 2), cssHeight - bottomPad + 8);
             return;
@@ -6874,6 +6874,15 @@ class Dashboard {
             const x = leftPad + ((labels.length > 1 ? labelIndex / (labels.length - 1) : 0.5) * plotWidth);
             context.fillText(String(labels[labelIndex] || ''), x, cssHeight - bottomPad + 8);
         }
+    }
+
+    getRequestChartLabelCount(labels = [], plotWidth = 0) {
+        if (labels.length <= 1) {
+            return labels.length;
+        }
+
+        const maxLabelsForWidth = Math.max(2, Math.floor(plotWidth / 96));
+        return Math.min(6, labels.length, maxLabelsForWidth);
     }
 
     normalizeModel(model = {}) {
