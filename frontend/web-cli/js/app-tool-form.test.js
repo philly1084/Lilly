@@ -570,11 +570,46 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260823a');
+        expect(indexMarkup).toContain('js/app.js?v=20260823b');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
+    });
+
+    test('keeps the welcome card anchored at its beginning after either theme renders', () => {
+        const dom = new JSDOM('<div id="terminalOutput"></div>');
+        const scheduledFrames = [];
+        const scheduledTimers = [];
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({
+            document: dom.window.document,
+            requestAnimationFrame: (callback) => scheduledFrames.push(callback),
+            window: {
+                setTimeout: (callback) => scheduledTimers.push(callback),
+            },
+        });
+        const app = Object.create(CodeCLIApp.prototype);
+        app.terminalOutput = dom.window.document.getElementById('terminalOutput');
+        app.theme = 'command-center';
+        app.printVoxelBoot = jest.fn();
+        app.printCommandCenterBoot = jest.fn(() => {
+            app.terminalOutput.scrollTop = 240;
+        });
+
+        app.printWelcome();
+
+        expect(app.printCommandCenterBoot).toHaveBeenCalledTimes(1);
+        expect(app.terminalOutput.scrollTop).toBe(0);
+        expect(scheduledFrames).toHaveLength(1);
+        expect(scheduledTimers).toHaveLength(1);
+
+        app.terminalOutput.scrollTop = 180;
+        scheduledFrames[0]();
+        expect(app.terminalOutput.scrollTop).toBe(0);
+
+        app.terminalOutput.scrollTop = 120;
+        scheduledTimers[0]();
+        expect(app.terminalOutput.scrollTop).toBe(0);
     });
 
     test('keeps the file drop status hidden except while a drag target is active', () => {

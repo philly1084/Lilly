@@ -7676,14 +7676,12 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             this.printCommandCenterBoot();
         }
         this.terminalOutput.appendChild(document.createElement('div')).style.height = '8px';
-        if (this.theme === 'voxel') {
-            const resetWelcomeScroll = () => {
-                this.terminalOutput.scrollTop = 0;
-            };
-            resetWelcomeScroll();
-            requestAnimationFrame(resetWelcomeScroll);
-            window.setTimeout(resetWelcomeScroll, 80);
-        }
+        const resetWelcomeScroll = () => {
+            this.terminalOutput.scrollTop = 0;
+        };
+        resetWelcomeScroll();
+        requestAnimationFrame(resetWelcomeScroll);
+        window.setTimeout(resetWelcomeScroll, 80);
     }
 
     printVoxelBoot() {
