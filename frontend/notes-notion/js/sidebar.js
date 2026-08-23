@@ -1657,7 +1657,8 @@ const Sidebar = (function() {
     function openSettings(event) {
         const triggerElement = event?.currentTarget || document.activeElement;
         const modal = document.createElement('div');
-        modal.className = 'ai-modal';
+        modal.id = 'settings-modal';
+        modal.className = 'ai-modal is-open';
         modal.style.display = 'flex';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
@@ -1816,6 +1817,7 @@ const Sidebar = (function() {
         
         const closeButton = modal.querySelector('.settings-close');
         const closeSettings = ({ restoreFocus = true } = {}) => {
+            triggerElement?.setAttribute?.('aria-expanded', 'false');
             modal.remove();
             if (restoreFocus && triggerElement?.isConnected) {
                 triggerElement.focus({ preventScroll: true });
@@ -1856,6 +1858,7 @@ const Sidebar = (function() {
             });
         });
         
+        triggerElement?.setAttribute?.('aria-expanded', 'true');
         document.body.appendChild(modal);
         closeButton.focus({ preventScroll: true });
     }
