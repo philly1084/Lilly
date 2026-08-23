@@ -532,6 +532,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         const queueIndicator = dom.window.document.getElementById('queueIndicator');
         const statusIndicator = dom.window.document.querySelector('.status-indicator');
         const statusDot = dom.window.document.getElementById('statusDot');
+        const cliStatus = dom.window.document.getElementById('cliStatus');
         const terminalOutput = dom.window.document.getElementById('terminalOutput');
         const drawer = dom.window.document.getElementById('commandDrawer');
         const items = Array.from(drawer.querySelectorAll('button, a[href]'));
@@ -541,6 +542,9 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(statusIndicator.getAttribute('aria-atomic')).toBe('true');
         expect(statusIndicator.textContent).toContain('Connection status:');
         expect(statusDot.getAttribute('aria-hidden')).toBe('true');
+        expect(cliStatus.getAttribute('role')).toBe('status');
+        expect(cliStatus.getAttribute('aria-live')).toBe('polite');
+        expect(cliStatus.getAttribute('aria-atomic')).toBe('true');
         expect(terminalOutput.getAttribute('role')).toBe('region');
         expect(terminalOutput.getAttribute('aria-label')).toBe('CLI transcript');
         expect(terminalOutput.tabIndex).toBe(0);
