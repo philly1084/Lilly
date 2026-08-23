@@ -9711,12 +9711,12 @@ class UIHelpers {
             const renameValue = this.escapeHtmlAttr(this.pendingSessionRenameTitle || session.title || 'New Chat');
             
             return `
-                <div class="session-item ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}" data-session-id="${session.id}" role="${isEditing ? 'group' : 'button'}" tabindex="${isEditing ? '-1' : '0'}" aria-label="${this.escapeHtmlAttr(session.title || 'New Chat')}" title="${this.escapeHtmlAttr(session.title || 'New Chat')}">
-                    <div class="session-icon ${modeClass}" aria-hidden="true">
-                        <i data-lucide="${modeIcon}" class="w-4 h-4 text-white"></i>
-                    </div>
-                    <div class="session-info sidebar-session-info">
-                        ${isEditing ? `
+                <div class="session-item ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}" data-session-id="${session.id}"${isEditing ? ` role="group" aria-label="Rename ${this.escapeHtmlAttr(session.title || 'New Chat')} conversation"` : ''}>
+                    ${isEditing ? `
+                        <div class="session-icon ${modeClass}" aria-hidden="true">
+                            <i data-lucide="${modeIcon}" class="w-4 h-4 text-white"></i>
+                        </div>
+                        <div class="session-info sidebar-session-info">
                             <form class="session-rename-form" data-session-id="${session.id}">
                                 <input
                                     class="session-rename-input"
@@ -9740,7 +9740,13 @@ class UIHelpers {
                                     </div>
                                 </div>
                             </form>
-                        ` : `
+                        </div>
+                    ` : `
+                        <button class="session-select-btn" type="button" data-session-id="${session.id}" aria-label="Open conversation: ${this.escapeHtmlAttr(session.title || 'New Chat')}"${isActive ? ' aria-current="true"' : ''} title="${this.escapeHtmlAttr(session.title || 'New Chat')}">
+                            <div class="session-icon ${modeClass}" aria-hidden="true">
+                                <i data-lucide="${modeIcon}" class="w-4 h-4 text-white"></i>
+                            </div>
+                            <div class="session-info sidebar-session-info">
                             <div class="session-title-row">
                                 <div class="session-title">${this.escapeHtml(session.title || 'New Chat')}</div>
                                 ${workloadBadge ? `<span class="session-workload-badge">${this.escapeHtml(workloadBadge)}</span>` : ''}
@@ -9751,16 +9757,17 @@ class UIHelpers {
                                 <span>${messageCount} message${messageCount !== 1 ? 's' : ''}</span>
                                 ${scopeLabel ? `<span aria-hidden="true">|</span><span class="session-scope-label">${this.escapeHtml(scopeLabel)}</span>` : ''}
                             </div>
-                        `}
-                    </div>
-                    <div class="session-actions">
-                        <button class="btn-icon p-1.5 rounded rename-session-btn" data-session-id="${session.id}" title="Rename conversation" aria-label="Rename conversation">
-                            <i data-lucide="pencil" class="w-4 h-4" aria-hidden="true"></i>
+                            </div>
                         </button>
-                        <button class="btn-icon danger p-1.5 rounded delete-session-btn" data-session-id="${session.id}" title="Delete conversation" aria-label="Delete conversation">
-                            <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
-                        </button>
-                    </div>
+                        <div class="session-actions">
+                            <button class="btn-icon p-1.5 rounded rename-session-btn" type="button" data-session-id="${session.id}" title="Rename conversation" aria-label="Rename conversation">
+                                <i data-lucide="pencil" class="w-4 h-4" aria-hidden="true"></i>
+                            </button>
+                            <button class="btn-icon danger p-1.5 rounded delete-session-btn" type="button" data-session-id="${session.id}" title="Delete conversation" aria-label="Delete conversation">
+                                <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    `}
                 </div>
             `;
         }).join('');
@@ -9780,34 +9787,16 @@ class UIHelpers {
     }
 
     attachSessionListeners() {
-        // Session item clicks (for switching)
-        this.sessionsList.querySelectorAll('.session-item').forEach(item => {
-            const clickHandler = (e) => {
-                // Don't switch if clicking delete button
-                if (item.classList.contains('editing')
-                    || e.target.closest('.delete-session-btn')
-                    || e.target.closest('.rename-session-btn')
-                    || e.target.closest('.session-rename-form')) {
-                    return;
-                }
-                
-                const sessionId = item.dataset.sessionId;
-                sessionManager.switchSession(sessionId);
-            };
-            
-            item.addEventListener('click', clickHandler);
-            
-            // Keyboard support
-            item.addEventListener('keydown', (e) => {
+        // Native session buttons own switching; row actions remain sibling controls.
+        this.sessionsList.querySelectorAll('.session-select-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                sessionManager.switchSession(button.dataset.sessionId);
+            });
+
+            button.addEventListener('keydown', (e) => {
                 if (e.key === 'F2') {
                     e.preventDefault();
-                    this.startSessionRename(item.dataset.sessionId);
-                    return;
-                }
-
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    clickHandler(e);
+                    this.startSessionRename(button.dataset.sessionId);
                 }
             });
         });
