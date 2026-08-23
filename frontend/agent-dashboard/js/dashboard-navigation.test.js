@@ -459,6 +459,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
     });
 
+    test('identifies the current page in the admin breadcrumb', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const breadcrumbs = dom.window.document.getElementById('breadcrumbs');
+        const current = breadcrumbs.querySelector('.current');
+
+        expect(breadcrumbs.getAttribute('aria-label')).toBe('Breadcrumb');
+        expect(current.getAttribute('aria-current')).toBe('page');
+        expect(current.textContent).toBe('Overview');
+    });
+
     test('labels overview card controls with their data context', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
