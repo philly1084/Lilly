@@ -1051,6 +1051,14 @@ class App {
     setMobilePanelOpen(panel, trigger, isOpen, { restoreFocus = false } = {}) {
         panel?.classList.toggle('active', isOpen);
         trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        const actionLabel = isOpen ? trigger?.dataset.closeLabel : trigger?.dataset.openLabel;
+        const actionTitle = isOpen ? trigger?.dataset.closeTitle : trigger?.dataset.openTitle;
+        if (actionLabel) {
+            trigger.setAttribute('aria-label', actionLabel);
+        }
+        if (actionTitle) {
+            trigger.title = actionTitle;
+        }
         if (!isOpen && restoreFocus) {
             trigger?.focus?.();
         }
@@ -1081,9 +1089,10 @@ class App {
         const mobilePropertiesClose = document.getElementById('mobilePropertiesClose');
         
         mobilePropertiesToggle?.addEventListener('click', () => {
+            const isOpen = propertiesPanel?.classList.contains('active');
             this.setMobilePanelOpen(toolbar, mobileToolbarToggle, false);
             window.aiAssistant?.hidePanel();
-            this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, true);
+            this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, !isOpen);
         });
         
         mobilePropertiesClose?.addEventListener('click', () => {

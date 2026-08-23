@@ -194,7 +194,7 @@ function createMobilePanelHarness() {
             <button class="tool-dock-btn" type="button" data-dock-group="shapes">Shapes</button>
             <div class="tool-category" data-tool-group="shapes"></div>
         </aside>
-        <button id="mobilePropertiesToggle" type="button" aria-controls="propertiesPanel" aria-expanded="false">Properties</button>
+        <button id="mobilePropertiesToggle" type="button" aria-label="Open properties panel" title="Open Properties" aria-controls="propertiesPanel" aria-expanded="false" data-open-label="Open properties panel" data-close-label="Close properties panel" data-open-title="Open Properties" data-close-title="Close Properties">Properties</button>
         <aside id="propertiesPanel">
             <button id="mobilePropertiesClose" type="button">Close properties</button>
         </aside>
@@ -856,12 +856,23 @@ describe('canvas mobile panel accessibility', () => {
         propertiesToggle.click();
         expect(propertiesPanel.classList.contains('active')).toBe(true);
         expect(propertiesToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(propertiesToggle.getAttribute('aria-label')).toBe('Close properties panel');
+        expect(propertiesToggle.title).toBe('Close Properties');
         expect(toolbar.classList.contains('active')).toBe(false);
         expect(toolToggle.getAttribute('aria-expanded')).toBe('false');
 
+        propertiesToggle.click();
+        expect(propertiesPanel.classList.contains('active')).toBe(false);
+        expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(propertiesToggle.getAttribute('aria-label')).toBe('Open properties panel');
+        expect(propertiesToggle.title).toBe('Open Properties');
+
+        propertiesToggle.click();
         propertiesClose.click();
         expect(propertiesPanel.classList.contains('active')).toBe(false);
         expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(propertiesToggle.getAttribute('aria-label')).toBe('Open properties panel');
+        expect(propertiesToggle.title).toBe('Open Properties');
         expect(document.activeElement).toBe(propertiesToggle);
     });
 });
