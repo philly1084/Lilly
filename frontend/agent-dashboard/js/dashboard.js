@@ -4492,6 +4492,17 @@ class Dashboard {
         return window.matchMedia('(max-width: 992px)').matches;
     }
 
+    prefersReducedMotion() {
+        return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    }
+
+    scrollElementIntoView(target, { block = 'center' } = {}) {
+        target?.scrollIntoView?.({
+            block,
+            behavior: this.prefersReducedMotion() ? 'auto' : 'smooth',
+        });
+    }
+
     syncSidebarToggleState({ mobileOpen = null } = {}) {
         const sidebarToggle = document.getElementById('sidebarToggle');
         if (!sidebarToggle) {
@@ -5625,25 +5636,25 @@ class Dashboard {
                             || null,
                     });
                 }
-                document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                this.scrollElementIntoView(document.getElementById('companyRunsTableBody'));
                 break;
             case 'deliverables':
                 {
                     const collage = document.getElementById('companyDeliverableCollage')
                         || document.getElementById('companyDeliverableList');
-                    collage?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    this.scrollElementIntoView(collage);
                     document.querySelector('.company-deliverable-card')?.focus?.({ preventScroll: true });
                 }
                 break;
             case 'alignment':
-                document.getElementById('companyAlignmentPanel')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                this.scrollElementIntoView(document.getElementById('companyAlignmentPanel'));
                 break;
             case 'traces':
                 this.navigateTo('traces');
-                document.getElementById('traceQualitySummary')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                this.scrollElementIntoView(document.getElementById('traceQualitySummary'));
                 break;
             default:
-                document.getElementById('agentCompanyView')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                this.scrollElementIntoView(document.getElementById('agentCompanyView'), { block: 'start' });
                 break;
         }
     }
@@ -5885,7 +5896,7 @@ class Dashboard {
         const target = document.getElementById('settingsAgentCompanyGoal')
             || document.getElementById('settingsAgentCompanyEnabled')
             || document.getElementById('orchestrationSettings');
-        target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        this.scrollElementIntoView(target);
         target?.focus?.();
     }
 

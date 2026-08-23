@@ -1338,7 +1338,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-modal-dialog-v1');
+        expect(html).toContain('dashboard.js?v=admin-company-reduced-motion-v1');
         expect(html).toContain('css/dashboard.css?v=admin-log-info-contrast-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
@@ -1603,6 +1603,21 @@ describe('agent dashboard navigation accessibility', () => {
             actionContext: null,
         });
         expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    });
+
+    test('avoids smooth CEO action scrolling when reduced motion is requested', () => {
+        const { dom, dashboard } = createAgentCompanyHarness();
+        const runsTable = document.getElementById('companyRunsTableBody');
+        runsTable.scrollIntoView = jest.fn();
+        dashboard.selectAdminRun = jest.fn();
+        dom.window.matchMedia = jest.fn().mockImplementation((query) => ({
+            matches: query === '(prefers-reduced-motion: reduce)',
+        }));
+
+        dashboard.handleCompanyAction('runs', 'company-run');
+
+        expect(dom.window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+        expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
     });
 
     test('opens CEO deliverable actions on the review collage', () => {
