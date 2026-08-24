@@ -3842,7 +3842,7 @@ body {
 /* Import Button in Sidebar */
 .import-btn {
     margin-top: 8px;
-    background: var(--bg-tertiary);
+    background: transparent;
 }
 
 .import-btn:hover {
