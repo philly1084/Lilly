@@ -7722,6 +7722,12 @@ code[class*="language-"] {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+[data-ui-surface="web-chat"] #composer-shell:focus-within {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        0 0 0 3px var(--kb-focus);
+}
+
 #input-meta-row {
     margin-top: 0.75rem !important;
     color: var(--text-secondary);
@@ -7736,6 +7742,10 @@ code[class*="language-"] {
     min-width: 8rem;
     padding-top: 0.95rem;
     padding-bottom: 0.95rem;
+}
+
+#message-input:focus-visible {
+    box-shadow: none;
 }
 
 @media (min-width: 768px) {
