@@ -99,6 +99,73 @@ function loadOutlineEditor(reduceMotion) {
     return { dom, window: windowObject, SlashMenu };
 }
 
+function loadMentionEditor() {
+    const source = fs.readFileSync(path.join(__dirname, 'editor.js'), 'utf8');
+    const dom = new JSDOM(`<!doctype html><html><body>
+        <main class="main-content">
+            <div id="editor"></div>
+            <div id="empty-state"></div>
+        </main>
+    </body></html>`, {
+        url: 'http://localhost:3000/notes/',
+    });
+    const windowObject = dom.window;
+    Object.defineProperty(windowObject, 'innerWidth', { value: 390, configurable: true });
+    const renderText = (block) => {
+        const input = windowObject.document.createElement('div');
+        input.className = 'block-input';
+        input.contentEditable = 'true';
+        input.textContent = block.content;
+        return input;
+    };
+    const Blocks = {
+        render: { text: renderText },
+        getBlockTypes: jest.fn(() => ({})),
+    };
+    const Selection = {
+        resetState: jest.fn(),
+        setupDragAndDrop: jest.fn(),
+        selectBlock: jest.fn(),
+    };
+    const SlashMenu = {
+        isOpen: jest.fn(() => false),
+    };
+    const context = {
+        console,
+        window: windowObject,
+        document: windowObject.document,
+        Node: windowObject.Node,
+        setTimeout,
+        clearTimeout,
+        Date,
+        Math,
+        Blocks,
+        Selection,
+        SlashMenu,
+        Storage: {
+            getPages: jest.fn(() => [
+                { id: 'welcome', title: 'Welcome to Notes', icon: '📝' },
+                { id: 'roadmap', title: 'Product roadmap', icon: '🗺️' },
+            ]),
+        },
+        API: {},
+        URL,
+    };
+    windowObject.Blocks = Blocks;
+    windowObject.Selection = Selection;
+    context.global = context;
+    context.globalThis = context;
+    vm.runInNewContext(source, context, { filename: 'editor.js' });
+
+    windowObject.Editor.init();
+    windowObject.Editor.loadPage({
+        id: 'page-1',
+        blocks: [{ id: 'text-1', type: 'text', content: '' }],
+    });
+
+    return { dom, window: windowObject };
+}
+
 describe('Notes inline toolbar accessibility', () => {
     test('renders generated formatting controls with explicit labels', () => {
         const { dom, Editor } = loadEditor();
@@ -174,5 +241,38 @@ describe('Notes block insertion controls', () => {
 
         expect(SlashMenu.show).toHaveBeenCalledWith(120, 240, 'heading-1');
         expect(SlashMenu.setCallback).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('Notes mention picker', () => {
+    test('refreshes visible matches as the mention query changes', () => {
+        const { dom, window } = loadMentionEditor();
+        const input = dom.window.document.querySelector('.block-input');
+
+        const typeMention = (value, left = 40) => {
+            input.textContent = value;
+            const range = dom.window.document.createRange();
+            range.setStart(input.firstChild, value.length);
+            range.collapse(true);
+            range.getBoundingClientRect = () => ({ left, bottom: 80 });
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            input.dispatchEvent(new window.KeyboardEvent('keyup', { key: value.at(-1), bubbles: true }));
+        };
+
+        typeMention('@');
+        expect(Array.from(dom.window.document.querySelectorAll('.mention-item-name')).map((item) => item.textContent)).toEqual([
+            'Today',
+            'Tomorrow',
+            'Welcome to Notes',
+            'Product roadmap',
+        ]);
+
+        typeMention('@Wel', 350);
+        expect(Array.from(dom.window.document.querySelectorAll('.mention-item-name')).map((item) => item.textContent)).toEqual([
+            'Welcome to Notes',
+        ]);
+        expect(dom.window.document.querySelector('.mention-popup').style.left).toBe('100px');
     });
 });

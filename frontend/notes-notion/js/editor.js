@@ -985,8 +985,15 @@ const Editor = (function() {
             `;
         }
         
-        // Position popup
-        popup.style.left = `${Math.max(10, x)}px`;
+        // Position popup inside the viewport, including narrow mobile screens.
+        const viewportPadding = 10;
+        const popupWidth = Math.max(0, Math.min(280, window.innerWidth - (viewportPadding * 2)));
+        const popupLeft = Math.min(
+            Math.max(viewportPadding, x),
+            window.innerWidth - popupWidth - viewportPadding,
+        );
+        popup.style.width = `${popupWidth}px`;
+        popup.style.left = `${popupLeft}px`;
         popup.style.top = `${Math.min(window.innerHeight - 200, y + 20)}px`;
         
         document.body.appendChild(popup);
@@ -1490,7 +1497,7 @@ const Editor = (function() {
         const beforeCursor = text.substring(0, cursorPos);
         const atMatch = beforeCursor.match(/@([\w]*)$/);
         
-        if (atMatch && !mentionPopup) {
+        if (atMatch) {
             const rect = range.getBoundingClientRect();
             showMentionPopup(atMatch[1], rect.left, rect.bottom, block.id);
         } else if (!atMatch && mentionPopup) {
