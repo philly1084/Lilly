@@ -3670,16 +3670,25 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_
     display: flex;
     align-items: center;
     justify-content: space-between;
+    min-width: 0;
     margin-bottom: var(--space-xs);
 }
 
 .trace-name {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--text-primary);
 }
 
 .trace-status {
+    flex: 0 0 auto;
+    margin-left: var(--space-sm);
     width: 8px;
     height: 8px;
     border-radius: 50%;
