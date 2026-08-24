@@ -3922,6 +3922,12 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_
     text-transform: uppercase;
 }
 
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-kicker {
+    color: #0a5c32;
+    background-color: #d7f8df;
+    border-color: #6bc98a;
+}
+
 .lilly-hero h2 {
     font-size: var(--text-3xl);
     line-height: 1.15;
@@ -3958,13 +3964,13 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_
 }
 
 .lilly-stat-label {
-    color: var(--text-primary);
+    color: #f0f6fc;
     font-size: var(--text-sm);
     font-weight: 700;
 }
 
 .lilly-stat-detail {
-    color: var(--text-muted);
+    color: #c9d1d9;
     font-size: var(--text-xs);
 }
 
@@ -4186,11 +4192,11 @@ a.lilly-pulse-chip:hover {
     border-radius: var(--radius-sm);
     font-size: var(--text-xs);
     font-weight: 700;
-    color: var(--bg-primary);
+    color: #0d1117;
 }
 
 .lilly-collage-summary .lilly-legend-item {
-    color: var(--bg-primary);
+    color: #0d1117;
 }
 
 .lilly-dot-wall {
@@ -4400,6 +4406,15 @@ a.lilly-pulse-chip:hover {
 .lilly-tag-text-media { color: #ffadd7; }
 .lilly-tag-text-intelligence { color: #d2a8ff; }
 .lilly-tag-text-maintenance { color: #c9d1d9; }
+
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-repair { color: #991b1b; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-privacy { color: #075985; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-growth { color: #166534; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-interface { color: #1e40af; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-ops { color: #854d0e; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-media { color: #9d174d; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-intelligence { color: #6b21a8; }
+body[data-ui-surface="admin"][data-admin-theme="light"] .lilly-tag-text-maintenance { color: #334155; }
 
 .lilly-tag-border-repair { border-left-color: #f85149; }
 .lilly-tag-border-privacy { border-left-color: #39c5cf; }
