@@ -147,7 +147,18 @@ const Sidebar = (function() {
         // Import button
         const importBtn = document.getElementById('import-btn');
         if (importBtn) {
-            importBtn.addEventListener('click', (e) => showImportModal(e.currentTarget));
+            importBtn.addEventListener('click', (e) => {
+                const triggerElement = window.innerWidth <= 768
+                    ? mobileToggleEl || e.currentTarget
+                    : e.currentTarget;
+                if (window.innerWidth <= 768) {
+                    closeMobileSidebar();
+                    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+                    window.setTimeout(() => showImportModal(triggerElement), reduceMotion ? 0 : 300);
+                    return;
+                }
+                showImportModal(triggerElement);
+            });
         }
         
         // Export button
@@ -348,6 +359,14 @@ const Sidebar = (function() {
             backdrop.classList.remove('active');
             setTimeout(() => backdrop.remove(), 300);
         }
+    }
+
+    function closeMobileSidebar() {
+        if (!sidebarEl) return;
+
+        sidebarEl.classList.remove('open');
+        syncMobileSidebarState();
+        document.querySelector('.sidebar-backdrop')?.remove();
     }
     
     /**
