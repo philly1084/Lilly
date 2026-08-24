@@ -131,10 +131,12 @@ describe('web-cli response collapse controls', () => {
                     <button type="button" class="ai-response-toggle" aria-label="Collapse response">v</button>
                     <span class="cli-response-title">Quality Gates</span>
                 </div>
+                <div class="cli-response-body">All checks passed.</div>
             </div>
         `;
         const line = document.querySelector('.line-output.ai');
         const button = document.querySelector('.ai-response-toggle');
+        const body = document.querySelector('.cli-response-body');
         app.renderMermaidDiagrams = jest.fn();
         app.updateTtsControls = jest.fn();
 
@@ -143,6 +145,9 @@ describe('web-cli response collapse controls', () => {
         expect(button.getAttribute('aria-label')).toBe('Collapse Quality Gates');
         expect(button.title).toBe('Collapse Quality Gates');
         expect(button.getAttribute('aria-expanded')).toBe('true');
+        expect(button.getAttribute('aria-controls')).toBe(body.id);
+        expect(body.id).toBe('web-cli-response-1');
+        expect(button.textContent).toBe('▾');
 
         app.toggleAIResponse(button);
 
@@ -150,6 +155,8 @@ describe('web-cli response collapse controls', () => {
         expect(button.getAttribute('aria-label')).toBe('Expand Quality Gates');
         expect(button.title).toBe('Expand Quality Gates');
         expect(button.getAttribute('aria-expanded')).toBe('false');
+        expect(button.getAttribute('aria-controls')).toBe(body.id);
+        expect(button.textContent).toBe('▸');
     });
 });
 

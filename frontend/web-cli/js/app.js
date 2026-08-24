@@ -117,6 +117,7 @@ class CodeCLIApp {
         this.ttsManager = RealtimeTtsManager ? new RealtimeTtsManager() : null;
         this.ttsInitialized = false;
         this.ttsMessageCounter = 0;
+        this.responseRegionSequence = 0;
         this.ttsMessageTextById = new Map();
         this.speechHighlightState = {
             messageId: '',
@@ -7151,12 +7152,22 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             ?.textContent
             ?.replace(/\s+/g, ' ')
             ?.trim();
+        const body = line?.querySelector?.('.cli-response-body, .voxel-response-body');
+        if (body) {
+            if (!body.id) {
+                this.responseRegionSequence = Number.isSafeInteger(this.responseRegionSequence)
+                    ? this.responseRegionSequence + 1
+                    : 1;
+                body.id = `web-cli-response-${this.responseRegionSequence}`;
+            }
+            button.setAttribute('aria-controls', body.id);
+        }
         const action = collapsed ? 'Expand' : 'Collapse';
         const label = title ? `${action} ${title}` : `${action} response`;
         button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         button.setAttribute('aria-label', label);
         button.title = label;
-        button.textContent = collapsed ? '-' : 'v';
+        button.textContent = collapsed ? '▸' : '▾';
     }
 
     toggleAIResponse(button) {
@@ -7188,7 +7199,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                 aria-label="Collapse response"
                 aria-expanded="true"
                 title="Collapse response"
-            >v</button>
+            >▾</button>
         `;
 
         if (this.theme !== 'voxel') {
