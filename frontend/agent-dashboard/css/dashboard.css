@@ -5500,6 +5500,20 @@ code {
 }
 
 @media (max-width: 480px) {
+    .self-reflection-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    .self-reflection-header .card-actions {
+        justify-content: space-between;
+    }
+
+    .self-reflection-header .status-badge {
+        white-space: nowrap;
+    }
+
     .models-grid,
     .skills-grid {
         grid-template-columns: 1fr;
