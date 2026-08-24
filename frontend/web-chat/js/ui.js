@@ -10469,6 +10469,7 @@ class UIHelpers {
         this.closeThemeGallery({ silent: true });
         palette.classList.remove('hidden');
         palette.setAttribute('aria-hidden', 'false');
+        input.setAttribute('aria-expanded', 'true');
         input.value = '';
         input.focus();
         this.renderCommandResults('');
@@ -10483,8 +10484,10 @@ class UIHelpers {
 
     closeCommandPalette(options = {}) {
         const palette = document.getElementById('command-palette');
+        const input = document.getElementById('command-input');
         palette.classList.add('hidden');
         palette.setAttribute('aria-hidden', 'true');
+        input?.setAttribute('aria-expanded', 'false');
 
         if (options?.silent !== true) {
             this.playMenuCue('menu-close');
