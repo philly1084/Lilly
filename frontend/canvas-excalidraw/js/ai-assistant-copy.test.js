@@ -227,7 +227,7 @@ describe('canvas AI assistant copy handoffs', () => {
         expect(assistant.showStatus).toHaveBeenCalledWith('Image added as selected AI context.', 'success');
     });
 
-    test('keeps voice button pressed state and title synchronized', () => {
+    test('keeps voice button pressed state and next action synchronized', () => {
         const button = {
             classList: { toggle: jest.fn() },
             setAttribute: jest.fn(),
@@ -242,14 +242,16 @@ describe('canvas AI assistant copy handoffs', () => {
         expect(assistant.isListening).toBe(true);
         expect(button.classList.toggle).toHaveBeenCalledWith('is-listening', true);
         expect(button.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
-        expect(button.title).toBe('Stop listening');
+        expect(button.setAttribute).toHaveBeenCalledWith('aria-label', 'Stop voice input');
+        expect(button.title).toBe('Stop voice input');
 
         assistant.setListeningState(false);
 
         expect(assistant.isListening).toBe(false);
         expect(button.classList.toggle).toHaveBeenCalledWith('is-listening', false);
         expect(button.setAttribute).toHaveBeenCalledWith('aria-pressed', 'false');
-        expect(button.title).toBe('Dictate a message');
+        expect(button.setAttribute).toHaveBeenCalledWith('aria-label', 'Start voice input');
+        expect(button.title).toBe('Start voice input');
     });
 });
 

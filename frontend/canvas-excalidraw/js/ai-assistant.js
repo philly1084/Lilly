@@ -222,7 +222,9 @@ class AIAssistant {
         this.voiceBtn?.classList.toggle('is-listening', this.isListening);
         this.voiceBtn?.setAttribute('aria-pressed', this.isListening ? 'true' : 'false');
         if (this.voiceBtn) {
-            this.voiceBtn.title = this.isListening ? 'Stop listening' : 'Dictate a message';
+            const nextAction = this.isListening ? 'Stop voice input' : 'Start voice input';
+            this.voiceBtn.setAttribute('aria-label', nextAction);
+            this.voiceBtn.title = nextAction;
         }
     }
 
