@@ -308,7 +308,7 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-center-boot-l
 
 .command-center-actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
 }
 

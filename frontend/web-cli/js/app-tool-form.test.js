@@ -549,7 +549,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(terminalOutput.getAttribute('aria-label')).toBe('CLI transcript');
         expect(terminalOutput.tabIndex).toBe(0);
         expect(indexMarkup).toMatch(/\.terminal-output:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);/s);
-        expect(indexMarkup).toContain('css/enterprise.css?v=20260823a');
+        expect(indexMarkup).toContain('css/enterprise.css?v=20260824a');
+        expect(enterpriseStyles).toMatch(/\.command-center-actions\s*{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);/s);
         expect(enterpriseStyles).toMatch(/\.command-center-actions button:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);[^}]*outline-offset:\s*2px;/s);
         expect(modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: loading');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
