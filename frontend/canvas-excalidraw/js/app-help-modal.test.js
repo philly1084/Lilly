@@ -927,6 +927,17 @@ describe('canvas mini map toggle accessibility', () => {
     });
 });
 
+describe('canvas workspace landmark accessibility', () => {
+    test('names the drawing canvas main landmark', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const canvasContainer = dom.window.document.getElementById('canvasContainer');
+
+        expect(canvasContainer.tagName).toBe('MAIN');
+        expect(canvasContainer.getAttribute('aria-label')).toBe('Drawing canvas');
+    });
+});
+
 describe('canvas command rail accessibility', () => {
     test('names every quick-command button, including icon-only shortcuts', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
