@@ -679,17 +679,18 @@ class App {
         list.innerHTML = boards.map((board) => {
             const dateMs = Date.parse(board.updatedAt || board.createdAt) || Date.now();
             const detail = `${board.elementCount || board.elements.length} objects - ${this.formatRelativeTime(dateMs)}`;
+            const boardName = this.escapeHtmlAttr(board.name);
             return `
                 <div class="board-shelf-item" data-board-id="${this.escapeHtmlAttr(board.id)}">
-                    <button type="button" class="board-shelf-main" data-board-shelf-action="open" data-board-id="${this.escapeHtmlAttr(board.id)}">
+                    <button type="button" class="board-shelf-main" data-board-shelf-action="open" data-board-id="${this.escapeHtmlAttr(board.id)}" aria-label="Open saved board ${boardName}">
                         <strong>${this.escapeHtml(board.name)}</strong>
                         <span>${this.escapeHtml(board.summary || detail)}</span>
                         <small>${this.escapeHtml(detail)}</small>
                     </button>
                     <div class="board-shelf-actions">
-                        <button type="button" data-board-shelf-action="duplicate" data-board-id="${this.escapeHtmlAttr(board.id)}">Copy</button>
-                        <button type="button" data-board-shelf-action="export" data-board-id="${this.escapeHtmlAttr(board.id)}">Export</button>
-                        <button type="button" data-board-shelf-action="delete" data-board-id="${this.escapeHtmlAttr(board.id)}">Del</button>
+                        <button type="button" data-board-shelf-action="duplicate" data-board-id="${this.escapeHtmlAttr(board.id)}" aria-label="Duplicate saved board ${boardName}">Duplicate</button>
+                        <button type="button" data-board-shelf-action="export" data-board-id="${this.escapeHtmlAttr(board.id)}" aria-label="Export saved board ${boardName}">Export</button>
+                        <button type="button" data-board-shelf-action="delete" data-board-id="${this.escapeHtmlAttr(board.id)}" aria-label="Delete saved board ${boardName}">Delete</button>
                     </div>
                 </div>
             `;

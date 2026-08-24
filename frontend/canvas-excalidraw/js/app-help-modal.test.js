@@ -340,6 +340,37 @@ function createAIModeHarness() {
     return { assistant };
 }
 
+function createBoardShelfHarness() {
+    const dom = new JSDOM(`
+        <div class="board-shelf" id="boardShelf">
+            <div class="board-shelf-header">
+                <div><span id="boardShelfSummary">No saved boards yet</span></div>
+                <button type="button" data-board-shelf-action="save-current" aria-label="Save current board">Save</button>
+            </div>
+            <div class="board-shelf-list" id="boardShelfList"></div>
+        </div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    global.localStorage = dom.window.localStorage;
+
+    app.formatRelativeTime = jest.fn(() => 'just now');
+    localStorage.setItem('kimi-canvas-saved-boards', JSON.stringify([{
+        id: 'board-1',
+        name: 'Customer onboarding flow',
+        createdAt: '2026-08-24T08:00:00.000Z',
+        updatedAt: '2026-08-24T08:00:00.000Z',
+        elementCount: 1,
+        summary: '1 object',
+        elements: [{ id: 'rect-1', type: 'rectangle', width: 100, height: 60 }],
+    }]));
+
+    return { app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -642,6 +673,28 @@ describe('canvas AI mode toggle accessibility', () => {
         expect(image.getAttribute('aria-pressed')).toBe('true');
         expect(diagramOptions.classList.contains('hidden')).toBe(true);
         expect(imageOptions.classList.contains('hidden')).toBe(false);
+    });
+});
+
+describe('canvas saved-board shelf accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+        delete global.localStorage;
+    });
+
+    test('uses explicit visible actions and board-specific accessible names', () => {
+        const { app } = createBoardShelfHarness();
+
+        app.renderBoardShelf();
+
+        expect(document.querySelector('[data-board-shelf-action="save-current"]').getAttribute('aria-label')).toBe('Save current board');
+        expect(document.querySelector('[data-board-shelf-action="open"]').getAttribute('aria-label')).toBe('Open saved board Customer onboarding flow');
+        expect(document.querySelector('[data-board-shelf-action="duplicate"]').textContent).toBe('Duplicate');
+        expect(document.querySelector('[data-board-shelf-action="duplicate"]').getAttribute('aria-label')).toBe('Duplicate saved board Customer onboarding flow');
+        expect(document.querySelector('[data-board-shelf-action="export"]').getAttribute('aria-label')).toBe('Export saved board Customer onboarding flow');
+        expect(document.querySelector('[data-board-shelf-action="delete"]').textContent).toBe('Delete');
+        expect(document.querySelector('[data-board-shelf-action="delete"]').getAttribute('aria-label')).toBe('Delete saved board Customer onboarding flow');
     });
 });
 
