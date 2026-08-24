@@ -1158,3 +1158,12 @@ describe('web-cli startup command cards', () => {
         expect(source).toContain('aria-label="Run /remote status to check remote readiness"');
     });
 });
+
+describe('web-cli responsive header actions', () => {
+    test('keeps the mobile new-chat action specific', () => {
+        const markup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(markup).toContain('data-short="New chat"');
+        expect(markup).toContain('aria-label="Start new isolated chat session"');
+    });
+});
