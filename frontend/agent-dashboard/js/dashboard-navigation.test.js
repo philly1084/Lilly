@@ -653,7 +653,13 @@ describe('agent dashboard navigation accessibility', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
         expect(css).toContain('.metric-value {\n    width: max-content;\n    min-width: 50px;\n    flex-shrink: 0;');
-        expect(html).toContain('css/dashboard.css?v=admin-health-values-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-activity-layout-v1');
+    });
+
+    test('separates recent activity titles from supporting context', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('.activity-content {\n    display: flex;\n    flex-direction: column;\n    gap: 2px;');
     });
 
     test('keeps admin select menus themed instead of browser-white', () => {
@@ -735,7 +741,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('--info-light: #164ea6;');
         expect(css).toContain('.log-level.info');
         expect(css).toContain('color: var(--info-light);');
-        expect(html).toContain('css/dashboard.css?v=admin-health-values-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-activity-layout-v1');
     });
 
     test('associates trace toolbar labels with every filter', () => {
@@ -951,7 +957,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('.editor-header {\n        align-items: stretch;\n        flex-direction: column;');
         expect(css).toContain('.editor-actions {\n        flex-wrap: wrap;');
         expect(css).toContain('.prompt-name-input {\n        min-width: 0;\n        width: 100%;');
-        expect(html).toContain('css/dashboard.css?v=admin-health-values-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-activity-layout-v1');
     });
 
     test('makes sidebar items native buttons with active page state', () => {
@@ -1377,7 +1383,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
         expect(html).toContain('dashboard.js?v=admin-company-reduced-motion-v1');
-        expect(html).toContain('css/dashboard.css?v=admin-health-values-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-activity-layout-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
@@ -2447,7 +2453,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-health-values-v1');
+        expect(html).toContain('dashboard.css?v=admin-activity-layout-v1');
     });
 
     test('renders named Agent Company projects with active-run context', () => {

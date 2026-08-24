@@ -1268,6 +1268,9 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning::b
 }
 
 .activity-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     flex: 1;
     min-width: 0;
 }
