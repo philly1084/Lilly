@@ -727,7 +727,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('--info-light: #164ea6;');
         expect(css).toContain('.log-level.info');
         expect(css).toContain('color: var(--info-light);');
-        expect(html).toContain('css/dashboard.css?v=admin-log-info-contrast-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-prompt-actions-mobile-v1');
     });
 
     test('associates trace toolbar labels with every filter', () => {
@@ -933,6 +933,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('width: clamp(180px, 24vw, 320px);');
         expect(css).toContain('width: clamp(120px, 28vw, 180px);');
         expect(css).not.toContain('.search-box input:focus {\n    outline: none;\n    border-color: var(--accent-primary);\n    width:');
+    });
+
+    test('keeps prompt editor actions visible on narrow screens', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(css).toContain('@media (max-width: 768px)');
+        expect(css).toContain('.editor-header {\n        align-items: stretch;\n        flex-direction: column;');
+        expect(css).toContain('.editor-actions {\n        flex-wrap: wrap;');
+        expect(css).toContain('.prompt-name-input {\n        min-width: 0;\n        width: 100%;');
+        expect(html).toContain('css/dashboard.css?v=admin-prompt-actions-mobile-v1');
     });
 
     test('makes sidebar items native buttons with active page state', () => {
@@ -1358,7 +1369,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
         expect(html).toContain('dashboard.js?v=admin-company-reduced-motion-v1');
-        expect(html).toContain('css/dashboard.css?v=admin-log-info-contrast-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-prompt-actions-mobile-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
@@ -2428,7 +2439,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-log-info-contrast-v1');
+        expect(html).toContain('dashboard.css?v=admin-prompt-actions-mobile-v1');
     });
 
     test('renders named Agent Company projects with active-run context', () => {

@@ -5443,6 +5443,27 @@ code {
     .content-wrapper {
         padding: var(--space-md);
     }
+
+    .editor-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    .editor-info,
+    .editor-actions {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .prompt-name-input {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .editor-actions {
+        flex-wrap: wrap;
+    }
     
     .logs-toolbar {
         flex-direction: column;
