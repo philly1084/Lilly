@@ -95,7 +95,7 @@ describe('web-chat index redirect', () => {
         expect(uiSource).not.toContain('role="${isEditing ? \'group\' : \'button\'}"');
         expect(css).toContain('.session-select-btn:focus-visible');
         expect(css).toContain('.session-item:focus-within .session-actions');
-        expect(html).toContain('css/styles.css?v=20260823c');
+        expect(html).toContain('css/styles.css?v=20260824b');
         expect(html).toContain('js/ui.js?v=20260824a');
     });
 
@@ -107,6 +107,9 @@ describe('web-chat index redirect', () => {
         expect(css).toContain('background-color: #1d4ed8;');
         expect(css).toContain('background: linear-gradient(135deg, #1d4ed8, #1e40af);');
         expect(css).toContain('min-height: auto;\n        justify-content: flex-start;');
+        expect(css).toContain('#current-session-info {\n        max-width: 8.5rem;');
+        expect(css).toContain('white-space: normal;\n        display: -webkit-box;');
+        expect(css).toContain('-webkit-line-clamp: 2;');
     });
 
     test('composer tool picker exposes visible keyboard focus styling', () => {
@@ -127,7 +130,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260823c');
+        expect(html).toContain('css/styles.css?v=20260824b');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -162,7 +165,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="mobile-chat-menu-clear-value" class="mobile-chat-menu__action-value">No messages to clear</span>');
         expect(html).toContain('id="clear-chat-btn"');
         expect(html).toContain('aria-label="No messages to clear" disabled');
-        expect(html).toContain('css/styles.css?v=20260823c');
+        expect(html).toContain('css/styles.css?v=20260824b');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260824a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
@@ -414,7 +417,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-expanded="true"');
         expect(html).toContain('aria-label="Hide input area"');
         expect(html).toContain('<span class="input-toggle-tooltip">Hide Input</span>');
-        expect(html).toContain('css/styles.css?v=20260823c');
+        expect(html).toContain('css/styles.css?v=20260824b');
         expect(html).toContain('js/ui.js?v=20260824a');
         expect(uiSource).toContain('syncInputAreaToggleState(isHidden)');
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');");

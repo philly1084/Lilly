@@ -10050,6 +10050,11 @@ code[class*="language-"] {
     #current-session-info {
         max-width: 8.5rem;
         font-size: 0.76rem;
+        line-height: 1.2;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
     }
 
     .chat-header-actions {
