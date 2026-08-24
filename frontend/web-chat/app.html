@@ -820,7 +820,7 @@
                         <button id="export-chat-btn" class="btn-icon p-2 rounded-lg hidden sm:flex full-shell-control" title="Export conversation" onclick="uiHelpers.openExportModal()" aria-label="Export conversation" aria-haspopup="dialog" aria-expanded="false" aria-controls="export-modal">
                             <i data-lucide="download" class="w-5 h-5" aria-hidden="true"></i>
                         </button>
-                        <button id="clear-chat-btn" class="btn-icon danger p-2 rounded-lg full-shell-control" title="Clear chat" aria-label="Clear all messages in current conversation">
+                        <button id="clear-chat-btn" class="btn-icon danger p-2 rounded-lg full-shell-control" title="No messages to clear" aria-label="No messages to clear" disabled>
                             <i data-lucide="trash-2" class="w-5 h-5" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -1213,12 +1213,12 @@
                     </span>
                     <span class="mobile-chat-menu__action-value" id="mobile-chat-menu-layout-value">Chat only</span>
                 </button>
-                <button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">
+                <button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear" aria-label="No messages to clear" title="No messages to clear" disabled>
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Clear chat</span>
                     </span>
-                    <span class="mobile-chat-menu__action-value">Remove messages from this session</span>
+                    <span id="mobile-chat-menu-clear-value" class="mobile-chat-menu__action-value">No messages to clear</span>
                 </button>
             </div>
         </div>
@@ -1388,7 +1388,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260824a"></script>
-    <script defer src="js/app.js?v=20260725a"></script>
+    <script defer src="js/app.js?v=20260824a"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>
 </html>

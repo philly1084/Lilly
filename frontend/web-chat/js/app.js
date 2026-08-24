@@ -864,6 +864,11 @@ class ChatApp {
         this.toolCommandList = document.getElementById('tool-command-list');
         this.selectedToolChipTray = document.getElementById('selected-tool-chip-tray');
         this.messagesContainer = document.getElementById('messages-container');
+        this.clearChatBtn = document.getElementById('clear-chat-btn');
+        this.mobileClearChatBtn = typeof document.querySelector === 'function'
+            ? document.querySelector('[data-mobile-menu-action="clear"]')
+            : null;
+        this.mobileClearChatValue = document.getElementById('mobile-chat-menu-clear-value');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
         this.executionModeSelect = document.getElementById('execution-mode-select');
@@ -3457,6 +3462,7 @@ class ChatApp {
             } else {
                 uiHelpers.clearMessages();
                 uiHelpers.showWelcomeMessage();
+                this.syncClearChatControls(false);
                 this.subscribeToSessionUpdates(null);
                 this.currentSessionWorkloads = [];
                 this.workloadRunsById.clear();
@@ -3471,6 +3477,7 @@ class ChatApp {
         sessionManager.addEventListener('messagesCleared', () => {
             uiHelpers.clearMessages();
             uiHelpers.showWelcomeMessage();
+            this.syncClearChatControls(false);
         });
 
         sessionManager.addEventListener('sessionPromoted', (e) => {
@@ -3920,6 +3927,7 @@ class ChatApp {
         this.clearBufferedStreamingRenders();
         uiHelpers.clearMessages();
         this.updateMissionFromMessages(messages);
+        this.syncClearChatControls(messages.length > 0);
         
         if (messages.length === 0) {
             uiHelpers.showWelcomeMessage();
@@ -3944,6 +3952,27 @@ class ChatApp {
         uiHelpers.highlightCodeBlocks(this.messagesContainer);
         uiHelpers.scrollToBottom(false);
         this.updateAudioControls();
+    }
+
+    syncClearChatControls(hasMessages = false) {
+        const canClear = hasMessages === true;
+        const label = canClear
+            ? 'Clear all messages in current conversation'
+            : 'No messages to clear';
+
+        [this.clearChatBtn, this.mobileClearChatBtn].forEach((button) => {
+            if (!button) return;
+            button.disabled = !canClear;
+            button.setAttribute('aria-disabled', String(!canClear));
+            button.setAttribute('aria-label', label);
+            button.title = label;
+        });
+
+        if (this.mobileClearChatValue) {
+            this.mobileClearChatValue.textContent = canClear
+                ? 'Remove messages from this session'
+                : 'No messages to clear';
+        }
     }
 
     reconcileVisibleMessages(previousMessages = [], nextMessages = []) {
@@ -3987,6 +4016,7 @@ class ChatApp {
 
     clearCurrentSession() {
         if (!sessionManager.currentSessionId) return;
+        if (sessionManager.getMessages(sessionManager.currentSessionId).length === 0) return;
         
         if (confirm('Clear all messages in this conversation? This cannot be undone.')) {
             this.clearTtsAutoPlayQueue();

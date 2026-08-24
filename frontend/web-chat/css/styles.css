@@ -3747,6 +3747,24 @@ body.mobile-chat-menu-open {
     background: rgba(239, 68, 68, 0.08);
 }
 
+.mobile-chat-menu__action:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+    transform: none;
+}
+
+.mobile-chat-menu__action--danger:disabled:hover {
+    border-color: rgba(239, 68, 68, 0.18);
+    background: rgba(255, 255, 255, 0.03);
+    transform: none;
+}
+
+#clear-chat-btn:disabled {
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 @media (min-width: 769px) {
     body.layout-minimal .mobile-chat-menu {
         align-items: center;

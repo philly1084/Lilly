@@ -564,6 +564,33 @@ describe('web-chat project viewport helpers', () => {
         expect(refreshButton.getAttribute('aria-label')).toBe('Refresh workloads');
     });
 
+    test('disables clear-chat actions until the conversation has messages', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const desktopButton = createFakeElement('clear-chat-btn');
+        const mobileButton = createFakeElement('mobile-clear-chat-btn');
+        const mobileValue = createFakeElement('mobile-chat-menu-clear-value');
+        app.clearChatBtn = desktopButton;
+        app.mobileClearChatBtn = mobileButton;
+        app.mobileClearChatValue = mobileValue;
+
+        app.syncClearChatControls(false);
+
+        expect(desktopButton.disabled).toBe(true);
+        expect(desktopButton.getAttribute('aria-disabled')).toBe('true');
+        expect(desktopButton.getAttribute('aria-label')).toBe('No messages to clear');
+        expect(mobileButton.disabled).toBe(true);
+        expect(mobileValue.textContent).toBe('No messages to clear');
+
+        app.syncClearChatControls(true);
+
+        expect(desktopButton.disabled).toBe(false);
+        expect(desktopButton.getAttribute('aria-disabled')).toBe('false');
+        expect(desktopButton.getAttribute('aria-label')).toBe('Clear all messages in current conversation');
+        expect(mobileButton.disabled).toBe(false);
+        expect(mobileValue.textContent).toBe('Remove messages from this session');
+    });
+
     test('keeps managed app viewport empty while GitLab and k3s deployment are pending', () => {
         const context = loadChatAppContext();
         const app = Object.create(context.ChatApp.prototype);
