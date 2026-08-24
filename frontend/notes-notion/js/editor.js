@@ -1121,6 +1121,8 @@ const Editor = (function() {
         // Add block button (+) on row - Click to add below
         const rowAddBtn = document.createElement('button');
         rowAddBtn.className = 'block-add-btn';
+        rowAddBtn.type = 'button';
+        rowAddBtn.setAttribute('aria-label', 'Add block below');
         rowAddBtn.innerHTML = '+';
         rowAddBtn.title = 'Add block below (click) / Drag to move';
         rowAddBtn.addEventListener('click', (e) => {
@@ -1187,13 +1189,18 @@ const Editor = (function() {
         blockEl.appendChild(contentWrapper);
         
         // Add block button (between blocks)
-        const addBtn = document.createElement('div');
+        const addBtn = document.createElement('button');
         addBtn.className = 'add-block-btn';
+        addBtn.type = 'button';
+        addBtn.setAttribute('aria-label', 'Choose block type to add below');
         addBtn.innerHTML = '+';
         addBtn.title = 'Add block';
         addBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            SlashMenu.show(e.clientX, e.clientY, block.id);
+            const buttonRect = addBtn.getBoundingClientRect();
+            const menuX = e.detail === 0 ? buttonRect.left : e.clientX;
+            const menuY = e.detail === 0 ? buttonRect.bottom : e.clientY;
+            SlashMenu.show(menuX, menuY, block.id);
             SlashMenu.setCallback((type) => {
                 insertBlockAfter(block.id, type);
             });

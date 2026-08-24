@@ -978,7 +978,9 @@ body {
     z-index: 5;
 }
 
-.block:hover .block-add-btn {
+.block:hover .block-add-btn,
+.block:focus-within .block-add-btn,
+.block-add-btn:focus-visible {
     opacity: 0.5;
 }
 
@@ -990,6 +992,13 @@ body {
 
 .block-add-btn:active {
     background: rgba(55, 53, 47, 0.12);
+}
+
+.block-add-btn:focus-visible,
+.add-block-btn:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
 }
 
 /* Block Handle (⋮⋮) - Lilly-style subtle drag handle */
@@ -2209,13 +2218,17 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 50%;
     cursor: pointer;
+    padding: 0;
     opacity: 0;
     color: var(--text-muted);
+    font: inherit;
+    line-height: 1;
     transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 
 .block:hover + .add-block-btn,
-.add-block-btn:hover {
+.add-block-btn:hover,
+.add-block-btn:focus-visible {
     opacity: 1;
 }
 

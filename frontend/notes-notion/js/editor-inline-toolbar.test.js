@@ -65,6 +65,10 @@ function loadOutlineEditor(reduceMotion) {
         setupDragAndDrop: jest.fn(),
         selectBlock: jest.fn(),
     };
+    const SlashMenu = {
+        show: jest.fn(),
+        setCallback: jest.fn(),
+    };
     const context = {
         console,
         window: windowObject,
@@ -75,7 +79,7 @@ function loadOutlineEditor(reduceMotion) {
         Math,
         Blocks,
         Selection,
-        SlashMenu: {},
+        SlashMenu,
         Storage: { getPages: jest.fn(() => []) },
         API: {},
         URL,
@@ -92,7 +96,7 @@ function loadOutlineEditor(reduceMotion) {
         blocks: [{ id: 'heading-1', type: 'heading_1', content: 'Project plan' }],
     });
 
-    return { dom, window: windowObject };
+    return { dom, window: windowObject, SlashMenu };
 }
 
 describe('Notes inline toolbar accessibility', () => {
@@ -149,5 +153,26 @@ describe('Notes outline motion preference', () => {
 
         expect(window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
         expect(heading.scrollIntoView).toHaveBeenCalledWith({ behavior, block: 'center' });
+    });
+});
+
+describe('Notes block insertion controls', () => {
+    test('renders named buttons and anchors keyboard-opened menus to the trigger', () => {
+        const { dom, SlashMenu } = loadOutlineEditor(false);
+        const rowButton = dom.window.document.querySelector('.block-add-btn');
+        const betweenButton = dom.window.document.querySelector('.add-block-btn');
+
+        expect(rowButton.tagName).toBe('BUTTON');
+        expect(rowButton.type).toBe('button');
+        expect(rowButton.getAttribute('aria-label')).toBe('Add block below');
+        expect(betweenButton.tagName).toBe('BUTTON');
+        expect(betweenButton.type).toBe('button');
+        expect(betweenButton.getAttribute('aria-label')).toBe('Choose block type to add below');
+
+        betweenButton.getBoundingClientRect = () => ({ left: 120, bottom: 240 });
+        betweenButton.click();
+
+        expect(SlashMenu.show).toHaveBeenCalledWith(120, 240, 'heading-1');
+        expect(SlashMenu.setCallback).toHaveBeenCalledTimes(1);
     });
 });
