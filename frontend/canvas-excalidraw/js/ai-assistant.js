@@ -210,6 +210,7 @@ class AIAssistant {
         this.updateSelectionActionBar();
         this.setAgentPlanStep();
         this.panel?.classList.add('active');
+        this.syncPanelState();
     }
 
     getSpeechRecognitionConstructor() {

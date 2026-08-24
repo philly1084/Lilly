@@ -91,6 +91,14 @@ function createAssistant(AIAssistant) {
 }
 
 describe('canvas AI assistant copy handoffs', () => {
+    test('synchronizes accessibility state after opening the panel on startup', () => {
+        const source = fs.readFileSync(path.join(__dirname, 'ai-assistant.js'), 'utf8');
+
+        expect(source).toMatch(
+            /this\.panel\?\.classList\.add\('active'\);\s*this\.syncPanelState\(\);/,
+        );
+    });
+
     test('keeps the Canvas AI trigger and panel visibility state synchronized', () => {
         const trigger = { setAttribute: jest.fn() };
         const panel = {
