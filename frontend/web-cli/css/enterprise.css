@@ -2395,10 +2395,16 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer a.btn 
         display: none;
     }
 
-    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .voxel-pet-status {
-        max-width: 150px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .voxel-pet-status[data-short] {
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
         white-space: nowrap;
+        font-size: 0;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .voxel-pet-status[data-short]::after {
+        content: attr(data-short);
+        font-size: 11px;
     }
 }

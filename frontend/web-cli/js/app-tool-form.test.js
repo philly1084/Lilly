@@ -528,6 +528,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         const modelSelect = dom.window.document.getElementById('modelSelect');
         const commandInput = dom.window.document.getElementById('commandInput');
         const commandAssist = dom.window.document.getElementById('commandAssist');
+        const companionStatus = dom.window.document.getElementById('voxelPetStatus');
         const cancelRequestButton = dom.window.document.getElementById('cancelRequestButton');
         const queueIndicator = dom.window.document.getElementById('queueIndicator');
         const statusIndicator = dom.window.document.querySelector('.status-indicator');
@@ -549,7 +550,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(terminalOutput.getAttribute('aria-label')).toBe('CLI transcript');
         expect(terminalOutput.tabIndex).toBe(0);
         expect(indexMarkup).toMatch(/\.terminal-output:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);/s);
-        expect(indexMarkup).toContain('css/enterprise.css?v=20260825b');
+        expect(indexMarkup).toContain('css/enterprise.css?v=20260825c');
         expect(enterpriseStyles).toMatch(/\.command-center-actions\s*{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);/s);
         expect(enterpriseStyles).toMatch(/\.command-center-actions button:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);[^}]*outline-offset:\s*2px;/s);
         expect(modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: loading');
@@ -566,6 +567,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dom.window.document.getElementById('autocomplete').getAttribute('role')).toBe('listbox');
         expect(commandAssist.getAttribute('role')).toBe('status');
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
+        expect(companionStatus.dataset.short).toBe('Companion ready');
+        expect(enterpriseStyles).toMatch(/@media \(max-width: 600px\)[\s\S]*?\.voxel-pet-status\[data-short\]::after\s*{[^}]*content:\s*attr\(data-short\);[^}]*font-size:\s*11px;/s);
         expect(queueIndicator.getAttribute('role')).toBe('status');
         expect(queueIndicator.getAttribute('aria-live')).toBe('polite');
         expect(queueIndicator.getAttribute('aria-atomic')).toBe('true');
