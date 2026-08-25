@@ -289,7 +289,7 @@
     </div>
 
     <!-- Content Studio Modal -->
-    <div id="image-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="image-modal-title">
+    <div id="image-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="image-modal-title" aria-hidden="true">
         <div class="modal-overlay" onclick="uiHelpers.closeImageModal()"></div>
         <div class="modal-content image-modal-content">
             <div class="modal-header">
@@ -899,7 +899,7 @@
                             <span class="text-sm font-medium block">Write a brief</span>
                             <span class="text-xs text-text-tertiary">Documents, plans, and summaries</span>
                         </button>
-                        <button class="suggestion-chip p-4 rounded-xl border border-border bg-bg-secondary hover:bg-bg-tertiary hover:border-accent/50 transition-all text-left group" onclick="uiHelpers.openImageModal(); document.getElementById('image-prompt-input').value = 'editorial product photo of a cobalt blue AI device on brushed metal';">
+                        <button class="suggestion-chip p-4 rounded-xl border border-border bg-bg-secondary hover:bg-bg-tertiary hover:border-accent/50 transition-all text-left group" onclick="uiHelpers.openImageModal(); document.getElementById('image-prompt-input').value = 'editorial product photo of a cobalt blue AI device on brushed metal';" aria-haspopup="dialog" aria-expanded="false" aria-controls="image-modal">
                             <i data-lucide="image" class="w-5 h-5 text-orange-500 mb-2 group-hover:scale-110 transition-transform" aria-hidden="true"></i>
                             <span class="text-sm font-medium block">Generate visuals</span>
                             <span class="text-xs text-text-tertiary">AI images and references</span>
@@ -1050,7 +1050,7 @@
                             </div>
                             <div id="selected-tool-chip-tray" class="selected-tool-chip-tray hidden" aria-live="polite"></div>
                             <!-- Image Generation Button -->
-                            <button id="image-btn" class="image-btn ml-2 mb-3 p-2 rounded-lg text-text-secondary hover:text-purple-500 hover:bg-purple-500/10 transition-all" title="Create media (Ctrl+I)" onclick="uiHelpers.openImageModal()" aria-label="Create media">
+                            <button id="image-btn" class="image-btn ml-2 mb-3 p-2 rounded-lg text-text-secondary hover:text-purple-500 hover:bg-purple-500/10 transition-all" title="Create media (Ctrl+I)" onclick="uiHelpers.openImageModal()" aria-label="Create media" aria-haspopup="dialog" aria-expanded="false" aria-controls="image-modal">
                                 <i data-lucide="image-plus" class="w-5 h-5" aria-hidden="true"></i>
                             </button>
                             <textarea 
@@ -1387,7 +1387,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260824a"></script>
+    <script defer src="js/ui.js?v=20260825a"></script>
     <script defer src="js/app.js?v=20260824a"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>

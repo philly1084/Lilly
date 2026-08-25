@@ -6696,9 +6696,13 @@ class UIHelpers {
 
     openImageModal() {
         const modal = document.getElementById('image-modal');
+        if (!modal) {
+            return;
+        }
         this.closeThemeGallery({ silent: true });
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
+        this.updateImageModalTriggerState(true);
         
         // Save last focused element
         this.lastFocusedElement = document.activeElement;
@@ -6723,6 +6727,12 @@ class UIHelpers {
         
         // Trap focus for accessibility
         this.trapFocus(modal);
+    }
+
+    updateImageModalTriggerState(isOpen) {
+        document.querySelectorAll('[aria-controls="image-modal"]').forEach((trigger) => {
+            trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
     }
 
     openPodcastModal() {
@@ -6866,8 +6876,12 @@ class UIHelpers {
     }
     closeImageModal() {
         const modal = document.getElementById('image-modal');
+        if (!modal) {
+            return;
+        }
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
+        this.updateImageModalTriggerState(false);
         
         // Return focus to trigger button
         if (this.lastFocusedElement) {
