@@ -938,17 +938,17 @@
                         </div>
                         <div id="composer-shell" class="relative flex items-end gap-2 bg-bg-tertiary rounded-xl border border-border focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 transition-all shadow-sm">
                             <div class="tool-menu-wrap">
-                                <button id="tool-menu-btn" class="tool-menu-btn" type="button" title="Choose tools" aria-label="Choose tools" aria-haspopup="menu" aria-expanded="false" aria-controls="tool-menu-panel">
+                                <button id="tool-menu-btn" class="tool-menu-btn" type="button" title="Choose tools" aria-label="Choose tools" aria-expanded="false" aria-controls="tool-menu-panel">
                                     <i data-lucide="plus" class="w-5 h-5" aria-hidden="true"></i>
                                     <span id="tool-menu-count" class="tool-menu-count hidden" aria-hidden="true">0</span>
                                 </button>
-                                <div id="tool-menu-panel" class="tool-menu-panel hidden" role="menu" aria-label="Tool choices">
+                                <div id="tool-menu-panel" class="tool-menu-panel hidden" role="group" aria-labelledby="tool-menu-title">
                                     <div class="tool-menu-panel__head">
-                                        <span class="tool-menu-panel__title">Tools</span>
+                                        <span class="tool-menu-panel__title" id="tool-menu-title">Tools</span>
                                         <span id="tool-menu-summary" class="tool-menu-panel__summary">None selected</span>
                                     </div>
                                     <div class="tool-menu-grid">
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="research">
                                             <span class="tool-menu-choice__icon"><i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -956,7 +956,7 @@
                                                 <span class="tool-menu-choice__hint">Search and fetch</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="extract">
                                             <span class="tool-menu-choice__icon"><i data-lucide="newspaper" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -964,7 +964,7 @@
                                                 <span class="tool-menu-choice__hint">Scrape and articles</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="images">
                                             <span class="tool-menu-choice__icon"><i data-lucide="image-plus" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -972,7 +972,7 @@
                                                 <span class="tool-menu-choice__hint">Generate media</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="references">
                                             <span class="tool-menu-choice__icon"><i data-lucide="images" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -980,7 +980,7 @@
                                                 <span class="tool-menu-choice__hint">Assets and URLs</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="documents">
                                             <span class="tool-menu-choice__icon"><i data-lucide="file-text" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -988,7 +988,7 @@
                                                 <span class="tool-menu-choice__hint">PDF, PPTX, XLSX</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="sandbox">
                                             <span class="tool-menu-choice__icon"><i data-lucide="box" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -996,7 +996,7 @@
                                                 <span class="tool-menu-choice__hint">Preview builds</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="ide">
                                             <span class="tool-menu-choice__icon"><i data-lucide="code-2" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -1004,7 +1004,7 @@
                                                 <span class="tool-menu-choice__hint">Patch source</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="remote">
                                             <span class="tool-menu-choice__icon"><i data-lucide="server" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -1012,7 +1012,7 @@
                                                 <span class="tool-menu-choice__hint">Build and deploy</span>
                                             </span>
                                         </label>
-                                        <label class="tool-menu-choice" role="menuitemcheckbox">
+                                        <label class="tool-menu-choice">
                                             <input type="checkbox" data-tool-intent-checkbox value="workload">
                                             <span class="tool-menu-choice__icon"><i data-lucide="calendar-clock" class="w-4 h-4" aria-hidden="true"></i></span>
                                             <span class="tool-menu-choice__copy">
@@ -1388,7 +1388,7 @@
     <script defer src="js/file-manager.js?v=20260825a-dialog-state"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260825a-import-dialog-state"></script>
-    <script defer src="js/app.js?v=20260824a"></script>
+    <script defer src="js/app.js?v=20260825b"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>
 </html>

@@ -2485,7 +2485,6 @@ class ChatApp {
             checkbox.checked = isSelected;
             const choice = checkbox.closest('.tool-menu-choice');
             choice?.classList.toggle('is-selected', isSelected);
-            choice?.setAttribute('aria-checked', isSelected ? 'true' : 'false');
         });
 
         if (this.toolCommandPicker && !this.toolCommandPicker.classList.contains('hidden')) {

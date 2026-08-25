@@ -132,6 +132,21 @@ describe('web-chat index redirect', () => {
         expect(css).not.toContain('var(--accent-rgb)');
     });
 
+    test('composer tool picker exposes native checkbox semantics', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+
+        expect(html).toContain('id="tool-menu-btn"');
+        expect(html).toContain('aria-expanded="false" aria-controls="tool-menu-panel"');
+        expect(html).not.toContain('id="tool-menu-btn" class="tool-menu-btn" type="button" title="Choose tools" aria-label="Choose tools" aria-haspopup="menu"');
+        expect(html).toContain('id="tool-menu-panel" class="tool-menu-panel hidden" role="group" aria-labelledby="tool-menu-title"');
+        expect(html).toContain('id="tool-menu-title">Tools</span>');
+        expect(html.match(/<label class="tool-menu-choice">/g)).toHaveLength(9);
+        expect(html).not.toContain('role="menuitemcheckbox"');
+        expect(appSource).not.toContain("choice?.setAttribute('aria-checked'");
+        expect(html).toContain('js/app.js?v=20260825b');
+    });
+
     test('composer consolidates text focus on its rounded shell', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
 
@@ -157,7 +172,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260824a');
+        expect(html).toContain('js/app.js?v=20260825b');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -280,7 +295,7 @@ describe('web-chat index redirect', () => {
         expect(appSource).toContain("this.workloadModal.setAttribute('aria-hidden', 'false');");
         expect(appSource).toContain('if (returnFocus?.isConnected && typeof returnFocus.focus === \'function\')');
         expect(appSource).toContain('returnFocus.focus();');
-        expect(html).toContain('js/app.js?v=20260824a');
+        expect(html).toContain('js/app.js?v=20260825b');
     });
 
     test('assistant model list exposes keyboard-operable options', () => {
@@ -382,7 +397,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260824a');
+        expect(html).toContain('js/app.js?v=20260825b');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
@@ -399,7 +414,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-controls="workloads-panel"');
         expect(html).toContain('id="workloads-panel" class="workloads-panel hidden border-b border-border px-6 py-4 bg-bg-secondary/60" tabindex="-1" aria-labelledby="workloads-panel-title" aria-hidden="true"');
         expect(html).toContain('class="workloads-panel__title" id="workloads-panel-title">Agent Workloads</h2>');
-        expect(html).toContain('js/app.js?v=20260824a');
+        expect(html).toContain('js/app.js?v=20260825b');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('title', label);");
@@ -537,7 +552,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="podcast-review-panel"');
         expect(html).toContain('js/api.js?v=20260717a');
         expect(html).toContain('js/ui.js?v=20260825a');
-        expect(html).toContain('js/app.js?v=20260824a');
+        expect(html).toContain('js/app.js?v=20260825b');
         expect(uiSource).toContain('renderPodcastLaunchKitReview(campaign)');
         expect(uiSource).toContain('renderContentStudioCampaignMessage(message)');
         expect(uiSource).toContain("'Building the production plan'");
