@@ -1467,7 +1467,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-system-health-status-v1');
+        expect(html).toContain('dashboard.js?v=admin-model-usage-progress-v1');
         expect(html).toContain('css/dashboard.css?v=admin-lilly-wiki-contrast-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
@@ -1501,6 +1501,40 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderSystemHealth(null, 0, new Error('offline'));
         expect(status.textContent).toBe('Disconnected');
         expect(status.getAttribute('aria-label')).toBe('System health: Disconnected');
+    });
+
+    test('names model request-share bars as progress indicators', async () => {
+        const dom = new JSDOM('<div id="modelUsage"></div>', {
+            url: 'http://localhost:3000/admin/',
+        });
+        const apiClient = {
+            get: jest.fn().mockResolvedValue({
+                success: true,
+                data: [
+                    { modelName: 'Auto', requests: 20, successRate: 95 },
+                    { modelName: 'Gpt Image 2', requests: 1, successRate: 5 },
+                ],
+            }),
+        };
+        const Dashboard = loadDashboardClass(dom, { apiClient });
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+        dashboard.unwrapApiPayload = Dashboard.prototype.unwrapApiPayload.bind(dashboard);
+        dashboard.escapeHtml = Dashboard.prototype.escapeHtml.bind(dashboard);
+
+        await dashboard.loadModelUsage();
+
+        const bars = [...dom.window.document.querySelectorAll('[role="progressbar"]')];
+        expect(bars).toHaveLength(2);
+        expect(bars[0].getAttribute('aria-label')).toBe('Auto request share');
+        expect(bars[0].getAttribute('aria-valuemin')).toBe('0');
+        expect(bars[0].getAttribute('aria-valuemax')).toBe('100');
+        expect(bars[0].getAttribute('aria-valuenow')).toBe('95');
+        expect(bars[0].getAttribute('aria-valuetext')).toBe('95% of requests');
+        expect(bars[0].querySelector('.model-fill').style.width).toBe('95%');
+        expect(dom.window.document.querySelector('.model-percent').getAttribute('aria-hidden')).toBe('true');
     });
 
     test('keeps prompt tab selection and panel visibility synchronized', () => {

@@ -7719,18 +7719,30 @@ class Dashboard {
                 }))
                 : [{ name: 'No usage yet', requests: 0, avgLatency: 0, percent: 0 }];
 
-            container.innerHTML = items.map((model) => `
-                <div class="model-usage-item">
-                    <div class="model-info">
-                        <span class="model-name">${this.escapeHtml(model.name)}</span>
-                        <span class="model-requests">${model.requests.toLocaleString()} requests${model.avgLatency ? ` | ${model.avgLatency}ms avg` : ''}${(model.inputTokens || model.outputTokens) ? ` | ${(model.inputTokens + model.outputTokens).toLocaleString()} tokens` : ''}</span>
+            container.innerHTML = items.map((model) => {
+                const percent = Math.max(0, Math.min(model.percent, 100));
+                const modelName = this.escapeHtml(model.name);
+                return `
+                    <div class="model-usage-item">
+                        <div class="model-info">
+                            <span class="model-name">${modelName}</span>
+                            <span class="model-requests">${model.requests.toLocaleString()} requests${model.avgLatency ? ` | ${model.avgLatency}ms avg` : ''}${(model.inputTokens || model.outputTokens) ? ` | ${(model.inputTokens + model.outputTokens).toLocaleString()} tokens` : ''}</span>
+                        </div>
+                        <div
+                            class="model-bar"
+                            role="progressbar"
+                            aria-label="${modelName} request share"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                            aria-valuenow="${percent}"
+                            aria-valuetext="${percent}% of requests"
+                        >
+                            <div class="model-fill" style="width: ${percent}%"></div>
+                        </div>
+                        <span class="model-percent" aria-hidden="true">${percent}%</span>
                     </div>
-                    <div class="model-bar">
-                        <div class="model-fill" style="width: ${Math.max(0, Math.min(model.percent, 100))}%"></div>
-                    </div>
-                    <span class="model-percent">${Math.max(0, Math.min(model.percent, 100))}%</span>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         } catch (error) {
             console.error('Error loading model usage:', error);
             container.innerHTML = '<div class="model-usage-item"><span class="model-name">Failed to load usage data</span></div>';
