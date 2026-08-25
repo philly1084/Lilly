@@ -686,6 +686,8 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('companyFileSourceFilter')).not.toBeNull();
         expect(dom.window.document.getElementById('companySharedWhiteboard')).not.toBeNull();
         expect(dom.window.document.getElementById('companyRunDetails')).not.toBeNull();
+        expect(dom.window.document.getElementById('companyWorkloadsTableBody').closest('table').querySelector('caption').textContent).toBe('Agent Company workloads');
+        expect(dom.window.document.getElementById('companyRunsTableBody').closest('table').querySelector('caption').textContent).toBe('Recent Agent Company runs');
     });
 
     test('keeps dashboard focus and reduced-motion affordances in CSS', () => {
