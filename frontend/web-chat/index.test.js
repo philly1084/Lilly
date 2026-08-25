@@ -397,6 +397,8 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('title="Open agent workloads"');
         expect(html).toContain('aria-label="Open agent workloads"');
         expect(html).toContain('aria-controls="workloads-panel"');
+        expect(html).toContain('id="workloads-panel" class="workloads-panel hidden border-b border-border px-6 py-4 bg-bg-secondary/60" tabindex="-1" aria-labelledby="workloads-panel-title" aria-hidden="true"');
+        expect(html).toContain('class="workloads-panel__title" id="workloads-panel-title">Agent Workloads</h2>');
         expect(html).toContain('js/app.js?v=20260824a');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
