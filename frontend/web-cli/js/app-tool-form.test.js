@@ -578,7 +578,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260825a');
+        expect(indexMarkup).toContain('js/app.js?v=20260825b');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -1122,6 +1122,35 @@ describe('web-cli density control state', () => {
         expect(app.densityButton.getAttribute('title')).toBe('Use roomy layout');
         expect(app.densityButton.getAttribute('aria-label')).toBe('Use roomy layout. Current density: Compact');
         expect(app.densityButton.classList.contains('is-active')).toBe(true);
+    });
+});
+
+describe('web-cli automatic read-aloud control state', () => {
+    test('names the next voice action while preserving the visible current state', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<button id="ttsToggleButton"><span>Voice</span></button>');
+        let enabled = false;
+        app.ttsToggleButton = dom.window.document.getElementById('ttsToggleButton');
+        app.ttsManager = {
+            isAvailable: () => true,
+            isAutoPlayEnabled: () => enabled,
+            getDiagnostics: () => ({ status: 'ready', message: '' }),
+        };
+
+        app.updateTtsControls(dom.window.document);
+
+        expect(app.ttsToggleButton.querySelector('span').textContent).toBe('Voice');
+        expect(app.ttsToggleButton.getAttribute('title')).toBe('Turn automatic read-aloud on');
+        expect(app.ttsToggleButton.getAttribute('aria-label')).toBe('Turn automatic read-aloud on. Current state: Off');
+        expect(app.ttsToggleButton.getAttribute('aria-pressed')).toBe('false');
+
+        enabled = true;
+        app.updateTtsControls(dom.window.document);
+
+        expect(app.ttsToggleButton.querySelector('span').textContent).toBe('Voice On');
+        expect(app.ttsToggleButton.getAttribute('title')).toBe('Turn automatic read-aloud off');
+        expect(app.ttsToggleButton.getAttribute('aria-label')).toBe('Turn automatic read-aloud off. Current state: On');
+        expect(app.ttsToggleButton.getAttribute('aria-pressed')).toBe('true');
     });
 });
 

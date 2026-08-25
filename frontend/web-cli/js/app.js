@@ -6243,9 +6243,14 @@ Session Statistics:
             this.ttsToggleButton.classList.toggle('is-active', available && enabled);
             this.ttsToggleButton.setAttribute('aria-pressed', available && enabled ? 'true' : 'false');
             this.ttsToggleButton.title = available
-                ? (enabled ? 'Read replies aloud: On' : 'Read replies aloud: Off')
+                ? (enabled ? 'Turn automatic read-aloud off' : 'Turn automatic read-aloud on')
                 : String(diagnostics.message || 'Voice playback is unavailable.');
-            this.ttsToggleButton.setAttribute('aria-label', this.ttsToggleButton.title);
+            this.ttsToggleButton.setAttribute(
+                'aria-label',
+                available
+                    ? `${this.ttsToggleButton.title}. Current state: ${enabled ? 'On' : 'Off'}`
+                    : this.ttsToggleButton.title,
+            );
             if (label) {
                 label.textContent = enabled ? 'Voice On' : 'Voice';
             }
