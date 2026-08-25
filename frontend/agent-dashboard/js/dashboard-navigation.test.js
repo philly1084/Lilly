@@ -489,6 +489,23 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('names advanced settings actions by their full outcome', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+
+        const actions = [
+            ['clearAllLogsBtn', 'Clear all request logs'],
+            ['resetConfigBtn', 'Reset configuration to defaults'],
+            ['exportDataBtn', 'Export all configuration and logs'],
+        ];
+
+        actions.forEach(([id, label]) => {
+            const button = dom.window.document.getElementById(id);
+            expect(button.getAttribute('type')).toBe('button');
+            expect(button.getAttribute('aria-label')).toBe(label);
+        });
+    });
+
     test('summarizes request chart data for non-visual users', () => {
         const dom = new JSDOM(`
             <select id="chartTimeRange"><option selected>Last 24 Hours</option></select>
