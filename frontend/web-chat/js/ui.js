@@ -11013,6 +11013,12 @@ class UIHelpers {
     // Import Modal - Enhanced with multiple formats
     // ============================================
 
+    syncImportModalTriggers(expanded) {
+        document.querySelectorAll('[aria-controls="import-modal"]').forEach((trigger) => {
+            trigger.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        });
+    }
+
     openImportModal() {
         // Remove any existing import modal
         this.closeImportModal({ restoreFocus: false });
@@ -11023,6 +11029,7 @@ class UIHelpers {
         if (modal) {
             modal.classList.remove('hidden');
             modal.setAttribute('aria-hidden', 'false');
+            this.syncImportModalTriggers(true);
             
             // Save last focused element
             this.lastFocusedElement = document.activeElement;
@@ -11248,6 +11255,7 @@ class UIHelpers {
             modal.classList.add('hidden');
             modal.setAttribute('aria-hidden', 'true');
         }
+        this.syncImportModalTriggers(false);
         this.pendingImport = null;
         this.pendingImportFormat = null;
         

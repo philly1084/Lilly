@@ -215,7 +215,7 @@
     </div>
 
     <!-- Import Modal -->
-    <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="import-title" aria-describedby="import-description">
+    <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="import-title" aria-describedby="import-description" aria-hidden="true">
         <div class="modal-overlay" onclick="uiHelpers.closeImportModal()"></div>
         <div class="modal-content">
             <div class="modal-header">
@@ -732,7 +732,7 @@
                 <div class="sidebar-footer-label">Workspace</div>
                 <!-- Action Buttons -->
                 <div class="grid grid-cols-2 gap-2">
-                    <button id="import-btn" class="btn-secondary flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all" onclick="uiHelpers.openImportModal()" title="Import">
+                    <button id="import-btn" class="btn-secondary flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all" onclick="uiHelpers.openImportModal()" title="Import" aria-haspopup="dialog" aria-expanded="false" aria-controls="import-modal">
                         <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
                         <span class="sidebar-btn-text">Import</span>
                     </button>
@@ -1387,7 +1387,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260825a"></script>
+    <script defer src="js/ui.js?v=20260825a-import-dialog-state"></script>
     <script defer src="js/app.js?v=20260824a"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>

@@ -249,8 +249,10 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-        expect(html).toContain('aria-describedby="import-description"');
+        expect(html).toContain('aria-describedby="import-description" aria-hidden="true"');
         expect(html).toContain('id="import-description"');
+        expect(html).toContain('id="import-btn"');
+        expect(html).toContain('aria-haspopup="dialog" aria-expanded="false" aria-controls="import-modal"');
         expect(html).toContain('<button type="button" id="import-dropzone" class="import-dropzone w-full">');
         expect(html).not.toContain('<div id="import-dropzone" class="import-dropzone">');
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
@@ -258,6 +260,9 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-busy="false"');
         expect(html).toContain('js/ui.js?v=20260825a');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
+        expect(uiSource).toContain("document.querySelectorAll('[aria-controls=\"import-modal\"]')");
+        expect(uiSource).toContain('this.syncImportModalTriggers(true);');
+        expect(uiSource).toContain('this.syncImportModalTriggers(false);');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
         expect(uiSource).toContain('restoreFocus && this.lastFocusedElement');
