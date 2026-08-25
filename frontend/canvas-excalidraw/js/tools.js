@@ -212,7 +212,10 @@ class ToolManager {
         
         // Close mobile toolbar after selection on mobile
         if (window.matchMedia('(max-width: 768px)').matches) {
-            document.getElementById('toolbar')?.classList.remove('active');
+            const toolbar = document.getElementById('toolbar');
+            const toolbarToggle = document.getElementById('mobileToolbarToggle');
+            window.app?.closeToolDockTray?.();
+            window.app?.setMobilePanelOpen?.(toolbar, toolbarToggle, false, { restoreFocus: true });
         }
     }
     

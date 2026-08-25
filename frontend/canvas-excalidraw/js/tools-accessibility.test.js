@@ -30,6 +30,8 @@ function loadToolManager(dom) {
 function createToolsDom() {
     return new JSDOM(`
         <div id="canvasContainer" class="canvas-container"></div>
+        <button id="mobileToolbarToggle" aria-expanded="true">Tools</button>
+        <aside id="toolbar" class="active"></aside>
         <div id="selectionBox"></div>
         <div id="textEditor"></div>
         <div id="aiImageTooltip"></div>
@@ -96,5 +98,27 @@ describe('canvas tool button accessibility', () => {
             false,
         ]);
         expect(dom.window.app.syncToolDockActive).toHaveBeenCalledWith('rectangle');
+    });
+
+    test('closes the mobile tool dock through the shared accessible panel state', () => {
+        const dom = createToolsDom();
+        const ToolManager = loadToolManager(dom);
+        const manager = new ToolManager();
+        dom.window.matchMedia.mockReturnValue({ matches: true });
+        dom.window.app = {
+            syncToolDockActive: jest.fn(),
+            closeToolDockTray: jest.fn(),
+            setMobilePanelOpen: jest.fn(),
+        };
+
+        manager.setTool('rectangle');
+
+        expect(dom.window.app.closeToolDockTray).toHaveBeenCalledTimes(1);
+        expect(dom.window.app.setMobilePanelOpen).toHaveBeenCalledWith(
+            dom.window.document.getElementById('toolbar'),
+            dom.window.document.getElementById('mobileToolbarToggle'),
+            false,
+            { restoreFocus: true },
+        );
     });
 });

@@ -188,7 +188,7 @@ function createDropdownHarness() {
 
 function createMobilePanelHarness() {
     const dom = new JSDOM(`
-        <button id="mobileToolbarToggle" type="button" aria-controls="toolbar" aria-expanded="false">Tools</button>
+        <button id="mobileToolbarToggle" type="button" aria-label="Open tool dock" title="Open tool dock" aria-controls="toolbar" aria-expanded="false" data-open-label="Open tool dock" data-close-label="Close tool dock" data-open-title="Open tool dock" data-close-title="Close tool dock">Tools</button>
         <aside id="toolbar">
             <button id="mobileToolbarClose" type="button">Close tools</button>
             <button class="tool-dock-btn" type="button" data-dock-group="shapes">Shapes</button>
@@ -898,12 +898,16 @@ describe('canvas mobile panel accessibility', () => {
         toolToggle.click();
         expect(toolbar.classList.contains('active')).toBe(true);
         expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toolToggle.getAttribute('aria-label')).toBe('Close tool dock');
+        expect(toolToggle.title).toBe('Close tool dock');
         expect(propertiesPanel.classList.contains('active')).toBe(false);
         expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
 
         toolClose.click();
         expect(toolbar.classList.contains('active')).toBe(false);
         expect(toolToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toolToggle.getAttribute('aria-label')).toBe('Open tool dock');
+        expect(toolToggle.title).toBe('Open tool dock');
         expect(document.activeElement).toBe(toolToggle);
 
         propertiesToggle.click();
