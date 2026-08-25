@@ -182,15 +182,15 @@
             </div>
 
             <!-- Breadcrumbs -->
-            <nav class="breadcrumbs" id="breadcrumbs">
-                <button class="breadcrumb-item" id="breadcrumb-root" aria-label="Go to home">
+            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb">
+                <button class="breadcrumb-item" id="breadcrumb-root" type="button" aria-label="Go to home">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                         <polyline points="9 22 9 12 15 12 15 22"></polyline>
                     </svg>
                 </button>
-                <span class="breadcrumb-separator">›</span>
-                <span class="breadcrumb-current" id="breadcrumb-current">Untitled</span>
+                <span class="breadcrumb-separator" aria-hidden="true">›</span>
+                <span class="breadcrumb-current" id="breadcrumb-current" aria-current="page">Untitled</span>
                 <!-- Model Selector (inline with breadcrumbs) -->
                 <div class="breadcrumb-model-selector">
                     <button id="model-selector-btn" class="model-selector-btn" onclick="AgentUI.toggleModelSelector()" title="Change AI model" aria-label="Change AI model" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-list">

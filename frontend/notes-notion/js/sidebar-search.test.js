@@ -5,6 +5,17 @@ function readSidebarSource() {
     return fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 }
 
+describe('Notes breadcrumb accessibility', () => {
+    test('names the landmark and identifies the current page', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(html).toContain('id="breadcrumbs" aria-label="Breadcrumb"');
+        expect(html).toContain('id="breadcrumb-root" type="button" aria-label="Go to home"');
+        expect(html).toContain('class="breadcrumb-separator" aria-hidden="true"');
+        expect(html).toContain('id="breadcrumb-current" aria-current="page"');
+    });
+});
+
 describe('Notes search modal accessibility semantics', () => {
     test('opens search as a labeled dialog and restores focus when closed', () => {
         const source = readSidebarSource();
