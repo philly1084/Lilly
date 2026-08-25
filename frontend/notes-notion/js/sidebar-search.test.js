@@ -331,6 +331,16 @@ describe('Notes page title accessibility', () => {
     });
 });
 
+describe('Notes page action accessibility', () => {
+    test('groups the page actions and keeps their buttons non-submitting', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(html).toContain('class="page-actions" role="group" aria-label="Page actions"');
+        expect(html).toContain('id="notes-tts-btn" class="notes-tts-btn" type="button"');
+        expect(html).toContain('id="export-btn" class="export-btn" type="button"');
+    });
+});
+
 describe('Notes theme toggle accessibility', () => {
     test('announces the target theme action while exposing pressed state', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
