@@ -5,7 +5,9 @@ const { JSDOM } = require('jsdom');
 
 function loadFileManager() {
     const source = fs.readFileSync(path.join(__dirname, 'file-manager.js'), 'utf8');
-    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    const dom = new JSDOM(`<!doctype html><html><body>
+        <button id="files-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-manager-modal">Files</button>
+    </body></html>`, {
         url: 'http://localhost:3000/web-chat/app.html',
         pretendToBeVisual: true,
     });
@@ -42,6 +44,30 @@ function loadFileManager() {
 }
 
 describe('web-chat file manager selection controls', () => {
+    test('exposes dialog state and returns focus to the Files trigger', async () => {
+        const { dom, fileManager } = loadFileManager();
+        const trigger = dom.window.document.getElementById('files-btn');
+        const modal = dom.window.document.getElementById('file-manager-modal');
+        const refresh = dom.window.document.getElementById('file-manager-refresh-btn');
+
+        fileManager.loadFiles = jest.fn(async () => {});
+        trigger.focus();
+        await fileManager.open();
+
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(modal.getAttribute('role')).toBe('dialog');
+        expect(modal.getAttribute('aria-modal')).toBe('true');
+        expect(modal.getAttribute('aria-labelledby')).toBe('file-manager-title');
+        expect(modal.getAttribute('aria-hidden')).toBe('false');
+        expect(dom.window.document.activeElement).toBe(refresh);
+
+        fileManager.close();
+
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+        expect(dom.window.document.activeElement).toBe(trigger);
+    });
+
     test('announces selected download availability through the footer button', () => {
         const { dom, fileManager } = loadFileManager();
         const button = dom.window.document.getElementById('file-download-selected-btn');

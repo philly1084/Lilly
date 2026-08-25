@@ -17,6 +17,7 @@ class FileManager {
     this.downloadTimeoutMs = 5 * 60 * 1000;
     this.isRefreshing = false;
     this.refreshPromise = null;
+    this.lastFocusedElement = null;
     
     this.init();
   }
@@ -84,21 +85,25 @@ class FileManager {
     const modal = document.createElement('div');
     modal.id = 'file-manager-modal';
     modal.className = 'modal hidden file-manager-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'file-manager-title');
+    modal.setAttribute('aria-hidden', 'true');
     modal.innerHTML = `
       <div class="modal-overlay" onclick="fileManager.close()"></div>
       <div class="modal-content file-manager-content">
         <div class="modal-header file-manager-header">
           <div class="file-manager-title">
-            <i data-lucide="folder-open" class="w-5 h-5 text-accent"></i>
-            <h3>File Manager</h3>
+            <i data-lucide="folder-open" class="w-5 h-5 text-accent" aria-hidden="true"></i>
+            <h3 id="file-manager-title">File Manager</h3>
             <span id="file-count-badge" class="file-count-badge">0</span>
           </div>
           <div class="file-manager-actions">
             <button id="file-manager-refresh-btn" class="btn-icon" onclick="fileManager.refreshFiles({ announce: true })" title="Refresh" aria-label="Refresh files">
-              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
             </button>
-            <button class="btn-icon" onclick="fileManager.close()" aria-label="Close">
-              <i data-lucide="x" class="w-5 h-5"></i>
+            <button class="btn-icon" onclick="fileManager.close()" aria-label="Close file manager">
+              <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
             </button>
           </div>
         </div>
@@ -1346,12 +1351,21 @@ class FileManager {
     if (!this.modalElement) {
       this.createModal();
     }
-    
+
+    const activeElement = document.activeElement;
+    if (activeElement && activeElement !== document.body && typeof activeElement.focus === 'function') {
+      this.lastFocusedElement = activeElement;
+    }
+
     this.isOpen = true;
     this.modalElement.classList.remove('hidden');
+    this.modalElement.setAttribute('aria-hidden', 'false');
+    document.getElementById('files-btn')?.setAttribute('aria-expanded', 'true');
     document.body.style.overflow = 'hidden';
     this.applySessionFiles(this.getSessionId());
-    
+
+    document.getElementById('file-manager-refresh-btn')?.focus({ preventScroll: true });
+
     // Load files
     await this.loadFiles();
     
@@ -1367,8 +1381,15 @@ class FileManager {
     this.isOpen = false;
     if (this.modalElement) {
       this.modalElement.classList.add('hidden');
+      this.modalElement.setAttribute('aria-hidden', 'true');
     }
+    document.getElementById('files-btn')?.setAttribute('aria-expanded', 'false');
     document.body.style.overflow = '';
+
+    if (this.lastFocusedElement?.isConnected) {
+      this.lastFocusedElement.focus({ preventScroll: true });
+    }
+    this.lastFocusedElement = null;
   }
 
   /**
