@@ -381,6 +381,7 @@ describe('canvas help modal accessibility', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
         const document = dom.window.document;
+        const pageTitle = document.querySelector('.top-bar-left .logo');
         const expectedLabels = {
             menuBtn: 'Open canvas menu',
             resetZoomBtn: 'Reset zoom to 100 percent',
@@ -394,6 +395,10 @@ describe('canvas help modal accessibility', () => {
             exportBtn: 'Export canvas',
             shareBtn: 'Share canvas',
         };
+
+        expect(pageTitle.tagName).toBe('H1');
+        expect(pageTitle.textContent.trim()).toBe('Canvas');
+        expect(document.querySelectorAll('h1')).toHaveLength(1);
 
         Object.entries(expectedLabels).forEach(([id, label]) => {
             const button = document.getElementById(id);
