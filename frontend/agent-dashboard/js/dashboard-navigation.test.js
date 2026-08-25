@@ -1467,12 +1467,40 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-request-chart-summary-v1');
+        expect(html).toContain('dashboard.js?v=admin-system-health-status-v1');
         expect(html).toContain('css/dashboard.css?v=admin-lilly-wiki-contrast-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');
         expect(html).toContain('<title>Lilly Mission Control</title>');
         expect(html).not.toContain('vs last hour');
+    });
+
+    test('announces system health changes with a specific status label', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html, { url: 'http://localhost:3000/admin/' });
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        const status = dom.window.document.getElementById('systemHealthStatus');
+        expect(status.getAttribute('role')).toBe('status');
+        expect(status.getAttribute('aria-live')).toBe('polite');
+        expect(status.getAttribute('aria-atomic')).toBe('true');
+        expect(status.getAttribute('aria-label')).toBe('System health: Healthy');
+
+        dashboard.renderSystemHealth({
+            status: 'degraded',
+            memory: { heapUsed: 50, heapTotal: 100 },
+            services: { sdk: 'connected', vectorStore: 'disconnected' },
+        }, 240);
+        expect(status.textContent).toBe('Degraded');
+        expect(status.getAttribute('aria-label')).toBe('System health: Degraded');
+
+        dashboard.renderSystemHealth(null, 0, new Error('offline'));
+        expect(status.textContent).toBe('Disconnected');
+        expect(status.getAttribute('aria-label')).toBe('System health: Disconnected');
     });
 
     test('keeps prompt tab selection and panel visibility synchronized', () => {

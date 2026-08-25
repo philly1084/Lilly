@@ -7329,6 +7329,7 @@ class Dashboard {
 
         if (error || !health) {
             statusEl.textContent = 'Disconnected';
+            statusEl.setAttribute('aria-label', 'System health: Disconnected');
             statusEl.className = 'status-badge error';
             apiLatencyFill.style.width = '0%';
             apiLatencyValue.textContent = '--';
@@ -7342,7 +7343,9 @@ class Dashboard {
         }
 
         const status = health.status || 'unknown';
-        statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        statusEl.textContent = statusLabel;
+        statusEl.setAttribute('aria-label', `System health: ${statusLabel}`);
         statusEl.className = `status-badge ${status === 'healthy' ? 'healthy' : (status === 'degraded' ? 'warning' : 'error')}`;
 
         const memoryBytes = Number(health.memory?.heapUsed || 0);

@@ -341,7 +341,7 @@
                         <div class="card">
                             <div class="card-header">
                                 <h3>System Health</h3>
-                                <span class="status-badge healthy" id="systemHealthStatus">Healthy</span>
+                                <span class="status-badge healthy" id="systemHealthStatus" role="status" aria-live="polite" aria-atomic="true" aria-label="System health: Healthy">Healthy</span>
                             </div>
                             <div class="card-body">
                                 <div class="health-metrics">
@@ -2660,6 +2660,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-request-chart-summary-v1"></script>
+    <script src="js/dashboard.js?v=admin-system-health-status-v1"></script>
 </body>
 </html>
