@@ -1177,6 +1177,25 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('associates durable context toggles with their visible names and descriptions', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const controls = [
+            ['personalityEnabled', 'Enable soul.md', 'Turn the persistent personality layer on or off without deleting the file.'],
+            ['userProfileEnabled', 'Enable user.md', 'Keep the bounded user profile available without mixing it into the soul or project notes.'],
+            ['agentNotesEnabled', 'Enable carryover notes', 'Keep a compact, durable notes layer available to the model without mixing it into the personality file.'],
+        ];
+
+        controls.forEach(([controlId, label, description]) => {
+            const control = dom.window.document.getElementById(controlId);
+            const labelElement = dom.window.document.getElementById(control.getAttribute('aria-labelledby'));
+            const descriptionElement = dom.window.document.getElementById(control.getAttribute('aria-describedby'));
+
+            expect(labelElement?.textContent.trim()).toBe(label);
+            expect(descriptionElement?.textContent.trim()).toBe(description);
+        });
+    });
+
     test('associates notification toggles with their visible names and descriptions', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);

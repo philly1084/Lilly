@@ -1622,11 +1622,11 @@
                                         <p class="text-muted">This markdown is loaded from <code id="soulFilePathLabel">soul.md</code> and appended to the shared runtime instructions for chat, canvas, notation, and OpenAI-compatible sessions.</p>
                                         <div class="feature-item">
                                             <div class="feature-info">
-                                                <span class="feature-name">Enable soul.md</span>
-                                                <span class="feature-desc">Turn the persistent personality layer on or off without deleting the file.</span>
+                                                <span class="feature-name" id="personalityEnabledLabel">Enable soul.md</span>
+                                                <span class="feature-desc" id="personalityEnabledDescription">Turn the persistent personality layer on or off without deleting the file.</span>
                                             </div>
                                             <label class="toggle">
-                                                <input type="checkbox" id="personalityEnabled" checked>
+                                                <input type="checkbox" id="personalityEnabled" aria-labelledby="personalityEnabledLabel" aria-describedby="personalityEnabledDescription" checked>
                                                 <span class="toggle-slider"></span>
                                             </label>
                                         </div>
@@ -1658,11 +1658,11 @@
                                         <p class="text-muted">This markdown is loaded from <code id="userProfileFilePathLabel">user.md</code> as the Hermes-style durable profile for stable user facts and collaboration defaults.</p>
                                         <div class="feature-item">
                                             <div class="feature-info">
-                                                <span class="feature-name">Enable user.md</span>
-                                                <span class="feature-desc">Keep the bounded user profile available without mixing it into the soul or project notes.</span>
+                                                <span class="feature-name" id="userProfileEnabledLabel">Enable user.md</span>
+                                                <span class="feature-desc" id="userProfileEnabledDescription">Keep the bounded user profile available without mixing it into the soul or project notes.</span>
                                             </div>
                                             <label class="toggle">
-                                                <input type="checkbox" id="userProfileEnabled" checked>
+                                                <input type="checkbox" id="userProfileEnabled" aria-labelledby="userProfileEnabledLabel" aria-describedby="userProfileEnabledDescription" checked>
                                                 <span class="toggle-slider"></span>
                                             </label>
                                         </div>
@@ -1694,11 +1694,11 @@
                                         <p class="text-muted">This markdown is loaded from <code id="agentNotesFilePathLabel">agent-notes.md</code> and injected as durable cross-session context. The runtime may update it when stable project notes, Phil-specific preferences, or future-useful ideas should persist.</p>
                                         <div class="feature-item">
                                             <div class="feature-info">
-                                                <span class="feature-name">Enable carryover notes</span>
-                                                <span class="feature-desc">Keep a compact, durable notes layer available to the model without mixing it into the personality file.</span>
+                                                <span class="feature-name" id="agentNotesEnabledLabel">Enable carryover notes</span>
+                                                <span class="feature-desc" id="agentNotesEnabledDescription">Keep a compact, durable notes layer available to the model without mixing it into the personality file.</span>
                                             </div>
                                             <label class="toggle">
-                                                <input type="checkbox" id="agentNotesEnabled" checked>
+                                                <input type="checkbox" id="agentNotesEnabled" aria-labelledby="agentNotesEnabledLabel" aria-describedby="agentNotesEnabledDescription" checked>
                                                 <span class="toggle-slider"></span>
                                             </label>
                                         </div>
