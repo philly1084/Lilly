@@ -269,7 +269,7 @@
                     <div class="dashboard-grid">
                         <div class="card chart-card">
                             <div class="card-header">
-                                <h3>Request Volume</h3>
+                                <h3 id="requestVolumeHeading">Request Volume</h3>
                                 <div class="card-actions">
                                     <select class="select-sm" id="chartTimeRange" aria-label="Request volume time range">
                                         <option value="1h">Last Hour</option>
@@ -281,7 +281,8 @@
                             </div>
                             <div class="card-body">
                                 <div class="chart-container" id="requestChart">
-                                    <canvas id="requestVolumeCanvas"></canvas>
+                                    <canvas id="requestVolumeCanvas" role="img" aria-labelledby="requestVolumeHeading" aria-describedby="requestVolumeSummary"></canvas>
+                                    <p class="sr-only" id="requestVolumeSummary">No request volume data for Last 24 Hours.</p>
                                 </div>
                             </div>
                         </div>
@@ -2659,6 +2660,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-company-reduced-motion-v1"></script>
+    <script src="js/dashboard.js?v=admin-request-chart-summary-v1"></script>
 </body>
 </html>

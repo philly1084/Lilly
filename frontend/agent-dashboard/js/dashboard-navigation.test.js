@@ -475,11 +475,41 @@ describe('agent dashboard navigation accessibility', () => {
         const dom = new JSDOM(html);
 
         const range = dom.window.document.getElementById('chartTimeRange');
+        const heading = dom.window.document.getElementById('requestVolumeHeading');
+        const canvas = dom.window.document.getElementById('requestVolumeCanvas');
+        const summary = dom.window.document.getElementById('requestVolumeSummary');
         const recentActivityButton = dom.window.document.querySelector('#overviewView [data-view="logs"]');
 
         expect(range.getAttribute('aria-label')).toBe('Request volume time range');
+        expect(canvas.getAttribute('role')).toBe('img');
+        expect(canvas.getAttribute('aria-labelledby')).toBe(heading.id);
+        expect(canvas.getAttribute('aria-describedby')).toBe(summary.id);
+        expect(summary.textContent).toBe('No request volume data for Last 24 Hours.');
         expect(recentActivityButton.getAttribute('type')).toBe('button');
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
+    });
+
+    test('summarizes request chart data for non-visual users', () => {
+        const dom = new JSDOM(`
+            <select id="chartTimeRange"><option selected>Last 24 Hours</option></select>
+            <p id="requestVolumeSummary"></p>
+        `);
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        dashboard.updateRequestChartSummary({
+            labels: ['9 a.m.', '10 a.m.', '11 a.m.'],
+            values: [1, 4, 2],
+        });
+
+        expect(dom.window.document.getElementById('requestVolumeSummary').textContent).toBe(
+            'Request volume for Last 24 Hours: 3 data points, 7 total requests. Peak 4 requests at 10 a.m. Latest 2 requests at 11 a.m.'
+        );
+
+        dashboard.updateRequestChartSummary({ labels: [], values: [] });
+        expect(dom.window.document.getElementById('requestVolumeSummary').textContent).toBe(
+            'No request volume data for Last 24 Hours.'
+        );
     });
 
     test('limits request chart labels to the available plot width', () => {
@@ -1420,7 +1450,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-company-reduced-motion-v1');
+        expect(html).toContain('dashboard.js?v=admin-request-chart-summary-v1');
         expect(html).toContain('css/dashboard.css?v=admin-lilly-wiki-contrast-v1');
         expect(html).toContain('id="traceQualitySummary"');
         expect(html).toContain('id="traceEvalSummary"');

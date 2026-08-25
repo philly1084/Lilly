@@ -6763,7 +6763,36 @@ class Dashboard {
 
         this.charts.requestVolume.labels = Array.isArray(chart.labels) ? chart.labels : [];
         this.charts.requestVolume.values = Array.isArray(chart.values) ? chart.values : [];
+        this.updateRequestChartSummary(this.charts.requestVolume);
         this.drawRequestVolumeChart();
+    }
+
+    updateRequestChartSummary(chart = {}) {
+        const summary = document.getElementById('requestVolumeSummary');
+        if (!summary) {
+            return;
+        }
+
+        const rangeSelect = document.getElementById('chartTimeRange');
+        const rangeLabel = rangeSelect?.selectedOptions?.[0]?.textContent?.trim() || 'selected range';
+        const labels = Array.isArray(chart.labels) ? chart.labels : [];
+        const values = Array.isArray(chart.values) ? chart.values.map((value) => Number(value) || 0) : [];
+
+        if (!values.length) {
+            summary.textContent = `No request volume data for ${rangeLabel}.`;
+            return;
+        }
+
+        const total = values.reduce((sum, value) => sum + value, 0);
+        const peak = Math.max(...values);
+        const peakIndex = values.indexOf(peak);
+        const latestIndex = values.length - 1;
+        const pointLabel = values.length === 1 ? 'data point' : 'data points';
+        const requestLabel = (value) => value === 1 ? 'request' : 'requests';
+        const peakTime = String(labels[peakIndex] || `point ${peakIndex + 1}`).replace(/[.!?]+$/, '');
+        const latestTime = String(labels[latestIndex] || `point ${latestIndex + 1}`).replace(/[.!?]+$/, '');
+
+        summary.textContent = `Request volume for ${rangeLabel}: ${values.length} ${pointLabel}, ${total.toLocaleString()} total ${requestLabel(total)}. Peak ${peak.toLocaleString()} ${requestLabel(peak)} at ${peakTime}. Latest ${values[latestIndex].toLocaleString()} ${requestLabel(values[latestIndex])} at ${latestTime}.`;
     }
 
     drawRequestVolumeChart() {
