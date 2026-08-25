@@ -1699,7 +1699,7 @@ const Sidebar = (function() {
                     
                     <!-- Export Section -->
                     <div class="settings-section">
-                        <div class="settings-section-title">📤 Export Current Page</div>
+                        <div class="settings-section-title" role="heading" aria-level="2">📤 Export Current Page</div>
                         <div class="settings-btn-group">
                             <button class="settings-btn" type="button" data-action="export-docx">
                                 <span>📄</span>
@@ -1748,7 +1748,7 @@ const Sidebar = (function() {
                     
                     <!-- Export All Section -->
                     <div class="settings-section">
-                        <div class="settings-section-title">📦 Export All Pages</div>
+                        <div class="settings-section-title" role="heading" aria-level="2">📦 Export All Pages</div>
                         <div class="settings-btn-group">
                             <button class="settings-btn" type="button" data-action="export-all-md">
                                 <span>📚</span>
@@ -1769,7 +1769,7 @@ const Sidebar = (function() {
                     
                     <!-- Import Section -->
                     <div class="settings-section">
-                        <div class="settings-section-title">📥 Import</div>
+                        <div class="settings-section-title" role="heading" aria-level="2">📥 Import</div>
                         <div class="settings-btn-group">
                             <button class="settings-btn" type="button" data-action="import-file">
                                 <span>📂</span>
@@ -1790,7 +1790,7 @@ const Sidebar = (function() {
                     
                     <!-- Data Management Section -->
                     <div class="settings-section">
-                        <div class="settings-section-title">💿 Data Management</div>
+                        <div class="settings-section-title" role="heading" aria-level="2">💿 Data Management</div>
                         <div class="settings-btn-group">
                             <button class="settings-btn" type="button" data-action="storage-info">
                                 <span>💿</span>

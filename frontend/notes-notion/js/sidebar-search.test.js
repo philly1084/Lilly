@@ -160,7 +160,7 @@ describe('Notes template chooser accessibility', () => {
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
         expect(html).toContain('css/styles.css?v=20260824-import-action-hierarchy');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
     });
 });
 
@@ -180,7 +180,7 @@ describe('Notes storage information accessibility', () => {
         expect(source).toContain("if (e.key !== 'Tab') return;");
         expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
     });
 });
 
@@ -190,7 +190,7 @@ describe('Notes settings dialog accessibility', () => {
         const source = readSidebarSource();
 
         expect(html).toContain('id="settings-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal"');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
         expect(source).toMatch(/function openSettings\(event\)[\s\S]*?modal\.id = 'settings-modal';\s*modal\.className = 'ai-modal is-open'/);
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'false')");
@@ -204,6 +204,19 @@ describe('Notes settings dialog accessibility', () => {
         expect(source).toContain('triggerElement.focus({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
     });
+
+    test('exposes each visible settings group as a dialog heading', () => {
+        const source = readSidebarSource();
+
+        [
+            '📤 Export Current Page',
+            '📦 Export All Pages',
+            '📥 Import',
+            '💿 Data Management',
+        ].forEach((label) => {
+            expect(source).toContain(`<div class="settings-section-title" role="heading" aria-level="2">${label}</div>`);
+        });
+    });
 });
 
 describe('Notes trash dialog accessibility', () => {
@@ -212,7 +225,7 @@ describe('Notes trash dialog accessibility', () => {
         const source = readSidebarSource();
 
         expect(html).toContain('id="trash-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="trash-modal"');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
         expect(source).toContain('function showTrash(event)');
         expect(source).toContain("modal.id = 'trash-modal'");
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
@@ -243,7 +256,7 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
         expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
         expect(html).toContain('css/styles.css?v=20260824-import-action-hierarchy');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)");
@@ -371,7 +384,7 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260825-template-dialog-state');
+        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
         expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
     });
 });
