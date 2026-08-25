@@ -579,7 +579,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260825b');
+        expect(indexMarkup).toContain('css/voxel.css?v=20260825c');
+        expect(indexMarkup).toContain('js/app.js?v=20260825c');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -1027,6 +1028,46 @@ describe('web-cli file manager dialog', () => {
 });
 
 describe('web-cli agent quick tool state', () => {
+    test('shows companion energy numerically and exposes bounded progress', () => {
+        const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(indexMarkup);
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({
+            document: dom.window.document,
+        });
+        const app = Object.create(CodeCLIApp.prototype);
+        app.voxel = {
+            MOODS: { ready: 'Ready' },
+            renderElement: jest.fn(() => dom.window.document.createElement('div')),
+        };
+        app.voxelPet = {
+            energy: 82,
+            mood: 'ready',
+            name: 'Voxel',
+            palette: {},
+            prompt: 'Helpful guide',
+            species: 'bot',
+            trait: 'curious',
+        };
+        app.theme = 'enterprise';
+        app.setVoxelPalette = jest.fn();
+        app.renderVoxelAgentStats = jest.fn();
+        app.voxelPetEnergy = dom.window.document.getElementById('voxelPetEnergy');
+        app.voxelPetEnergyMeter = dom.window.document.getElementById('voxelPetEnergyMeter');
+        app.voxelPetEnergyValue = dom.window.document.getElementById('voxelPetEnergyValue');
+
+        app.renderVoxelPet();
+
+        expect(app.voxelPetEnergy.style.getPropertyValue('--value')).toBe('82%');
+        expect(app.voxelPetEnergyMeter.getAttribute('role')).toBe('progressbar');
+        expect(app.voxelPetEnergyMeter.getAttribute('aria-labelledby')).toBe('voxelPetEnergyLabel');
+        expect(app.voxelPetEnergyMeter.getAttribute('aria-valuemin')).toBe('0');
+        expect(app.voxelPetEnergyMeter.getAttribute('aria-valuemax')).toBe('100');
+        expect(app.voxelPetEnergyMeter.getAttribute('aria-valuenow')).toBe('82');
+        expect(app.voxelPetEnergyMeter.getAttribute('aria-valuetext')).toBe('82% energy');
+        expect(app.voxelPetEnergyValue.textContent).toBe('82%');
+        expect(app.voxelPetEnergyValue.getAttribute('aria-hidden')).toBe('true');
+    });
+
     test('associates the visible companion request label with its prompt field', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(indexMarkup);

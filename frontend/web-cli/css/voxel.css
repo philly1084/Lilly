@@ -1519,6 +1519,17 @@ body[data-theme="voxel"] .voxel-pet-card {
     color: var(--text-muted);
 }
 
+.voxel-stat > span:first-child {
+    color: var(--text-muted);
+}
+
+.voxel-meter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4ch;
+    gap: 8px;
+    align-items: center;
+}
+
 .voxel-meter {
     height: 10px;
     background: var(--bg-tertiary);
@@ -1529,6 +1540,12 @@ body[data-theme="voxel"] .voxel-pet-card {
     height: 100%;
     width: var(--value, 50%);
     background: linear-gradient(90deg, var(--voxel-pet-primary), var(--voxel-pet-secondary));
+}
+
+.voxel-meter-value {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
 }
 
 .voxel-seed {

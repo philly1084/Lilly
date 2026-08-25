@@ -213,7 +213,9 @@ class CodeCLIApp {
         this.voxelPetName = document.getElementById('voxelPetName');
         this.voxelPetKind = document.getElementById('voxelPetKind');
         this.voxelPetMood = document.getElementById('voxelPetMood');
+        this.voxelPetEnergyMeter = document.getElementById('voxelPetEnergyMeter');
         this.voxelPetEnergy = document.getElementById('voxelPetEnergy');
+        this.voxelPetEnergyValue = document.getElementById('voxelPetEnergyValue');
         this.voxelPetSeed = document.getElementById('voxelPetSeed');
         this.voxelPetPrompt = document.getElementById('voxelPetPrompt');
         this.voxelPetButton = document.getElementById('voxelPetButton');
@@ -3563,6 +3565,13 @@ class CodeCLIApp {
         }
         if (this.voxelPetEnergy) {
             this.voxelPetEnergy.style.setProperty('--value', `${this.voxelPet.energy}%`);
+        }
+        if (this.voxelPetEnergyMeter) {
+            this.voxelPetEnergyMeter.setAttribute('aria-valuenow', String(this.voxelPet.energy));
+            this.voxelPetEnergyMeter.setAttribute('aria-valuetext', `${this.voxelPet.energy}% energy`);
+        }
+        if (this.voxelPetEnergyValue) {
+            this.voxelPetEnergyValue.textContent = `${this.voxelPet.energy}%`;
         }
         if (this.voxelPetSeed) {
             this.voxelPetSeed.textContent = `Seed: ${this.voxelPet.prompt}`;

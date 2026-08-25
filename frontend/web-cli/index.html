@@ -46,11 +46,11 @@
 
     <!-- PDF export for Mermaid diagrams -->
     <script defer src="/api/sandbox-libraries/pdf-lib/pdf-lib.min.js"></script>
-    <link rel="preload" as="style" href="css/voxel.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/voxel.css?v=20260825c" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="css/enterprise.css?v=20260825b" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/voxel.css?v=20260531a">
+        <link rel="stylesheet" href="css/voxel.css?v=20260825c">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
         <link rel="stylesheet" href="css/enterprise.css?v=20260825b">
     </noscript>
@@ -2144,9 +2144,12 @@
                                 <span id="voxelPetMood">Ready</span>
                             </div>
                             <div class="voxel-stat">
-                                <label>Energy</label>
-                                <div class="voxel-meter" aria-label="Voxel pet energy">
-                                    <div id="voxelPetEnergy" class="voxel-meter-fill"></div>
+                                <span id="voxelPetEnergyLabel">Energy</span>
+                                <div class="voxel-meter-row">
+                                    <div id="voxelPetEnergyMeter" class="voxel-meter" role="progressbar" aria-labelledby="voxelPetEnergyLabel" aria-valuemin="0" aria-valuemax="100">
+                                        <div id="voxelPetEnergy" class="voxel-meter-fill"></div>
+                                    </div>
+                                    <span id="voxelPetEnergyValue" class="voxel-meter-value" aria-hidden="true">--%</span>
                                 </div>
                             </div>
                         </div>
@@ -2229,6 +2232,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260825b"></script>
+    <script defer src="js/app.js?v=20260825c"></script>
 </body>
 </html>
