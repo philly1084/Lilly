@@ -377,45 +377,61 @@
 
         const previouslyFocusedElement = document.activeElement;
         const helpContent = `
-# Keyboard Shortcuts
-
-## General
-- **Cmd/Ctrl + P** - New page
-- **Cmd/Ctrl + S** - Save page
-- **Cmd/Ctrl + E** - Export to Markdown
-- **Cmd/Ctrl + B** - Toggle sidebar
-- **Cmd/Ctrl + K** - AI Assistant
-- **Cmd/Ctrl + /** - This help
-
-## Editor
-- **/** - Show slash menu
-- **Enter** - New block
-- **Shift + Enter** - New line in same block
-- **Tab** - Indent block
-- **Shift + Tab** - Unindent block
-- **Backspace** on empty block - Delete block
-
-## Markdown Shortcuts
-- **# ** - Heading 1
-- **## ** - Heading 2
-- **### ** - Heading 3
-- **- ** - Bulleted list
-- **1. ** - Numbered list
-- **[] ** - To-do
-- **> ** - Quote
-- **---** - Divider
-- **\`\`\`** - Code block
-
-## Selection
-- Select text to see "Ask AI" toolbar
-- Drag the block handle to reorder blocks
-- Click the block handle for the block menu
-
-## AI Agent
-- **Ctrl/Cmd + Shift + A** - Open AI Agent chat
-- Ask questions about your page
-- Request edits, summaries, or new content
-- Agent can see your entire page content
+            <div class="notes-help-grid">
+                <section aria-labelledby="notes-help-general">
+                    <h3 id="notes-help-general">General</h3>
+                    <dl class="notes-shortcut-list">
+                        <div><dt><kbd>Ctrl/⌘ P</kbd></dt><dd>New page</dd></div>
+                        <div><dt><kbd>Ctrl/⌘ S</kbd></dt><dd>Save page</dd></div>
+                        <div><dt><kbd>Ctrl/⌘ E</kbd></dt><dd>Export to Markdown</dd></div>
+                        <div><dt><kbd>Ctrl/⌘ B</kbd></dt><dd>Toggle sidebar</dd></div>
+                        <div><dt><kbd>Ctrl/⌘ K</kbd></dt><dd>AI Assistant</dd></div>
+                        <div><dt><kbd>Ctrl/⌘ /</kbd></dt><dd>This help</dd></div>
+                    </dl>
+                </section>
+                <section aria-labelledby="notes-help-editor">
+                    <h3 id="notes-help-editor">Editor</h3>
+                    <dl class="notes-shortcut-list">
+                        <div><dt><kbd>/</kbd></dt><dd>Show slash menu</dd></div>
+                        <div><dt><kbd>Enter</kbd></dt><dd>New block</dd></div>
+                        <div><dt><kbd>Shift Enter</kbd></dt><dd>New line in the same block</dd></div>
+                        <div><dt><kbd>Tab</kbd></dt><dd>Indent block</dd></div>
+                        <div><dt><kbd>Shift Tab</kbd></dt><dd>Unindent block</dd></div>
+                        <div><dt><kbd>Backspace</kbd></dt><dd>Delete an empty block</dd></div>
+                    </dl>
+                </section>
+                <section aria-labelledby="notes-help-markdown">
+                    <h3 id="notes-help-markdown">Markdown shortcuts</h3>
+                    <dl class="notes-shortcut-list">
+                        <div><dt><kbd>#</kbd></dt><dd>Heading 1</dd></div>
+                        <div><dt><kbd>##</kbd></dt><dd>Heading 2</dd></div>
+                        <div><dt><kbd>###</kbd></dt><dd>Heading 3</dd></div>
+                        <div><dt><kbd>-</kbd></dt><dd>Bulleted list</dd></div>
+                        <div><dt><kbd>1.</kbd></dt><dd>Numbered list</dd></div>
+                        <div><dt><kbd>[]</kbd></dt><dd>To-do</dd></div>
+                        <div><dt><kbd>&gt;</kbd></dt><dd>Quote</dd></div>
+                        <div><dt><kbd>---</kbd></dt><dd>Divider</dd></div>
+                        <div><dt><kbd>\`\`\`</kbd></dt><dd>Code block</dd></div>
+                    </dl>
+                </section>
+                <section aria-labelledby="notes-help-selection">
+                    <h3 id="notes-help-selection">Selection</h3>
+                    <ul>
+                        <li>Select text to show the Ask AI toolbar.</li>
+                        <li>Drag the block handle to reorder blocks.</li>
+                        <li>Click the block handle for the block menu.</li>
+                    </ul>
+                </section>
+                <section aria-labelledby="notes-help-agent">
+                    <h3 id="notes-help-agent">AI Agent</h3>
+                    <p><kbd>Ctrl/⌘ Shift A</kbd> opens AI Agent chat.</p>
+                    <ul>
+                        <li>Ask questions about your page.</li>
+                        <li>Request edits, summaries, or new content.</li>
+                        <li>The agent can see your entire page content.</li>
+                    </ul>
+                </section>
+            </div>
         `;
         
         const modal = document.createElement('div');
@@ -426,13 +442,13 @@
         modal.setAttribute('aria-labelledby', 'notes-help-modal-title');
         modal.style.display = 'flex';
         modal.innerHTML = `
-            <div class="ai-modal-content" tabindex="-1" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="ai-modal-content notes-help-dialog" tabindex="-1">
                 <div class="ai-modal-header">
                     <span aria-hidden="true">Keys</span>
                     <span id="notes-help-modal-title">Keyboard Shortcuts</span>
-                    <button class="icon-btn" type="button" data-help-close aria-label="Close keyboard shortcuts" style="margin-left: auto; background: transparent; border: none; color: white; cursor: pointer;">X</button>
+                    <button class="icon-btn notes-help-close" type="button" data-help-close aria-label="Close keyboard shortcuts"><span aria-hidden="true">×</span></button>
                 </div>
-                <div style="padding: 20px; white-space: pre-wrap; font-family: var(--font-mono); font-size: 14px; line-height: 1.6;">
+                <div class="notes-help-body">
                     ${helpContent}
                 </div>
             </div>

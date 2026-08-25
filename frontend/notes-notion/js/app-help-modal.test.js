@@ -69,6 +69,10 @@ describe('Notes help modal accessibility', () => {
         expect(modal.getAttribute('aria-labelledby')).toBe('notes-help-modal-title');
         expect(dom.window.document.getElementById('notes-help-modal-title').textContent).toBe('Keyboard Shortcuts');
         expect(closeButton.getAttribute('aria-label')).toBe('Close keyboard shortcuts');
+        expect(modal.querySelectorAll('.notes-help-grid section')).toHaveLength(5);
+        expect(modal.querySelectorAll('.notes-shortcut-list kbd').length).toBeGreaterThan(10);
+        expect(modal.textContent).not.toContain('# Keyboard Shortcuts');
+        expect(modal.textContent).not.toContain('**Cmd/Ctrl');
         expect(dom.window.document.activeElement).toBe(closeButton);
 
         dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
