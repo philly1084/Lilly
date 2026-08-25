@@ -489,6 +489,19 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('uses a decorative task-list symbol for the total tasks metric', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const totalTasks = dom.window.document.getElementById('totalTasks').closest('.stat-card');
+        const icon = totalTasks.querySelector('.task-list-icon');
+
+        expect(icon).not.toBeNull();
+        expect(icon.getAttribute('aria-hidden')).toBe('true');
+        expect(icon.getAttribute('focusable')).toBe('false');
+        expect(icon.querySelector('rect')).not.toBeNull();
+        expect(icon.textContent).not.toContain('$');
+    });
+
     test('names advanced settings actions by their full outcome', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
