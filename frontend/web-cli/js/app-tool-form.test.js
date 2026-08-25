@@ -578,7 +578,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(dragOverlay.querySelector('button').getAttribute('type')).toBe('button');
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
-        expect(indexMarkup).toContain('js/app.js?v=20260824b');
+        expect(indexMarkup).toContain('js/app.js?v=20260825a');
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
@@ -1097,6 +1097,31 @@ describe('web-cli theme control state', () => {
         expect(app.themeButton.querySelector('span').textContent).toBe('Light');
         expect(app.themeButton.getAttribute('title')).toBe('Theme: Light');
         expect(app.themeButton.getAttribute('aria-label')).toBe('Cycle theme. Current theme: Light');
+    });
+});
+
+describe('web-cli density control state', () => {
+    test('names the next layout action while preserving the visible current density', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM('<button id="densityButton"><span>Density</span></button>');
+        app.densityButton = dom.window.document.getElementById('densityButton');
+        app.getDensityLabel = (density) => density === 'compact' ? 'Compact' : 'Roomy';
+
+        app.density = 'comfortable';
+        app.updateDensityButton();
+
+        expect(app.densityButton.querySelector('span').textContent).toBe('Roomy');
+        expect(app.densityButton.getAttribute('title')).toBe('Use compact layout');
+        expect(app.densityButton.getAttribute('aria-label')).toBe('Use compact layout. Current density: Roomy');
+        expect(app.densityButton.classList.contains('is-active')).toBe(false);
+
+        app.density = 'compact';
+        app.updateDensityButton();
+
+        expect(app.densityButton.querySelector('span').textContent).toBe('Compact');
+        expect(app.densityButton.getAttribute('title')).toBe('Use roomy layout');
+        expect(app.densityButton.getAttribute('aria-label')).toBe('Use roomy layout. Current density: Compact');
+        expect(app.densityButton.classList.contains('is-active')).toBe(true);
     });
 });
 

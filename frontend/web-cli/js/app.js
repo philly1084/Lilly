@@ -11613,8 +11613,9 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             return;
         }
         const label = this.getDensityLabel(this.density);
-        this.densityButton.title = `Density: ${label}`;
-        this.densityButton.setAttribute('aria-label', `Cycle layout density. Current density: ${label}`);
+        const nextLabel = this.density === 'compact' ? 'Roomy' : 'Compact';
+        this.densityButton.title = `Use ${nextLabel.toLowerCase()} layout`;
+        this.densityButton.setAttribute('aria-label', `Use ${nextLabel.toLowerCase()} layout. Current density: ${label}`);
         const textNode = this.densityButton.querySelector('span');
         if (textNode) {
             textNode.textContent = label;
