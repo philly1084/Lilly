@@ -106,7 +106,7 @@ const Sidebar = (function() {
         const newPageBtn = document.getElementById('new-page-btn');
         if (newPageBtn) {
             newPageBtn.addEventListener('click', () => {
-                showTemplateModal();
+                showTemplateModal(newPageBtn);
             });
         }
         
@@ -595,6 +595,7 @@ const Sidebar = (function() {
         templates = Object.values(getPageTemplateBlueprints());
         
         const modal = document.createElement('div');
+        modal.id = 'template-modal';
         modal.className = 'template-modal';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
@@ -624,6 +625,7 @@ const Sidebar = (function() {
 
         const closeTemplateModal = () => {
             modal.remove();
+            triggerElement?.setAttribute?.('aria-expanded', 'false');
             if (triggerElement?.isConnected) {
                 triggerElement.focus({ preventScroll: true });
             }
@@ -667,6 +669,7 @@ const Sidebar = (function() {
             }
         });
         
+        triggerElement?.setAttribute?.('aria-expanded', 'true');
         document.body.appendChild(modal);
         modal.querySelector('.template-card')?.focus({ preventScroll: true });
     }
