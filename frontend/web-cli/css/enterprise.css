@@ -2323,6 +2323,10 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer a.btn 
         row-gap: 6px;
     }
 
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-model {
+        display: none;
+    }
+
     body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar {
         width: 100%;
         justify-content: stretch;
