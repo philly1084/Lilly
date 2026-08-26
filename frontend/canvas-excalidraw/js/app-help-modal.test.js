@@ -414,6 +414,8 @@ describe('canvas help modal accessibility', () => {
         expect(document.getElementById('topModelSelect').getAttribute('aria-label')).toBe('Select AI model');
         expect(document.querySelector('.model-icon').getAttribute('aria-hidden')).toBe('true');
         expect(document.getElementById('enterpriseModeBtn').getAttribute('aria-pressed')).toBe('false');
+        expect(document.querySelector('.top-bar-right').getAttribute('role')).toBe('group');
+        expect(document.querySelector('.top-bar-right').getAttribute('aria-label')).toBe('Canvas workspace actions');
     });
 
     test('labels the visible Canvas AI composer input', () => {
