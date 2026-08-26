@@ -550,7 +550,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(terminalOutput.getAttribute('aria-label')).toBe('CLI transcript');
         expect(terminalOutput.tabIndex).toBe(0);
         expect(indexMarkup).toMatch(/\.terminal-output:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);/s);
-        expect(indexMarkup).toContain('css/enterprise.css?v=20260825c');
+        expect(indexMarkup).toContain('css/enterprise.css?v=20260826a');
         expect(enterpriseStyles).toMatch(/\.command-center-actions\s*{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);/s);
         expect(enterpriseStyles).toMatch(/\.command-center-actions button:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\);[^}]*outline-offset:\s*2px;/s);
         expect(modelSelect.getAttribute('aria-label')).toBe('Choose AI model. Current model: loading');
@@ -588,6 +588,10 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
+        expect(drawer.querySelector('[aria-label="Show keyboard shortcuts"] span').textContent).toBe('Help');
+        expect(drawer.querySelector('a[href="/"]').textContent).toBe('Home');
+        expect(enterpriseStyles).toMatch(/\.toolbar\s*>\s*\.btn:nth-last-child\(-n \+ 2\)\s*{[^}]*display:\s*none;/s);
+        expect(enterpriseStyles).not.toMatch(/\.toolbar\s+\.btn:nth-last-child\(-n \+ 2\)/);
     });
 
     test('keeps the welcome card anchored at its beginning after either theme renders', () => {

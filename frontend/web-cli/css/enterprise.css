@@ -1895,7 +1895,7 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-center-boot-l
         font-size: 11px;
     }
 
-    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar .btn:nth-last-child(-n + 2) {
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar > .btn:nth-last-child(-n + 2) {
         display: none;
     }
 
