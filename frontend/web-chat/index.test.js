@@ -95,7 +95,7 @@ describe('web-chat index redirect', () => {
         expect(uiSource).not.toContain('role="${isEditing ? \'group\' : \'button\'}"');
         expect(css).toContain('.session-select-btn:focus-visible');
         expect(css).toContain('.session-item:focus-within .session-actions');
-        expect(html).toContain('css/styles.css?v=20260824d');
+        expect(html).toContain('css/styles.css?v=20260826a-mobile-action-copy');
         expect(html).toContain('js/ui.js?v=20260825a');
     });
 
@@ -203,6 +203,8 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.closeMobileActionSheet();');
         expect(css).toContain('.mobile-chat-menu__header {\n    position: sticky;');
         expect(css).toContain('backdrop-filter: blur(12px);');
+        expect(css).toContain('.mobile-chat-menu__action-value {\n        flex-basis: 48%;');
+        expect(css).toContain('text-overflow: clip;\n        white-space: normal;');
     });
 
     test('export modal exposes instructions, progress, and focus return hooks', () => {

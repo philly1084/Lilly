@@ -10376,11 +10376,14 @@ code[class*="language-"] {
     }
 
     .mobile-chat-menu__action-value {
-        flex-basis: 42%;
-        max-width: 42%;
+        flex-basis: 48%;
+        max-width: 48%;
         padding-left: 0;
         font-size: 0.74rem;
+        overflow: visible;
         text-align: right;
+        text-overflow: clip;
+        white-space: normal;
     }
     
     #connection-status {
