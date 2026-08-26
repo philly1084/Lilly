@@ -10460,7 +10460,7 @@ class UIHelpers {
 
         if (countEl) {
             countEl.textContent = resultCount > 0
-                ? `${this.currentSearchIndex + 1} / ${resultCount}`
+                ? `${this.currentSearchIndex + 1} of ${resultCount}`
                 : (hasQuery ? 'No matches' : '');
         }
 

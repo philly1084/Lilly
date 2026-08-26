@@ -668,7 +668,7 @@
             <div class="search-bar-inner" role="search">
                 <i data-lucide="search" class="w-5 h-5 text-text-secondary" aria-hidden="true"></i>
                 <input type="text" id="search-input" placeholder="Search in conversation…" autocomplete="off" inputmode="search" aria-label="Search messages">
-                <span id="search-count" class="search-count" aria-live="polite"></span>
+                <span id="search-count" class="search-count" role="status" aria-live="polite" aria-atomic="true"></span>
                 <button type="button" id="search-previous-btn" class="btn-icon" onclick="app.navigateSearch(-1)" title="Previous result" aria-label="Previous result" disabled>
                     <i data-lucide="chevron-up" class="w-4 h-4" aria-hidden="true"></i>
                 </button>
@@ -1387,7 +1387,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260825a-dialog-state"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260825a-import-dialog-state"></script>
+    <script defer src="js/ui.js?v=20260825a-search-status"></script>
     <script defer src="js/app.js?v=20260825b"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>

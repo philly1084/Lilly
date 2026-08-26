@@ -254,10 +254,13 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="search-btn"');
         expect(html.match(/aria-controls="search-bar"/g)).toHaveLength(2);
         expect(html.match(/aria-haspopup="dialog" aria-expanded="false" aria-controls="search-bar"/g)).toHaveLength(2);
+        expect(html).toContain('id="search-count" class="search-count" role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('js/ui.js?v=20260825a');
         expect(uiSource).toContain("document.querySelectorAll('[aria-controls=\"search-bar\"]')");
         expect(uiSource).toContain('this.updateSearchTriggerState(true);');
         expect(uiSource).toContain('this.updateSearchTriggerState(false);');
+        expect(uiSource).toContain('`${this.currentSearchIndex + 1} of ${resultCount}`');
+        expect(uiSource).not.toContain('`${this.currentSearchIndex + 1} / ${resultCount}`');
     });
 
     test('import modal exposes instructions, status progress, and focus return hooks', () => {
