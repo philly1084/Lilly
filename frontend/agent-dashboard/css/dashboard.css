@@ -1013,6 +1013,11 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .status-badge.warning::b
     overflow-x: auto;
 }
 
+body[data-ui-surface="admin"] .token-usage-table-region:focus {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 .logs-table {
     width: 100%;
     border-collapse: collapse;

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lilly Mission Control</title>
-    <link rel="stylesheet" href="css/dashboard.css?v=admin-lilly-wiki-contrast-v1">
+    <link rel="stylesheet" href="css/dashboard.css?v=admin-token-table-focus-v3">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
 </head>
 <body data-ui-surface="admin">
@@ -815,10 +815,10 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3>Per-Model Token Usage</h3>
+                            <h3 id="tokenUsageTableHeading">Per-Model Token Usage</h3>
                         </div>
                         <div class="card-body">
-                            <div class="table-wrapper">
+                            <div class="table-wrapper token-usage-table-region" id="tokenUsageTableRegion" role="region" aria-labelledby="tokenUsageTableHeading" tabindex="0">
                                 <table class="logs-table token-analyzer-table">
                                     <thead>
                                         <tr>
