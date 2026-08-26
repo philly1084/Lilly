@@ -602,7 +602,7 @@
 /* Toast Notifications - Refined */
 .toast-container {
     position: fixed;
-    bottom: 24px;
+    bottom: 94px;
     right: 24px;
     z-index: 10000;
     display: flex;
@@ -4459,7 +4459,7 @@ body.agent-chat-open .main-content {
   .toast-container {
     left: 12px;
     right: 12px;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 
   .toast {

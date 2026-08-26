@@ -124,6 +124,15 @@ function loadAgentUI() {
 }
 
 describe('Notes AgentUI dialog accessibility', () => {
+    test('keeps notifications clear of the persistent AI launcher', () => {
+        const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(styles).toMatch(/\.toast-container\s*{[^}]*bottom: 94px;/);
+        expect(styles).toMatch(/@media \(max-width: 768px\)[\s\S]*\.toast-container\s*{[^}]*bottom: calc\(72px \+ env\(safe-area-inset-bottom, 0px\)\);/);
+        expect(html).toContain('css/notion-refinements.css?v=20260826-toast-clearance');
+    });
+
     test('keeps the compact mobile launcher visibly identifiable as AI', () => {
         const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
