@@ -4103,8 +4103,10 @@ class AIAssistant {
             { button: imageModeBtn, mode: 'image' },
         ];
         modeButtons.forEach(({ button, mode: buttonMode }) => {
+            const isSelected = buttonMode === mode;
             button?.classList.toggle('active', buttonMode === mode);
-            button?.setAttribute('aria-pressed', buttonMode === mode ? 'true' : 'false');
+            button?.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+            if (button) button.tabIndex = isSelected ? 0 : -1;
         });
 
         if (mode === 'chat') {

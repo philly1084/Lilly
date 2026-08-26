@@ -315,10 +315,10 @@ function createToolCategoryHarness() {
 
 function createAIModeHarness() {
     const dom = new JSDOM(`
-        <div class="ai-mode-toggle" aria-label="Canvas AI mode">
-            <button class="ai-mode-btn active" id="chatModeBtn" data-mode="chat" type="button" aria-pressed="true">Talk</button>
-            <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram" type="button" aria-pressed="false">Objects</button>
-            <button class="ai-mode-btn" id="imageModeBtn" data-mode="image" type="button" aria-pressed="false">Image</button>
+        <div class="ai-mode-toggle" role="radiogroup" aria-label="Canvas AI mode">
+            <button class="ai-mode-btn active" id="chatModeBtn" data-mode="chat" type="button" role="radio" aria-checked="true" tabindex="0">Talk</button>
+            <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram" type="button" role="radio" aria-checked="false" tabindex="-1">Objects</button>
+            <button class="ai-mode-btn" id="imageModeBtn" data-mode="image" type="button" role="radio" aria-checked="false" tabindex="-1">Image</button>
         </div>
         <div id="diagramOptions"></div>
         <div id="imageOptions" class="hidden"></div>
@@ -652,7 +652,7 @@ describe('canvas AI mode toggle accessibility', () => {
         delete global.localStorage;
     });
 
-    test('keeps pressed state aligned with the selected AI mode', () => {
+    test('keeps radio state and roving focus aligned with the selected AI mode', () => {
         const { assistant } = createAIModeHarness();
         const chat = document.getElementById('chatModeBtn');
         const diagram = document.getElementById('diagramModeBtn');
@@ -663,21 +663,50 @@ describe('canvas AI mode toggle accessibility', () => {
         assistant.setMode('diagram');
 
         expect(chat.classList.contains('active')).toBe(false);
-        expect(chat.getAttribute('aria-pressed')).toBe('false');
+        expect(chat.getAttribute('aria-checked')).toBe('false');
+        expect(chat.tabIndex).toBe(-1);
         expect(diagram.classList.contains('active')).toBe(true);
-        expect(diagram.getAttribute('aria-pressed')).toBe('true');
-        expect(image.getAttribute('aria-pressed')).toBe('false');
+        expect(diagram.getAttribute('aria-checked')).toBe('true');
+        expect(diagram.tabIndex).toBe(0);
+        expect(image.getAttribute('aria-checked')).toBe('false');
         expect(diagramOptions.classList.contains('hidden')).toBe(false);
         expect(imageOptions.classList.contains('hidden')).toBe(true);
 
         assistant.setMode('image');
 
         expect(diagram.classList.contains('active')).toBe(false);
-        expect(diagram.getAttribute('aria-pressed')).toBe('false');
+        expect(diagram.getAttribute('aria-checked')).toBe('false');
+        expect(diagram.tabIndex).toBe(-1);
         expect(image.classList.contains('active')).toBe(true);
-        expect(image.getAttribute('aria-pressed')).toBe('true');
+        expect(image.getAttribute('aria-checked')).toBe('true');
+        expect(image.tabIndex).toBe(0);
         expect(diagramOptions.classList.contains('hidden')).toBe(true);
         expect(imageOptions.classList.contains('hidden')).toBe(false);
+    });
+
+    test('selects and focuses AI modes with radio-group navigation keys', () => {
+        const { assistant } = createAIModeHarness();
+        const App = loadAppClass(document.defaultView);
+        const app = Object.create(App.prototype);
+        const chat = document.getElementById('chatModeBtn');
+        const diagram = document.getElementById('diagramModeBtn');
+        const image = document.getElementById('imageModeBtn');
+        window.aiAssistant = assistant;
+
+        app.setupAIModeToggles();
+        chat.focus();
+        chat.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+
+        expect(document.activeElement).toBe(diagram);
+        expect(diagram.getAttribute('aria-checked')).toBe('true');
+
+        diagram.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(image);
+        expect(image.getAttribute('aria-checked')).toBe('true');
+
+        image.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(chat);
+        expect(chat.getAttribute('aria-checked')).toBe('true');
     });
 });
 

@@ -4414,28 +4414,25 @@ class App {
     }
     
     setupAIModeToggles() {
-        // Mode toggle buttons
-        const chatModeBtn = document.getElementById('chatModeBtn');
-        const diagramModeBtn = document.getElementById('diagramModeBtn');
-        const imageModeBtn = document.getElementById('imageModeBtn');
-        
-        if (chatModeBtn) {
-            chatModeBtn.addEventListener('click', () => {
-                window.aiAssistant?.setMode('chat');
+        const modeButtons = Array.from(document.querySelectorAll('.ai-mode-btn[data-mode]'));
+        modeButtons.forEach((button, index) => {
+            button.addEventListener('click', () => {
+                window.aiAssistant?.setMode(button.dataset.mode);
             });
-        }
+            button.addEventListener('keydown', (event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                let nextIndex = index;
+                if (event.key === 'Home') nextIndex = 0;
+                else if (event.key === 'End') nextIndex = modeButtons.length - 1;
+                else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % modeButtons.length;
+                else nextIndex = (index - 1 + modeButtons.length) % modeButtons.length;
 
-        if (diagramModeBtn) {
-            diagramModeBtn.addEventListener('click', () => {
-                window.aiAssistant?.setMode('diagram');
+                const nextButton = modeButtons[nextIndex];
+                window.aiAssistant?.setMode(nextButton.dataset.mode);
+                nextButton.focus();
             });
-        }
-        
-        if (imageModeBtn) {
-            imageModeBtn.addEventListener('click', () => {
-                window.aiAssistant?.setMode('image');
-            });
-        }
+        });
         
         // Diagram model selector
         const diagramModelSelect = document.getElementById('diagramModelSelect');
