@@ -1041,6 +1041,14 @@ describe('agent dashboard navigation accessibility', () => {
         expect(html).toContain('css/dashboard.css?v=admin-lilly-wiki-contrast-v1');
     });
 
+    test('wraps tool card actions before they clip narrow cards', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toMatch(/\.skill-footer\s*\{[^}]*flex-wrap:\s*wrap;/s);
+        expect(css).toMatch(/\.skill-footer\s*\{[^}]*gap:\s*var\(--space-sm\);/s);
+        expect(css).toMatch(/\.skill-actions\s*\{[^}]*margin-left:\s*auto;/s);
+    });
+
     test('makes sidebar items native buttons with active page state', () => {
         createNavigationHarness();
         const overview = document.querySelector('[data-view="overview"]');

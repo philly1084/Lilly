@@ -2431,8 +2431,10 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_
 
 .skill-footer {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    gap: var(--space-sm);
     padding-top: var(--space-md);
     border-top: 1px solid var(--border-secondary);
 }
@@ -2454,6 +2456,7 @@ body[data-ui-surface="admin"][data-admin-theme="light"] .support-badge.requires_
 .skill-actions {
     display: flex;
     gap: var(--space-xs);
+    margin-left: auto;
 }
 
 .tool-detail-card {
