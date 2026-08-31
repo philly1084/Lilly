@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>KimiBuilt Agent Command Center</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v1">
+</head>
+<body>
+  <a class="skip-link" href="#fleet">Skip to agent fleet</a>
+  <div class="app-shell" id="appShell">
+    <header class="topbar">
+      <button class="icon-button mobile-only" id="navToggle" type="button" aria-label="Open navigation" aria-controls="primaryNav" aria-expanded="false"><i class="fa-solid fa-bars" aria-hidden="true"></i></button>
+      <a class="brand" href="/admin/" aria-label="KimiBuilt admin"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><strong>KimiBuilt</strong></a>
+      <span class="product-name">Agent Command Center</span>
+      <label class="project-picker">Project <select id="projectSelect" aria-label="Active project"><option>Loading…</option></select></label>
+      <div class="heartbeat" id="heartbeat" role="status" aria-live="polite"><span class="status-dot"></span><span>Connecting…</span></div>
+      <div class="budget" id="budget"><span>Budget</span><strong>—</strong><div class="meter"><span></span></div></div>
+      <label class="global-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Search agents</span><input id="agentSearch" type="search" placeholder="Search agents" autocomplete="off"></label>
+      <button class="icon-button desktop-only" type="button" aria-label="Notifications"><i class="fa-regular fa-bell" aria-hidden="true"></i></button>
+      <button class="primary-button" id="newGoalButton" type="button" aria-label="New goal"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New goal</span></button>
+    </header>
+
+    <aside class="nav-rail" id="primaryNav" aria-label="Command center navigation">
+      <nav>
+        <a href="#goals"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><span>Goals</span></a>
+        <a class="active" href="#fleet" aria-current="page"><i class="fa-solid fa-people-group" aria-hidden="true"></i><span>Agents</span></a>
+        <a href="#workflows"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i><span>Workflows</span></a>
+        <a href="#artifacts"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Artifacts</span></a>
+        <a href="#approvals"><i class="fa-regular fa-square-check" aria-hidden="true"></i><span>Approvals</span><span class="nav-count" id="approvalCount">0</span></a>
+      </nav>
+      <div class="nav-footer"><span><span class="status-dot"></span> Connected</span><div class="operator"><span>AD</span><p><strong>Admin</strong><small>Operator</small></p></div></div>
+    </aside>
+    <button class="drawer-backdrop" id="drawerBackdrop" type="button" hidden aria-label="Close open panel"></button>
+
+    <main class="fleet" id="fleet" tabindex="-1">
+      <div class="preview-banner" id="previewBanner" hidden><i class="fa-solid fa-flask" aria-hidden="true"></i> Preview data — not live operations</div>
+      <section class="load-state" id="loadState" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h1>Connecting to agent operations</h1><p>Loading fleet, heartbeat, and goal state…</p></section>
+      <section class="fleet-content" id="fleetContent" hidden aria-label="Agent fleet">
+        <div id="agentGroups"></div>
+        <div class="empty-state" id="filterEmpty" hidden><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><h2>No matching agents</h2><p>Try a name, task, action, model, or status.</p></div>
+      </section>
+    </main>
+
+    <aside class="inspector" id="inspector" aria-label="Agent workspace inspector" aria-hidden="true">
+      <div class="inspector-empty" id="inspectorEmpty"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i><h2>Select an agent</h2><p>Choose a fleet row to inspect its real-time workspace.</p></div>
+      <div id="inspectorContent" hidden>
+        <header class="inspector-header">
+          <div class="agent-heading"><span class="agent-glyph"><i class="fa-solid fa-play" aria-hidden="true"></i></span><div><h2 id="inspectorTitle">Agent</h2><p id="inspectorTask">Task</p></div></div>
+          <div class="inspector-actions"><button class="primary-button" id="takeOverButton" type="button"><i class="fa-solid fa-code-branch" aria-hidden="true"></i> Take over</button><button class="icon-button mobile-only" id="closeInspector" type="button" aria-label="Close inspector"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+        </header>
+        <div class="takeover-note" id="takeoverNote" hidden role="status"></div>
+        <div class="tabs-scroll"><div class="tabs" id="workspaceTabs" role="tablist" aria-label="Agent workspace">
+          <button role="tab" aria-selected="true" aria-controls="panel-activity" id="tab-activity" data-tab="activity">Activity</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-files" id="tab-files" data-tab="files" tabindex="-1">Files</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-editor" id="tab-editor" data-tab="editor" tabindex="-1">Editor</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-terminal" id="tab-terminal" data-tab="terminal" tabindex="-1">Terminal</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-browser" id="tab-browser" data-tab="browser" tabindex="-1">Browser</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-artifacts" id="tab-artifacts" data-tab="artifacts" tabindex="-1">Artifacts</button>
+          <button role="tab" aria-selected="false" aria-controls="panel-messages" id="tab-messages" data-tab="messages" tabindex="-1">Messages</button>
+        </div></div>
+        <div class="workspace-panels" id="workspacePanels"></div>
+      </div>
+    </aside>
+
+    <section class="goal-strip" id="goalStrip" aria-label="Active goal">
+      <button class="goal-mobile-toggle mobile-only" id="goalToggle" type="button" aria-expanded="false" aria-controls="goalBody"><span><i class="fa-solid fa-bullseye" aria-hidden="true"></i> Active goal</span><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button>
+      <div class="goal-body" id="goalBody"><div class="goal-summary" id="goalSummary"><h2>No active goal</h2><p>Goal progress will appear when the operations API returns it.</p></div><ol class="goal-items" id="goalItems"></ol></div>
+    </section>
+  </div>
+
+  <dialog class="goal-dialog" id="goalDialog" aria-labelledby="goalDialogTitle">
+    <form method="dialog">
+      <header><div><span class="eyebrow">Goal setup</span><h2 id="goalDialogTitle">Create a coordinated goal</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close goal dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><label>Goal title<input id="goalTitleInput" required maxlength="120" placeholder="What should the agent fleet deliver?"></label><label>Success criteria<textarea id="goalCriteriaInput" rows="4" placeholder="Define the observable output and verification"></textarea></label><div class="capability-note" id="goalCapabilityNote"></div></div>
+      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createGoalSubmit" value="default">Create goal</button></footer>
+    </form>
+  </dialog>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script src="js/agent-ops.js?v=agent-command-center-v1"></script>
+</body>
+</html>

@@ -23,27 +23,6 @@ class Dashboard {
             workloads: [],
             runs: [],
             selectedRun: null,
-            agentCompanyStatus: null,
-            agentCompanyWorkspace: null,
-            agentCompanyFiles: null,
-            agentCompanyProjects: [],
-            activeAgentCompanyProjectId: '',
-            companyActionRunId: null,
-            companyActionContext: null,
-            companyActionContexts: {},
-            companyActionContextsById: {},
-            companyActionHistory: [],
-            companyActionHistorySummary: null,
-            companyActionHistoryFilter: 'all',
-            companyActionHistorySort: 'newest',
-            companyActionHistoryExpanded: false,
-            companyActionHistoryLoading: false,
-            companyActionHistoryError: '',
-            companyFileSearch: '',
-            companyFileSourceFilter: 'any',
-            companyWorkSearch: '',
-            companyWorkStatusFilter: 'all',
-            companyRoleFilter: 'all',
             workloadsAvailable: true,
             workloadsSupported: null,
             workloadErrorMessage: '',
@@ -82,9 +61,7 @@ class Dashboard {
         this.storageSelection = new Set();
         this.dirtyInputIds = new Set();
         this.promptEditorDirty = false;
-        this.companyRoleFilterAliases = new Map();
         this.modalReturnFocus = new Map();
-        this.companyFileSearchTimer = null;
         this.piiDetectorDefinitions = [
             { id: 'email', label: 'Email' },
             { id: 'phone', label: 'Phone' },
@@ -128,170 +105,12 @@ class Dashboard {
         
         // Load initial data
         await this.loadInitialData();
-        await this.restoreCompanyActionSelectionFromUrl();
-        
         const connected = document.querySelector('#connectionStatus .status-dot')?.classList.contains('online');
         if (!connected) {
             this.showToast('Dashboard loaded in degraded mode', 'warning');
         }
     }
 
-    getCompanyActionSelectionFromUrl() {
-        try {
-            const params = new window.URLSearchParams(window.location.search);
-            if (params.get('view') !== 'agentCompany' || params.get('companyAction') !== '1') {
-                return null;
-            }
-
-            const runId = String(params.get('companyRun') || '').trim();
-            const actionId = String(params.get('companyActionId') || '').trim();
-            return runId ? { runId, actionId } : null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    updateCompanyActionSelectionUrl(runId = '', actionId = '') {
-        if (!window.history?.replaceState) return;
-
-        try {
-            const url = new window.URL(window.location.href);
-            if (runId) {
-                url.searchParams.set('view', 'agentCompany');
-                url.searchParams.set('companyAction', '1');
-                url.searchParams.set('companyRun', runId);
-                if (actionId) {
-                    url.searchParams.set('companyActionId', actionId);
-                } else {
-                    url.searchParams.delete('companyActionId');
-                }
-            } else {
-                url.searchParams.delete('companyAction');
-                url.searchParams.delete('companyRun');
-                url.searchParams.delete('companyActionId');
-            }
-            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-        } catch (error) {
-            // Ignore malformed test URLs or locked-down browser contexts.
-        }
-    }
-
-    getPersistedCompanyActionContext(runId = '') {
-        if (!runId || !window.sessionStorage) return null;
-
-        try {
-            const raw = window.sessionStorage.getItem(`kb.companyActionContext.${runId}`);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object') return null;
-            const context = {
-                id: parsed.id || '',
-                actionKey: parsed.actionKey || parsed.id || '',
-                label: parsed.label || 'Opened from CEO action queue',
-                detail: parsed.detail || '',
-                outputPreview: parsed.outputPreview || '',
-            };
-            if (parsed.contextSource) {
-                context.contextSource = parsed.contextSource;
-            }
-            if (parsed.snapshotAt) {
-                context.snapshotAt = parsed.snapshotAt;
-            }
-            return context;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    persistCompanyActionContext(runId = '', context = null) {
-        if (!runId || !context || !window.sessionStorage) return;
-
-        try {
-            const persisted = {
-                id: context.id || '',
-                actionKey: context.actionKey || context.id || '',
-                label: context.label || 'Opened from CEO action queue',
-                detail: context.detail || '',
-                outputPreview: context.outputPreview || '',
-            };
-            if (context.contextSource) {
-                persisted.contextSource = context.contextSource;
-            }
-            if (context.snapshotAt) {
-                persisted.snapshotAt = context.snapshotAt;
-            }
-            window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify(persisted));
-        } catch (error) {
-            // Session persistence is a convenience, not a blocker for review.
-        }
-    }
-
-    buildCompanyActionContext(action = {}, runId = '', options = {}) {
-        const actionId = String(action.id || 'company-action');
-        const actionKey = String(action.actionKey || actionId);
-        const refreshStatus = action.refreshStatus || null;
-        const isRefreshRun = refreshStatus?.runId && refreshStatus.runId === runId;
-        return {
-            id: actionId,
-            actionKey,
-            label: action.label || 'Opened from CEO action queue',
-            detail: isRefreshRun && refreshStatus.title
-                ? `Latest repair: ${refreshStatus.title}`
-                : (action.detail || ''),
-            outputPreview: isRefreshRun
-                ? (action.detail || '')
-                : (action.outputPreview || ''),
-            contextSource: options.contextSource || 'live',
-            ...(action.snapshotAt ? { snapshotAt: action.snapshotAt } : {}),
-        };
-    }
-
-    async loadCompanyActionContext(actionId = '', runId = '') {
-        if (!actionId) return null;
-
-        try {
-            const client = window.apiClient || (typeof apiClient !== 'undefined' ? apiClient : null);
-            if (!client?.get) return null;
-            const response = await client.get('/api/admin/agent-company/action', { actionKey: actionId });
-            const payload = this.unwrapApiPayload(response, {});
-            const action = payload?.action;
-            if (!action) return null;
-            return this.buildCompanyActionContext(
-                action,
-                runId || action.runId || action.refreshStatus?.runId || '',
-                { contextSource: payload.historical ? 'saved-history' : 'live' },
-            );
-        } catch (error) {
-            console.warn('Error loading agent company action context:', error.message || error);
-            return null;
-        }
-    }
-
-    async restoreCompanyActionSelectionFromUrl() {
-        const selection = this.getCompanyActionSelectionFromUrl();
-        if (!selection?.runId) return;
-
-        let actionContext = this.state.companyActionContextsById?.[selection.actionId]
-            || this.state.companyActionContexts?.[selection.runId]
-            || this.getPersistedCompanyActionContext(selection.runId);
-        if (!actionContext && selection.actionId) {
-            actionContext = await this.loadCompanyActionContext(selection.actionId, selection.runId);
-        }
-        const currentActionKey = this.state.companyActionContext?.actionKey || this.state.companyActionContext?.id || '';
-        if (
-            this.state.companyActionRunId === selection.runId
-            && this.state.companyActionContext
-            && (!selection.actionId || currentActionKey === selection.actionId)
-        ) {
-            return;
-        }
-
-        await this.selectAdminRun(selection.runId, {
-            source: 'company-action',
-            actionContext,
-            persistSelection: false,
-        });
-    }
     
     /**
      * Setup event listeners
@@ -353,69 +172,6 @@ class Dashboard {
 
         document.getElementById('refreshWorkloadsBtn')?.addEventListener('click', () => {
             this.loadWorkloads();
-        });
-        document.getElementById('configureAgentCompanyBtn')?.addEventListener('click', () => {
-            this.configureAgentCompany();
-        });
-        document.getElementById('refreshAgentCompanyBtn')?.addEventListener('click', () => {
-            this.loadAgentCompanyDashboard({ force: true });
-        });
-        document.getElementById('companyHeartbeatBtn')?.addEventListener('click', () => {
-            this.runAgentCompanyHeartbeat({ source: 'company-console' });
-        });
-        document.getElementById('companyStartCycleBtn')?.addEventListener('click', () => {
-            this.runAgentCompanyHeartbeat({ source: 'company-ceo-start-cycle' });
-        });
-        document.getElementById('companyDailyAlignmentBtn')?.addEventListener('click', () => {
-            this.runAgentCompanyDailyAlignment();
-        });
-        document.getElementById('saveCompanyDirectionBtn')?.addEventListener('click', () => {
-            this.saveAgentCompanyDirection();
-        });
-        document.getElementById('companyProjectSelect')?.addEventListener('change', (event) => {
-            this.activateAgentCompanyProject(event.target.value);
-        });
-        document.getElementById('companyNewProjectBtn')?.addEventListener('click', () => {
-            this.createAgentCompanyProject();
-        });
-        document.getElementById('companyArchiveProjectBtn')?.addEventListener('click', () => {
-            this.archiveAgentCompanyProject();
-        });
-        document.getElementById('companyClearHistoryBtn')?.addEventListener('click', () => {
-            this.clearAgentCompanyHistory();
-        });
-        document.getElementById('companyCeoDirection')?.addEventListener('input', () => {
-            this.markInputDirty('companyCeoDirection');
-        });
-        document.getElementById('settingsAgentCompanyGoal')?.addEventListener('input', () => {
-            this.markInputDirty('settingsAgentCompanyGoal');
-        });
-        document.getElementById('companyFileSearch')?.addEventListener('input', (event) => {
-            this.state.companyFileSearch = event.target.value || '';
-            clearTimeout(this.companyFileSearchTimer);
-            this.companyFileSearchTimer = setTimeout(() => this.searchAgentCompanyFiles(), 250);
-        });
-        document.getElementById('companyFileSourceFilter')?.addEventListener('change', (event) => {
-            this.state.companyFileSourceFilter = event.target.value || 'any';
-            this.searchAgentCompanyFiles();
-        });
-        document.getElementById('refreshCompanyFilesBtn')?.addEventListener('click', () => {
-            this.searchAgentCompanyFiles({ refresh: true });
-        });
-        document.getElementById('companyViewAllWorkloadsBtn')?.addEventListener('click', () => {
-            this.navigateTo('workloads');
-        });
-        document.getElementById('companyWorkSearch')?.addEventListener('input', (event) => {
-            this.state.companyWorkSearch = event.target.value || '';
-            this.renderAgentCompanyDashboard();
-        });
-        document.getElementById('companyWorkStatusFilter')?.addEventListener('change', (event) => {
-            this.state.companyWorkStatusFilter = event.target.value || 'all';
-            this.renderAgentCompanyDashboard();
-        });
-        document.getElementById('companyRoleFilter')?.addEventListener('change', (event) => {
-            this.state.companyRoleFilter = event.target.value || 'all';
-            this.renderAgentCompanyDashboard();
         });
         document.getElementById('refreshSelfReflectionBtn')?.addEventListener('click', () => {
             this.loadSelfReflectionUpdates({ force: true });
@@ -554,9 +310,6 @@ class Dashboard {
         document.getElementById('agentRuntimeSettingsForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.saveAgentRuntimeSettings();
-        });
-        document.getElementById('agentCompanyHeartbeatBtn')?.addEventListener('click', () => {
-            this.runAgentCompanyHeartbeat({ source: 'settings' });
         });
         document.getElementById('settingsAgentDirectedRuntime')?.addEventListener('change', (e) => {
             this.setInputValue('orchestrationAgentDirectedRuntime', String(e.target.checked));
@@ -844,14 +597,8 @@ class Dashboard {
      * Setup navigation
      */
     setupNavigation() {
-        document.querySelectorAll('.nav-item').forEach(item => {
-            const isNativeButton = item.tagName === 'BUTTON';
-            if (isNativeButton) {
-                item.setAttribute('type', item.getAttribute('type') || 'button');
-            } else {
-                item.setAttribute('role', 'button');
-                item.setAttribute('tabindex', '0');
-            }
+        document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+            item.setAttribute('type', item.getAttribute('type') || 'button');
             item.setAttribute('aria-current', item.classList.contains('active') ? 'page' : 'false');
 
             const activateItem = () => {
@@ -905,7 +652,6 @@ class Dashboard {
             tokens: 'Token Analyzer',
             logs: 'Logs',
             workloads: 'Workloads',
-            agentCompany: 'Agent Company',
             skills: 'Tools',
             traces: 'Traces',
             lillyWiki: 'Lilly Wiki',
@@ -978,9 +724,6 @@ class Dashboard {
                 break;
             case 'workloads':
                 await this.loadWorkloads();
-                break;
-            case 'agentCompany':
-                await this.loadAgentCompanyDashboard();
                 break;
             case 'traces':
                 await this.loadTraces();
@@ -1612,7 +1355,6 @@ class Dashboard {
             this.renderAdminWorkloads(workloads);
             this.renderAdminRuns(runs);
             this.renderAdminRunDetails(this.state.selectedRun);
-            this.renderAgentCompanyDashboard();
             this.updateWorkloadControls();
         } catch (error) {
             const unavailable = this.isPersistenceUnavailableError(error);
@@ -1634,7 +1376,6 @@ class Dashboard {
             this.renderAdminWorkloads([], this.state.workloadErrorMessage);
             this.renderAdminRuns([], this.state.workloadErrorMessage);
             this.renderAdminRunDetails(null, error, this.state.workloadErrorMessage);
-            this.renderAgentCompanyDashboard();
         } finally {
             this.state.workloadsLoading = false;
             this.updateWorkloadControls();
@@ -1677,7 +1418,6 @@ class Dashboard {
         this.renderAdminWorkloads([], message);
         this.renderAdminRuns([], message);
         this.renderAdminRunDetails(null, null, message);
-        this.renderAgentCompanyDashboard();
         this.updateWorkloadControls();
     }
 
@@ -2350,11 +2090,10 @@ class Dashboard {
      */
     async loadSettings({ preserveDirty = true, background = false } = {}) {
         try {
-            const [settingsResponse, podcastAudioResponse, storageResponse, agentCompanyResponse] = await Promise.allSettled([
+            const [settingsResponse, podcastAudioResponse, storageResponse] = await Promise.allSettled([
                 apiClient.get('/api/admin/settings'),
                 apiClient.get('/api/admin/podcast-audio'),
                 apiClient.get('/api/admin/storage'),
-                apiClient.get('/api/admin/agent-company'),
             ]);
 
             if (settingsResponse.status === 'fulfilled') {
@@ -2373,10 +2112,6 @@ class Dashboard {
 
             if (storageResponse.status === 'fulfilled') {
                 this.renderStorageSettings(this.unwrapApiPayload(storageResponse.value, null));
-            }
-
-            if (agentCompanyResponse.status === 'fulfilled') {
-                this.renderAgentCompanyStatus(this.unwrapApiPayload(agentCompanyResponse.value, null));
             }
 
             if (!background) {
@@ -3017,24 +2752,16 @@ class Dashboard {
     }
 
     renderAdminRunDetails(run = null, error = null, emptyMessage = 'Select a run to inspect lifecycle details.') {
-        const containers = ['adminRunDetails', 'companyRunDetails']
-            .map((id) => document.getElementById(id))
-            .filter(Boolean);
-        if (!containers.length) return;
-
-        const setContainers = (html) => {
-            containers.forEach((container) => {
-                container.innerHTML = html;
-            });
-        };
+        const container = document.getElementById('adminRunDetails');
+        if (!container) return;
 
         if (error) {
-            setContainers(`<p class="empty-state">Failed to load run details: ${this.escapeHtml(error.message || 'unknown error')}</p>`);
+            container.innerHTML = `<p class="empty-state">Failed to load run details: ${this.escapeHtml(error.message || 'unknown error')}</p>`;
             return;
         }
 
         if (!run) {
-            setContainers(`<p class="empty-state">${this.escapeHtml(emptyMessage)}</p>`);
+            container.innerHTML = `<p class="empty-state">${this.escapeHtml(emptyMessage)}</p>`;
             return;
         }
 
@@ -3042,28 +2769,7 @@ class Dashboard {
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
         const agentQualityHtml = this.renderRunAgentQuality(this.getRunAgentQuality(run));
-        const actionContext = this.state.companyActionRunId === run.id ? this.state.companyActionContext : null;
-        const actionContextSource = actionContext?.contextSource === 'saved-history'
-            ? 'Saved history'
-            : (actionContext?.contextSource === 'live' ? 'Live queue' : '');
-        const actionSnapshotLabel = actionContext?.contextSource === 'saved-history' && actionContext?.snapshotAt
-            ? `Saved ${this.formatDate(actionContext.snapshotAt)}`
-            : '';
-        const actionContextHtml = actionContext
-            ? `
-            <div class="workload-action-context">
-                <div class="workload-action-context__header">
-                    <strong>${this.escapeHtml(actionContext.label || 'Opened from CEO action queue')}</strong>
-                    ${actionContextSource ? `<span class="workload-action-source">${this.escapeHtml(actionContextSource)}</span>` : ''}
-                </div>
-                ${actionSnapshotLabel ? `<span class="workload-action-snapshot">${this.escapeHtml(actionSnapshotLabel)}</span>` : ''}
-                <span>${this.escapeHtml(actionContext.detail || "Review this run's output evidence before continuing or packaging company work.")}</span>
-                ${actionContext.outputPreview ? `<div class="workload-action-preview">${this.escapeHtml(actionContext.outputPreview)}</div>` : ''}
-            </div>`
-            : '';
-
-        setContainers(`
-            ${actionContextHtml}
+        container.innerHTML = `
             <div>
                 <div class="workload-detail-title">${this.escapeHtml(run.workloadTitle || run.workloadId)}</div>
                 <div class="workload-detail-subtitle">${this.escapeHtml(run.id)} | ${this.escapeHtml(run.reason || 'manual')} | ${this.escapeHtml(this.formatRunStageLabel(run.stageIndex))}</div>
@@ -3120,7 +2826,7 @@ class Dashboard {
                 </div>
                 <div class="workload-detail-code workload-detail-code--json">${this.escapeHtml(tracePayload)}</div>
             </div>
-        `);
+        `;
     }
 
     normalizeRunAgentQuality(value = null) {
@@ -3218,981 +2924,6 @@ class Dashboard {
         `;
     }
 
-    renderAgentCompanyDashboard() {
-        const status = this.state.agentCompanyStatus || null;
-        const state = status?.state || {};
-        const config = status?.config || this.state.settings?.agentCompany || {};
-        const heartbeat = state.heartbeat || {};
-        const runningWork = state.runningWork || {};
-        const dailyAlignment = state.dailyAlignment || {};
-        const workspace = this.state.agentCompanyWorkspace || {};
-        const deliverables = Array.isArray(workspace.deliverables) ? workspace.deliverables : [];
-        const actionQueue = Array.isArray(workspace.actionQueue) ? workspace.actionQueue : [];
-        const actionHistory = Array.isArray(workspace.actionHistory) ? workspace.actionHistory : [];
-        const allCompanyWorkloads = this.getAgentCompanyWorkloads(this.state.workloads, status);
-        const allCompanyRuns = this.getAgentCompanyRuns(this.state.runs, allCompanyWorkloads, status);
-        this.syncCompanyRoleFilterOptions(state.roles || config.roles || [], allCompanyWorkloads);
-        const companyWorkloads = this.getFilteredCompanyWorkloads(allCompanyWorkloads, allCompanyRuns);
-        const companyRuns = this.getFilteredCompanyRuns(allCompanyRuns, allCompanyWorkloads);
-
-        this.setTextContent('agentCompanyGoalSummary', config.companyGoal || state.companyGoal || 'No company goal configured yet.');
-        this.setTextContent('companyHeartbeatStatus', heartbeat.status || (status?.available ? 'ready' : 'standby'));
-        this.setTextContent('companyNextHeartbeat', heartbeat.nextAt ? `next ${this.formatDate(heartbeat.nextAt)}` : 'not scheduled');
-        this.setTextContent('companyRunningCount', Number(runningWork.running ?? this.countRunsByStatus(allCompanyRuns, 'running')));
-        this.setTextContent('companyQueuedCount', `${Number(runningWork.queued ?? this.countRunsByStatus(allCompanyRuns, 'queued'))} queued`);
-        this.setTextContent('companyWorkloadCount', Number(runningWork.companyWorkloads ?? allCompanyWorkloads.length));
-        this.setTextContent('companyWeeklyLimit', `${Number(config.weeklyWorkloadLimit || 0)} weekly slots`);
-        this.setTextContent('companyFailedCount', Number(heartbeat.failedWorkloads ?? this.countRunsByStatus(allCompanyRuns, 'failed')));
-        this.setTextContent('companyAlignmentStatus', `alignment ${dailyAlignment.status || 'idle'}`);
-        this.setTextContent('agentCompanyBadge', allCompanyRuns.filter((run) => ['queued', 'running'].includes(run.status)).length);
-        this.setTextContent('companyScheduleStatus', `${(state.shortTermSchedule || []).length} planned`);
-        this.setTextContent('companyRunStatus', this.isCompanyWorkFiltered()
-            ? `${companyRuns.length} of ${allCompanyRuns.length} runs`
-            : `${companyRuns.length} run${companyRuns.length === 1 ? '' : 's'}`);
-        this.setTextContent('companyAlignmentNext', dailyAlignment.nextAt ? `next ${this.formatDate(dailyAlignment.nextAt)}` : 'not scheduled');
-        const workspaceWorkloadCount = Number(workspace.workspace?.workloadCount ?? allCompanyWorkloads.length);
-        this.setTextContent('companyWorkspaceStatus', workspace.workspace?.workloadAvailable === false
-            ? 'workloads offline'
-            : `${workspaceWorkloadCount} workstream${workspaceWorkloadCount === 1 ? '' : 's'}`);
-        this.setTextContent('companyDeliverableStatus', `${deliverables.length} file${deliverables.length === 1 ? '' : 's'}`);
-        this.setInputValue('companyCeoDirection', config.companyGoal || state.companyGoal || '', { preserveDirty: true });
-
-        const modelPolicy = [config.primaryModel || state.modelPolicy?.primaryModel || 'default model']
-            .concat(config.escalationModels || state.modelPolicy?.escalationModels || [])
-            .filter(Boolean)
-            .join(' -> ');
-        this.setTextContent('companyModelPolicy', modelPolicy || 'Default model');
-
-        this.renderCompanyRoles(state.roles || config.roles || [], allCompanyWorkloads, allCompanyRuns);
-        this.renderCompanySchedule(state.shortTermSchedule || []);
-        this.renderCompanyWorkloads(companyWorkloads);
-        this.renderCompanyRuns(companyRuns);
-        this.renderCompanyAlignment(dailyAlignment);
-        this.renderCompanyActionQueue(actionQueue);
-        this.renderCompanyActionHistory(actionHistory);
-        this.renderCompanyDeliverables(deliverables);
-        this.renderCompanyImprovementLoop(workspace.improvementLoop || null);
-        this.renderCompanySharedWhiteboard(workspace.sharedWhiteboard || null);
-
-        if (this.state.selectedRun?.id && !allCompanyRuns.some((run) => run.id === this.state.selectedRun.id)) {
-            this.renderAdminRunDetails(null, null, 'Select a company run to inspect its output.');
-        }
-    }
-
-    setTextContent(id, value) {
-        const element = document.getElementById(id);
-        if (element) {
-            element.textContent = String(value ?? '');
-        }
-    }
-
-    countRunsByStatus(runs = [], status = '') {
-        return runs.filter((run) => run.status === status).length;
-    }
-
-    getAgentCompanyMetadata(entry = {}) {
-        return entry?.metadata?.agentCompany
-            || entry?.workload?.metadata?.agentCompany
-            || {};
-    }
-
-    isAgentCompanyEntry(entry = {}, status = this.state.agentCompanyStatus) {
-        const metadata = this.getAgentCompanyMetadata(entry);
-        const companyHash = status?.state?.companyGoalHash || status?.config?.companyGoalHash || '';
-        const sessionId = status?.config?.sessionId || 'agent-company';
-        if (entry.sessionId) {
-            return entry.sessionId === sessionId;
-        }
-        return metadata.enabled === true
-            || metadata.heartbeatManaged === true
-            || Boolean(metadata.planItemId)
-            || (companyHash && metadata.companyGoalHash === companyHash)
-            || entry.sessionId === sessionId;
-    }
-
-    getAgentCompanyWorkloads(workloads = [], status = this.state.agentCompanyStatus) {
-        return (Array.isArray(workloads) ? workloads : [])
-            .filter((workload) => this.isAgentCompanyEntry(workload, status));
-    }
-
-    getAgentCompanyRuns(runs = [], workloads = this.getAgentCompanyWorkloads(), status = this.state.agentCompanyStatus) {
-        const workloadIds = new Set((workloads || []).map((workload) => workload.id).filter(Boolean));
-        return (Array.isArray(runs) ? runs : [])
-            .filter((run) => workloadIds.has(run.workloadId) || this.isAgentCompanyEntry(run, status));
-    }
-
-    isCompanyWorkFiltered() {
-        return Boolean(String(this.state.companyWorkSearch || '').trim())
-            || (this.state.companyWorkStatusFilter || 'all') !== 'all'
-            || (this.state.companyRoleFilter || 'all') !== 'all';
-    }
-
-    normalizeCompanyFilterValue(value = '') {
-        return String(value || '').trim().toLowerCase();
-    }
-
-    getCompanyRoleLabel(role = {}) {
-        return role.name || role.id || role.roleName || role.roleId || 'Company Agent';
-    }
-
-    getCompanyRoleKeyFromMetadata(metadata = {}) {
-        return this.normalizeCompanyFilterValue(metadata.roleId || metadata.roleName || '');
-    }
-
-    getCompanyRoleKeys(role = {}) {
-        return new Set([
-            role.id,
-            role.name,
-            role.roleId,
-            role.roleName,
-        ].map((value) => this.normalizeCompanyFilterValue(value)).filter(Boolean));
-    }
-
-    getCompanyWorkloadRoleKey(workload = {}) {
-        return this.getCompanyRoleKeyFromMetadata(this.getAgentCompanyMetadata(workload));
-    }
-
-    syncCompanyRoleFilterOptions(roles = [], workloads = []) {
-        const select = document.getElementById('companyRoleFilter');
-        if (!select) return;
-
-        const options = new Map();
-        const aliases = new Map();
-        roles.forEach((role) => {
-            const key = this.normalizeCompanyFilterValue(role.id || role.name);
-            if (key && !options.has(key)) {
-                options.set(key, this.getCompanyRoleLabel(role));
-            }
-            if (key) {
-                aliases.set(key, this.getCompanyRoleKeys(role));
-            }
-        });
-
-        workloads.forEach((workload) => {
-            const metadata = this.getAgentCompanyMetadata(workload);
-            const metadataAliases = new Set([
-                metadata.roleId,
-                metadata.roleName,
-            ].map((value) => this.normalizeCompanyFilterValue(value)).filter(Boolean));
-            let key = this.getCompanyRoleKeyFromMetadata(metadata);
-            for (const [candidateKey, candidateAliases] of aliases.entries()) {
-                if (Array.from(metadataAliases).some((alias) => candidateAliases.has(alias))) {
-                    key = candidateKey;
-                    metadataAliases.forEach((alias) => candidateAliases.add(alias));
-                    break;
-                }
-            }
-
-            const label = metadata.roleName || metadata.roleId || key;
-            if (key && !options.has(key)) {
-                options.set(key, label);
-            }
-            if (key && !aliases.has(key)) {
-                aliases.set(key, metadataAliases);
-            }
-        });
-
-        const current = options.has(this.state.companyRoleFilter) ? this.state.companyRoleFilter : 'all';
-        this.state.companyRoleFilter = current;
-        this.companyRoleFilterAliases = aliases;
-        select.innerHTML = '<option value="all">All roles</option>' + Array.from(options.entries())
-            .sort((a, b) => a[1].localeCompare(b[1]))
-            .map(([value, label]) => `<option value="${this.escapeHtml(value)}">${this.escapeHtml(label)}</option>`)
-            .join('');
-        select.value = current;
-    }
-
-    matchesCompanyRoleFilter(roleKey = '') {
-        const selectedRole = this.state.companyRoleFilter || 'all';
-        if (selectedRole === 'all') return true;
-        const aliases = this.companyRoleFilterAliases.get(selectedRole) || new Set([selectedRole]);
-        return aliases.has(this.normalizeCompanyFilterValue(roleKey));
-    }
-
-    matchesCompanySearch(parts = [], search = '') {
-        const query = this.normalizeCompanyFilterValue(search);
-        if (!query) return true;
-        return parts.some((part) => this.normalizeCompanyFilterValue(part).includes(query));
-    }
-
-    getFilteredCompanyWorkloads(workloads = [], runs = []) {
-        const search = this.state.companyWorkSearch || '';
-        const status = this.state.companyWorkStatusFilter || 'all';
-        const role = this.state.companyRoleFilter || 'all';
-        const runsByWorkload = new Map();
-        runs.forEach((run) => {
-            const list = runsByWorkload.get(run.workloadId) || [];
-            list.push(run);
-            runsByWorkload.set(run.workloadId, list);
-        });
-
-        return (workloads || []).filter((workload) => {
-            const metadata = this.getAgentCompanyMetadata(workload);
-            const workloadRole = this.getCompanyWorkloadRoleKey(workload);
-            const relatedRuns = runsByWorkload.get(workload.id) || [];
-            const summary = workload.workloadSummary || {};
-            const matchesRole = role === 'all' || this.matchesCompanyRoleFilter(workloadRole);
-            const matchesSearch = this.matchesCompanySearch([
-                workload.id,
-                workload.title,
-                workload.prompt,
-                metadata.roleName,
-                metadata.roleId,
-                ...relatedRuns.flatMap((run) => [run.id, run.status, run.reason]),
-            ], search);
-            const matchesStatus = status === 'all'
-                || (status === 'active' && workload.enabled !== false)
-                || (status === 'paused' && workload.enabled === false)
-                || Number(summary[status] || 0) > 0
-                || relatedRuns.some((run) => run.status === status);
-
-            return matchesRole && matchesSearch && matchesStatus;
-        });
-    }
-
-    getFilteredCompanyRuns(runs = [], workloads = []) {
-        const search = this.state.companyWorkSearch || '';
-        const status = this.state.companyWorkStatusFilter || 'all';
-        const role = this.state.companyRoleFilter || 'all';
-        const workloadsById = new Map((workloads || []).map((workload) => [workload.id, workload]));
-
-        return (runs || []).filter((run) => {
-            const workload = workloadsById.get(run.workloadId) || {};
-            const runMetadata = this.getAgentCompanyMetadata(run);
-            const workloadMetadata = this.getAgentCompanyMetadata(workload);
-            const metadata = Object.keys(runMetadata).length ? runMetadata : workloadMetadata;
-            const runRole = this.getCompanyRoleKeyFromMetadata(metadata) || this.getCompanyWorkloadRoleKey(workload);
-            const matchesRole = role === 'all' || this.matchesCompanyRoleFilter(runRole);
-            const matchesSearch = this.matchesCompanySearch([
-                run.id,
-                run.workloadId,
-                run.workloadTitle,
-                run.status,
-                run.reason,
-                metadata.roleName,
-                metadata.roleId,
-            ], search);
-            const matchesStatus = status === 'all'
-                || run.status === status
-                || (status === 'active' && workload.enabled !== false)
-                || (status === 'paused' && workload.enabled === false);
-
-            return matchesRole && matchesSearch && matchesStatus;
-        });
-    }
-
-    getCompanyRoleActivity(role = {}, workloads = [], runs = []) {
-        const roleKeys = this.getCompanyRoleKeys(role);
-        const roleWorkloads = (workloads || []).filter((workload) => roleKeys.has(this.getCompanyWorkloadRoleKey(workload)));
-        const workloadIds = new Set(roleWorkloads.map((workload) => workload.id).filter(Boolean));
-        const roleRuns = (runs || []).filter((run) => {
-            const metadata = this.getAgentCompanyMetadata(run);
-            return workloadIds.has(run.workloadId) || roleKeys.has(this.getCompanyRoleKeyFromMetadata(metadata));
-        });
-
-        return {
-            workloads: roleWorkloads.length,
-            queued: roleRuns.filter((run) => run.status === 'queued').length,
-            running: roleRuns.filter((run) => run.status === 'running').length,
-            failed: roleRuns.filter((run) => run.status === 'failed').length,
-        };
-    }
-
-    renderCompanyRoles(roles = [], workloads = [], runs = []) {
-        const container = document.getElementById('companyRoleList');
-        if (!container) return;
-
-        if (!roles.length) {
-            container.innerHTML = '<p class="empty-state">No company roles loaded yet.</p>';
-            return;
-        }
-
-        container.innerHTML = roles.map((role) => `
-            <div class="company-role-item">
-                <div>
-                    <strong>${this.escapeHtml(role.name || role.id || 'Company Agent')}</strong>
-                    <span>${this.escapeHtml(role.mission || 'No mission recorded.')}</span>
-                    <div class="company-role-metrics">
-                        ${(() => {
-                            const activity = this.getCompanyRoleActivity(role, workloads, runs);
-                            return `
-                                <span>${activity.workloads} work</span>
-                                <span>${activity.running} running</span>
-                                <span>${activity.queued} queued</span>
-                                <span>${activity.failed} failed</span>
-                            `;
-                        })()}
-                    </div>
-                </div>
-                <span class="company-role-id">${this.escapeHtml(role.id || 'agent')}</span>
-            </div>
-        `).join('');
-    }
-
-    renderCompanySchedule(schedule = []) {
-        const container = document.getElementById('companyScheduleList');
-        if (!container) return;
-
-        if (!schedule.length) {
-            container.innerHTML = '<p class="empty-state">No scheduled company work loaded yet.</p>';
-            return;
-        }
-
-        container.innerHTML = schedule.map((item) => `
-            <div class="company-schedule-item">
-                <div>
-                    <strong>${this.escapeHtml(item.title || 'Company work')}</strong>
-                    <span>${this.escapeHtml(item.objective || '')}</span>
-                </div>
-                <div class="company-schedule-meta">
-                    <span>${this.escapeHtml(item.roleName || item.roleId || 'agent')}</span>
-                    <span>${this.escapeHtml(this.formatDate(item.plannedFor))}</span>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    renderCompanyActionQueue(actions = []) {
-        const container = document.getElementById('companyActionQueue');
-        if (!container) return;
-
-        this.state.companyActionContexts = {};
-        this.state.companyActionContextsById = {};
-
-        if (!actions.length) {
-            container.innerHTML = '<p class="empty-state">No CEO actions are waiting right now.</p>';
-            return;
-        }
-
-        container.innerHTML = actions.map((action, index) => {
-            const actionId = String(action.id || `company-action-${index}`);
-            const actionKey = String(action.actionKey || actionId);
-            const actionHandler = this.formatCompanyActionHandler(action.target || '', action.runId || '', actionKey);
-            const refreshHandler = action.refreshStatus?.runId
-                ? this.formatCompanyActionHandler('runs', action.refreshStatus.runId, actionKey)
-                : '';
-            if (action.runId) {
-                const actionContext = this.buildCompanyActionContext(action, action.runId);
-                this.state.companyActionContexts[action.runId] = actionContext;
-                this.state.companyActionContextsById[actionKey] = actionContext;
-            }
-            if (action.refreshStatus?.runId) {
-                const refreshActionContext = this.buildCompanyActionContext(action, action.refreshStatus.runId);
-                this.state.companyActionContexts[action.refreshStatus.runId] = refreshActionContext;
-                this.state.companyActionContextsById[actionKey] = refreshActionContext;
-            }
-
-            return `
-            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}" data-action-id="${this.escapeHtml(actionKey)}">
-                <div>
-                    <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
-                    <span>${this.escapeHtml(action.detail || '')}</span>
-                    ${action.outputPreview ? `<div class="company-action-preview">${this.escapeHtml(action.outputPreview)}</div>` : ''}
-                    ${action.refreshStatus ? `
-                        <div class="company-action-status">
-                            <span>Latest repair</span>
-                            <strong>${this.escapeHtml(action.refreshStatus.runStatus || action.refreshStatus.status || 'scheduled')}</strong>
-                            ${action.refreshStatus.title ? `<small>${this.escapeHtml(action.refreshStatus.title)}</small>` : ''}
-                            ${action.refreshStatus.runId ? `
-                                <button
-                                    class="btn btn-sm btn-ghost company-action-status__review"
-                                    type="button"
-                                    onclick="${refreshHandler}"
-                                >
-                                    Review repair
-                                </button>
-                            ` : ''}
-                        </div>
-                    ` : ''}
-                </div>
-                <button
-                    class="btn btn-sm btn-secondary"
-                    type="button"
-                    onclick="${actionHandler}"
-                >
-                    Open
-                </button>
-            </div>
-        `;
-        }).join('');
-    }
-
-    renderCompanyActionHistory(actions = []) {
-        const container = document.getElementById('companyActionHistory');
-        if (!container) return;
-        this.state.companyActionContexts = this.state.companyActionContexts || {};
-        this.state.companyActionContextsById = this.state.companyActionContextsById || {};
-        const incomingHistory = Array.isArray(actions) ? actions : [];
-        if (this.state.companyActionHistoryExpanded) {
-            const historyByKey = new Map();
-            [
-                ...(Array.isArray(this.state.companyActionHistory) ? this.state.companyActionHistory : []),
-                ...incomingHistory,
-            ].forEach((action) => {
-                const actionKey = String(action?.actionKey || action?.id || '').trim();
-                if (actionKey) historyByKey.set(actionKey, action);
-            });
-            this.state.companyActionHistory = Array.from(historyByKey.values());
-        } else {
-            this.state.companyActionHistory = incomingHistory;
-        }
-
-        const history = this.state.companyActionHistory
-            .filter((action) => action && (action.actionKey || action.id));
-
-        if (!history.length) {
-            container.innerHTML = '<p class="empty-state">No saved CEO actions yet.</p>';
-            return;
-        }
-
-        const endpointSummary = this.state.companyActionHistorySummary || {};
-        const localReviewableCount = history.filter((action) => action.runId || action.refreshStatus?.runId).length;
-        const localReferenceCount = history.length - localReviewableCount;
-        const summaryTotal = Number(endpointSummary.total || 0);
-        const summaryReviewable = Number(endpointSummary.reviewable || 0);
-        const summaryReferenceOnly = Number(endpointSummary.referenceOnly || 0);
-        const reviewableCount = summaryTotal > 0 ? summaryReviewable : localReviewableCount;
-        const referenceCount = summaryTotal > 0 ? summaryReferenceOnly : localReferenceCount;
-        const sourceCounts = history.reduce((counts, action) => {
-            const source = this.getCompanyActionHistorySourceLabel(action);
-            counts[source] = (counts[source] || 0) + 1;
-            return counts;
-        }, {});
-        const sourceSummary = Object.entries(sourceCounts)
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([source, count]) => `${source} ${count}`)
-            .join(' | ');
-        const activeFilter = ['all', 'reviewable', 'reference'].includes(this.state.companyActionHistoryFilter)
-            ? this.state.companyActionHistoryFilter
-            : 'all';
-        const activeSort = ['newest', 'oldest'].includes(this.state.companyActionHistorySort)
-            ? this.state.companyActionHistorySort
-            : 'newest';
-        const sortedHistory = [...history].sort((a, b) => {
-            const left = Date.parse(a.snapshotAt || a.updatedAt || a.createdAt || '');
-            const right = Date.parse(b.snapshotAt || b.updatedAt || b.createdAt || '');
-            const safeLeft = Number.isFinite(left) ? left : 0;
-            const safeRight = Number.isFinite(right) ? right : 0;
-            return activeSort === 'oldest'
-                ? safeLeft - safeRight
-                : safeRight - safeLeft;
-        });
-        const filteredHistory = sortedHistory.filter((action) => {
-            const hasRunEvidence = Boolean(action.runId || action.refreshStatus?.runId);
-            if (activeFilter === 'reviewable') return hasRunEvidence;
-            if (activeFilter === 'reference') return !hasRunEvidence;
-            return true;
-        });
-        const isExpanded = Boolean(this.state.companyActionHistoryExpanded);
-        const visibleHistory = isExpanded ? filteredHistory : filteredHistory.slice(0, 6);
-        const historySummary = [
-            `${reviewableCount} reviewable`,
-            referenceCount ? `${referenceCount} reference` : '',
-        ].filter(Boolean).join(' | ');
-        const historyWindow = [
-            endpointSummary.newestSnapshotAt ? `newest ${this.formatDate(endpointSummary.newestSnapshotAt)}` : '',
-            endpointSummary.oldestSnapshotAt ? `oldest ${this.formatDate(endpointSummary.oldestSnapshotAt)}` : '',
-        ].filter(Boolean).join(' | ');
-        const isLoading = Boolean(this.state.companyActionHistoryLoading);
-        const errorMessage = this.state.companyActionHistoryError || '';
-
-        container.innerHTML = `
-            <div class="company-action-history__header">
-                <div>
-                    <strong>Recent saved CEO actions</strong>
-                    <span>${this.escapeHtml(historySummary)}</span>
-                    ${sourceSummary ? `<small>${this.escapeHtml(sourceSummary)}</small>` : ''}
-                    ${historyWindow ? `<small>${this.escapeHtml(historyWindow)}</small>` : ''}
-                </div>
-                ${isExpanded ? '' : `
-                    <button
-                        class="btn btn-sm btn-ghost company-action-history__more"
-                        type="button"
-                        onclick="dashboard.loadCompanyActionHistory()"
-                        ${isLoading ? 'disabled' : ''}
-                    >
-                        ${isLoading ? 'Loading...' : 'Show more'}
-                    </button>
-                `}
-            </div>
-            ${errorMessage ? `<p class="company-action-history__error">${this.escapeHtml(errorMessage)}</p>` : ''}
-            <div class="company-action-history__filters" role="group" aria-label="Saved CEO action filter">
-                ${[
-                    ['all', `All ${history.length}`],
-                    ['reviewable', `Reviewable ${reviewableCount}`],
-                    ['reference', `Reference ${referenceCount}`],
-                ].map(([value, label]) => `
-                    <button
-                        class="company-action-history__filter${activeFilter === value ? ' company-action-history__filter--active' : ''}"
-                        type="button"
-                        aria-pressed="${activeFilter === value ? 'true' : 'false'}"
-                        onclick="dashboard.setCompanyActionHistoryFilter('${value}')"
-                    >
-                        ${this.escapeHtml(label)}
-                    </button>
-                `).join('')}
-            </div>
-            <div class="company-action-history__sort" role="group" aria-label="Saved CEO action order">
-                ${[
-                    ['newest', 'Newest first'],
-                    ['oldest', 'Oldest first'],
-                ].map(([value, label]) => `
-                    <button
-                        class="company-action-history__filter${activeSort === value ? ' company-action-history__filter--active' : ''}"
-                        type="button"
-                        aria-pressed="${activeSort === value ? 'true' : 'false'}"
-                        onclick="dashboard.setCompanyActionHistorySort('${value}')"
-                    >
-                        ${this.escapeHtml(label)}
-                    </button>
-                `).join('')}
-            </div>
-            ${visibleHistory.length ? visibleHistory.map((action, index) => {
-                const actionId = String(action.id || `company-action-history-${index}`);
-                const actionKey = String(action.actionKey || actionId);
-                const runId = action.runId || action.refreshStatus?.runId || '';
-                const handler = runId
-                    ? this.formatCompanyActionHandler('runs', runId, actionKey)
-                    : '';
-                const evidenceLabel = runId ? 'Reviewable run' : 'Reference only';
-                const sourceLabel = this.getCompanyActionHistorySourceLabel(action);
-                if (runId) {
-                    const actionContext = this.buildCompanyActionContext(action, runId, { contextSource: 'saved-history' });
-                    this.state.companyActionContexts[runId] = actionContext;
-                    this.state.companyActionContextsById[actionKey] = actionContext;
-                }
-
-                return `
-                <div class="company-action-history__item" data-action-id="${this.escapeHtml(actionKey)}">
-                    <div>
-                        <strong>${this.escapeHtml(action.label || 'Saved CEO action')}</strong>
-                        <span>${this.escapeHtml(action.detail || '')}</span>
-                        <div class="company-action-history__badges">
-                            <small class="company-action-history__evidence">${this.escapeHtml(evidenceLabel)}</small>
-                            <small class="company-action-history__source">${this.escapeHtml(sourceLabel)}</small>
-                        </div>
-                        ${action.snapshotAt ? `<small>Saved ${this.escapeHtml(this.formatDate(action.snapshotAt))}</small>` : ''}
-                    </div>
-                    ${runId ? `
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            type="button"
-                            onclick="${handler}"
-                        >
-                            Review
-                        </button>
-                    ` : ''}
-                </div>
-            `;
-            }).join('') : '<p class="empty-state">No saved CEO actions match this filter.</p>'}
-        `;
-    }
-
-    getCompanyActionHistorySourceLabel(action = {}) {
-        if (action.historical === true || action.contextSource === 'saved-history') {
-            return 'Saved history';
-        }
-        if (action.refreshStatus || action.id === 'refresh-shared-whiteboard') {
-            return 'Whiteboard';
-        }
-        if (action.runId || action.id === 'review-completed-output') {
-            return 'Run output';
-        }
-        if (action.id === 'review-deliverables' || action.target === 'deliverables') {
-            return 'Deliverables';
-        }
-        return 'Queue snapshot';
-    }
-
-    setCompanyActionHistoryFilter(filter = 'all') {
-        const nextFilter = ['all', 'reviewable', 'reference'].includes(filter) ? filter : 'all';
-        this.state.companyActionHistoryFilter = nextFilter;
-        const actions = this.state.companyActionHistory
-            || this.state.agentCompanyWorkspace?.actionHistory
-            || [];
-        this.renderCompanyActionHistory(actions);
-    }
-
-    setCompanyActionHistorySort(sort = 'newest') {
-        const nextSort = ['newest', 'oldest'].includes(sort) ? sort : 'newest';
-        this.state.companyActionHistorySort = nextSort;
-        const actions = this.state.companyActionHistory
-            || this.state.agentCompanyWorkspace?.actionHistory
-            || [];
-        this.renderCompanyActionHistory(actions);
-    }
-
-    getCompanyDeliverableDomId(deliverable = {}, index = 0) {
-        const source = String(deliverable.id || deliverable.filename || `deliverable-${index}`)
-            .toLowerCase()
-            .replace(/[^a-z0-9_-]+/g, '-')
-            .replace(/^-+|-+$/g, '')
-            .slice(0, 48);
-        return `company-deliverable-${source || index}`;
-    }
-
-    getCompanyDeliverableFormatLabel(deliverable = {}) {
-        if (deliverable.formatLabel) return String(deliverable.formatLabel);
-        const source = String(deliverable.format || deliverable.mimeType || deliverable.filename || '').toLowerCase();
-        if (source.includes('html')) return 'HTML';
-        if (source.includes('markdown') || /\.md\b/.test(source)) return 'Markdown';
-        if (source.includes('pdf')) return 'PDF';
-        if (source.includes('pptx') || source.includes('presentation')) return 'PPTX';
-        if (source.includes('xlsx') || source.includes('spreadsheet') || source.includes('excel')) return 'XLSX';
-        if (source.includes('json')) return 'JSON';
-        return 'Document';
-    }
-
-    getCompanyDeliverablePreviewText(deliverable = {}) {
-        return String(deliverable.previewText || deliverable.contentPreview || deliverable.summary || '')
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    renderCompanyDeliverables(deliverables = []) {
-        const container = document.getElementById('companyDeliverableList');
-        if (!container) return;
-
-        if (!deliverables.length) {
-            container.innerHTML = '<p class="empty-state">No company files or documents have been produced yet.</p>';
-            return;
-        }
-
-        const viewModels = deliverables.map((deliverable, index) => {
-            const previewUrl = deliverable.sandboxUrl || deliverable.previewUrl || '';
-            const downloadUrl = deliverable.downloadUrl || deliverable.bundleDownloadUrl || '';
-            const previewText = this.getCompanyDeliverablePreviewText(deliverable);
-            const formatLabel = this.getCompanyDeliverableFormatLabel(deliverable);
-            const meta = [
-                deliverable.roleName,
-                deliverable.workloadTitle,
-                deliverable.updatedAt ? this.formatDate(deliverable.updatedAt) : '',
-                deliverable.sizeBytes ? this.formatBytes(deliverable.sizeBytes) : '',
-            ].filter(Boolean).join(' | ');
-            return {
-                deliverable,
-                previewUrl,
-                downloadUrl,
-                previewText,
-                formatLabel,
-                meta,
-                domId: this.getCompanyDeliverableDomId(deliverable, index),
-            };
-        });
-        const readableCount = viewModels.filter((item) => item.previewText || item.previewUrl).length;
-        const xlsxCount = viewModels.filter((item) => item.formatLabel.toLowerCase() === 'xlsx').length;
-
-        container.innerHTML = `
-            <div class="company-deliverable-collage" id="companyDeliverableCollage" aria-label="Business deliverable preview collage">
-                <div class="company-deliverable-summary">
-                    <strong>${deliverables.length} document${deliverables.length === 1 ? '' : 's'}</strong>
-                    <span>${readableCount} previewable${xlsxCount ? ` | ${xlsxCount} workbook${xlsxCount === 1 ? '' : 's'}` : ''}</span>
-                </div>
-                <div class="company-deliverable-jumps" aria-label="Jump to deliverable">
-                    ${viewModels.map((item, index) => `
-                        <a href="#${this.escapeAttribute(item.domId)}">${this.escapeHtml(String(index + 1))}. ${this.escapeHtml(item.formatLabel)}</a>
-                    `).join('')}
-                </div>
-                <div class="company-deliverable-cards">
-                    ${viewModels.map((item) => `
-                        <article class="company-deliverable-item company-deliverable-card" id="${this.escapeAttribute(item.domId)}" tabindex="-1">
-                            <div class="company-deliverable-main">
-                                <div class="company-deliverable-title-row">
-                                    <strong>${this.escapeHtml(item.deliverable.title || item.deliverable.filename || 'Business deliverable')}</strong>
-                                    <span class="company-deliverable-format">${this.escapeHtml(item.formatLabel)}</span>
-                                </div>
-                                <span>${this.escapeHtml(item.meta || item.deliverable.filename || item.deliverable.id || '')}</span>
-                                ${item.previewText ? `<p class="company-deliverable-preview">${this.escapeHtml(item.previewText)}</p>` : '<p class="company-deliverable-preview company-deliverable-preview--empty">No text preview stored yet.</p>'}
-                            </div>
-                            <div class="company-deliverable-actions">
-                                ${item.previewUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(item.previewUrl)}" target="_blank" rel="noopener">Preview</a>` : ''}
-                                ${item.downloadUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(item.downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
-                            </div>
-                        </article>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-    renderCompanySharedWhiteboard(whiteboard = null) {
-        const container = document.getElementById('companySharedWhiteboard');
-        if (!container) return;
-
-        const current = whiteboard?.current || null;
-        if (!current?.path) {
-            container.innerHTML = `
-                <div class="company-whiteboard-card company-whiteboard-card--missing">
-                    <div>
-                        <strong>Shared whiteboard not attached yet</strong>
-                        <span>${this.escapeHtml(whiteboard?.detail || 'Run a heartbeat to attach the weekly coordination whiteboard to new company workloads.')}</span>
-                    </div>
-                </div>
-            `;
-            return;
-        }
-
-        const sections = Array.isArray(current.sections) ? current.sections.filter(Boolean) : [];
-        const roles = Array.isArray(current.roleNames) ? current.roleNames.filter(Boolean) : [];
-        const filePreview = current.filePreview || null;
-        const previewMeta = filePreview ? [
-            filePreview.status ? `File ${filePreview.status}` : '',
-            filePreview.updatedAt ? this.formatDate(filePreview.updatedAt) : '',
-            filePreview.sizeBytes ? this.formatBytes(filePreview.sizeBytes) : '',
-        ].filter(Boolean).join(' | ') : '';
-        container.innerHTML = `
-            <div class="company-whiteboard-card">
-                <div class="company-whiteboard-main">
-                    <span class="company-whiteboard-kicker">Shared whiteboard</span>
-                    <strong>${this.escapeHtml(current.path)}</strong>
-                    <span>${this.escapeHtml(whiteboard.detail || current.purpose || 'Agent-to-agent weekly coordination is attached.')}</span>
-                </div>
-                <div class="company-whiteboard-meta">
-                    ${current.weekKey ? `<span>Week ${this.escapeHtml(current.weekKey)}</span>` : ''}
-                    <span>${Number(current.workloadCount || 0)} workload${Number(current.workloadCount || 0) === 1 ? '' : 's'}</span>
-                    ${roles.length ? `<span>${this.escapeHtml(roles.slice(0, 3).join(', '))}</span>` : ''}
-                </div>
-                ${sections.length ? `
-                    <div class="company-whiteboard-sections" aria-label="Shared whiteboard sections">
-                        ${sections.slice(0, 8).map((section) => `<span>${this.escapeHtml(section)}</span>`).join('')}
-                    </div>
-                ` : ''}
-                ${filePreview ? `
-                    <div class="company-whiteboard-preview company-whiteboard-preview--${this.escapeHtml(filePreview.status || 'missing')}">
-                        <div class="company-whiteboard-preview-head">
-                            <strong>Whiteboard preview</strong>
-                            ${previewMeta ? `<span>${this.escapeHtml(previewMeta)}</span>` : ''}
-                        </div>
-                        <p>${this.escapeHtml(filePreview.preview ? this.truncate(filePreview.preview, 420) : (filePreview.detail || 'No whiteboard text preview is available yet.'))}</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    }
-
-    renderCompanyFileManager(fileState = this.state.agentCompanyFiles || {}) {
-        const container = document.getElementById('companyFileList');
-        if (!container) return;
-
-        const results = Array.isArray(fileState.results) ? fileState.results : [];
-        const count = Number(fileState.count ?? results.length);
-        const refreshed = fileState.refreshed || {};
-        const statusText = fileState.error
-            ? 'index unavailable'
-            : `${count} document${count === 1 ? '' : 's'}${refreshed.workspace || refreshed.artifacts ? ' refreshed' : ''}`;
-        this.setTextContent('companyFileManagerStatus', statusText);
-
-        if (!results.length) {
-            const message = fileState.error
-                ? 'The file manager could not reach the document index.'
-                : 'No documents matched this search yet.';
-            container.innerHTML = `<p class="empty-state">${this.escapeHtml(message)}</p>`;
-            return;
-        }
-
-        container.innerHTML = results.map((file) => {
-            const sourceLabel = {
-                artifact: 'Artifact',
-                workspace: 'Workspace',
-                'research-bucket': 'Research',
-            }[file.sourceType] || file.sourceType || 'File';
-            const location = file.relativePath || file.filename || file.artifactId || file.id || '';
-            const preview = String(file.contentPreview || '').trim();
-            return `
-                <div class="company-file-item">
-                    <div class="company-file-main">
-                        <div class="company-file-title-row">
-                            <strong>${this.escapeHtml(file.title || file.filename || 'Document')}</strong>
-                            <span class="company-file-source">${this.escapeHtml(sourceLabel)}</span>
-                        </div>
-                        <span class="company-file-location">${this.escapeHtml(location)}</span>
-                        ${preview ? `<p>${this.escapeHtml(this.truncate(preview, 220))}</p>` : ''}
-                    </div>
-                    <div class="company-file-actions">
-                        ${file.downloadUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(file.downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
-                        ${file.inlineUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(file.inlineUrl)}" target="_blank" rel="noopener">Open</a>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    renderCompanyImprovementLoop(loop = null) {
-        const phaseContainer = document.getElementById('companyImprovementLoopPhases');
-        const summary = document.getElementById('companyImprovementLoopSummary');
-        if (!phaseContainer) return;
-
-        if (!loop || !Array.isArray(loop.phases)) {
-            this.setTextContent('companyImprovementLoopStatus', 'loop unavailable');
-            if (summary) {
-                summary.textContent = 'Workspace evidence has not loaded yet.';
-            }
-            phaseContainer.innerHTML = '<p class="empty-state">No improvement loop state loaded yet.</p>';
-            return;
-        }
-
-        const metrics = loop.metrics || {};
-        const cadence = loop.cadence || {};
-        const health = loop.health || 'forming';
-        this.setTextContent('companyImprovementLoopStatus', health);
-        if (summary) {
-            const parts = [
-                `${Number(metrics.workloads || 0)} workstreams`,
-                `${Number(metrics.deliverables || 0)} files`,
-                cadence.nextHeartbeat ? `heartbeat ${this.formatDate(cadence.nextHeartbeat)}` : null,
-                cadence.dailyAlignment ? `alignment ${this.formatDate(cadence.dailyAlignment)}` : null,
-            ].filter(Boolean);
-            summary.textContent = parts.join(' | ') || 'No operating evidence yet.';
-        }
-
-        phaseContainer.innerHTML = loop.phases.map((phase) => `
-            <div class="company-loop-phase company-loop-phase--${this.escapeHtml(phase.status || 'waiting')}">
-                <div>
-                    <strong>${this.escapeHtml(phase.label || phase.id || 'Loop phase')}</strong>
-                    <span>${this.escapeHtml(phase.detail || '')}</span>
-                </div>
-                <span class="company-loop-phase-status">${this.escapeHtml(phase.status || 'waiting')}</span>
-            </div>
-        `).join('');
-    }
-
-    renderCompanyWorkloads(workloads = []) {
-        const tbody = document.getElementById('companyWorkloadsTableBody');
-        if (!tbody) return;
-
-        if (!workloads.length) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="empty-state">No company-managed workloads are persisted yet.</td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = workloads.map((workload) => {
-            const metadata = this.getAgentCompanyMetadata(workload);
-            return `
-                <tr>
-                    <td>
-                        <div>${this.escapeHtml(workload.title || 'Company workload')}</div>
-                        <div class="workload-trigger">${this.escapeHtml(this.truncate(workload.prompt || '', 72))}</div>
-                    </td>
-                    <td>${this.escapeHtml(metadata.roleName || metadata.roleId || '-')}</td>
-                    <td><span class="workload-trigger">${this.escapeHtml(this.describeAdminTrigger(workload.trigger))}</span></td>
-                    <td><span class="status-badge ${workload.enabled ? 'healthy' : 'warning'}">${workload.enabled ? 'active' : 'paused'}</span></td>
-                    <td class="col-tokens">${Number(workload.workloadSummary?.queued || 0)}</td>
-                    <td class="col-tokens">${Number(workload.workloadSummary?.running || 0)}</td>
-                    <td>
-                        <div class="workload-row-actions">
-                            ${workload.enabled
-                                ? `<button class="btn btn-sm btn-secondary" onclick="dashboard.pauseAdminWorkload(event, '${workload.id}')">Pause</button>`
-                                : `<button class="btn btn-sm btn-ghost" onclick="dashboard.resumeAdminWorkload(event, '${workload.id}')">Resume</button>`}
-                            <button class="btn btn-sm btn-secondary" onclick="dashboard.openAdminWorkloadModal(event, '${workload.id}')">Direct</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    renderCompanyRuns(runs = []) {
-        const tbody = document.getElementById('companyRunsTableBody');
-        if (!tbody) return;
-
-        if (!runs.length) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="empty-state">No company runs have been recorded yet.</td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = runs.map((run) => {
-            const isSelected = this.state.selectedRun?.id === run.id;
-            const isActionSelected = this.state.companyActionRunId === run.id;
-
-            return `
-            <tr class="workload-run-row ${isSelected ? 'selected' : ''} ${isActionSelected ? 'company-run-row--action-selected' : ''}"
-                data-id="${this.escapeHtml(run.id)}"
-                data-dashboard-list-action="admin-run"
-                role="button"
-                tabindex="0"
-                aria-selected="${isSelected ? 'true' : 'false'}"
-                onclick="dashboard.selectAdminRun(this.dataset.id, { source: 'table' })"
-                onkeydown="dashboard.handleListItemKeydown(event)">
-                <td>
-                    <span>${this.escapeHtml(run.id)}</span>
-                    ${isActionSelected ? '<span class="company-run-action-marker">CEO action</span>' : ''}
-                </td>
-                <td>${this.escapeHtml(run.workloadTitle || run.workloadId)}</td>
-                <td><span class="status-badge ${this.getRunStatusClass(run.status)}">${this.escapeHtml(run.status)}</span></td>
-                <td>${this.escapeHtml(run.reason || 'manual')}</td>
-                <td>${this.escapeHtml(this.formatDate(run.scheduledFor))}</td>
-                <td>${this.escapeHtml(this.formatDate(run.finishedAt))}</td>
-                <td class="workload-run-export-cell">
-                    <button
-                        class="btn btn-secondary btn-sm"
-                        onclick="dashboard.downloadAdminRunTraceJson(event, '${run.id}')"
-                        title="Download this run trace as JSON"
-                    >
-                        JSON
-                    </button>
-                </td>
-            </tr>
-        `;
-        }).join('');
-    }
-
-    renderCompanyAlignment(alignment = {}) {
-        const container = document.getElementById('companyAlignmentPanel');
-        if (!container) return;
-
-        if (!alignment || !Object.keys(alignment).length || alignment.status === 'idle') {
-            container.innerHTML = '<p class="empty-state">No daily alignment state has been recorded yet.</p>';
-            return;
-        }
-
-        const evidence = alignment.evidence || {};
-        const suggestions = evidence.suggestions || {};
-        const logs = evidence.logs || {};
-        const applied = Array.isArray(alignment.applied) ? alignment.applied : [];
-        const rejected = Array.isArray(alignment.rejected) ? alignment.rejected : [];
-
-        container.innerHTML = `
-            <div class="company-alignment-grid">
-                <div>
-                    <span class="workload-detail-label">Status</span>
-                    <strong>${this.escapeHtml(alignment.status || 'steady')}</strong>
-                </div>
-                <div>
-                    <span class="workload-detail-label">Log Evidence</span>
-                    <strong>${Number(logs.count || 0).toLocaleString()} events</strong>
-                </div>
-                <div>
-                    <span class="workload-detail-label">Suggestions</span>
-                    <strong>${Number(suggestions.count || 0).toLocaleString()} found</strong>
-                </div>
-                <div>
-                    <span class="workload-detail-label">Safe Candidates</span>
-                    <strong>${Number(suggestions.safeCandidates || 0).toLocaleString()}</strong>
-                </div>
-            </div>
-            <div class="company-alignment-list">
-                ${applied.length ? applied.map((item) => `
-                    <span class="status-badge healthy">${this.escapeHtml(item.id || 'applied')}</span>
-                `).join('') : '<span class="text-muted">No updates applied in the last alignment.</span>'}
-                ${rejected.length ? rejected.map((item) => `
-                    <span class="status-badge warning">${this.escapeHtml(item.id || 'rejected')}</span>
-                `).join('') : ''}
-            </div>
-            ${evidence.collectionError ? `<p class="workload-edit-error">${this.escapeHtml(evidence.collectionError)}</p>` : ''}
-        `;
-    }
-    
-    /**
-     * Render trace timeline
-     */
     normalizeTraceDetails(details) {
         if (details && typeof details === 'object') {
             return details;
@@ -4689,32 +3420,10 @@ class Dashboard {
         }
     }
 
-    async selectAdminRun(id, options = {}) {
-        if (options?.source === 'company-action') {
-            const actionContext = options.actionContext
-                || this.state.companyActionContexts?.[id]
-                || this.getPersistedCompanyActionContext(id)
-                || {
-                    label: 'Opened from CEO action queue',
-                    detail: "Review this run's output evidence before continuing or packaging company work.",
-                    outputPreview: '',
-                };
-            this.state.companyActionRunId = id;
-            this.state.companyActionContext = actionContext;
-            this.persistCompanyActionContext(id, actionContext);
-            if (options.persistSelection !== false) {
-                this.updateCompanyActionSelectionUrl(id, actionContext.actionKey || actionContext.id || '');
-            }
-        } else if (this.state.companyActionRunId) {
-            this.state.companyActionRunId = null;
-            this.state.companyActionContext = null;
-            this.updateCompanyActionSelectionUrl('');
-        }
-
+    async selectAdminRun(id) {
         const existing = this.state.runs.find((run) => run.id === id) || null;
         this.state.selectedRun = existing;
         this.renderAdminRuns(this.state.runs);
-        this.renderAgentCompanyDashboard();
         this.renderAdminRunDetails(existing);
 
         try {
@@ -4722,7 +3431,6 @@ class Dashboard {
             const detailedRun = this.normalizeAdminRun(this.unwrapApiPayload(response, existing || {}), this.state.workloads);
             this.replaceAdminRunInState(detailedRun);
             this.renderAdminRuns(this.state.runs);
-            this.renderAgentCompanyDashboard();
             this.renderAdminRunDetails(detailedRun);
         } catch (error) {
             console.error('Error loading run details:', error);
@@ -5250,24 +3958,10 @@ class Dashboard {
                     asyncRuntimeWebChatParallel: document.getElementById('settingsAsyncRuntimeWebChatParallel').checked,
                     asyncRuntimeAllowLiveRemote: document.getElementById('settingsAsyncRuntimeAllowLiveRemote').checked,
                 },
-                agentCompany: {
-                    ...(this.state.settings?.agentCompany || {}),
-                    enabled: document.getElementById('settingsAgentCompanyEnabled')?.checked === true,
-                    companyGoal: document.getElementById('settingsAgentCompanyGoal')?.value || '',
-                    heartbeatMinutes: parseInt(document.getElementById('settingsAgentCompanyHeartbeatMinutes')?.value || '60', 10),
-                    weeklyWorkloadLimit: parseInt(document.getElementById('settingsAgentCompanyWeeklyWorkloadLimit')?.value || '3', 10),
-                    maxConcurrentWorkloads: parseInt(document.getElementById('settingsAgentCompanyMaxConcurrentWorkloads')?.value || '1', 10),
-                    primaryModel: document.getElementById('settingsAgentCompanyPrimaryModel')?.value || '',
-                    escalationModels: (document.getElementById('settingsAgentCompanyEscalationModels')?.value || '')
-                        .split(',')
-                        .map((model) => model.trim())
-                        .filter(Boolean),
-                },
             };
 
             const response = await apiClient.put('/api/admin/settings', settings);
             this.applySettings(this.unwrapApiPayload(response, settings));
-            await this.loadAgentCompanyStatus();
             this.showToast('Runtime setting saved', 'success');
         } catch (error) {
             console.error('Error saving runtime setting:', error);
@@ -5275,390 +3969,6 @@ class Dashboard {
         }
     }
 
-    async loadAgentCompanyDashboard({ force = false } = {}) {
-        await Promise.all([
-            this.loadAgentCompanyWorkspace(),
-            this.loadAgentCompanyProjects(),
-            this.searchAgentCompanyFiles(),
-            this.loadWorkloads(),
-        ]);
-
-        if (force) {
-            this.showToast('Agent company console refreshed', 'success');
-        }
-    }
-
-    async loadAgentCompanyProjects() {
-        try {
-            const response = await apiClient.get('/api/admin/agent-company/projects');
-            const payload = this.unwrapApiPayload(response, {});
-            this.state.agentCompanyProjects = Array.isArray(payload.projects) ? payload.projects : [];
-            this.state.activeAgentCompanyProjectId = payload.activeProjectId || '';
-            this.renderAgentCompanyProjects();
-            return payload;
-        } catch (error) {
-            console.warn('Error loading agent company projects:', error.message || error);
-            this.renderAgentCompanyProjects();
-            return { projects: [] };
-        }
-    }
-
-    renderAgentCompanyProjects() {
-        const select = document.getElementById('companyProjectSelect');
-        if (!select) return;
-        const projects = Array.isArray(this.state.agentCompanyProjects) ? this.state.agentCompanyProjects : [];
-        select.innerHTML = projects.length
-            ? projects.map((project) => `<option value="${this.escapeHtml(project.id)}">${this.escapeHtml(project.name)}${project.activeRunCount ? ` (${project.activeRunCount} active)` : ''}</option>`).join('')
-            : '<option value="">Main project</option>';
-        select.value = this.state.activeAgentCompanyProjectId || projects[0]?.id || '';
-        const active = projects.find((project) => project.id === select.value);
-        const activeRunCount = Number(active?.activeRunCount || 0);
-        const archiveBlockedByActiveRuns = activeRunCount > 0;
-        const archiveBlockedByProjectCount = projects.length <= 1;
-        this.setTextContent('companyProjectSummary', active
-            ? `${active.workloadCount || 0} workloads, ${active.runCount || 0} runs${activeRunCount ? `, ${activeRunCount} active` : ''}. Other projects keep their files and history.${archiveBlockedByProjectCount ? ' Keep at least one Agent Company project.' : archiveBlockedByActiveRuns ? ' Finish or cancel active runs before archiving.' : ''}`
-            : 'Project work stays separated by session.');
-        const archiveButton = document.getElementById('companyArchiveProjectBtn');
-        if (archiveButton) {
-            archiveButton.disabled = archiveBlockedByProjectCount || archiveBlockedByActiveRuns;
-            archiveButton.title = archiveBlockedByProjectCount
-                ? 'Keep at least one Agent Company project.'
-                : archiveBlockedByActiveRuns
-                    ? `Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before archiving.`
-                    : 'Archive this Agent Company project.';
-        }
-    }
-
-    async createAgentCompanyProject() {
-        const name = String(window.prompt?.('Name the new Agent Company project:') || '').trim();
-        if (!name) return;
-        try {
-            await apiClient.post('/api/admin/agent-company/projects', { name });
-            this.state.companyActionHistory = [];
-            this.state.companyActionHistorySummary = null;
-            this.state.companyActionHistoryExpanded = false;
-            this.dirtyInputIds?.delete('companyCeoDirection');
-            await this.loadSettings();
-            await this.loadAgentCompanyDashboard({ force: true });
-            this.showToast(`Started ${name} as a clean project`, 'success');
-        } catch (error) {
-            this.showToast(error.userMessage || error.message || 'Failed to create project', 'error');
-        }
-    }
-
-    async activateAgentCompanyProject(projectId = '') {
-        const id = String(projectId || '').trim();
-        if (!id || id === this.state.activeAgentCompanyProjectId) return;
-        try {
-            await apiClient.post(`/api/admin/agent-company/projects/${encodeURIComponent(id)}/activate`, {});
-            this.state.companyActionHistory = [];
-            this.state.companyActionHistorySummary = null;
-            this.state.companyActionHistoryExpanded = false;
-            this.dirtyInputIds?.delete('companyCeoDirection');
-            await this.loadSettings();
-            await this.loadAgentCompanyDashboard();
-            this.showToast('Agent Company project switched', 'success');
-        } catch (error) {
-            this.renderAgentCompanyProjects();
-            this.showToast(error.userMessage || error.message || 'Failed to switch project', 'error');
-        }
-    }
-
-    async archiveAgentCompanyProject() {
-        const id = this.state.activeAgentCompanyProjectId;
-        const active = this.state.agentCompanyProjects.find((project) => project.id === id);
-        if (!active || this.state.agentCompanyProjects.length <= 1) return;
-        const activeRunCount = Number(active.activeRunCount || 0);
-        if (activeRunCount > 0) {
-            this.showToast(`Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before archiving`, 'warning');
-            return;
-        }
-        if (!window.confirm?.(`Archive “${active.name}”? Its stored work will remain available on disk.`)) return;
-        try {
-            await apiClient.delete(`/api/admin/agent-company/projects/${encodeURIComponent(id)}`);
-            this.state.companyActionHistory = [];
-            this.state.companyActionHistorySummary = null;
-            this.state.companyActionHistoryExpanded = false;
-            this.dirtyInputIds?.delete('companyCeoDirection');
-            await this.loadSettings();
-            await this.loadAgentCompanyDashboard();
-            this.showToast(`${active.name} archived`, 'success');
-        } catch (error) {
-            const serverActiveRunCount = Number(error.data?.data?.activeRunCount || 0);
-            if (error.status === 409 && error.data?.data?.projectId === id && serverActiveRunCount > 0) {
-                active.activeRunCount = serverActiveRunCount;
-                this.renderAgentCompanyProjects();
-            }
-            this.showToast(error.userMessage || error.message || 'Failed to archive project', 'error');
-        }
-    }
-
-    async clearAgentCompanyHistory() {
-        const active = this.state.agentCompanyProjects.find((project) => project.id === this.state.activeAgentCompanyProjectId);
-        if (!window.confirm?.(`Clear saved CEO action history for “${active?.name || 'this project'}”? Workloads, runs, and files will stay intact.`)) return;
-        try {
-            await apiClient.delete('/api/admin/agent-company/action-history');
-            this.state.companyActionHistory = [];
-            this.state.companyActionHistorySummary = null;
-            this.state.companyActionHistoryExpanded = false;
-            if (this.state.agentCompanyWorkspace) this.state.agentCompanyWorkspace.actionHistory = [];
-            this.renderCompanyActionHistory([]);
-            this.showToast('Project history cleared', 'success');
-        } catch (error) {
-            this.showToast(error.userMessage || error.message || 'Failed to clear project history', 'error');
-        }
-    }
-
-    async loadAgentCompanyWorkspace() {
-        try {
-            const response = typeof apiClient.getAgentCompanyWorkspace === 'function'
-                ? await apiClient.getAgentCompanyWorkspace()
-                : await apiClient.get('/api/admin/agent-company/workspace');
-            const workspace = this.unwrapApiPayload(response, {});
-            this.state.agentCompanyWorkspace = workspace;
-            if (workspace.status) {
-                this.state.agentCompanyStatus = workspace.status;
-                this.renderAgentCompanyStatus(workspace.status);
-            }
-            if (Array.isArray(workspace.workloads) && Array.isArray(workspace.runs)) {
-                const knownWorkloads = new Map(this.state.workloads.map((workload) => [workload.id, workload]));
-                workspace.workloads.forEach((workload) => knownWorkloads.set(workload.id, this.normalizeAdminWorkload(workload)));
-                this.state.workloads = Array.from(knownWorkloads.values());
-
-                const knownRuns = new Map(this.state.runs.map((run) => [run.id, run]));
-                workspace.runs.forEach((run) => knownRuns.set(run.id, this.normalizeAdminRun(run, this.state.workloads)));
-                this.state.runs = Array.from(knownRuns.values());
-            }
-            this.renderAgentCompanyDashboard();
-            await this.restoreCompanyActionSelectionFromUrl();
-            return workspace;
-        } catch (error) {
-            console.warn('Error loading agent company workspace:', error.message || error);
-            this.state.agentCompanyWorkspace = {
-                deliverables: [],
-                actionQueue: [],
-                workspace: {
-                    workloadAvailable: false,
-                },
-            };
-            return this.loadAgentCompanyStatus();
-        }
-    }
-
-    async loadCompanyActionHistory(limit = 24) {
-        this.state.companyActionHistoryLoading = true;
-        this.state.companyActionHistoryError = '';
-        this.renderCompanyActionHistory(
-            this.state.companyActionHistory
-                || this.state.agentCompanyWorkspace?.actionHistory
-                || [],
-        );
-
-        try {
-            const client = window.apiClient || (typeof apiClient !== 'undefined' ? apiClient : null);
-            if (!client?.get) {
-                throw new Error('API client is unavailable');
-            }
-            const response = await client.get('/api/admin/agent-company/action-history', { limit });
-            const payload = this.unwrapApiPayload(response, {});
-            const actions = Array.isArray(payload.actions) ? payload.actions : [];
-            this.state.companyActionHistory = actions;
-            this.state.companyActionHistorySummary = payload.summary || null;
-            this.state.companyActionHistoryExpanded = true;
-            this.state.companyActionHistoryLoading = false;
-            this.state.companyActionHistoryError = '';
-            this.renderCompanyActionHistory(actions);
-            return actions;
-        } catch (error) {
-            this.state.companyActionHistoryLoading = false;
-            this.state.companyActionHistoryError = error.userMessage || error.message || 'Failed to load saved CEO actions.';
-            this.renderCompanyActionHistory(
-                this.state.companyActionHistory
-                    || this.state.agentCompanyWorkspace?.actionHistory
-                    || [],
-            );
-            console.warn('Error loading company action history:', error.message || error);
-            return [];
-        }
-    }
-
-    async searchAgentCompanyFiles({ refresh = false } = {}) {
-        try {
-            const params = {
-                query: this.state.companyFileSearch || '',
-                sourceType: this.state.companyFileSourceFilter || 'any',
-                limit: 25,
-                includeContent: true,
-                ...(refresh ? { refresh: true } : {}),
-            };
-            const response = typeof apiClient.searchAgentCompanyFiles === 'function'
-                ? await apiClient.searchAgentCompanyFiles(params)
-                : await apiClient.get('/api/admin/agent-company/files', params);
-            const payload = this.unwrapApiPayload(response, {});
-            this.state.agentCompanyFiles = payload;
-            this.renderCompanyFileManager(payload);
-            if (refresh) {
-                this.showToast('Company file index refreshed', 'success');
-            }
-            return payload;
-        } catch (error) {
-            console.warn('Error searching company files:', error.message || error);
-            const fallback = {
-                count: 0,
-                results: [],
-                error: error.message || 'file_search_failed',
-            };
-            this.state.agentCompanyFiles = fallback;
-            this.renderCompanyFileManager(fallback);
-            return fallback;
-        }
-    }
-
-    async loadAgentCompanyStatus() {
-        try {
-            const response = await apiClient.get('/api/admin/agent-company');
-            const status = this.unwrapApiPayload(response, null);
-            this.state.agentCompanyStatus = status;
-            this.renderAgentCompanyStatus(status);
-            this.renderAgentCompanyDashboard();
-            return status;
-        } catch (error) {
-            const fallback = {
-                available: false,
-                state: {
-                    heartbeat: {
-                        status: 'unavailable',
-                        reason: error.message || 'status_failed',
-                    },
-                },
-            };
-            this.state.agentCompanyStatus = fallback;
-            this.renderAgentCompanyStatus(fallback);
-            this.renderAgentCompanyDashboard();
-            return fallback;
-        }
-    }
-
-    async runAgentCompanyHeartbeat({ source = 'admin' } = {}) {
-        try {
-            const response = await apiClient.post('/api/admin/agent-company/heartbeat', {
-                reason: source,
-            });
-            const status = this.unwrapApiPayload(response, null);
-            this.state.agentCompanyStatus = status;
-            this.renderAgentCompanyStatus(status);
-            this.renderAgentCompanyDashboard();
-            const created = status?.createdWorkloads?.length || status?.state?.heartbeat?.createdWorkloads || 0;
-            this.showToast(created > 0 ? `Heartbeat scheduled ${created} workload${created === 1 ? '' : 's'}` : 'Heartbeat checked current work', 'success');
-            await this.loadAgentCompanyDashboard();
-        } catch (error) {
-            console.error('Error running agent company heartbeat:', error);
-            this.showToast('Failed to run company heartbeat', 'error');
-        }
-    }
-
-    async runAgentCompanyDailyAlignment() {
-        try {
-            const response = await apiClient.post('/api/admin/agent-company/daily-alignment', {
-                reason: 'company-console-alignment',
-            });
-            const payload = this.unwrapApiPayload(response, {});
-            const status = payload.status || payload;
-            this.state.agentCompanyStatus = status;
-            this.renderAgentCompanyStatus(status);
-            this.renderAgentCompanyDashboard();
-            const alignment = payload.dailyAlignment || status?.state?.dailyAlignment || {};
-            this.showToast(`Daily alignment ${alignment.status || 'checked'}`, 'success');
-            await this.loadAgentCompanyWorkspace();
-        } catch (error) {
-            console.error('Error running agent company alignment:', error);
-            this.showToast(error.userMessage || error.message || 'Failed to run company alignment', 'error');
-        }
-    }
-
-    async saveAgentCompanyDirection() {
-        const goal = String(document.getElementById('companyCeoDirection')?.value || '').trim();
-        if (!goal) {
-            this.showToast('Add a company direction before saving', 'warning');
-            return;
-        }
-
-        const current = this.state.settings?.agentCompany
-            || this.state.agentCompanyStatus?.config
-            || {};
-        const settings = {
-            agentCompany: {
-                ...current,
-                enabled: true,
-                companyGoal: goal,
-                heartbeatMinutes: Number(current.heartbeatMinutes || 60),
-                weeklyWorkloadLimit: Number(current.weeklyWorkloadLimit || 3),
-                maxConcurrentWorkloads: Number(current.maxConcurrentWorkloads || 1),
-                sessionId: current.sessionId || 'agent-company',
-                escalationModels: Array.isArray(current.escalationModels)
-                    ? current.escalationModels
-                    : String(current.escalationModels || '')
-                        .split(',')
-                        .map((model) => model.trim())
-                        .filter(Boolean),
-            },
-        };
-
-        try {
-            const response = await apiClient.put('/api/admin/settings', settings);
-            this.applySettings(this.unwrapApiPayload(response, settings), { preserveDirty: true });
-            this.dirtyInputIds.delete('companyCeoDirection');
-            await this.loadAgentCompanyDashboard({ force: true });
-            this.showToast('Company direction saved', 'success');
-        } catch (error) {
-            console.error('Error saving company direction:', error);
-            this.showToast(error.userMessage || error.message || 'Failed to save company direction', 'error');
-        }
-    }
-
-    handleCompanyAction(target = '', runId = '', actionId = '') {
-        switch (target) {
-            case 'settings':
-                this.configureAgentCompany();
-                break;
-            case 'heartbeat':
-                this.runAgentCompanyHeartbeat({ source: 'company-action-queue' });
-                break;
-            case 'whiteboard-refresh':
-                this.runAgentCompanyHeartbeat({ source: 'shared-whiteboard-refresh' });
-                break;
-            case 'runs':
-                if (runId) {
-                    this.selectAdminRun(runId, {
-                        source: 'company-action',
-                        actionContext: this.state.companyActionContextsById?.[actionId]
-                            || this.state.companyActionContexts?.[runId]
-                            || null,
-                    });
-                }
-                this.scrollElementIntoView(document.getElementById('companyRunsTableBody'));
-                break;
-            case 'deliverables':
-                {
-                    const collage = document.getElementById('companyDeliverableCollage')
-                        || document.getElementById('companyDeliverableList');
-                    this.scrollElementIntoView(collage);
-                    document.querySelector('.company-deliverable-card')?.focus?.({ preventScroll: true });
-                }
-                break;
-            case 'alignment':
-                this.scrollElementIntoView(document.getElementById('companyAlignmentPanel'));
-                break;
-            case 'traces':
-                this.navigateTo('traces');
-                this.scrollElementIntoView(document.getElementById('traceQualitySummary'));
-                break;
-            default:
-                this.scrollElementIntoView(document.getElementById('agentCompanyView'), { block: 'start' });
-                break;
-        }
-    }
-    
     resetDefaultConfig() {
         document.getElementById('defaultTemperature').value = 0.7;
         document.getElementById('defaultMaxTokens').value = 4096;
@@ -5890,15 +4200,6 @@ class Dashboard {
         select.value = sessionIds.includes(selected) ? selected : 'all';
     }
 
-    configureAgentCompany() {
-        this.navigateTo('settings');
-        this.switchSettingsSection('orchestration');
-        const target = document.getElementById('settingsAgentCompanyGoal')
-            || document.getElementById('settingsAgentCompanyEnabled')
-            || document.getElementById('orchestrationSettings');
-        this.scrollElementIntoView(target);
-        target?.focus?.();
-    }
 
     setupSettingsNavigation() {
         document.querySelector('.settings-nav')?.setAttribute('role', 'tablist');
@@ -7556,10 +5857,6 @@ class Dashboard {
         return div.innerHTML;
     }
 
-    formatCompanyActionHandler(target = '', runId = '', actionKey = '') {
-        const args = [target, runId, actionKey].map((value) => JSON.stringify(String(value || '')));
-        return this.escapeAttribute(`dashboard.handleCompanyAction(${args.join(', ')})`);
-    }
 
     escapeAttribute(text) {
         return String(text)
@@ -8786,25 +7083,6 @@ class Dashboard {
         select.value = models.includes(currentValue) || currentValue === 'all' ? currentValue : 'all';
     }
 
-    renderAgentCompanyStatus(status = null) {
-        this.state.agentCompanyStatus = status;
-        const label = document.getElementById('settingsAgentCompanyStatus');
-        this.renderAgentCompanyDashboard();
-        if (!label) return;
-
-        const heartbeat = status?.state?.heartbeat || {};
-        const running = status?.state?.runningWork || {};
-        const available = status?.available === true;
-        const statusText = heartbeat.status || (available ? 'ready' : 'standby');
-        const nextAt = heartbeat.nextAt ? this.formatDate(heartbeat.nextAt) : 'not scheduled';
-        const workText = `${Number(running.running || 0)} running, ${Number(running.queued || 0)} queued`;
-        const failedText = Number(heartbeat.failedWorkloads || 0) > 0
-            ? `; ${Number(heartbeat.failedWorkloads || 0)} failed`
-            : '';
-        const reason = heartbeat.reason ? `; ${heartbeat.reason}` : '';
-
-        label.textContent = `Heartbeat ${statusText}; next ${nextAt}; ${workText}${failedText}${reason}.`;
-    }
 
     applySettings(settings = {}, { preserveDirty = false } = {}) {
         this.state.settings = settings;
@@ -8815,7 +7093,6 @@ class Dashboard {
         const features = settings.features || {};
         const orchestration = settings.orchestration || {};
         const asyncRuntime = settings.asyncRuntime || {};
-        const agentCompany = settings.agentCompany || {};
         const personality = settings.personality || {};
         const userProfile = settings.userProfile || {};
         const agentNotes = settings.agentNotes || {};
@@ -8922,13 +7199,6 @@ class Dashboard {
         this.setCheckboxValue('settingsAsyncRuntimeWebChatParallel', asyncRuntime.webChatParallelEnabled === true);
         this.setInputValue('orchestrationAsyncRuntimeAllowLiveRemote', String(asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true));
         this.setCheckboxValue('settingsAsyncRuntimeAllowLiveRemote', asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true);
-        this.setCheckboxValue('settingsAgentCompanyEnabled', agentCompany.enabled === true);
-        this.setInputValue('settingsAgentCompanyGoal', agentCompany.companyGoal || '', { preserveDirty });
-        this.setInputValue('settingsAgentCompanyHeartbeatMinutes', agentCompany.heartbeatMinutes || 60);
-        this.setInputValue('settingsAgentCompanyWeeklyWorkloadLimit', agentCompany.weeklyWorkloadLimit || 3);
-        this.setInputValue('settingsAgentCompanyMaxConcurrentWorkloads', agentCompany.maxConcurrentWorkloads || 1);
-        this.setInputValue('settingsAgentCompanyPrimaryModel', agentCompany.primaryModel || '', { preserveDirty });
-        this.setInputValue('settingsAgentCompanyEscalationModels', (agentCompany.escalationModels || []).join(', '), { preserveDirty });
         const asyncRuntimeStatus = document.getElementById('settingsAsyncRuntimeStatus');
         if (asyncRuntimeStatus) {
             const availability = asyncRuntime.adminToggleAllowed

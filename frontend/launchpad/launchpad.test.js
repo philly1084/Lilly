@@ -17,19 +17,19 @@ describe('Lilly launchpad', () => {
     expect(parsed.searchParams.has('autorun')).toBe(false);
   });
 
-  test('hydrates cards with accessible labels and leaves the Agent Company route direct', () => {
+  test('hydrates cards with accessible labels and leaves the Agent Command Center route direct', () => {
     const dom = new JSDOM(`
       <a data-mission-link="build-launch"></a>
       <a data-mission-link="research-publish"></a>
       <a data-mission-link="create-refine"></a>
-      <a data-agent-company href="/admin/?view=agentCompany"></a>
+      <a data-agent-ops href="/agent-ops/"></a>
     `);
 
     expect(hydrateLaunchpad(dom.window.document)).toBe(3);
     const cards = [...dom.window.document.querySelectorAll('[data-mission-link]')];
     expect(cards.every((card) => card.href.includes('/web-chat/app.html?mission='))).toBe(true);
     expect(cards.every((card) => /with Lilly$/.test(card.getAttribute('aria-label')))).toBe(true);
-    expect(dom.window.document.querySelector('[data-agent-company]').getAttribute('href')).toBe('/admin/?view=agentCompany');
+    expect(dom.window.document.querySelector('[data-agent-ops]').getAttribute('href')).toBe('/agent-ops/');
   });
 
   test('falls back to Web Chat for an unknown mission template', () => {

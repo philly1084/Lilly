@@ -49,6 +49,7 @@ const runnersRouter = require('./routes/runners');
 const asyncLabRouter = require('./routes/async-lab');
 const asyncLabWebhooksRouter = require('./routes/async-lab-webhooks');
 const agentRunsRouter = require('./routes/agent-runs');
+const agentOpsRouter = require('./routes/agent-ops');
 const giteaIntegrationsRouter = require('./routes/integrations-gitea');
 const gitlabIntegrationsRouter = require('./routes/integrations-gitlab');
 const providerSessionsRouter = require('./routes/provider-sessions');
@@ -482,6 +483,7 @@ app.get('/', (_req, res) => {
 app.use('/api/chat', chatRouter);
 app.use('/api/async-lab', asyncLabRouter);
 app.use('/api/agent-runs', agentRunsRouter);
+app.use('/api/admin/agent-ops', agentOpsRouter);
 app.use('/api/canvas', async (req, res, next) => {
     if (req.method !== 'POST') return next();
     try {
