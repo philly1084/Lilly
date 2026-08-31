@@ -95,6 +95,59 @@ function normalizeEvidence(value = {}, fallbackType = 'evidence') {
   };
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
+  return `${Math.round(bytes / (1024 * 102.4)) / 10} MB`;
+}
+
+function inferLanguage(filename = '', mimeType = '') {
+  const extension = String(filename).toLowerCase().split('.').pop();
+  const languages = {
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+    ts: 'typescript', tsx: 'typescript', json: 'json', html: 'html', htm: 'html',
+    css: 'css', md: 'markdown', markdown: 'markdown', yaml: 'yaml', yml: 'yaml',
+    xml: 'xml', csv: 'csv', sh: 'shell', bash: 'shell', ps1: 'powershell',
+    py: 'python', txt: 'text', log: 'text',
+  };
+  if (languages[extension]) return languages[extension];
+  if (String(mimeType).startsWith('text/')) return 'text';
+  return null;
+}
+
+function normalizeStoredArtifact(artifact = {}, { includeContent = false } = {}) {
+  const source = asObject(artifact);
+  const metadata = asObject(source.metadata);
+  const id = cleanText(source.id, 240);
+  const name = cleanText(source.filename || metadata.filename || metadata.title || id, 300) || 'Artifact';
+  const mimeType = cleanText(source.mimeType || metadata.mimeType, 160) || null;
+  const language = inferLanguage(name, mimeType);
+  const previewUrl = cleanText(source.previewUrl || metadata.previewUrl, 1000)
+    || (id ? `/api/artifacts/${encodeURIComponent(id)}/preview` : null);
+  const downloadUrl = cleanText(source.downloadUrl || metadata.downloadUrl, 1000)
+    || (id ? `/api/artifacts/${encodeURIComponent(id)}/download` : null);
+  const content = includeContent && language
+    ? cleanText(source.extractedText || metadata.extractedText || source.previewHtml, 12000)
+    : null;
+  return {
+    id: id || null,
+    name,
+    path: cleanText(metadata.path || metadata.workspacePath || metadata.sourcePath || name, 1000) || name,
+    detail: [language, formatBytes(source.sizeBytes), cleanText(source.status, 80)].filter(Boolean).join(' · ') || 'Recorded artifact',
+    mimeType,
+    language,
+    sizeBytes: Number.isFinite(Number(source.sizeBytes)) ? Number(source.sizeBytes) : null,
+    previewUrl,
+    downloadUrl,
+    url: previewUrl || downloadUrl,
+    content: content || null,
+    createdAt: source.createdAt || null,
+    updatedAt: source.updatedAt || source.createdAt || null,
+  };
+}
+
 function normalizeUsage(run = {}) {
   const usage = asObject(run.usage);
   const input = Number(
@@ -186,12 +239,17 @@ class AgentOpsService {
       ? asArray(await this.workloadService.listAdminRuns(300))
       : [];
     const canonicalRuns = await this.listCanonicalRuns(100);
+    const sessionId = cleanText(companyStatus?.config?.sessionId, 160);
+    const artifacts = sessionId && typeof this.artifactStore?.listBySession === 'function'
+      ? asArray(await this.artifactStore.listBySession(sessionId))
+      : [];
 
     return {
       companyStatus: asObject(companyStatus),
       workloads,
       workloadRuns,
       canonicalRuns,
+      artifacts,
       workloadAvailable,
     };
   }
@@ -302,7 +360,37 @@ class AgentOpsService {
       runId: canonicalRun?.id || run?.id || null,
       workloadId: workload?.id || null,
       needsApproval: Boolean(pendingApproval),
+      approval: pendingApproval ? {
+        id: cleanText(pendingApproval.id, 240),
+        title: cleanText(pendingApproval.title || pendingApproval.reason, 300) || 'Approval required',
+        reason: cleanText(pendingApproval.reason, 500) || null,
+      } : null,
     };
+  }
+
+  buildWorkflows(workloads = [], indexes = {}) {
+    return workloads.map((workload) => {
+      const runs = indexes.runsByWorkload.get(workload.id) || [];
+      const run = pickLatest(runs);
+      const canonicalRun = run ? indexes.canonicalByWorkloadRun.get(run.id) || null : null;
+      const metadata = getCompanyMetadata(workload);
+      const status = normalizeRunStatus(canonicalRun?.state || run?.status || 'idle');
+      return {
+        id: workload.id,
+        title: cleanText(workload.title, 500) || 'Untitled workflow',
+        agentId: cleanText(metadata.roleId, 160) || null,
+        agentName: cleanText(metadata.roleName, 200) || null,
+        status,
+        enabled: workload.enabled !== false,
+        runId: canonicalRun?.id || run?.id || null,
+        updatedAt: run?.updatedAt || canonicalRun?.updatedAt || workload.updatedAt || workload.createdAt || null,
+        evidence: [
+          ...asArray(canonicalRun?.evidence).map((entry) => normalizeEvidence(entry)),
+          ...asArray(canonicalRun?.outputs).map((entry) => normalizeEvidence(entry, 'artifact')),
+          ...asArray(run?.metadata?.output?.artifacts).map((entry) => normalizeEvidence(entry, 'artifact')),
+        ].filter(Boolean),
+      };
+    }).sort((left, right) => timestampValue(right.updatedAt) - timestampValue(left.updatedAt));
   }
 
   buildAgents(config = {}, state = {}, workloads = [], indexes = {}) {
@@ -468,6 +556,7 @@ class AgentOpsService {
     const indexes = this.buildRunIndexes(companyWorkloads, sources.workloadRuns, sources.canonicalRuns);
     const agents = this.buildAgents(config, state, companyWorkloads, indexes);
     const goalItems = this.buildGoalItems(state, companyWorkloads, indexes);
+    const workflows = this.buildWorkflows(companyWorkloads, indexes);
     const heartbeat = this.buildHeartbeat(state, config);
     const groups = {
       needsInput: agents.filter((agent) => agent.status === 'needs_input'),
@@ -478,6 +567,10 @@ class AgentOpsService {
     const canListApprovals = typeof this.agentRunService?.performAction === 'function'
       && (typeof this.agentRunService?.listRuns === 'function'
         || typeof this.agentRunService?.store?.listRuns === 'function');
+    const settingsController = this.agentCompanyService?.settingsController;
+    const canCreateGoals = typeof settingsController?.updateAgentCompanySettings === 'function'
+      && typeof this.agentCompanyService?.tick === 'function';
+    const projectArtifacts = sources.artifacts.map((artifact) => normalizeStoredArtifact(artifact));
 
     return {
       public: {
@@ -488,6 +581,16 @@ class AgentOpsService {
         groups,
         selectedAgentId,
         goalItems,
+        workflows,
+        artifacts: projectArtifacts,
+        approvals: groups.needsInput
+          .filter((agent) => agent.approval)
+          .map((agent) => ({
+            ...agent.approval,
+            agentId: agent.id,
+            agentName: agent.name,
+            task: agent.task,
+          })),
         capabilities: {
           activity: true,
           approvals: canListApprovals,
@@ -495,6 +598,12 @@ class AgentOpsService {
           artifacts: typeof this.artifactStore?.listBySession === 'function',
           heartbeat: typeof this.agentCompanyService?.getStatus === 'function',
           resourceMetrics: false,
+          goalCreation: canCreateGoals ? { enabled: true, endpoint: '/goals' } : { enabled: false },
+          workspace: {
+            enabled: true,
+            endpointTemplate: '/agents/{agentId}/workspace',
+            panels: ['activity', 'files', 'editor', 'terminal', 'browser', 'artifacts', 'messages'],
+          },
           stream: false,
         },
       },
@@ -512,6 +621,56 @@ class AgentOpsService {
   async getOverview() {
     const snapshot = await this.buildSnapshot();
     return snapshot.public;
+  }
+
+  async createGoal(input = {}, actor = '') {
+    const title = cleanText(input.title, 120);
+    const successCriteria = cleanText(input.successCriteria, 3000);
+    if (!title) {
+      throw createAgentOpsError('Goal title is required.', 400, 'agent_goal_title_required');
+    }
+    const settingsController = this.agentCompanyService?.settingsController;
+    if (typeof settingsController?.updateAgentCompanySettings !== 'function'
+      || typeof this.agentCompanyService?.tick !== 'function') {
+      throw createAgentOpsError(
+        'Goal creation is unavailable because the company settings runtime is not connected.',
+        503,
+        'agent_goal_creation_unavailable',
+      );
+    }
+
+    const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const goal = cleanText(
+      successCriteria ? `${title}\n\nSuccess criteria:\n${successCriteria}` : title,
+      4000,
+    );
+    const activeProjectId = cleanText(current.activeProjectId, 160);
+    const sessionId = cleanText(current.sessionId, 160);
+    const now = this.now().toISOString();
+    const projects = asArray(current.projects).map((project) => {
+      const isActive = (activeProjectId && project.id === activeProjectId)
+        || (!activeProjectId && sessionId && project.sessionId === sessionId);
+      return isActive ? { ...project, companyGoal: goal, enabled: true, updatedAt: now } : project;
+    });
+    const config = await settingsController.updateAgentCompanySettings({
+      ...current,
+      companyGoal: goal,
+      enabled: true,
+      projects,
+    });
+    const status = await this.agentCompanyService.tick({
+      force: true,
+      reason: cleanText(`agent-ops-goal:${actor || 'admin'}`, 120),
+    });
+    return {
+      title,
+      successCriteria: successCriteria || null,
+      goal,
+      projectId: config?.activeProjectId || null,
+      sessionId: config?.sessionId || null,
+      heartbeat: status?.state?.heartbeat || null,
+      createdAt: now,
+    };
   }
 
   makeTimelineEvent(input = {}) {
@@ -666,6 +825,94 @@ class AgentOpsService {
       agentId: normalizedId,
       generatedAt: this.now().toISOString(),
       timeline,
+    };
+  }
+
+  async getAgentWorkspace(agentId = '') {
+    const normalizedId = cleanText(agentId, 160);
+    const snapshot = await this.buildSnapshot();
+    const agent = snapshot.context.agents.find((candidate) => candidate.id === normalizedId);
+    if (!agent) {
+      throw createAgentOpsError('Agent not found.', 404, 'agent_not_found');
+    }
+    const roleWorkloads = snapshot.context.companyWorkloads.filter((workload) => (
+      cleanText(getCompanyMetadata(workload).roleId, 160) === normalizedId
+    ));
+    const workloadIds = new Set(roleWorkloads.map((workload) => workload.id).filter(Boolean));
+    const workloadRuns = snapshot.context.indexes.companyWorkloadRuns.filter((run) => workloadIds.has(run.workloadId));
+    const workloadRunIds = new Set(workloadRuns.map((run) => run.id).filter(Boolean));
+    const canonicalRuns = snapshot.context.indexes.companyCanonicalRuns.filter((run) => (
+      workloadRunIds.has(getCanonicalWorkloadRunId(run)) || workloadIds.has(getCanonicalWorkloadId(run))
+    ));
+    const referencedArtifactIds = new Set([
+      ...workloadRuns.flatMap((run) => asArray(run?.metadata?.output?.artifacts).map((entry) => entry?.id || entry?.artifactId)),
+      ...canonicalRuns.flatMap((run) => [...asArray(run.evidence), ...asArray(run.outputs)].map((entry) => entry?.id || entry?.artifactId)),
+    ].filter(Boolean));
+    const storedArtifacts = snapshot.context.artifacts.filter((artifact) => {
+      const metadata = asObject(artifact.metadata);
+      const companyMetadata = asObject(metadata.agentCompany);
+      return referencedArtifactIds.has(artifact.id)
+        || workloadIds.has(metadata.workloadId)
+        || workloadRunIds.has(metadata.runId)
+        || companyMetadata.roleId === normalizedId;
+    });
+    const artifacts = storedArtifacts.map((artifact) => normalizeStoredArtifact(artifact, { includeContent: true }));
+    const knownArtifactIds = new Set(artifacts.map((artifact) => artifact.id).filter(Boolean));
+    const recordedOutputs = canonicalRuns
+      .flatMap((run) => [...asArray(run.evidence), ...asArray(run.outputs)])
+      .map((entry) => normalizeEvidence(entry, 'artifact'))
+      .filter((entry) => entry && !knownArtifactIds.has(entry.id))
+      .map((entry) => ({
+        ...entry,
+        name: entry.label,
+        detail: [entry.type, entry.status].filter(Boolean).join(' · ') || 'Recorded output',
+        previewUrl: entry.url,
+        downloadUrl: entry.url,
+      }));
+    const activity = await this.getAgentActivity(normalizedId);
+    const timeline = asArray(activity.timeline);
+    const terminal = timeline.map((event) => ({
+      id: event.id,
+      timestamp: event.timestamp,
+      status: event.status,
+      command: event.type,
+      output: [event.title, event.detail].filter(Boolean).join(' — '),
+    }));
+    const messages = timeline
+      .filter((event) => event.title || event.detail)
+      .map((event) => ({
+        id: event.id,
+        timestamp: event.timestamp,
+        from: /handoff/i.test(event.type) ? 'Agent handoff' : agent.name,
+        message: [event.title, event.detail].filter(Boolean).join(': '),
+        status: event.status,
+      }));
+    const allArtifacts = [...artifacts, ...recordedOutputs];
+    const browser = allArtifacts
+      .filter((artifact) => artifact.previewUrl || artifact.url)
+      .map((artifact) => ({
+        id: artifact.id,
+        name: artifact.name || artifact.label,
+        detail: artifact.detail || 'Recorded preview',
+        url: artifact.previewUrl || artifact.url,
+      }));
+
+    return {
+      agentId: normalizedId,
+      generatedAt: this.now().toISOString(),
+      activity: timeline,
+      files: artifacts.map((artifact) => ({
+        id: artifact.id,
+        name: artifact.name,
+        path: artifact.path,
+        detail: artifact.detail,
+        url: artifact.downloadUrl || artifact.previewUrl,
+      })),
+      editor: artifacts.filter((artifact) => artifact.language && artifact.content),
+      terminal,
+      browser,
+      artifacts: allArtifacts,
+      messages,
     };
   }
 

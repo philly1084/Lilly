@@ -178,9 +178,18 @@ function buildService() {
     }]),
     performAction,
   };
+  const updateAgentCompanySettings = jest.fn(async (config) => config);
+  const tick = jest.fn(async () => ({
+    state: { heartbeat: { status: 'steady', reason: 'agent-ops-goal:admin' } },
+  }));
   const service = new AgentOpsService({
     agentCompanyService: {
       getStatus: jest.fn(async () => fixture.companyStatus),
+      settingsController: {
+        getEffectiveAgentCompanyConfig: jest.fn(() => fixture.companyStatus.config),
+        updateAgentCompanySettings,
+      },
+      tick,
     },
     workloadService: {
       isAvailable: jest.fn(() => true),
@@ -193,13 +202,23 @@ function buildService() {
         id: 'artifact-research',
         sessionId: 'agent-company-alpha',
         filename: 'research.md',
+        mimeType: 'text/markdown',
+        sizeBytes: 512,
+        extractedText: '# Verified research\nThe evidence is current.',
         createdAt: '2026-08-30T12:40:00.000Z',
         metadata: { workloadId: 'work-research', runId: 'work-run-research' },
       }]),
     },
     now: () => new Date('2026-08-30T13:00:00.000Z'),
   });
-  return { service, fixture, agentRunService, performAction };
+  return {
+    service,
+    fixture,
+    agentRunService,
+    performAction,
+    updateAgentCompanySettings,
+    tick,
+  };
 }
 
 describe('AgentOpsService', () => {
@@ -238,6 +257,7 @@ describe('AgentOpsService', () => {
         approvals: true,
         approvalDecisions: ['approve'],
         resourceMetrics: false,
+        goalCreation: { enabled: true, endpoint: '/goals' },
         stream: false,
       },
     });
@@ -290,6 +310,55 @@ describe('AgentOpsService', () => {
       || left.id.localeCompare(right.id)
     )));
     expect(agentRunService.listEvents).toHaveBeenCalledWith('agent-run-research', 0, 'system');
+  });
+
+  test('returns useful files, editor content, run log, browser previews, artifacts, and messages', async () => {
+    const { service } = buildService();
+
+    const workspace = await service.getAgentWorkspace('research');
+
+    expect(workspace).toMatchObject({
+      agentId: 'research',
+      files: [expect.objectContaining({ name: 'research.md' })],
+      editor: [expect.objectContaining({
+        name: 'research.md',
+        language: 'markdown',
+        content: expect.stringContaining('Verified research'),
+      })],
+    });
+    expect(workspace.terminal).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: 'run.completed' }),
+    ]));
+    expect(workspace.browser).toEqual(expect.arrayContaining([
+      expect.objectContaining({ url: '/api/artifacts/artifact-research/preview' }),
+    ]));
+    expect(workspace.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'artifact-research' }),
+    ]));
+    expect(workspace.messages.length).toBeGreaterThan(0);
+  });
+
+  test('persists a new goal on the active project and immediately starts coordination', async () => {
+    const { service, updateAgentCompanySettings, tick } = buildService();
+
+    const result = await service.createGoal({
+      title: 'Ship the live operations deck',
+      successCriteria: 'Desktop and mobile proof pass.',
+    }, 'admin');
+
+    expect(updateAgentCompanySettings).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      companyGoal: expect.stringContaining('Ship the live operations deck'),
+      projects: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'alpha',
+          enabled: true,
+          companyGoal: expect.stringContaining('Desktop and mobile proof pass.'),
+        }),
+      ]),
+    }));
+    expect(tick).toHaveBeenCalledWith({ force: true, reason: 'agent-ops-goal:admin' });
+    expect(result.projectId).toBe('alpha');
   });
 
   test('approves a pending approval only through the existing AgentRun resume action', async () => {

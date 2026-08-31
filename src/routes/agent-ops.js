@@ -81,6 +81,24 @@ function createAgentOpsRouter({ service = null } = {}) {
     }
   });
 
+  router.get('/agents/:agentId/workspace', async (req, res, next) => {
+    try {
+      const workspace = await resolveService(req).getAgentWorkspace(req.params.agentId);
+      return res.json(workspace);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.post('/goals', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).createGoal(req.body || {}, getActor(req));
+      return res.status(201).json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
   router.post('/approvals/:approvalId/resolve', async (req, res, next) => {
     try {
       const decision = String(req.body?.decision || '').trim().toLowerCase();
