@@ -10983,6 +10983,11 @@ describe('ConversationOrchestrator', () => {
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
                 artifactIds: ['design-bundle-1'],
+                metadata: {
+                    remoteCliTargetId: 'k3s-primary-openrouter',
+                    remoteCliTransport: 'mcp',
+                    remoteCodeModel: 'openrouter/openrouter/free',
+                },
             },
         });
         const normalizedAction = orchestrator.normalizePlannedStep(directAction, {
@@ -10994,6 +10999,11 @@ describe('ConversationOrchestrator', () => {
             toolContext: {
                 remoteWorkspacePath: '/srv/apps/world-dashboard',
                 artifactIds: ['design-bundle-1'],
+                metadata: {
+                    remoteCliTargetId: 'k3s-primary-openrouter',
+                    remoteCliTransport: 'mcp',
+                    remoteCodeModel: 'openrouter/openrouter/free',
+                },
             },
         });
 
@@ -11010,6 +11020,9 @@ describe('ConversationOrchestrator', () => {
                 task: objective,
                 waitMs: 30000,
                 adminMode: true,
+                targetId: 'k3s-primary-openrouter',
+                transport: 'mcp',
+                remoteCodeModel: 'openrouter/openrouter/free',
                 cwd: '/srv/apps/world-dashboard',
                 artifactIds: ['design-bundle-1'],
                 collectResultFiles: true,

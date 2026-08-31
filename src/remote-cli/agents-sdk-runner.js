@@ -2017,6 +2017,43 @@ class RemoteCliAgentsSdkRunner {
     }
   }
 
+  async listRemoteAgentTargets(input = {}) {
+    const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
+    const apiKey = resolveCodexAgentApiKey(input, this.config);
+    if (!baseUrl || !apiKey) {
+      const error = new Error('Remote agent target discovery is not configured.');
+      error.code = 'REMOTE_AGENT_TARGETS_NOT_CONFIGURED';
+      throw error;
+    }
+
+    const response = await this.fetch(buildCodexAgentUrl(baseUrl, '/admin/remote-agent-targets'), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    const body = await this.readJsonResponse(response);
+    if (!response?.ok) {
+      const error = new Error(
+        normalizeText(body?.error?.message || body?.error || body?.message)
+        || `Remote agent target discovery failed with status ${response?.status || 'unknown'}.`,
+      );
+      error.code = 'REMOTE_AGENT_TARGETS_FETCH_FAILED';
+      error.status = response?.status;
+      throw error;
+    }
+
+    return (Array.isArray(body?.data) ? body.data : [])
+      .map((target) => ({
+        targetId: normalizeText(target?.targetId),
+        description: normalizeText(target?.description),
+        defaultCwd: normalizeText(target?.defaultCwd),
+        defaultModel: normalizeText(target?.defaultModel),
+      }))
+      .filter((target) => target.targetId);
+  }
+
   async fetchRemoteAgentResultFiles({
     baseUrl = '',
     apiKey = '',

@@ -294,6 +294,37 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('remote target catalog proxies safe runtime choices without gateway connection details', async () => {
+        const listTargets = jest.spyOn(remoteCliAgentsSdkRunner, 'listRemoteAgentTargets').mockResolvedValueOnce([
+            {
+                targetId: 'k3s-primary',
+                description: 'Primary via Codex wrapper',
+                defaultCwd: '/opt/kimibuilt',
+                defaultModel: '',
+            },
+            {
+                targetId: 'k3s-primary-openrouter',
+                description: 'Primary via OpenCode and OpenRouter',
+                defaultCwd: '/opt/kimibuilt',
+                defaultModel: 'openrouter/openrouter/free',
+            },
+        ]);
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/remote-cli-agent/targets');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                targetId: 'k3s-primary-openrouter',
+                defaultModel: 'openrouter/openrouter/free',
+            }),
+        ]));
+        expect(JSON.stringify(response.body)).not.toContain('frontend-secret');
+        expect(JSON.stringify(response.body)).not.toContain('allowedCwds');
+        listTargets.mockRestore();
+    });
+
     test('remote-command tool details expose online runner CLI inventory', async () => {
         const app = buildApp();
         remoteRunnerService.registerRunner({

@@ -4095,6 +4095,48 @@ body.mobile-chat-menu-open {
     color: var(--text-tertiary);
 }
 
+.remote-agent-runtime-setting,
+.remote-agent-model-setting {
+    padding: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+    border-radius: 0.9rem;
+    background: color-mix(in srgb, var(--bg-tertiary) 58%, transparent);
+}
+
+.remote-agent-optional-label {
+    margin-left: 0.35rem;
+    padding: 0.1rem 0.38rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-tertiary);
+    font-size: 0.64rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.remote-agent-paid-warning {
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--warning) 44%, var(--border));
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    color: color-mix(in srgb, var(--warning) 82%, var(--text-primary));
+    font-size: 0.74rem;
+    line-height: 1.4;
+}
+
+#remote-agent-model-select.is-paid-selection {
+    border-color: color-mix(in srgb, var(--warning) 62%, var(--border));
+    color: color-mix(in srgb, var(--warning) 78%, var(--text-primary));
+}
+
+#remote-agent-target-select:disabled,
+#remote-agent-model-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+}
+
 .assistant-sound-stack {
     display: grid;
     gap: 0.55rem;

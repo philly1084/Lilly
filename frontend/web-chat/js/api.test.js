@@ -722,6 +722,32 @@ describe('web-chat remote build metadata', () => {
         }));
     });
 
+    test('loads the safe remote coding target catalog for runtime selection', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                success: true,
+                data: [{
+                    targetId: 'k3s-secondary-openrouter',
+                    description: 'Secondary via OpenCode and OpenRouter',
+                    defaultCwd: '/opt/kimibuilt',
+                    defaultModel: 'openrouter/openrouter/free',
+                }],
+                meta: { source: 'remote-agent-targets' },
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await expect(apiClient.getRemoteAgentTargets()).resolves.toEqual({
+            targets: [expect.objectContaining({
+                targetId: 'k3s-secondary-openrouter',
+                defaultModel: 'openrouter/openrouter/free',
+            })],
+            meta: { source: 'remote-agent-targets' },
+        });
+        expect(fetchMock.mock.calls[0][0]).toContain('/api/tools/remote-cli-agent/targets');
+    });
+
     test('prefers managed-app only for explicit managed-app chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,

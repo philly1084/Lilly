@@ -269,6 +269,63 @@ function loadApiClientClass() {
 }
 
 describe('web-chat remote CLI agent routing', () => {
+    test('uses the free OpenRouter model by default for an explicitly selected OpenCode target', () => {
+        const { app } = buildAppHarness();
+        app.remoteAgentTargets = [{
+            targetId: 'k3s-primary-openrouter',
+            description: 'Primary via OpenCode and OpenRouter',
+            defaultCwd: '/opt/kimibuilt',
+            defaultModel: 'openrouter/openrouter/free',
+        }];
+        app.remoteAgentTargetSelect = { value: 'k3s-primary-openrouter' };
+        app.remoteAgentModelSelect = { value: '' };
+
+        expect(app.buildRemoteAgentOptions(buildRemoteCatalog())).toEqual(expect.objectContaining({
+            transport: 'mcp',
+            targetId: 'k3s-primary-openrouter',
+            remoteCodeModel: 'openrouter/openrouter/free',
+            cwd: '/opt/kimibuilt',
+        }));
+        expect(app.buildRemoteAgentOptions(buildRemoteCatalog())).not.toHaveProperty('model');
+    });
+
+    test('forwards paid Pareto only after the user explicitly selects it', () => {
+        const { app } = buildAppHarness();
+        app.remoteAgentTargets = [{
+            targetId: 'k3s-secondary-openrouter',
+            description: 'Secondary via OpenCode and OpenRouter',
+            defaultCwd: '/opt/kimibuilt',
+            defaultModel: 'openrouter/openrouter/free',
+        }];
+        app.remoteAgentTargetSelect = { value: 'k3s-secondary-openrouter' };
+        app.remoteAgentModelSelect = { value: 'openrouter/openrouter/pareto-code' };
+
+        const resolved = app.resolveAsyncRemoteCommand('agent verify the selected workspace');
+        expect(resolved.targetKey).toBe('k3s-secondary-openrouter');
+        expect(resolved.toolParams).toEqual(expect.objectContaining({
+            transport: 'mcp',
+            targetId: 'k3s-secondary-openrouter',
+            remoteCodeModel: 'openrouter/openrouter/pareto-code',
+        }));
+    });
+
+    test('keeps explicit Codex targets on their configured model without a router override', () => {
+        const { app } = buildAppHarness();
+        app.remoteAgentTargets = [{
+            targetId: 'k3s-secondary',
+            description: 'Secondary via Codex wrapper',
+            defaultCwd: '/opt/kimibuilt',
+            defaultModel: '',
+        }];
+        app.remoteAgentTargetSelect = { value: 'k3s-secondary' };
+        app.remoteAgentModelSelect = { value: 'openrouter/openrouter/pareto-code' };
+
+        expect(app.getRemoteAgentRuntimeSelection()).toEqual({
+            transport: 'mcp',
+            targetId: 'k3s-secondary',
+        });
+    });
+
     test('routes natural-language /remote build requests through remote-cli-agent', async () => {
         const { app, context, renderedMessages } = buildAppHarness();
 

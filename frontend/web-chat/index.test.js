@@ -95,7 +95,7 @@ describe('web-chat index redirect', () => {
         expect(uiSource).not.toContain('role="${isEditing ? \'group\' : \'button\'}"');
         expect(css).toContain('.session-select-btn:focus-visible');
         expect(css).toContain('.session-item:focus-within .session-actions');
-        expect(html).toContain('css/styles.css?v=20260826a-mobile-action-copy');
+        expect(html).toContain('css/styles.css?v=20260831a-remote-runtime');
         expect(html).toContain('js/ui.js?v=20260825a');
     });
 
@@ -144,7 +144,7 @@ describe('web-chat index redirect', () => {
         expect(html.match(/<label class="tool-menu-choice">/g)).toHaveLength(9);
         expect(html).not.toContain('role="menuitemcheckbox"');
         expect(appSource).not.toContain("choice?.setAttribute('aria-checked'");
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
     });
 
     test('composer consolidates text focus on its rounded shell', () => {
@@ -159,7 +159,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260824d');
+        expect(html).toContain('css/styles.css?v=20260831a-remote-runtime');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -172,7 +172,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -194,7 +194,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="mobile-chat-menu-clear-value" class="mobile-chat-menu__action-value">No messages to clear</span>');
         expect(html).toContain('id="clear-chat-btn"');
         expect(html).toContain('aria-label="No messages to clear" disabled');
-        expect(html).toContain('css/styles.css?v=20260824d');
+        expect(html).toContain('css/styles.css?v=20260831a-remote-runtime');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260825a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
@@ -300,7 +300,7 @@ describe('web-chat index redirect', () => {
         expect(appSource).toContain("this.workloadModal.setAttribute('aria-hidden', 'false');");
         expect(appSource).toContain('if (returnFocus?.isConnected && typeof returnFocus.focus === \'function\')');
         expect(appSource).toContain('returnFocus.focus();');
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
     });
 
     test('assistant model list exposes keyboard-operable options', () => {
@@ -327,6 +327,23 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.updateModelSelectorAria(true);');
         expect(uiSource).toContain("dropdown.setAttribute('aria-hidden', 'true');");
         expect(uiSource).toContain('this.updateModelSelectorAria(false);');
+    });
+
+    test('assistant settings exposes an accessible compact remote runtime and paid-model safeguard', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+
+        expect(html).toContain('id="remote-agent-target-select"');
+        expect(html).toContain('aria-describedby="remote-agent-target-hint" aria-busy="true"');
+        expect(html).toContain('Automatic · existing Codex lane');
+        expect(html).toContain('id="remote-agent-model-select"');
+        expect(html).toContain('id="remote-agent-paid-warning"');
+        expect(html).toContain('Paid OpenRouter model selected.');
+        expect(appSource).toContain("WEB_CHAT_OPENROUTER_FREE_MODEL = 'openrouter/openrouter/free'");
+        expect(appSource).toContain("WEB_CHAT_OPENROUTER_PAID_MODEL = 'openrouter/openrouter/pareto-code'");
+        expect(appSource).toContain("transport: 'mcp'");
+        expect(html).toContain('js/api.js?v=20260831a-remote-runtime');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
     });
 
     test('compact model indicator names its current model and assistant settings dialog', () => {
@@ -402,7 +419,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
@@ -419,7 +436,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-controls="workloads-panel"');
         expect(html).toContain('id="workloads-panel" class="workloads-panel hidden border-b border-border px-6 py-4 bg-bg-secondary/60" tabindex="-1" aria-labelledby="workloads-panel-title" aria-hidden="true"');
         expect(html).toContain('class="workloads-panel__title" id="workloads-panel-title">Agent Workloads</h2>');
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('title', label);");
@@ -470,7 +487,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-expanded="true"');
         expect(html).toContain('aria-label="Hide input area"');
         expect(html).toContain('<span class="input-toggle-tooltip">Hide Input</span>');
-        expect(html).toContain('css/styles.css?v=20260824d');
+        expect(html).toContain('css/styles.css?v=20260831a-remote-runtime');
         expect(html).toContain('js/ui.js?v=20260825a');
         expect(uiSource).toContain('syncInputAreaToggleState(isHidden)');
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');");
@@ -555,9 +572,9 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('data-studio-step="brief"');
         expect(html).toContain('id="podcast-brand-kit-select"');
         expect(html).toContain('id="podcast-review-panel"');
-        expect(html).toContain('js/api.js?v=20260717a');
+        expect(html).toContain('js/api.js?v=20260831a-remote-runtime');
         expect(html).toContain('js/ui.js?v=20260825a');
-        expect(html).toContain('js/app.js?v=20260825b');
+        expect(html).toContain('js/app.js?v=20260831a-remote-runtime');
         expect(uiSource).toContain('renderPodcastLaunchKitReview(campaign)');
         expect(uiSource).toContain('renderContentStudioCampaignMessage(message)');
         expect(uiSource).toContain("'Building the production plan'");

@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260824d" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260831a-remote-runtime" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-    <link rel="stylesheet" href="css/styles.css?v=20260826a-mobile-action-copy">
+    <link rel="stylesheet" href="css/styles.css?v=20260831a-remote-runtime">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -536,6 +536,21 @@
                         <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
                     </select>
                     <p class="model-selector-setting__hint">Choose the model for the next messages in this chat.</p>
+                </div>
+                <div class="model-selector-setting remote-agent-runtime-setting">
+                    <label for="remote-agent-target-select" class="model-selector-setting__label">Coding agent runtime</label>
+                    <select id="remote-agent-target-select" class="reasoning-select reasoning-select--panel" aria-describedby="remote-agent-target-hint" aria-busy="true">
+                        <option value="">Automatic · existing Codex lane</option>
+                    </select>
+                    <p id="remote-agent-target-hint" class="model-selector-setting__hint" role="status" aria-live="polite">Loading available remote coding targets…</p>
+                </div>
+                <div class="model-selector-setting remote-agent-model-setting">
+                    <label for="remote-agent-model-select" class="model-selector-setting__label">Coding agent model <span class="remote-agent-optional-label">Optional</span></label>
+                    <select id="remote-agent-model-select" class="reasoning-select reasoning-select--panel" aria-describedby="remote-agent-model-hint remote-agent-paid-warning" disabled>
+                        <option value="">Target default</option>
+                    </select>
+                    <p id="remote-agent-model-hint" class="model-selector-setting__hint">Model overrides appear when the selected runtime supports them.</p>
+                    <p id="remote-agent-paid-warning" class="remote-agent-paid-warning hidden" role="status">Paid OpenRouter model selected. It will be used only for the next remote-agent runs while this selection remains visible.</p>
                 </div>
                 <div class="model-selector-setting">
                     <label for="reasoning-effort-select" class="model-selector-setting__label">Reasoning effort</label>
@@ -1380,7 +1395,7 @@
     <script defer src="/shared/remote-artifact-workflow.js?v=20260718a"></script>
     <script defer src="js/workspace-context.js?v=20260424e"></script>
     <script defer src="js/workspace-embed.js?v=20260423a"></script>
-    <script defer src="js/api.js?v=20260717a"></script>
+    <script defer src="js/api.js?v=20260831a-remote-runtime"></script>
     <script defer src="js/session.js?v=20260510b"></script>
     <script defer src="js/sound-manager.js?v=20260411c"></script>
     <script defer src="js/tts-manager.js?v=20260628b"></script>
@@ -1388,7 +1403,7 @@
     <script defer src="js/file-manager.js?v=20260825a-dialog-state"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260825a-search-status"></script>
-    <script defer src="js/app.js?v=20260825b"></script>
+    <script defer src="js/app.js?v=20260831a-remote-runtime"></script>
     <script defer src="js/artifacts.js?v=20260823a"></script>
 </body>
 </html>

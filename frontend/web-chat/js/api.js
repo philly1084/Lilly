@@ -2896,6 +2896,23 @@ class OpenAIAPIClient extends EventTarget {
         };
     }
 
+    async getRemoteAgentTargets() {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tools/remote-cli-agent/targets`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(data?.error?.message || data?.error || data?.message || `Failed to load remote coding targets: HTTP ${response.status}`);
+        }
+
+        return {
+            targets: Array.isArray(data?.data) ? data.data : [],
+            meta: data?.meta || {},
+        };
+    }
+
     async getToolDoc(toolId) {
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tools/docs/${encodeURIComponent(toolId)}`, {
             method: 'GET',

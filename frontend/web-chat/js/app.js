@@ -33,6 +33,9 @@ const MISSION_TEMPLATES = Object.freeze({
     },
 });
 const WEB_CHAT_TOOL_MENU_STORAGE_KEY = 'kimibuilt_web_chat_plugin_lanes';
+const WEB_CHAT_REMOTE_AGENT_TARGET_STORAGE_KEY = 'kimibuilt_web_chat_remote_agent_target';
+const WEB_CHAT_OPENROUTER_FREE_MODEL = 'openrouter/openrouter/free';
+const WEB_CHAT_OPENROUTER_PAID_MODEL = 'openrouter/openrouter/pareto-code';
 const WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS = Object.freeze({
     'web-search': { query: '' },
     'web-fetch': { url: '' },
@@ -898,6 +901,13 @@ class ChatApp {
         this.workloadModal = document.getElementById('workload-modal');
         this.workloadModalTitle = document.getElementById('workload-modal-title');
         this.workloadModalReturnFocus = null;
+        this.remoteAgentTargetSelect = document.getElementById('remote-agent-target-select');
+        this.remoteAgentModelSelect = document.getElementById('remote-agent-model-select');
+        this.remoteAgentTargetHint = document.getElementById('remote-agent-target-hint');
+        this.remoteAgentModelHint = document.getElementById('remote-agent-model-hint');
+        this.remoteAgentPaidWarning = document.getElementById('remote-agent-paid-warning');
+        this.remoteAgentTargets = [];
+        this.remoteAgentTargetsLoaded = false;
         this.workloadFormError = document.getElementById('workload-form-error');
         this.workloadScenarioInput = document.getElementById('workload-scenario-input');
         this.workloadScenarioBuildBtn = document.getElementById('workload-scenario-build-btn');
@@ -1056,6 +1066,7 @@ class ChatApp {
         this.setupSessionListeners();
         this.setupKeyboardShortcuts();
         this.setupModelListeners();
+        this.setupRemoteAgentRuntimeControls();
         
         // Check connection status
         this.updateConnectionStatus('checking');
@@ -2959,6 +2970,9 @@ class ChatApp {
             tool.id,
         ].filter(Boolean)));
         const remoteToolRequested = WEB_CHAT_REMOTE_TOOL_IDS.has(tool.id);
+        const remoteRuntimeSelection = tool.id === 'remote-cli-agent'
+            ? this.getRemoteAgentRuntimeSelection()
+            : {};
         const executionProfile = selectionOptions.executionProfile
             || (remoteToolRequested ? 'remote-build' : '');
         const existingInstructions = String(selectionMetadata.toolSelectionInstructions || '').trim();
@@ -2987,6 +3001,13 @@ class ChatApp {
                     frontendRemoteBuildAutonomyApproved: true,
                     remoteBuildIntent: true,
                     asyncRuntimePreferred: tool.id === 'remote-cli-agent',
+                } : {}),
+                ...(remoteRuntimeSelection.targetId ? {
+                    remoteCliTargetId: remoteRuntimeSelection.targetId,
+                    remoteCliTransport: remoteRuntimeSelection.transport,
+                    ...(remoteRuntimeSelection.remoteCodeModel
+                        ? { remoteCodeModel: remoteRuntimeSelection.remoteCodeModel }
+                        : {}),
                 } : {}),
             },
         };
@@ -8763,20 +8784,197 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return Boolean(remoteCatalog?.remoteAgent || remoteCatalog?.tools?.some((tool) => tool.id === 'remote-cli-agent'));
     }
 
+    isOpenRouterRemoteAgentTarget(target = null) {
+        const targetId = String(target?.targetId || '').trim().toLowerCase();
+        const defaultModel = String(target?.defaultModel || '').trim().toLowerCase();
+        return targetId.endsWith('-openrouter') || defaultModel.startsWith('openrouter/');
+    }
+
+    getRemoteAgentTargetLabel(target = null) {
+        const targetId = String(target?.targetId || '').trim();
+        const normalizedTargetId = targetId.toLowerCase();
+        const location = normalizedTargetId.includes('secondary') ? 'Secondary' : 'Primary';
+        if (this.isOpenRouterRemoteAgentTarget(target)) {
+            return `${location} · OpenRouter`;
+        }
+        if (normalizedTargetId === 'k3s-primary' || normalizedTargetId === 'k3s-secondary') {
+            return `${location} · Codex`;
+        }
+        return String(target?.description || targetId || 'Remote coding target').trim();
+    }
+
+    getStoredRemoteAgentTargetId() {
+        try {
+            return String(globalThis.localStorage?.getItem(WEB_CHAT_REMOTE_AGENT_TARGET_STORAGE_KEY) || '').trim();
+        } catch (_error) {
+            return '';
+        }
+    }
+
+    storeRemoteAgentTargetId(targetId = '') {
+        try {
+            const normalizedTargetId = String(targetId || '').trim();
+            if (normalizedTargetId) {
+                globalThis.localStorage?.setItem(WEB_CHAT_REMOTE_AGENT_TARGET_STORAGE_KEY, normalizedTargetId);
+            } else {
+                globalThis.localStorage?.removeItem(WEB_CHAT_REMOTE_AGENT_TARGET_STORAGE_KEY);
+            }
+        } catch (_error) {
+            // Storage can be unavailable in private or embedded browsing contexts.
+        }
+    }
+
+    getSelectedRemoteAgentTarget() {
+        const targetId = String(this.remoteAgentTargetSelect?.value || '').trim();
+        if (!targetId) {
+            return null;
+        }
+        const targets = Array.isArray(this.remoteAgentTargets) ? this.remoteAgentTargets : [];
+        return targets.find((target) => String(target?.targetId || '').trim() === targetId) || null;
+    }
+
+    getRemoteAgentRuntimeSelection() {
+        const target = this.getSelectedRemoteAgentTarget();
+        if (!target?.targetId) {
+            return {};
+        }
+
+        const selection = {
+            transport: 'mcp',
+            targetId: String(target.targetId).trim(),
+        };
+        if (this.isOpenRouterRemoteAgentTarget(target)) {
+            const selectedModel = String(this.remoteAgentModelSelect?.value || '').trim();
+            selection.remoteCodeModel = selectedModel
+                || String(target.defaultModel || '').trim()
+                || WEB_CHAT_OPENROUTER_FREE_MODEL;
+        }
+        return selection;
+    }
+
+    syncRemoteAgentModelControl({ resetModel = false } = {}) {
+        const target = this.getSelectedRemoteAgentTarget();
+        const isOpenRouter = this.isOpenRouterRemoteAgentTarget(target);
+        if (!this.remoteAgentModelSelect) {
+            return;
+        }
+
+        if (!isOpenRouter) {
+            this.remoteAgentModelSelect.innerHTML = '<option value="">Target default (Codex)</option>';
+            this.remoteAgentModelSelect.value = '';
+            this.remoteAgentModelSelect.disabled = true;
+            if (this.remoteAgentModelHint) {
+                this.remoteAgentModelHint.textContent = target
+                    ? 'Codex uses the selected target\'s configured model and preserves its existing behavior.'
+                    : 'Choose a target to see runtime-specific model options.';
+            }
+        } else {
+            const currentValue = resetModel ? '' : String(this.remoteAgentModelSelect.value || '').trim();
+            this.remoteAgentModelSelect.innerHTML = [
+                `<option value="${WEB_CHAT_OPENROUTER_FREE_MODEL}">Free router · default</option>`,
+                `<option value="${WEB_CHAT_OPENROUTER_PAID_MODEL}">Pareto Code · paid, explicit</option>`,
+            ].join('');
+            this.remoteAgentModelSelect.disabled = false;
+            this.remoteAgentModelSelect.value = [
+                WEB_CHAT_OPENROUTER_FREE_MODEL,
+                WEB_CHAT_OPENROUTER_PAID_MODEL,
+            ].includes(currentValue) ? currentValue : WEB_CHAT_OPENROUTER_FREE_MODEL;
+            if (this.remoteAgentModelHint) {
+                this.remoteAgentModelHint.textContent = 'OpenCode uses the free OpenRouter route by default. Paid Pareto never runs unless you select it here.';
+            }
+        }
+
+        const paidSelected = this.remoteAgentModelSelect.value === WEB_CHAT_OPENROUTER_PAID_MODEL;
+        this.remoteAgentModelSelect.classList?.toggle('is-paid-selection', paidSelected);
+        this.remoteAgentPaidWarning?.classList?.toggle('hidden', !paidSelected);
+    }
+
+    renderRemoteAgentTargetOptions(targets = []) {
+        if (!this.remoteAgentTargetSelect) {
+            return;
+        }
+        const canonicalTargets = (Array.isArray(targets) ? targets : [])
+            .filter((target) => target?.targetId && !/legacy alias/i.test(String(target?.description || '')))
+            .sort((left, right) => {
+                const order = ['k3s-primary', 'k3s-primary-openrouter', 'k3s-secondary', 'k3s-secondary-openrouter'];
+                const leftIndex = order.indexOf(String(left.targetId));
+                const rightIndex = order.indexOf(String(right.targetId));
+                return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex)
+                    - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+            });
+        this.remoteAgentTargets = canonicalTargets;
+        this.remoteAgentTargetSelect.innerHTML = [
+            '<option value="">Automatic · existing Codex lane</option>',
+            ...canonicalTargets.map((target) => (
+                `<option value="${escapeToolMenuHtmlAttr(target.targetId)}">${escapeToolMenuHtml(this.getRemoteAgentTargetLabel(target))}</option>`
+            )),
+        ].join('');
+
+        const storedTargetId = this.getStoredRemoteAgentTargetId();
+        const storedTargetAvailable = canonicalTargets.some((target) => target.targetId === storedTargetId);
+        this.remoteAgentTargetSelect.value = storedTargetAvailable ? storedTargetId : '';
+        this.remoteAgentTargetSelect.disabled = false;
+        this.remoteAgentTargetSelect.setAttribute('aria-busy', 'false');
+        this.syncRemoteAgentModelControl({ resetModel: true });
+    }
+
+    async loadRemoteAgentTargets() {
+        if (!this.remoteAgentTargetSelect || this.remoteAgentTargetsLoaded) {
+            return this.remoteAgentTargets;
+        }
+        this.remoteAgentTargetSelect.setAttribute('aria-busy', 'true');
+        try {
+            const response = await apiClient.getRemoteAgentTargets();
+            this.renderRemoteAgentTargetOptions(response?.targets || []);
+            this.remoteAgentTargetsLoaded = true;
+            if (this.remoteAgentTargetHint) {
+                this.remoteAgentTargetHint.textContent = this.remoteAgentTargets.length > 0
+                    ? 'Choose Codex or OpenRouter via OpenCode for remote-agent runs. Automatic keeps the current lane.'
+                    : 'No explicit remote coding targets are currently available. Automatic keeps the current lane.';
+            }
+            return this.remoteAgentTargets;
+        } catch (error) {
+            this.remoteAgentTargetSelect.disabled = true;
+            this.remoteAgentTargetSelect.setAttribute('aria-busy', 'false');
+            if (this.remoteAgentTargetHint) {
+                this.remoteAgentTargetHint.textContent = 'Remote coding targets are unavailable. Automatic keeps the existing Codex behavior.';
+            }
+            console.warn('Failed to load remote coding targets:', error?.message || error);
+            return [];
+        }
+    }
+
+    setupRemoteAgentRuntimeControls() {
+        if (!this.remoteAgentTargetSelect) {
+            return;
+        }
+        this.remoteAgentTargetSelect.addEventListener('change', () => {
+            this.storeRemoteAgentTargetId(this.remoteAgentTargetSelect.value);
+            this.syncRemoteAgentModelControl({ resetModel: true });
+        });
+        this.remoteAgentModelSelect?.addEventListener('change', () => {
+            this.syncRemoteAgentModelControl();
+        });
+        void this.loadRemoteAgentTargets();
+    }
+
     buildRemoteAgentOptions(remoteCatalog = {}) {
         const remoteAgent = remoteCatalog.remoteAgent
             || remoteCatalog.tools?.find((tool) => tool.id === 'remote-cli-agent')
             || null;
         const selectedModel = String(uiHelpers.getCurrentModel?.() || '').trim();
         const artifactIds = this.collectRemoteAgentArtifactIds();
+        const runtimeSelection = this.getRemoteAgentRuntimeSelection();
+        const selectedTarget = this.getSelectedRemoteAgentTarget();
 
         return {
-            cwd: remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
+            cwd: selectedTarget?.defaultCwd || remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
             waitMs: 30000,
             maxTurns: 30,
             adminMode: true,
             collectResultFiles: true,
-            ...(selectedModel ? { model: selectedModel } : {}),
+            ...runtimeSelection,
+            ...(!runtimeSelection.targetId && selectedModel ? { model: selectedModel } : {}),
             ...(artifactIds.length > 0 ? { artifactIds } : {}),
         };
     }
@@ -9033,17 +9231,19 @@ curl -fsSIL --max-time 20 "https://$host"`;
             throw new Error('Usage: /remote async agent <coding/build/deploy task>');
         }
 
+        const runtimeSelection = this.getRemoteAgentRuntimeSelection();
         return {
             adapter: 'remote-cli-agent',
             task,
-            targetKey: 'primary/main-server',
+            targetKey: runtimeSelection.targetId || 'primary/main-server',
             toolParams: {
                 task,
                 waitMs: 120000,
                 maxTurns: 30,
                 adminMode: true,
                 collectResultFiles: true,
-                ...(String(uiHelpers.getCurrentModel?.() || '').trim()
+                ...runtimeSelection,
+                ...(!runtimeSelection.targetId && String(uiHelpers.getCurrentModel?.() || '').trim()
                     ? { model: String(uiHelpers.getCurrentModel() || '').trim() }
                     : {}),
             },

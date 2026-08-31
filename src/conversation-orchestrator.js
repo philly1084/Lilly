@@ -6956,6 +6956,26 @@ function resolvePreferredRemoteCliTarget({
     };
 }
 
+function resolvePreferredRemoteCliRuntimeOptions(toolContext = {}) {
+    const metadata = toolContext?.metadata && typeof toolContext.metadata === 'object'
+        ? toolContext.metadata
+        : {};
+    const transport = String(
+        toolContext?.remoteCliTransport
+        || metadata.remoteCliTransport
+        || '',
+    ).trim().toLowerCase();
+    const remoteCodeModel = String(
+        toolContext?.remoteCodeModel
+        || metadata.remoteCodeModel
+        || '',
+    ).trim();
+    return {
+        ...(['mcp', 'auto', 'codex-agent', 'provider-agent'].includes(transport) ? { transport } : {}),
+        ...(remoteCodeModel ? { remoteCodeModel } : {}),
+    };
+}
+
 function hasArchitectureDesignIntent(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -12964,6 +12984,7 @@ class ConversationOrchestrator extends EventEmitter {
                 || toolContext?.remoteAgentCollectResultFiles === true
                 || toolContext?.metadata?.remoteAgentCollectResultFiles === true;
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
+            const runtimeOptions = resolvePreferredRemoteCliRuntimeOptions(toolContext);
             const targetSelection = resolvePreferredRemoteCliTarget({
                 session,
                 toolContext,
@@ -13002,6 +13023,7 @@ class ConversationOrchestrator extends EventEmitter {
                     waitMs: 30000,
                     adminMode: true,
                     ...(targetSelection.targetId ? { targetId: targetSelection.targetId } : {}),
+                    ...runtimeOptions,
                     ...(cwd ? { cwd } : {}),
                     ...(reusablePriorAgentState.sessionId ? { sessionId: reusablePriorAgentState.sessionId } : {}),
                     ...(reusablePriorAgentState.mcpSessionId ? { mcpSessionId: reusablePriorAgentState.mcpSessionId } : {}),
@@ -13204,6 +13226,7 @@ class ConversationOrchestrator extends EventEmitter {
         if (normalizedStep.tool === 'remote-cli-agent') {
             const sessionControlState = getSessionControlState(session);
             const priorAgentState = sessionControlState.remoteCliAgent || {};
+            const runtimeOptions = resolvePreferredRemoteCliRuntimeOptions(toolContext);
             const targetSelection = resolvePreferredRemoteCliTarget({
                 session,
                 toolContext,
@@ -13267,6 +13290,7 @@ class ConversationOrchestrator extends EventEmitter {
                 }),
                 waitMs: Number(normalizedStep.params.waitMs || normalizedStep.params.wait_ms || 30000) || 30000,
                 ...(targetSelection.targetId ? { targetId: targetSelection.targetId } : {}),
+                ...runtimeOptions,
                 ...(cwd ? { cwd } : {}),
                 ...(normalizedStep.params.sessionId || reusablePriorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || reusablePriorAgentState.sessionId } : {}),
                 ...(normalizedStep.params.mcpSessionId || reusablePriorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || reusablePriorAgentState.mcpSessionId } : {}),

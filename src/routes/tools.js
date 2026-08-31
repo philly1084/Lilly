@@ -1267,6 +1267,31 @@ router.get('/available', async (req, res) => {
 });
 
 /**
+ * GET /api/tools/remote-cli-agent/targets
+ * Proxy the gateway's authenticated target catalog without exposing hosts,
+ * credentials, allowed roots, or task output to the browser.
+ */
+router.get('/remote-cli-agent/targets', async (_req, res) => {
+  try {
+    const targets = await remoteCliAgentsSdkRunner.listRemoteAgentTargets();
+    res.json({
+      success: true,
+      data: targets,
+      meta: {
+        source: 'remote-agent-targets',
+        defaultTargetId: remoteCliAgentsSdkRunner.getPublicConfig().defaultTargetId,
+      },
+    });
+  } catch (error) {
+    console.warn('[Tools] Failed to load remote agent targets:', error?.message || error);
+    res.status(error?.status === 401 ? 503 : 502).json({
+      success: false,
+      error: 'Remote coding targets are temporarily unavailable.',
+    });
+  }
+});
+
+/**
  * GET /api/tools/categories
  * Get tool categories with counts
  */

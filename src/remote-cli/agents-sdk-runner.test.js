@@ -46,6 +46,45 @@ function buildVerifiedResultFiles(handoff, {
 }
 
 describe('RemoteCliAgentsSdkRunner', () => {
+  test('discovers remote agent targets through the authenticated gateway and returns only safe fields', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        data: [{
+          targetId: 'k3s-primary-openrouter',
+          description: 'Primary via OpenCode and OpenRouter',
+          host: 'secret-host.example.test',
+          user: 'root',
+          allowedCwds: ['/opt/kimibuilt'],
+          defaultCwd: '/opt/kimibuilt',
+          defaultModel: 'openrouter/openrouter/free',
+        }],
+      }),
+    }));
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        codexAgentBaseUrl: 'https://gateway.example.test',
+        codexAgentApiKey: 'frontend-secret',
+      },
+      fetchImpl: fetchMock,
+    });
+
+    await expect(runner.listRemoteAgentTargets()).resolves.toEqual([{
+      targetId: 'k3s-primary-openrouter',
+      description: 'Primary via OpenCode and OpenRouter',
+      defaultCwd: '/opt/kimibuilt',
+      defaultModel: 'openrouter/openrouter/free',
+    }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gateway.example.test/admin/remote-agent-targets',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer frontend-secret' }),
+      }),
+    );
+  });
+
   test('does not demand UI-change proof for explicit read-only old-project recovery', () => {
     const metadata = {
       completionStatus: 'complete',
@@ -504,6 +543,34 @@ describe('RemoteCliAgentsSdkRunner', () => {
       blocker: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
       completionStatus: 'blocked',
     });
+  });
+
+  test('surfaces an OpenRouter 429 without silently switching to a paid model', async () => {
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {},
+      fetchImpl: jest.fn(),
+    });
+    const rateLimitError = Object.assign(new Error('429 OpenRouter free route is temporarily rate limited.'), {
+      status: 429,
+    });
+    const remoteCli = {
+      callTool: jest.fn().mockRejectedValue(rateLimitError),
+    };
+
+    await expect(runner.executeRemoteCodeRun(remoteCli, {
+      targetId: 'k3s-primary-openrouter',
+      cwd: '/opt/kimibuilt',
+      task: 'Check the workspace.',
+      model: 'openrouter/openrouter/free',
+      waitMs: 30000,
+      maxStatusPolls: 1,
+    })).rejects.toBe(rateLimitError);
+
+    expect(remoteCli.callTool).toHaveBeenCalledTimes(1);
+    expect(remoteCli.callTool).toHaveBeenCalledWith('remote_code_run', expect.objectContaining({
+      targetId: 'k3s-primary-openrouter',
+      model: 'openrouter/openrouter/free',
+    }));
   });
 
   test('classifies proof markers embedded in Codex JSONL agent messages', () => {
