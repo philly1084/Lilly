@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <title>KimiBuilt Agent Command Center</title>
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css?v=6.4.0">
-  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v3">
+  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v4">
 </head>
 <body>
   <a class="skip-link" href="#fleet">Skip to agent fleet</a>
@@ -85,7 +85,28 @@
       <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createGoalSubmit" value="default">Create goal</button></footer>
     </form>
   </dialog>
+  <dialog class="goal-dialog" id="projectDialog" aria-labelledby="projectDialogTitle">
+    <form method="dialog">
+      <header><div><span class="eyebrow">Project setup</span><h2 id="projectDialogTitle">Start a new project</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close project dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><label>Project name<input id="projectNameInput" required maxlength="120" placeholder="Name this body of work"></label><label>Starting objective <span class="optional-label">Optional</span><textarea id="projectGoalInput" rows="4" maxlength="4000" placeholder="Add an objective to start the coordination heartbeat immediately"></textarea></label><div class="capability-note" id="projectCapabilityNote">The new project becomes active. Add an objective now, or create a goal later.</div></div>
+      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createProjectSubmit" value="default">Start project</button></footer>
+    </form>
+  </dialog>
+  <dialog class="goal-dialog danger-dialog" id="deleteProjectDialog" aria-labelledby="deleteProjectDialogTitle">
+    <form method="dialog">
+      <header><div><span class="eyebrow">Permanent removal</span><h2 id="deleteProjectDialogTitle">Delete this project?</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close delete project dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><p id="deleteProjectMessage">This removes the project and its recorded files. Run history remains available for audit.</p><div class="capability-note danger-note">This cannot be undone. Active runs must be finished or cancelled first.</div></div>
+      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="danger-button" id="deleteProjectSubmit" value="default">Delete project and files</button></footer>
+    </form>
+  </dialog>
+  <dialog class="goal-dialog danger-dialog" id="deleteArtifactDialog" aria-labelledby="deleteArtifactDialogTitle">
+    <form method="dialog">
+      <header><div><span class="eyebrow">Permanent removal</span><h2 id="deleteArtifactDialogTitle">Delete this file?</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close delete file dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><p id="deleteArtifactMessage">The selected file will be removed from this project.</p><div class="capability-note danger-note">This also removes its indexed memory and linked sandbox preview. This cannot be undone.</div></div>
+      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="danger-button" id="deleteArtifactSubmit" value="default">Delete file</button></footer>
+    </form>
+  </dialog>
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="js/agent-ops.js?v=agent-command-center-v3"></script>
+  <script src="js/agent-ops.js?v=agent-command-center-v4"></script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { AGENT_RUN_SURFACE } = require('../agent-runs/constants');
 
 const ACTIVE_RUN_STATES = new Set([
@@ -30,6 +31,51 @@ function asArray(value) {
 
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function sanitizeProjectId(value = '') {
+  return cleanText(value, 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function listProjects(config = {}, { includeArchived = false, includeLegacy = true } = {}) {
+  const configured = asArray(config.projects)
+    .filter((project) => includeArchived || project.archived !== true);
+  if (configured.length > 0 || config.projectsInitialized === true || !includeLegacy) {
+    return configured;
+  }
+  return [{
+    id: 'main',
+    name: 'Main project',
+    sessionId: cleanText(config.sessionId, 120) || 'agent-company',
+    companyGoal: cleanText(config.companyGoal, 4000),
+    enabled: config.enabled === true,
+    archived: false,
+    createdAt: null,
+    updatedAt: null,
+  }];
+}
+
+function findActiveProject(config = {}, projects = listProjects(config)) {
+  const activeProjectId = cleanText(config.activeProjectId, 160);
+  const sessionId = cleanText(config.sessionId, 160);
+  return projects.find((project) => project.id === activeProjectId)
+    || projects.find((project) => project.sessionId === sessionId)
+    || projects[0]
+    || null;
+}
+
+function snapshotActiveProject(config = {}, projects = listProjects(config), now = new Date().toISOString()) {
+  const activeProject = findActiveProject(config, projects);
+  return projects.map((project) => project.id === activeProject?.id ? {
+    ...project,
+    companyGoal: cleanText(config.companyGoal, 4000),
+    enabled: config.enabled === true,
+    updatedAt: now,
+  } : project);
 }
 
 function timestampValue(value) {
@@ -142,6 +188,7 @@ function normalizeStoredArtifact(artifact = {}, { includeContent = false } = {})
     previewUrl,
     downloadUrl,
     url: previewUrl || downloadUrl,
+    deletable: Boolean(id),
     content: content || null,
     createdAt: source.createdAt || null,
     updatedAt: source.updatedAt || source.createdAt || null,
@@ -198,12 +245,14 @@ class AgentOpsService {
     workloadService = null,
     agentRunService = null,
     artifactStore = null,
+    artifactService = null,
     now = () => new Date(),
   } = {}) {
     this.agentCompanyService = agentCompanyService;
     this.workloadService = workloadService;
     this.agentRunService = agentRunService;
     this.artifactStore = artifactStore;
+    this.artifactService = artifactService;
     this.now = now;
   }
 
@@ -239,7 +288,10 @@ class AgentOpsService {
       ? asArray(await this.workloadService.listAdminRuns(300))
       : [];
     const canonicalRuns = await this.listCanonicalRuns(100);
-    const sessionId = cleanText(companyStatus?.config?.sessionId, 160);
+    const companyConfig = asObject(companyStatus?.config);
+    const hasActiveProject = !(companyConfig.projectsInitialized === true
+      && listProjects(companyConfig).length === 0);
+    const sessionId = hasActiveProject ? cleanText(companyConfig.sessionId, 160) : '';
     const artifacts = sessionId && typeof this.artifactStore?.listBySession === 'function'
       ? asArray(await this.artifactStore.listBySession(sessionId))
       : [];
@@ -258,6 +310,10 @@ class AgentOpsService {
     const metadata = getCompanyMetadata(workload);
     const sessionId = cleanText(config.sessionId, 160);
     const goalHash = cleanText(state.companyGoalHash || config.companyGoalHash, 160);
+    if (config.projectsInitialized === true) {
+      const activeProject = findActiveProject(config, listProjects(config));
+      return Boolean(activeProject?.sessionId && workload.sessionId === activeProject.sessionId);
+    }
     return metadata.enabled === true
       || metadata.heartbeatManaged === true
       || Boolean(metadata.planItemId)
@@ -504,9 +560,18 @@ class AgentOpsService {
   }
 
   buildProject(config = {}, state = {}, agents = [], goalItems = []) {
-    const activeProject = asArray(config.projects).find((project) => (
-      project.id === config.activeProjectId || project.sessionId === config.sessionId
-    )) || null;
+    const projects = listProjects(config);
+    const activeProject = findActiveProject(config, projects);
+    if (!activeProject && config.projectsInitialized === true) {
+      return {
+        id: null,
+        name: null,
+        goal: null,
+        progress: 0,
+        target: null,
+        status: 'empty',
+      };
+    }
     const completed = goalItems.filter((item) => item.status === 'completed').length;
     const progress = goalItems.length > 0 ? Math.round((completed / goalItems.length) * 100) : 0;
     const target = asArray(state.shortTermSchedule)
@@ -552,12 +617,25 @@ class AgentOpsService {
     const sources = await this.loadSources();
     const config = asObject(sources.companyStatus.config);
     const state = asObject(sources.companyStatus.state);
-    const companyWorkloads = sources.workloads.filter((workload) => this.isCompanyWorkload(workload, config, state));
+    const projects = listProjects(config);
+    const activeProject = findActiveProject(config, projects);
+    const companyWorkloads = activeProject
+      ? sources.workloads.filter((workload) => this.isCompanyWorkload(workload, config, state))
+      : [];
     const indexes = this.buildRunIndexes(companyWorkloads, sources.workloadRuns, sources.canonicalRuns);
     const agents = this.buildAgents(config, state, companyWorkloads, indexes);
-    const goalItems = this.buildGoalItems(state, companyWorkloads, indexes);
+    const goalItems = activeProject ? this.buildGoalItems(state, companyWorkloads, indexes) : [];
     const workflows = this.buildWorkflows(companyWorkloads, indexes);
-    const heartbeat = this.buildHeartbeat(state, config);
+    const heartbeat = activeProject ? this.buildHeartbeat(state, config) : {
+      status: 'idle',
+      lastAt: null,
+      nextAt: null,
+      intervalSeconds: null,
+      ageSeconds: null,
+      reason: 'no_active_project',
+      createdWorkloads: 0,
+      failedWorkloads: 0,
+    };
     const groups = {
       needsInput: agents.filter((agent) => agent.status === 'needs_input'),
       working: agents.filter((agent) => agent.status === 'working'),
@@ -570,6 +648,9 @@ class AgentOpsService {
     const settingsController = this.agentCompanyService?.settingsController;
     const canCreateGoals = typeof settingsController?.updateAgentCompanySettings === 'function'
       && typeof this.agentCompanyService?.tick === 'function';
+    const canManageProjects = typeof settingsController?.updateAgentCompanySettings === 'function';
+    const canDeleteArtifacts = typeof this.artifactStore?.get === 'function'
+      && typeof this.artifactService?.deleteArtifact === 'function';
     const projectArtifacts = sources.artifacts.map((artifact) => normalizeStoredArtifact(artifact));
 
     return {
@@ -581,6 +662,17 @@ class AgentOpsService {
         groups,
         selectedAgentId,
         goalItems,
+        projects: projects.map((project) => ({
+          id: cleanText(project.id, 160),
+          name: cleanText(project.name, 200) || 'Untitled project',
+          sessionId: cleanText(project.sessionId, 160),
+          goal: cleanText(project.companyGoal, 4000) || null,
+          enabled: project.enabled === true,
+          active: project.id === activeProject?.id,
+          createdAt: project.createdAt || null,
+          updatedAt: project.updatedAt || null,
+          artifactCount: project.id === activeProject?.id ? projectArtifacts.length : null,
+        })),
         workflows,
         artifacts: projectArtifacts,
         approvals: groups.needsInput
@@ -596,9 +688,18 @@ class AgentOpsService {
           approvals: canListApprovals,
           approvalDecisions: canListApprovals ? ['approve'] : [],
           artifacts: typeof this.artifactStore?.listBySession === 'function',
+          artifactDeletion: canDeleteArtifacts
+            ? { enabled: true, endpointTemplate: '/artifacts/{artifactId}' }
+            : { enabled: false },
           heartbeat: typeof this.agentCompanyService?.getStatus === 'function',
           resourceMetrics: false,
           goalCreation: canCreateGoals ? { enabled: true, endpoint: '/goals' } : { enabled: false },
+          projects: canManageProjects ? {
+            enabled: true,
+            collectionEndpoint: '/projects',
+            activateEndpointTemplate: '/projects/{projectId}/activate',
+            deleteEndpointTemplate: '/projects/{projectId}',
+          } : { enabled: false },
           workspace: {
             enabled: true,
             endpointTemplate: '/agents/{agentId}/workspace',
@@ -623,6 +724,210 @@ class AgentOpsService {
     return snapshot.public;
   }
 
+  getProjectSettingsRuntime() {
+    const settingsController = this.agentCompanyService?.settingsController;
+    if (typeof settingsController?.updateAgentCompanySettings !== 'function') {
+      throw createAgentOpsError(
+        'Project management is unavailable because the company settings runtime is not connected.',
+        503,
+        'agent_project_management_unavailable',
+      );
+    }
+    return settingsController;
+  }
+
+  async getActiveRunCountForSession(sessionId = '') {
+    const normalizedSessionId = cleanText(sessionId, 160);
+    const service = this.workloadService;
+    if (!normalizedSessionId) return 0;
+    if (service?.isAvailable?.() !== true) {
+      throw createAgentOpsError(
+        'Project run state is unavailable; project deletion was not attempted.',
+        503,
+        'agent_project_run_state_unavailable',
+      );
+    }
+    if (typeof service.getSessionSummaries === 'function') {
+      const summaries = asObject(await service.getSessionSummaries([normalizedSessionId]));
+      const summary = asObject(summaries[normalizedSessionId]);
+      return Math.max(0, Number(summary.queued || 0) + Number(summary.running || 0));
+    }
+    if (typeof service.listAdminWorkloads !== 'function' || typeof service.listAdminRuns !== 'function') {
+      throw createAgentOpsError(
+        'Project run state is unavailable; project deletion was not attempted.',
+        503,
+        'agent_project_run_state_unavailable',
+      );
+    }
+    const workloads = asArray(await service.listAdminWorkloads(500))
+      .filter((workload) => workload.sessionId === normalizedSessionId);
+    const workloadIds = new Set(workloads.map((workload) => workload.id).filter(Boolean));
+    const runs = asArray(await service.listAdminRuns(500));
+    return runs.filter((run) => workloadIds.has(run.workloadId)
+      && ACTIVE_RUN_STATES.has(normalizeRunStatus(run.status))).length;
+  }
+
+  async createProject(input = {}, actor = '') {
+    const name = cleanText(input.name, 120);
+    const companyGoal = cleanText(input.companyGoal || input.goal, 4000);
+    if (!name) {
+      throw createAgentOpsError('Project name is required.', 400, 'agent_project_name_required');
+    }
+    const settingsController = this.getProjectSettingsRuntime();
+    const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const now = this.now().toISOString();
+    const configuredProjects = asArray(current.projects);
+    const projects = snapshotActiveProject(
+      current,
+      configuredProjects.length > 0 ? configuredProjects : listProjects(current),
+      now,
+    );
+    const baseId = sanitizeProjectId(name) || 'project';
+    let id = baseId;
+    let suffix = 2;
+    while (projects.some((project) => project.id === id)) {
+      id = `${baseId}-${suffix++}`.slice(0, 80);
+    }
+    const project = {
+      id,
+      name,
+      sessionId: `agent-company-${id}-${crypto.randomUUID().slice(0, 8)}`.slice(0, 120),
+      companyGoal,
+      enabled: Boolean(companyGoal),
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const config = await settingsController.updateAgentCompanySettings({
+      ...current,
+      projectsInitialized: true,
+      projects: [...projects, project],
+      activeProjectId: project.id,
+      sessionId: project.sessionId,
+      companyGoal,
+      enabled: project.enabled,
+    });
+    let heartbeat = null;
+    if (companyGoal && typeof this.agentCompanyService?.tick === 'function') {
+      const status = await this.agentCompanyService.tick({
+        force: true,
+        reason: cleanText(`agent-ops-project:${actor || 'admin'}`, 120),
+      });
+      heartbeat = status?.state?.heartbeat || null;
+    }
+    return { project, config, heartbeat };
+  }
+
+  async activateProject(projectId = '') {
+    const targetId = sanitizeProjectId(projectId);
+    const settingsController = this.getProjectSettingsRuntime();
+    const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const now = this.now().toISOString();
+    const configuredProjects = asArray(current.projects);
+    const projects = snapshotActiveProject(
+      current,
+      configuredProjects.length > 0 ? configuredProjects : listProjects(current),
+      now,
+    );
+    const project = projects.find((candidate) => candidate.id === targetId && candidate.archived !== true);
+    if (!project) {
+      throw createAgentOpsError('Project not found.', 404, 'agent_project_not_found');
+    }
+    const config = await settingsController.updateAgentCompanySettings({
+      ...current,
+      projectsInitialized: true,
+      projects,
+      activeProjectId: project.id,
+      sessionId: project.sessionId,
+      companyGoal: project.companyGoal || '',
+      enabled: project.enabled === true,
+    });
+    return { project, config };
+  }
+
+  async deleteProject(projectId = '') {
+    const targetId = sanitizeProjectId(projectId);
+    const settingsController = this.getProjectSettingsRuntime();
+    if (typeof this.artifactService?.deleteArtifactsForSession !== 'function') {
+      throw createAgentOpsError(
+        'Project file cleanup is unavailable; project deletion was not attempted.',
+        503,
+        'agent_project_cleanup_unavailable',
+      );
+    }
+    const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const now = this.now().toISOString();
+    const configuredProjects = asArray(current.projects);
+    const allProjects = snapshotActiveProject(
+      current,
+      configuredProjects.length > 0 ? configuredProjects : listProjects(current),
+      now,
+    );
+    const project = allProjects.find((candidate) => candidate.id === targetId && candidate.archived !== true);
+    if (!project) {
+      throw createAgentOpsError('Project not found.', 404, 'agent_project_not_found');
+    }
+    const activeRunCount = await this.getActiveRunCountForSession(project.sessionId);
+    if (activeRunCount > 0) {
+      throw createAgentOpsError(
+        `Finish or cancel ${activeRunCount} active run${activeRunCount === 1 ? '' : 's'} before deleting ${project.name}.`,
+        409,
+        'agent_project_has_active_runs',
+      );
+    }
+    await this.artifactService.deleteArtifactsForSession(project.sessionId);
+    const nextProjects = allProjects.filter((candidate) => candidate.id !== targetId);
+    const visibleProjects = nextProjects.filter((candidate) => candidate.archived !== true);
+    const currentActive = findActiveProject(current, allProjects);
+    const nextActive = currentActive?.id === targetId
+      ? visibleProjects[0] || null
+      : visibleProjects.find((candidate) => candidate.id === currentActive?.id) || visibleProjects[0] || null;
+    const config = await settingsController.updateAgentCompanySettings({
+      ...current,
+      projectsInitialized: true,
+      projects: nextProjects,
+      activeProjectId: nextActive?.id || '',
+      sessionId: nextActive?.sessionId || `agent-company-empty-${crypto.randomUUID().slice(0, 8)}`,
+      companyGoal: nextActive?.companyGoal || '',
+      enabled: nextActive?.enabled === true,
+    });
+    return {
+      deletedProjectId: project.id,
+      deletedProjectName: project.name,
+      deletedSessionId: project.sessionId,
+      activeProjectId: nextActive?.id || null,
+      remainingProjectCount: visibleProjects.length,
+      config,
+    };
+  }
+
+  async deleteArtifact(artifactId = '') {
+    const normalizedId = cleanText(artifactId, 240);
+    const settingsController = this.getProjectSettingsRuntime();
+    const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const activeProject = findActiveProject(current, listProjects(current));
+    if (!activeProject) {
+      throw createAgentOpsError('No active project is available.', 409, 'agent_project_required');
+    }
+    if (typeof this.artifactStore?.get !== 'function'
+      || typeof this.artifactService?.deleteArtifact !== 'function') {
+      throw createAgentOpsError('File deletion is unavailable.', 503, 'agent_artifact_deletion_unavailable');
+    }
+    const artifact = await this.artifactStore.get(normalizedId);
+    if (!artifact || cleanText(artifact.sessionId, 160) !== cleanText(activeProject.sessionId, 160)) {
+      throw createAgentOpsError('File not found in the active project.', 404, 'agent_artifact_not_found');
+    }
+    const deleted = await this.artifactService.deleteArtifact(normalizedId);
+    if (!deleted) {
+      throw createAgentOpsError('File could not be deleted.', 409, 'agent_artifact_delete_failed');
+    }
+    return {
+      deletedArtifactId: normalizedId,
+      filename: cleanText(artifact.filename, 300) || normalizedId,
+      projectId: activeProject.id,
+    };
+  }
+
   async createGoal(input = {}, actor = '') {
     const title = cleanText(input.title, 120);
     const successCriteria = cleanText(input.successCriteria, 3000);
@@ -640,20 +945,30 @@ class AgentOpsService {
     }
 
     const current = asObject(settingsController.getEffectiveAgentCompanyConfig?.());
+    const activeProject = findActiveProject(current, listProjects(current));
+    if (!activeProject) {
+      throw createAgentOpsError(
+        'Create a project before starting a goal.',
+        409,
+        'agent_project_required',
+      );
+    }
     const goal = cleanText(
       successCriteria ? `${title}\n\nSuccess criteria:\n${successCriteria}` : title,
       4000,
     );
-    const activeProjectId = cleanText(current.activeProjectId, 160);
-    const sessionId = cleanText(current.sessionId, 160);
+    const activeProjectId = cleanText(activeProject.id, 160);
+    const sessionId = cleanText(activeProject.sessionId, 160);
     const now = this.now().toISOString();
-    const projects = asArray(current.projects).map((project) => {
+    const configuredProjects = asArray(current.projects);
+    const projects = (configuredProjects.length > 0 ? configuredProjects : listProjects(current)).map((project) => {
       const isActive = (activeProjectId && project.id === activeProjectId)
         || (!activeProjectId && sessionId && project.sessionId === sessionId);
       return isActive ? { ...project, companyGoal: goal, enabled: true, updatedAt: now } : project;
     });
     const config = await settingsController.updateAgentCompanySettings({
       ...current,
+      projectsInitialized: true,
       companyGoal: goal,
       enabled: true,
       projects,
@@ -868,6 +1183,7 @@ class AgentOpsService {
         detail: [entry.type, entry.status].filter(Boolean).join(' · ') || 'Recorded output',
         previewUrl: entry.url,
         downloadUrl: entry.url,
+        deletable: false,
       }));
     const activity = await this.getAgentActivity(normalizedId);
     const timeline = asArray(activity.timeline);
@@ -907,6 +1223,7 @@ class AgentOpsService {
         path: artifact.path,
         detail: artifact.detail,
         url: artifact.downloadUrl || artifact.previewUrl,
+        deletable: artifact.deletable === true,
       })),
       editor: artifacts.filter((artifact) => artifact.language && artifact.content),
       terminal,

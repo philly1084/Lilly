@@ -95,6 +95,47 @@ describe('/api/admin/agent-ops', () => {
     expect(response.body.projectId).toBe('main');
   });
 
+  test('creates, activates, and deletes operations projects through the lifecycle adapter', async () => {
+    const service = {
+      createProject: jest.fn(async () => ({ project: { id: 'launch', name: 'Launch' } })),
+      activateProject: jest.fn(async () => ({ project: { id: 'launch' } })),
+      deleteProject: jest.fn(async () => ({ deletedProjectId: 'launch', remainingProjectCount: 0 })),
+    };
+    const app = buildApp(service);
+
+    const created = await request(app)
+      .post('/api/admin/agent-ops/projects')
+      .send({ name: 'Launch', companyGoal: 'Ship it.' });
+    const activated = await request(app)
+      .post('/api/admin/agent-ops/projects/launch/activate');
+    const deleted = await request(app)
+      .delete('/api/admin/agent-ops/projects/launch');
+
+    expect(created.status).toBe(201);
+    expect(service.createProject).toHaveBeenCalledWith({ name: 'Launch', companyGoal: 'Ship it.' }, 'admin');
+    expect(activated.status).toBe(200);
+    expect(service.activateProject).toHaveBeenCalledWith('launch');
+    expect(deleted.status).toBe(200);
+    expect(service.deleteProject).toHaveBeenCalledWith('launch');
+  });
+
+  test('deletes a scoped project file through the artifact lifecycle adapter', async () => {
+    const service = {
+      deleteArtifact: jest.fn(async () => ({
+        deletedArtifactId: 'artifact-1',
+        filename: 'report.md',
+        projectId: 'main',
+      })),
+    };
+
+    const response = await request(buildApp(service))
+      .delete('/api/admin/agent-ops/artifacts/artifact-1');
+
+    expect(response.status).toBe(200);
+    expect(service.deleteArtifact).toHaveBeenCalledWith('artifact-1');
+    expect(response.body.filename).toBe('report.md');
+  });
+
   test('passes approval decisions and the authenticated actor to the adapter', async () => {
     const service = {
       resolveApproval: jest.fn(async () => ({

@@ -249,6 +249,7 @@ function normalizeConfig(config = {}) {
         dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),
         activeProjectId: sanitizeText(config.activeProjectId || ''),
         projects: Array.isArray(config.projects) ? config.projects.map((project) => ({ ...project })) : [],
+        projectsInitialized: config.projectsInitialized === true,
         source: sanitizeText(config.source || ''),
     };
 }

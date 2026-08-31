@@ -11,11 +11,17 @@
 
   const demoOverview = {
     generatedAt: '2026-08-30T13:11:38.000Z',
-    project: { id: 'checkout-reliability', name: 'Checkout Reliability', status: 'On track', progress: 42, target: 'Sep 5, 2026' },
+    project: { id: 'checkout-reliability', name: 'Checkout Reliability', goal: 'Eliminate checkout flakes and ship verified pricing behavior.', status: 'On track', progress: 42, target: 'Sep 5, 2026' },
+    projects: [
+      { id: 'checkout-reliability', name: 'Checkout Reliability', active: true, artifactCount: 1 },
+      { id: 'release-readiness', name: 'Release Readiness', active: false, artifactCount: 0 },
+    ],
     heartbeat: { healthy: true, ageSeconds: 12, label: 'All systems nominal' },
     budget: { spent: 1842.63, limit: 5000, period: 'MTD' },
     capabilities: {
       goalCreation: { enabled: true, endpoint: '/goals' },
+      projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate', deleteEndpointTemplate: '/projects/{projectId}' },
+      artifactDeletion: { enabled: true, endpointTemplate: '/artifacts/{artifactId}' },
       workspace: { enabled: true },
       takeOver: false,
       stream: false,
@@ -44,7 +50,7 @@
       { id: 'wf-1', title: 'Investigate CI flake', agentName: 'Mira', status: 'running', updatedAt: '2026-08-30T13:11:38.000Z' },
       { id: 'wf-2', title: 'Fix discount rounding', agentName: 'Sol', status: 'running', updatedAt: '2026-08-30T13:10:38.000Z' },
     ],
-    artifacts: [{ id: 'artifact-1', name: 'flake-analysis.md', detail: 'markdown · 18.6 KB', previewUrl: '#preview-artifact' }],
+    artifacts: [{ id: 'artifact-1', name: 'flake-analysis.md', detail: 'markdown · 18.6 KB', previewUrl: '#preview-artifact', deletable: true }],
     approvals: [{ id: 'approval-release-218', agentId: 'rex', agentName: 'Rex', title: 'Promote release to production', task: 'Prepare v2.18.0' }],
   };
 
@@ -65,6 +71,7 @@
     activity: new Map(),
     workspaces: new Map(),
     workspaceErrors: new Map(),
+    pendingArtifact: null,
     query: '',
     demo: false,
   };
@@ -104,6 +111,7 @@
     return {
       generatedAt: source.generatedAt || null,
       project: source.project && typeof source.project === 'object' ? source.project : { name: text(source.project, 'No project reported') },
+      projects: Array.isArray(source.projects) ? source.projects : [],
       heartbeat: source.heartbeat && typeof source.heartbeat === 'object' ? source.heartbeat : {},
       budget: source.budget && typeof source.budget === 'object' ? source.budget : {},
       groups,
@@ -135,6 +143,15 @@
     return state.overview?.capabilities?.[name];
   }
 
+  function capabilityEnabled(name) {
+    const value = capability(name);
+    return value === true || value?.enabled === true;
+  }
+
+  function endpointFromTemplate(template, key, value) {
+    return String(template || '').replace(`{${key}}`, encodeURIComponent(value));
+  }
+
   async function request(path, options = {}) {
     const response = await fetch(`${API_ROOT}${path}`, {
       credentials: 'same-origin',
@@ -162,9 +179,17 @@
   }
 
   function renderHeader() {
-    const { project, heartbeat, budget } = state.overview;
+    const { project, projects, heartbeat, budget } = state.overview;
     const select = document.getElementById('projectSelect');
-    select.replaceChildren(new Option(text(project.name || project.title), text(project.id || project.name, 'active')));
+    const options = projects.map((candidate) => new Option(
+      text(candidate.name || candidate.title, 'Untitled project'),
+      text(candidate.id, ''),
+      false,
+      candidate.id === project.id || candidate.active === true,
+    ));
+    if (!options.length) options.push(new Option('No active project', '', true, true));
+    select.replaceChildren(...options);
+    select.disabled = options.length === 1 && !options[0].value;
     const heartbeatEl = document.getElementById('heartbeat');
     const healthy = heartbeat.healthy !== false;
     heartbeatEl.className = `heartbeat${healthy ? '' : ' error'}`;
@@ -221,16 +246,20 @@
 
   function renderOverviewViews() {
     const { project, goalItems, workflows, artifacts, approvals } = state.overview;
-    const goal = project.goal || project.title || project.name || 'No active goal';
-    document.getElementById('view-goals').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Coordination objective</span><h1>Goals</h1><p>The active company objective and its observable delivery plan.</p></div><button class="primary-button view-new-goal" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New goal</button></header>
-      <article class="goal-hero"><div><span class="status-chip ${escapeHtml(project.status || 'idle')}">${escapeHtml(project.status || 'Not reported')}</span><h2>${escapeHtml(project.name || 'Active project')}</h2><p>${escapeHtml(goal)}</p></div><div class="goal-score"><strong>${Number.isFinite(Number(project.progress)) ? `${Number(project.progress)}%` : '—'}</strong><span>complete</span></div></article>
-      <div class="operations-grid">${goalItems.map((item, index) => `<article class="operation-card"><span class="card-index">${index + 1}</span><div><h2>${escapeHtml(item.title || 'Untitled goal step')}</h2><p>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}</p><span class="status-chip ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'Not reported')}</span>${item.blockedBy ? `<p class="card-alert">${escapeHtml(item.blockedBy)}</p>` : ''}${renderEvidenceLinks(item.evidence)}</div></article>`).join('') || '<div class="view-empty"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><h2>No goal plan yet</h2><p>Create a goal to start the shared heartbeat and generate coordinated work.</p></div>'}</div>`;
+    const hasProject = Boolean(project?.id);
+    const goal = project.goal || project.title || 'No active goal';
+    const projectActions = `<div class="view-actions"><button class="secondary-button view-new-project" type="button"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> New project</button>${hasProject ? `<button class="primary-button view-new-goal" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New goal</button><button class="danger-button view-delete-project" type="button"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Delete project</button>` : ''}</div>`;
+    const goalBody = hasProject
+      ? `<article class="goal-hero"><div><span class="status-chip ${escapeHtml(project.status || 'idle')}">${escapeHtml(project.status || 'Not reported')}</span><h2>${escapeHtml(project.name || 'Active project')}</h2><p>${escapeHtml(goal)}</p></div><div class="goal-score"><strong>${Number.isFinite(Number(project.progress)) ? `${Number(project.progress)}%` : '—'}</strong><span>complete</span></div></article>
+      <div class="operations-grid">${goalItems.map((item, index) => `<article class="operation-card"><span class="card-index">${index + 1}</span><div><h2>${escapeHtml(item.title || 'Untitled goal step')}</h2><p>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}</p><span class="status-chip ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'Not reported')}</span>${item.blockedBy ? `<p class="card-alert">${escapeHtml(item.blockedBy)}</p>` : ''}${renderEvidenceLinks(item.evidence)}</div></article>`).join('') || '<div class="view-empty"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><h2>No goal plan yet</h2><p>Create a goal to start the shared heartbeat and generate coordinated work.</p></div>'}</div>`
+      : '<div class="project-empty"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><h2>No operations project</h2><p>The previous project has been removed. Start a clean project to create goals, files, and coordinated work.</p><button class="primary-button view-new-project" type="button"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> Start new project</button></div>';
+    document.getElementById('view-goals').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Coordination objective</span><h1>Goals</h1><p>The active company objective and its observable delivery plan.</p></div>${projectActions}</header>${goalBody}`;
 
     document.getElementById('view-workflows').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Execution system</span><h1>Workflows</h1><p>Recorded company workloads and their latest run state.</p></div><span class="view-count">${workflows.length} workflow${workflows.length === 1 ? '' : 's'}</span></header>
       <div class="workflow-list">${workflows.map((workflow) => `<article class="workflow-row"><span class="workflow-icon"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i></span><div><h2>${escapeHtml(workflow.title || 'Untitled workflow')}</h2><p>${escapeHtml(workflow.agentName || 'Unassigned')} · Updated ${escapeHtml(formatDateTime(workflow.updatedAt))}</p>${renderEvidenceLinks(workflow.evidence)}</div><span class="status-chip ${escapeHtml(workflow.status || '')}">${escapeHtml(workflow.status || 'Not reported')}</span></article>`).join('') || '<div class="view-empty"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i><h2>No workflows recorded</h2><p>A new goal and heartbeat will create role-based work here.</p></div>'}</div>`;
 
     document.getElementById('view-artifacts').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Durable outputs</span><h1>Artifacts</h1><p>Files recorded in the active operations project.</p></div><span class="view-count">${artifacts.length} artifact${artifacts.length === 1 ? '' : 's'}</span></header>
-      <div class="artifact-grid">${artifacts.map((artifact) => { const url = artifact.previewUrl || artifact.url || artifact.downloadUrl; return `<article class="artifact-card"><i class="fa-regular fa-file-lines" aria-hidden="true"></i><div><h2>${escapeHtml(artifact.name || artifact.label || 'Artifact')}</h2><p>${escapeHtml(artifact.detail || artifact.mimeType || 'Recorded output')}</p></div>${url ? `<a class="secondary-button" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : '<span class="resource-unavailable">No preview URL</span>'}</article>`; }).join('') || '<div class="view-empty"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><h2>No artifacts recorded</h2><p>Verified outputs will appear here as agents complete work.</p></div>'}</div>`;
+      <div class="artifact-grid">${artifacts.map((artifact) => { const url = artifact.previewUrl || artifact.url || artifact.downloadUrl; const label = artifact.name || artifact.label || 'Artifact'; return `<article class="artifact-card"><i class="fa-regular fa-file-lines" aria-hidden="true"></i><div><h2>${escapeHtml(label)}</h2><p>${escapeHtml(artifact.detail || artifact.mimeType || 'Recorded output')}</p></div><div class="artifact-actions">${url ? `<a class="secondary-button" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : '<span class="resource-unavailable">No preview URL</span>'}${artifact.deletable === true && capabilityEnabled('artifactDeletion') ? `<button class="delete-resource-button" type="button" data-delete-artifact="${escapeHtml(artifact.id)}" data-artifact-name="${escapeHtml(label)}" aria-label="Delete ${escapeHtml(label)}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>` : ''}</div></article>`; }).join('') || '<div class="view-empty"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><h2>No artifacts recorded</h2><p>Verified outputs will appear here as agents complete work.</p></div>'}</div>`;
 
     document.getElementById('view-approvals').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Human checkpoints</span><h1>Approvals</h1><p>Pending run decisions that need an operator.</p></div><span class="view-count">${approvals.length} pending</span></header>
       <div class="approval-list">${approvals.map((approval) => `<article class="approval-card"><span class="approval-glyph"><i class="fa-regular fa-square-check" aria-hidden="true"></i></span><div><h2>${escapeHtml(approval.title || 'Approval required')}</h2><p>${escapeHtml(approval.agentName || 'Agent')} · ${escapeHtml(approval.task || 'Task not reported')}</p></div><div class="approval-actions"><button class="approve-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="approve">Approve</button><button class="reject-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="reject">Reject</button></div></article>`).join('') || '<div class="view-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><h2>No pending approvals</h2><p>The fleet can continue without an operator decision.</p></div>'}</div>`;
@@ -348,7 +377,7 @@
     if (tab === 'browser' && renderBrowserPanel(panel, items)) return;
     if (tab === 'messages' && renderMessagesPanel(panel, items)) return;
     if (items.length) {
-      panel.innerHTML = `<ul class="resource-list">${items.map((item) => { const url = item.url || item.previewUrl || item.downloadUrl; const label = item.name || item.title || item.path || item.message || item; return `<li><i class="${tabMeta[tab].icon}" aria-hidden="true"></i><span>${escapeHtml(label)}</span><small>${escapeHtml(item.detail || item.status || item.size || '')}</small>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(label)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}</li>`; }).join('')}</ul>`;
+      panel.innerHTML = `<ul class="resource-list">${items.map((item) => { const url = item.url || item.previewUrl || item.downloadUrl; const label = item.name || item.title || item.path || item.message || item; const canDelete = ['files', 'artifacts'].includes(tab) && item.deletable === true && capabilityEnabled('artifactDeletion'); return `<li><i class="${tabMeta[tab].icon}" aria-hidden="true"></i><span>${escapeHtml(label)}</span><small>${escapeHtml(item.detail || item.status || item.size || '')}</small>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(label)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}${canDelete ? `<button class="delete-resource-button" type="button" data-delete-artifact="${escapeHtml(item.id)}" data-artifact-name="${escapeHtml(label)}" aria-label="Delete ${escapeHtml(label)}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>` : ''}</li>`; }).join('')}</ul>`;
       return;
     }
     const meta = tabMeta[tab];
@@ -418,6 +447,11 @@
 
   function renderGoal() {
     const project = state.overview.project;
+    if (!project?.id) {
+      document.getElementById('goalSummary').innerHTML = '<h2>No active project</h2><p>Start a project to create a shared goal and coordination heartbeat.</p>';
+      document.getElementById('goalItems').replaceChildren();
+      return;
+    }
     const progress = Number(project.progress);
     document.getElementById('goalSummary').innerHTML = `<h2>${escapeHtml(project.name || project.title || 'Active goal')}</h2><p>${escapeHtml(project.status || 'Goal state not reported')}</p><div class="goal-meta"><span>Goal progress</span><strong>${Number.isFinite(progress) ? `${progress}%` : 'Not reported'}</strong><span>${escapeHtml(project.target || '')}</span></div><div class="goal-progress"><span style="width:${Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0}%"></span></div>`;
     document.getElementById('goalItems').innerHTML = state.overview.goalItems.map((item) => `<li class="${String(item.status).toLowerCase().includes('progress') ? 'active' : ''}"><span class="goal-item-title">${escapeHtml(item.title || item.name || 'Untitled step')}</span><p class="goal-item-meta">${escapeHtml(item.assignee || item.agent || 'Unassigned')}<span class="goal-item-status ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'Status not reported')}</span></p></li>`).join('');
@@ -430,6 +464,7 @@
     setView(state.activeView, false);
     const initial = state.overview.selectedAgentId && allAgents().find((agent) => agent.id === state.overview.selectedAgentId);
     if (initial) selectAgent(initial.id, false); else renderInspector();
+    setupMutationDialogs();
   }
 
   function showLoadError(error) {
@@ -479,6 +514,100 @@
     document.getElementById('navToggle').setAttribute('aria-expanded', String(which === 'nav'));
   }
 
+  function openProjectDialog() {
+    const dialog = document.getElementById('projectDialog');
+    dialog.showModal();
+    document.getElementById('projectNameInput').focus();
+  }
+
+  function openDeleteProjectDialog() {
+    const project = state.overview?.project;
+    if (!project?.id) return;
+    document.getElementById('deleteProjectMessage').textContent = `Delete ${project.name || 'this project'} and every recorded file in it? Run history remains available for audit.`;
+    document.getElementById('deleteProjectDialog').showModal();
+  }
+
+  function openDeleteArtifactDialog(artifactId, artifactName) {
+    if (!artifactId) return;
+    state.pendingArtifact = { id: artifactId, name: artifactName || 'this file' };
+    document.getElementById('deleteArtifactMessage').textContent = `Delete ${state.pendingArtifact.name} from ${state.overview?.project?.name || 'this project'}?`;
+    document.getElementById('deleteArtifactDialog').showModal();
+  }
+
+  function setupProjectDialog() {
+    const dialog = document.getElementById('projectDialog');
+    const projects = capability('projects');
+    const endpoint = projects?.collectionEndpoint;
+    const submit = document.getElementById('createProjectSubmit');
+    submit.disabled = !capabilityEnabled('projects') || (!endpoint && !state.demo);
+    document.getElementById('projectCapabilityNote').textContent = submit.disabled
+      ? 'Project creation is unavailable because the backend did not advertise a project endpoint.'
+      : 'The new project becomes active. Add an objective now, or create a goal later.';
+    submit.onclick = async (event) => {
+      event.preventDefault();
+      const input = document.getElementById('projectNameInput');
+      const name = input.value.trim();
+      if (!name) { input.reportValidity(); return; }
+      submit.disabled = true;
+      try {
+        if (!state.demo) await request(endpoint, { method: 'POST', body: JSON.stringify({ name, companyGoal: document.getElementById('projectGoalInput').value.trim() }) });
+        dialog.close(); dialog.querySelector('form').reset();
+        showToast(state.demo ? 'Preview project created locally.' : 'Project created and selected.');
+        if (!state.demo) await loadOverview(); else submit.disabled = false;
+        setView('goals');
+      } catch (error) { submit.disabled = false; showToast(`Could not create project: ${error.message}`, true); }
+    };
+  }
+
+  function setupDeleteProjectDialog() {
+    const dialog = document.getElementById('deleteProjectDialog');
+    const submit = document.getElementById('deleteProjectSubmit');
+    const projects = capability('projects');
+    const template = projects?.deleteEndpointTemplate;
+    submit.disabled = !state.overview?.project?.id || !capabilityEnabled('projects') || (!template && !state.demo);
+    submit.onclick = async (event) => {
+      event.preventDefault();
+      const project = state.overview?.project;
+      if (!project?.id || submit.disabled) return;
+      submit.disabled = true;
+      try {
+        if (!state.demo) await request(endpointFromTemplate(template, 'projectId', project.id), { method: 'DELETE' });
+        dialog.close();
+        state.selectedAgent = null; state.workspaces.clear(); state.workspaceErrors.clear(); state.activity.clear();
+        showToast(state.demo ? 'Preview project removed locally.' : `${project.name || 'Project'} and its files were deleted.`);
+        if (!state.demo) await loadOverview(); else submit.disabled = false;
+        setView('goals');
+      } catch (error) { submit.disabled = false; showToast(`Could not delete project: ${error.message}`, true); }
+    };
+  }
+
+  function setupDeleteArtifactDialog() {
+    const dialog = document.getElementById('deleteArtifactDialog');
+    const submit = document.getElementById('deleteArtifactSubmit');
+    const deletion = capability('artifactDeletion');
+    const template = deletion?.endpointTemplate;
+    submit.disabled = !capabilityEnabled('artifactDeletion') || (!template && !state.demo);
+    submit.onclick = async (event) => {
+      event.preventDefault();
+      const artifact = state.pendingArtifact;
+      if (!artifact?.id || submit.disabled) return;
+      submit.disabled = true;
+      try {
+        if (!state.demo) await request(endpointFromTemplate(template, 'artifactId', artifact.id), { method: 'DELETE' });
+        dialog.close(); state.pendingArtifact = null; state.workspaces.clear();
+        showToast(state.demo ? 'Preview file removed locally.' : `${artifact.name} was permanently deleted.`);
+        if (!state.demo) await loadOverview(); else submit.disabled = false;
+      } catch (error) { submit.disabled = false; showToast(`Could not delete file: ${error.message}`, true); }
+    };
+  }
+
+  function setupMutationDialogs() {
+    setupGoalDialog();
+    setupProjectDialog();
+    setupDeleteProjectDialog();
+    setupDeleteArtifactDialog();
+  }
+
   function setupGoalDialog() {
     const dialog = document.getElementById('goalDialog');
     const creation = capability('goalCreation');
@@ -486,9 +615,12 @@
     const enabled = creation === true || creation?.enabled === true;
     const submit = document.getElementById('createGoalSubmit');
     const note = document.getElementById('goalCapabilityNote');
-    submit.disabled = !enabled || (!endpoint && !state.demo);
-    note.textContent = !enabled ? 'Goal creation is unavailable: this backend did not advertise the goal-creation capability.' : !endpoint && !state.demo ? 'Goal creation is advertised, but no creation endpoint was provided by the backend capability.' : 'This goal will be sent to the configured operations goal endpoint.';
-    document.getElementById('newGoalButton').onclick = () => dialog.showModal();
+    const hasProject = Boolean(state.overview?.project?.id);
+    submit.disabled = !hasProject || !enabled || (!endpoint && !state.demo);
+    note.textContent = !hasProject ? 'Create a project first. Goals and coordination heartbeats always belong to a project.' : !enabled ? 'Goal creation is unavailable: this backend did not advertise the goal-creation capability.' : !endpoint && !state.demo ? 'Goal creation is advertised, but no creation endpoint was provided by the backend capability.' : 'This goal will be sent to the configured operations goal endpoint.';
+    const newGoalButton = document.getElementById('newGoalButton');
+    newGoalButton.disabled = !hasProject;
+    newGoalButton.onclick = () => { if (hasProject) dialog.showModal(); else openProjectDialog(); };
     submit.onclick = async (event) => {
       if (submit.disabled) { event.preventDefault(); return; }
       const title = document.getElementById('goalTitleInput').value.trim();
@@ -501,7 +633,6 @@
         showToast(state.demo ? 'Preview goal captured locally; no live operation was created.' : 'Goal created and coordination heartbeat started.');
         if (!state.demo) {
           await loadOverview();
-          setupGoalDialog();
         } else {
           submit.disabled = false;
         }
@@ -511,6 +642,18 @@
   }
 
   function bindEvents() {
+    document.getElementById('projectSelect').addEventListener('change', async (event) => {
+      const projectId = event.target.value;
+      const template = capability('projects')?.activateEndpointTemplate;
+      if (!projectId || !template || state.demo) return;
+      event.target.disabled = true;
+      try {
+        await request(endpointFromTemplate(template, 'projectId', projectId), { method: 'POST' });
+        state.selectedAgent = null; state.workspaces.clear(); state.workspaceErrors.clear(); state.activity.clear();
+        await loadOverview();
+        showToast('Active project changed.');
+      } catch (error) { event.target.disabled = false; showToast(`Could not switch projects: ${error.message}`, true); }
+    });
     document.getElementById('agentSearch').addEventListener('input', (event) => { state.query = event.target.value; if (state.activeView !== 'agents') setView('agents'); renderGroups(); });
     document.getElementById('primaryNav').addEventListener('click', (event) => {
       const link = event.target.closest('[data-view]');
@@ -519,6 +662,12 @@
       setView(link.dataset.view);
     });
     document.getElementById('fleetContent').addEventListener('click', (event) => {
+      const projectButton = event.target.closest('.view-new-project');
+      if (projectButton) { openProjectDialog(); return; }
+      const deleteProjectButton = event.target.closest('.view-delete-project');
+      if (deleteProjectButton) { openDeleteProjectDialog(); return; }
+      const deleteArtifactButton = event.target.closest('[data-delete-artifact]');
+      if (deleteArtifactButton) { openDeleteArtifactDialog(deleteArtifactButton.dataset.deleteArtifact, deleteArtifactButton.dataset.artifactName); return; }
       const goalButton = event.target.closest('.view-new-goal');
       if (goalButton) { document.getElementById('goalDialog').showModal(); return; }
       const approvalButton = event.target.closest('[data-approval]');
@@ -534,6 +683,10 @@
     document.getElementById('agentGroups').addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.agent-row')) { event.preventDefault(); selectAgent(event.target.dataset.agentId); } });
     document.getElementById('workspaceTabs').addEventListener('click', (event) => { const tab = event.target.closest('[role="tab"]'); if (tab) setTab(tab.dataset.tab); });
     document.getElementById('workspaceTabs').addEventListener('keydown', (event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const current = TABS.indexOf(state.activeTab); const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length; setTab(TABS[next], true); });
+    document.getElementById('workspacePanels').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-delete-artifact]');
+      if (button) openDeleteArtifactDialog(button.dataset.deleteArtifact, button.dataset.artifactName);
+    });
     document.getElementById('takeOverButton').addEventListener('click', () => { const note = document.getElementById('takeoverNote'); const takeOver = capability('takeOver'); note.hidden = false; note.textContent = takeOver ? 'Takeover is advertised, but this release exposes no mutation endpoint. Agent execution continues unchanged.' : 'Takeover is unavailable for this backend. The agent keeps working; no execution state was changed.'; });
     document.getElementById('navToggle').addEventListener('click', () => openPanel(document.getElementById('primaryNav').classList.contains('open') ? null : 'nav'));
     document.getElementById('closeInspector').addEventListener('click', () => openPanel(null));
@@ -546,7 +699,7 @@
     const initialView = globalScope.location.hash.replace('#', '');
     if (['goals', 'agents', 'workflows', 'artifacts', 'approvals'].includes(initialView)) state.activeView = initialView;
     document.getElementById('previewBanner').hidden = !state.demo;
-    bindEvents(); loadOverview().then(setupGoalDialog);
+    bindEvents(); loadOverview();
   }
 
   const publicApi = { normalizeOverview, normalizeWorkspace, matchesAgent, normalizeAgent, escapeHtml, demoOverview };

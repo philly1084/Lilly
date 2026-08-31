@@ -62,7 +62,7 @@ function sanitizeProjectId(value = '') {
 
 function getAgentCompanyProjects(config = {}) {
   const configured = Array.isArray(config.projects) ? config.projects.filter((project) => !project.archived) : [];
-  if (configured.length > 0) {
+  if (configured.length > 0 || config.projectsInitialized === true) {
     return configured;
   }
   return [{

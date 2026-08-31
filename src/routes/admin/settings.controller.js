@@ -1352,6 +1352,9 @@ class SettingsController {
       })
       .filter(Boolean)
       .slice(0, 40);
+    next.projectsInitialized = value.projectsInitialized !== undefined
+      ? value.projectsInitialized === true
+      : current.projectsInitialized === true;
     next.activeProjectId = String(next.activeProjectId || '').trim().slice(0, 80);
     next.primaryModel = String(next.primaryModel || '').trim().slice(0, 120);
     next.escalationModels = this.normalizeStringArray(

@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const { artifactService } = require('../artifacts/artifact-service');
 const { artifactStore } = require('../artifacts/artifact-store');
 const { AgentOpsService } = require('../agent-ops/service');
 
@@ -38,6 +39,7 @@ function buildRequestService(req) {
     workloadService: req.app.locals.agentWorkloadService,
     agentRunService: req.app.locals.agentRunService,
     artifactStore: req.app.locals.artifactStore || artifactStore,
+    artifactService: req.app.locals.artifactService || artifactService,
   });
 }
 
@@ -94,6 +96,42 @@ function createAgentOpsRouter({ service = null } = {}) {
     try {
       const result = await resolveService(req).createGoal(req.body || {}, getActor(req));
       return res.status(201).json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.post('/projects', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).createProject(req.body || {}, getActor(req));
+      return res.status(201).json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/activate', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).activateProject(req.params.projectId);
+      return res.json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.delete('/projects/:projectId', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).deleteProject(req.params.projectId);
+      return res.json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.delete('/artifacts/:artifactId', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).deleteArtifact(req.params.artifactId);
+      return res.json(result);
     } catch (error) {
       return respondAgentOpsError(res, error) ? undefined : next(error);
     }

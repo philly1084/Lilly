@@ -156,6 +156,16 @@ function buildFixture() {
 
 function buildService() {
   const fixture = buildFixture();
+  const storedArtifact = {
+    id: 'artifact-research',
+    sessionId: 'agent-company-alpha',
+    filename: 'research.md',
+    mimeType: 'text/markdown',
+    sizeBytes: 512,
+    extractedText: '# Verified research\nThe evidence is current.',
+    createdAt: '2026-08-30T12:40:00.000Z',
+    metadata: { workloadId: 'work-research', runId: 'work-run-research' },
+  };
   const performAction = jest.fn(async (runId) => ({
     run: {
       ...fixture.canonicalRuns.find((run) => run.id === runId),
@@ -182,6 +192,15 @@ function buildService() {
   const tick = jest.fn(async () => ({
     state: { heartbeat: { status: 'steady', reason: 'agent-ops-goal:admin' } },
   }));
+  const deleteArtifact = jest.fn(async () => true);
+  const deleteArtifactsForSession = jest.fn(async () => 1);
+  const getSessionSummaries = jest.fn(async () => ({
+    'agent-company-alpha': { queued: 0, running: 0 },
+  }));
+  const artifactStore = {
+    listBySession: jest.fn(async () => [storedArtifact]),
+    get: jest.fn(async (id) => (id === storedArtifact.id ? storedArtifact : null)),
+  };
   const service = new AgentOpsService({
     agentCompanyService: {
       getStatus: jest.fn(async () => fixture.companyStatus),
@@ -195,20 +214,11 @@ function buildService() {
       isAvailable: jest.fn(() => true),
       listAdminWorkloads: jest.fn(async () => fixture.workloads),
       listAdminRuns: jest.fn(async () => fixture.workloadRuns),
+      getSessionSummaries,
     },
     agentRunService,
-    artifactStore: {
-      listBySession: jest.fn(async () => [{
-        id: 'artifact-research',
-        sessionId: 'agent-company-alpha',
-        filename: 'research.md',
-        mimeType: 'text/markdown',
-        sizeBytes: 512,
-        extractedText: '# Verified research\nThe evidence is current.',
-        createdAt: '2026-08-30T12:40:00.000Z',
-        metadata: { workloadId: 'work-research', runId: 'work-run-research' },
-      }]),
-    },
+    artifactStore,
+    artifactService: { deleteArtifact, deleteArtifactsForSession },
     now: () => new Date('2026-08-30T13:00:00.000Z'),
   });
   return {
@@ -218,6 +228,10 @@ function buildService() {
     performAction,
     updateAgentCompanySettings,
     tick,
+    artifactStore,
+    deleteArtifact,
+    deleteArtifactsForSession,
+    getSessionSummaries,
   };
 }
 
@@ -359,6 +373,102 @@ describe('AgentOpsService', () => {
     }));
     expect(tick).toHaveBeenCalledWith({ force: true, reason: 'agent-ops-goal:admin' });
     expect(result.projectId).toBe('alpha');
+  });
+
+  test('creates and activates a new project, starting its heartbeat when an objective is supplied', async () => {
+    const { service, updateAgentCompanySettings, tick } = buildService();
+
+    const result = await service.createProject({
+      name: 'Launch readiness',
+      companyGoal: 'Ship the verified launch.',
+    }, 'admin');
+
+    expect(result.project).toMatchObject({
+      id: 'launch-readiness',
+      name: 'Launch readiness',
+      companyGoal: 'Ship the verified launch.',
+      enabled: true,
+    });
+    expect(updateAgentCompanySettings).toHaveBeenCalledWith(expect.objectContaining({
+      projectsInitialized: true,
+      activeProjectId: 'launch-readiness',
+      companyGoal: 'Ship the verified launch.',
+      projects: expect.arrayContaining([expect.objectContaining({ id: 'alpha' }), expect.objectContaining({ id: 'launch-readiness' })]),
+    }));
+    expect(tick).toHaveBeenCalledWith({ force: true, reason: 'agent-ops-project:admin' });
+  });
+
+  test('deletes only an artifact belonging to the active project through full cleanup', async () => {
+    const { service, deleteArtifact } = buildService();
+
+    const result = await service.deleteArtifact('artifact-research');
+
+    expect(deleteArtifact).toHaveBeenCalledWith('artifact-research');
+    expect(result).toMatchObject({
+      deletedArtifactId: 'artifact-research',
+      filename: 'research.md',
+      projectId: 'alpha',
+    });
+  });
+
+  test('refuses to delete a file from another project', async () => {
+    const { service, artifactStore, deleteArtifact } = buildService();
+    artifactStore.get.mockResolvedValueOnce({ id: 'foreign', sessionId: 'agent-company-other', filename: 'foreign.md' });
+
+    await expect(service.deleteArtifact('foreign')).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'agent_artifact_not_found',
+    });
+    expect(deleteArtifact).not.toHaveBeenCalled();
+  });
+
+  test('removes the final project and its files while preserving an explicit empty project state', async () => {
+    const { service, deleteArtifactsForSession, updateAgentCompanySettings } = buildService();
+
+    const result = await service.deleteProject('alpha');
+
+    expect(deleteArtifactsForSession).toHaveBeenCalledWith('agent-company-alpha');
+    expect(updateAgentCompanySettings).toHaveBeenCalledWith(expect.objectContaining({
+      projectsInitialized: true,
+      projects: [],
+      activeProjectId: '',
+      companyGoal: '',
+      enabled: false,
+    }));
+    expect(result).toMatchObject({ deletedProjectId: 'alpha', remainingProjectCount: 0, activeProjectId: null });
+  });
+
+  test('blocks project deletion while the project still has active runs', async () => {
+    const { service, getSessionSummaries, deleteArtifactsForSession } = buildService();
+    getSessionSummaries.mockResolvedValueOnce({ 'agent-company-alpha': { queued: 1, running: 1 } });
+
+    await expect(service.deleteProject('alpha')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'agent_project_has_active_runs',
+    });
+    expect(deleteArtifactsForSession).not.toHaveBeenCalled();
+  });
+
+  test('returns a clean empty overview after the final project is removed', async () => {
+    const { service, fixture } = buildService();
+    fixture.companyStatus.config = {
+      ...fixture.companyStatus.config,
+      projectsInitialized: true,
+      projects: [],
+      activeProjectId: '',
+      companyGoal: '',
+      enabled: false,
+      sessionId: 'agent-company-empty-test',
+    };
+
+    const overview = await service.getOverview();
+
+    expect(overview.project).toMatchObject({ id: null, status: 'empty' });
+    expect(overview.projects).toEqual([]);
+    expect(overview.goalItems).toEqual([]);
+    expect(overview.workflows).toEqual([]);
+    expect(overview.artifacts).toEqual([]);
+    expect(overview.capabilities.projects).toMatchObject({ enabled: true, collectionEndpoint: '/projects' });
   });
 
   test('approves a pending approval only through the existing AgentRun resume action', async () => {
