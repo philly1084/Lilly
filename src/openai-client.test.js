@@ -2,6 +2,82 @@ const { __testUtils } = require('./openai-client');
 const { config } = require('./config');
 const settingsController = require('./routes/admin/settings.controller');
 
+describe('automatic chat tool-history recovery', () => {
+    test('replays verified tool results without incompatible provider-specific tool messages', async () => {
+        const providerError = new Error([
+            '500 Model execution failed after fallback chain: gpt-5.6-sol -> gemini-3.7-flash.',
+            'Function call is missing a thought_signature in functionCall parts.',
+        ].join('\n'));
+        const create = jest.fn()
+            .mockResolvedValueOnce({
+                choices: [{
+                    message: {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call_1',
+                            type: 'function',
+                            function: {
+                                name: 'web-fetch',
+                                arguments: '{"url":"https://example.com"}',
+                            },
+                        }],
+                    },
+                }],
+            })
+            .mockRejectedValueOnce(providerError)
+            .mockResolvedValueOnce({
+                choices: [{ message: { content: 'Recovered from verified results.' } }],
+            });
+        const toolManager = {
+            executeTool: jest.fn(async () => ({
+                success: true,
+                toolId: 'web-fetch',
+                data: { title: 'Example' },
+            })),
+        };
+        const selectedTools = [{
+            id: 'web-fetch',
+            chatDefinition: {
+                type: 'function',
+                function: {
+                    name: 'web-fetch',
+                    description: 'Fetch a URL',
+                    parameters: {
+                        type: 'object',
+                        properties: { url: { type: 'string' } },
+                    },
+                },
+            },
+        }];
+
+        const response = await __testUtils.runAutomaticToolLoopWithChatCompletions(
+            { chat: { completions: { create } } },
+            {
+                model: 'gpt-5.6-sol',
+                messages: [{ role: 'user', content: 'Fetch the example page and summarize it.' }],
+                selectedTools,
+                toolManager,
+                toolContext: { toolManager },
+            },
+        );
+
+        expect(create).toHaveBeenCalledTimes(3);
+        const failedReplayMessages = create.mock.calls[1][0].messages;
+        expect(failedReplayMessages.some((message) => message.role === 'tool')).toBe(true);
+        const recoveryMessages = create.mock.calls[2][0].messages;
+        expect(recoveryMessages.some((message) => message.role === 'tool')).toBe(false);
+        expect(recoveryMessages.some((message) => Array.isArray(message.tool_calls))).toBe(false);
+        expect(recoveryMessages.some((message) => /Automatic tool results/.test(message.content || ''))).toBe(true);
+        expect(response.choices[0].message.content).toBe('Recovered from verified results.');
+        expect(response._kimibuilt).toMatchObject({
+            toolHistoryRecovery: true,
+            toolEvents: [expect.objectContaining({
+                result: expect.objectContaining({ success: true, toolId: 'web-fetch' }),
+            })],
+        });
+    });
+});
+
 function createToolManager() {
     const tools = new Map([
         ['web-fetch', {

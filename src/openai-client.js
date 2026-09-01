@@ -3387,6 +3387,31 @@ function buildAutomaticToolSummaryMessage(toolEvents = []) {
     };
 }
 
+function isIncompatibleToolHistoryFallbackError(error) {
+    const message = String(error?.message || error || '');
+    return /thought[_\s-]?signature/i.test(message)
+        && /(?:function|tool)[_\s-]?call/i.test(message);
+}
+
+function buildToolHistoryRecoveryMessages(messages = [], toolEvents = []) {
+    const replaySafeMessages = (Array.isArray(messages) ? messages : [])
+        .filter((message) => message?.role !== 'tool')
+        .filter((message) => !(message?.role === 'assistant' && Array.isArray(message?.tool_calls)));
+
+    return [
+        ...replaySafeMessages,
+        buildAutomaticToolSummaryMessage(toolEvents),
+        {
+            role: 'system',
+            content: [
+                'The provider fallback could not replay the prior model-specific tool-call transcript.',
+                'Do not repeat tool actions that already completed.',
+                'Produce the best final answer from the verified automatic tool results above, and state any remaining failures plainly.',
+            ].join(' '),
+        },
+    ];
+}
+
 async function maybeStoreResearchMemoryNote({ toolContext = {}, query = '', candidate = {}, result = {} } = {}) {
     if (!toolContext?.memoryService?.rememberResearchNote || !toolContext?.sessionId) {
         return;
@@ -6484,18 +6509,43 @@ async function runAutomaticToolLoopWithChatCompletions(openai, {
 
     for (let round = 0; round < AUTO_TOOL_MAX_ROUNDS; round += 1) {
         throwIfAborted(toolContext?.signal);
-        finalResponse = await createChatCompletionsRequest(openai, {
-            model,
-            messages: workingMessages,
-            tools: remainingTools.map((entry) => entry.chatDefinition),
-            tool_choice: round === 0 ? buildAutomaticToolChoice(remainingTools, 'chat', { model, prompt, toolContext }) : 'auto',
-            stream: false,
-            ...chatReasoningParams,
-        }, requestOptions, {
-            model,
-            signal: toolContext?.signal,
-            label: `automatic chat round ${round + 1}`,
-        });
+        try {
+            finalResponse = await createChatCompletionsRequest(openai, {
+                model,
+                messages: workingMessages,
+                tools: remainingTools.map((entry) => entry.chatDefinition),
+                tool_choice: round === 0 ? buildAutomaticToolChoice(remainingTools, 'chat', { model, prompt, toolContext }) : 'auto',
+                stream: false,
+                ...chatReasoningParams,
+            }, requestOptions, {
+                model,
+                signal: toolContext?.signal,
+                label: `automatic chat round ${round + 1}`,
+            });
+        } catch (error) {
+            if (toolEvents.length === 0 || !isIncompatibleToolHistoryFallbackError(error)) {
+                throw error;
+            }
+
+            console.warn('[OpenAI] Recovering automatic tool synthesis without incompatible provider-specific tool history.');
+            finalResponse = await createChatCompletionsRequest(openai, {
+                model,
+                messages: buildToolHistoryRecoveryMessages(workingMessages, toolEvents),
+                stream: false,
+                ...chatReasoningParams,
+            }, requestOptions, {
+                model,
+                signal: toolContext?.signal,
+                label: 'automatic chat tool-history recovery',
+            });
+            aggregatedUsage = mergeUsageMetadata(aggregatedUsage, extractResponseUsageMetadata(finalResponse));
+            finalResponse._kimibuilt = {
+                toolEvents,
+                toolHistoryRecovery: true,
+                ...(aggregatedUsage ? { usage: aggregatedUsage, tokenUsage: aggregatedUsage } : {}),
+            };
+            return finalResponse;
+        }
         aggregatedUsage = mergeUsageMetadata(aggregatedUsage, extractResponseUsageMetadata(finalResponse));
 
         const assistantMessage = finalResponse.choices[0]?.message || {};
@@ -7807,6 +7857,7 @@ module.exports = {
         resolveOpenAIApiMode,
         runDeterministicToolPreflight,
         runDirectRequiredToolAction,
+        runAutomaticToolLoopWithChatCompletions,
         runAutomaticToolLoopWithResponses,
         sanitizeToolSchema,
         selectAutomaticToolDefinitions,
@@ -7834,6 +7885,8 @@ module.exports = {
         hasUsableSshDefaults,
         isTerminalFinishReason,
         parseLenientJson,
+        isIncompatibleToolHistoryFallbackError,
+        buildToolHistoryRecoveryMessages,
         ToolOrchestrationError,
     },
 };
