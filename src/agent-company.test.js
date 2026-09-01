@@ -18,6 +18,7 @@ function buildConfig(overrides = {}) {
         ownerId: 'system',
         sessionId: 'agent-company',
         primaryModel: 'gpt-5.5',
+        reasoningEffort: 'high',
         escalationModels: ['gpt-5.5', 'codex-latest'],
         roles: [
             { id: 'strategy', name: 'Strategy Lead', mission: 'Plan the company week.' },
@@ -49,6 +50,7 @@ describe('AgentCompanyService', () => {
             weeklyWorkloadLimit: 50,
             maxConcurrentWorkloads: 20,
             primaryModel: 'Gpt-5.6 Sol',
+            reasoningEffort: ' HIGH ',
             escalationModels: ['Gpt-5.6 Terra', 'gpt_5.6-luna'],
         });
 
@@ -56,6 +58,7 @@ describe('AgentCompanyService', () => {
         expect(config.weeklyWorkloadLimit).toBe(12);
         expect(config.maxConcurrentWorkloads).toBe(4);
         expect(config.primaryModel).toBe('gpt-5.6-sol');
+        expect(config.reasoningEffort).toBe('high');
         expect(config.escalationModels).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna']);
     });
 
@@ -294,6 +297,7 @@ describe('AgentCompanyService', () => {
             retainChars: 4500,
         }));
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
+        expect(createdWorkloads[0].metadata.reasoningEffort).toBe('high');
         expect(createdWorkloads[0].policy).toEqual(expect.objectContaining({
             maxRounds: 5,
             maxToolCalls: 14,
@@ -304,6 +308,7 @@ describe('AgentCompanyService', () => {
             source: 'primaryModel',
         }));
         expect(createdWorkloads[0].metadata.agentCompany.heartbeatManaged).toBe(true);
+        expect(createdWorkloads[0].metadata.agentCompany.modelPolicy.reasoningEffort).toBe('high');
         expect(createdWorkloads[0].metadata.agentCompany.sharedWhiteboard).toEqual(expect.objectContaining({
             path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
             purpose: 'agent-to-agent weekly coordination',

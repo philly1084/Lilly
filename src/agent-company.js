@@ -29,6 +29,7 @@ const COMPANY_LONG_AGENT_COMPACTION_TRIGGER_CHARS = 10000;
 const COMPANY_LONG_AGENT_RETAIN_CHARS = 4500;
 const COMPANY_WORKLOAD_MAX_ROUNDS = 5;
 const COMPANY_WORKLOAD_MAX_TOOL_CALLS = 14;
+const AGENT_COMPANY_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 const DEFAULT_MODEL_CANDIDATES = [
     'gpt-5.6-sol',
     'gpt-5.6-terra',
@@ -244,6 +245,9 @@ function normalizeConfig(config = {}) {
         ownerId: sanitizeText(config.ownerId || DEFAULT_OWNER_ID) || DEFAULT_OWNER_ID,
         sessionId: sanitizeText(config.sessionId || DEFAULT_SESSION_ID) || DEFAULT_SESSION_ID,
         primaryModel: normalizeModelIdentifier(config.primaryModel || ''),
+        reasoningEffort: AGENT_COMPANY_REASONING_EFFORTS.has(sanitizeText(config.reasoningEffort).toLowerCase())
+            ? sanitizeText(config.reasoningEffort).toLowerCase()
+            : 'high',
         escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         roles: roles.slice(0, 8),
         dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),
@@ -273,6 +277,7 @@ function defaultState() {
         modelPolicy: {
             primaryModel: '',
             escalationModels: [],
+            reasoningEffort: 'high',
         },
         roles: [],
         shortTermSchedule: [],
@@ -523,6 +528,7 @@ class AgentCompanyService {
                 modelPolicy: {
                     primaryModel: config.primaryModel,
                     escalationModels: config.escalationModels,
+                    reasoningEffort: config.reasoningEffort,
                 },
                 heartbeat,
                 dailyAlignment,
@@ -561,6 +567,7 @@ class AgentCompanyService {
                 modelPolicy: {
                     primaryModel: config.primaryModel,
                     escalationModels: config.escalationModels,
+                    reasoningEffort: config.reasoningEffort,
                 },
                 heartbeat,
                 dailyAlignment,
@@ -609,6 +616,7 @@ class AgentCompanyService {
                 modelPolicy: {
                     primaryModel: config.primaryModel,
                     escalationModels: config.escalationModels,
+                    reasoningEffort: config.reasoningEffort,
                 },
                 runningWork: {
                     running: 0,
@@ -701,6 +709,7 @@ class AgentCompanyService {
             modelPolicy: {
                 primaryModel: config.primaryModel,
                 escalationModels: config.escalationModels,
+                reasoningEffort: config.reasoningEffort,
             },
             runningWork,
             heartbeat,
@@ -973,6 +982,7 @@ class AgentCompanyService {
             ...(requestedModel ? { model: requestedModel } : {}),
             metadata: {
                 requestedModel,
+                reasoningEffort: config.reasoningEffort,
                 modelSelection,
                 longAgent: {
                     enabled: true,
@@ -1031,6 +1041,7 @@ class AgentCompanyService {
                         primaryModel: config.primaryModel || null,
                         escalationModels: config.escalationModels,
                         selectedModel: requestedModel,
+                        reasoningEffort: config.reasoningEffort,
                         selectedCompetency: modelSelection.competency,
                         selectionSource: modelSelection.source,
                         excludedModels: modelSelection.excluded,

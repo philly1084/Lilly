@@ -3,6 +3,14 @@ const { config } = require('./config');
 const settingsController = require('./routes/admin/settings.controller');
 
 describe('automatic chat tool-history recovery', () => {
+    test('recognizes aggregate fallback-chain failures after tools have already completed', () => {
+        expect(__testUtils.isIncompatibleToolHistoryFallbackError(new Error([
+            '500 Model execution failed after fallback chain: gpt-5.6-luna -> gpt-5.6-terra -> gpt-5.6-sol.',
+            'Last error: Model gemini-3-flash-preview is temporarily unavailable (quota_exhausted).',
+        ].join('\n')))).toBe(true);
+        expect(__testUtils.isIncompatibleToolHistoryFallbackError(new Error('ordinary request failure'))).toBe(false);
+    });
+
     test('replays verified tool results without incompatible provider-specific tool messages', async () => {
         const providerError = new Error([
             '500 Model execution failed after fallback chain: gpt-5.6-sol -> gemini-3.7-flash.',

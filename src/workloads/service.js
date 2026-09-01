@@ -913,6 +913,12 @@ class AgentWorkloadService {
             || workload?.metadata?.requestedModel
             || '',
         ).trim() || null;
+        const reasoningEffort = String(
+            stage?.metadata?.reasoningEffort
+            || run?.metadata?.reasoningEffort
+            || workload?.metadata?.reasoningEffort
+            || '',
+        ).trim().toLowerCase() || null;
         const agentRunShadow = await this.captureAgentRunShadow(workload, run, 'executing', {
             workerId,
         });
@@ -938,6 +944,7 @@ class AgentWorkloadService {
                     message: message || `Create a ${stageOutputFormat} artifact from the prior stage output.`,
                     mode: workload.mode || 'chat',
                     model: requestedModel,
+                    reasoningEffort,
                     metadata: {
                         taskType: workload.mode || 'chat',
                         clientSurface: 'workload',
@@ -972,6 +979,7 @@ class AgentWorkloadService {
                     session,
                     message,
                     model: requestedModel,
+                    reasoningEffort,
                     executionProfile: workload.policy?.executionProfile,
                     requestedToolIds: stageToolIds,
                     policy: workload.policy || {},

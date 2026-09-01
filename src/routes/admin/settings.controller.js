@@ -78,6 +78,7 @@ const DEFAULT_AGENT_COMPANY_ROLES = [
     mission: 'Check running work, verify outputs, update schedules, and prevent duplicate loops.',
   },
 ];
+const AGENT_COMPANY_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 
 const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
 const NON_RESTORABLE_IDENTITY_TYPES = new Set([
@@ -1357,6 +1358,10 @@ class SettingsController {
       : current.projectsInitialized === true;
     next.activeProjectId = String(next.activeProjectId || '').trim().slice(0, 80);
     next.primaryModel = String(next.primaryModel || '').trim().slice(0, 120);
+    next.reasoningEffort = String(next.reasoningEffort || 'high').trim().toLowerCase();
+    if (!AGENT_COMPANY_REASONING_EFFORTS.has(next.reasoningEffort)) {
+      next.reasoningEffort = 'high';
+    }
     next.escalationModels = this.normalizeStringArray(
       next.escalationModels ?? next.fallbackModels ?? next.modelFallbacks,
       current.escalationModels || ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
@@ -1783,6 +1788,7 @@ class SettingsController {
     const envEnabled = String(process.env.KIMIBUILT_AGENT_COMPANY_ENABLED || '').trim().toLowerCase();
     const envGoal = String(process.env.KIMIBUILT_AGENT_COMPANY_GOAL || '').trim();
     const envPrimaryModel = String(process.env.KIMIBUILT_AGENT_COMPANY_PRIMARY_MODEL || '').trim();
+    const envReasoningEffort = String(process.env.KIMIBUILT_AGENT_COMPANY_REASONING_EFFORT || '').trim().toLowerCase();
     const envEscalationModels = String(process.env.KIMIBUILT_AGENT_COMPANY_ESCALATION_MODELS || '').trim();
 
     return {
@@ -1792,6 +1798,9 @@ class SettingsController {
         : merged.enabled === true,
       companyGoal: envGoal || merged.companyGoal || '',
       primaryModel: envPrimaryModel || merged.primaryModel || '',
+      reasoningEffort: AGENT_COMPANY_REASONING_EFFORTS.has(envReasoningEffort)
+        ? envReasoningEffort
+        : merged.reasoningEffort,
       escalationModels: envEscalationModels
         ? this.normalizeStringArray(envEscalationModels, merged.escalationModels)
         : this.normalizeStringArray(merged.escalationModels, defaults.escalationModels),
@@ -1878,7 +1887,8 @@ class SettingsController {
         maxConcurrentWorkloads: 1,
         ownerId: 'system',
         sessionId: 'agent-company',
-        primaryModel: '',
+        primaryModel: 'gpt-5.6-luna',
+        reasoningEffort: 'high',
         escalationModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         dailyAlignment: {
           enabled: true,

@@ -3389,8 +3389,9 @@ function buildAutomaticToolSummaryMessage(toolEvents = []) {
 
 function isIncompatibleToolHistoryFallbackError(error) {
     const message = String(error?.message || error || '');
-    return /thought[_\s-]?signature/i.test(message)
-        && /(?:function|tool)[_\s-]?call/i.test(message);
+    return (/thought[_\s-]?signature/i.test(message)
+        && /(?:function|tool)[_\s-]?call/i.test(message))
+        || /model execution failed after fallback chain/i.test(message);
 }
 
 function buildToolHistoryRecoveryMessages(messages = [], toolEvents = []) {

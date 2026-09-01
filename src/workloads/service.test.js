@@ -597,6 +597,7 @@ describe('AgentWorkloadService', () => {
             stages: [],
             metadata: {
                 requestedModel: 'gemini-3.1-pro-preview',
+                reasoningEffort: 'high',
             },
         };
         const run = {
@@ -623,6 +624,7 @@ describe('AgentWorkloadService', () => {
             sessionId: 'session-1',
             message: 'Gather information on the k3s cluster on the server.',
             model: 'gemini-3.1-pro-preview',
+            reasoningEffort: 'high',
         }));
     });
 

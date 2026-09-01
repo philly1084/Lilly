@@ -432,6 +432,21 @@ describe('settings.controller personality support', () => {
     }));
   });
 
+  test('normalizes Agent Company model and reasoning defaults', () => {
+    const normalized = controller.normalizeAgentCompanySettings({
+      primaryModel: ' gpt-5.6-luna ',
+      reasoningEffort: ' HIGH ',
+    });
+
+    expect(normalized.primaryModel).toBe('gpt-5.6-luna');
+    expect(normalized.reasoningEffort).toBe('high');
+    expect(controller.normalizeAgentCompanySettings({ reasoningEffort: 'unsupported' }).reasoningEffort).toBe('high');
+    expect(controller.getDefaultSettings().agentCompany).toEqual(expect.objectContaining({
+      primaryModel: 'gpt-5.6-luna',
+      reasoningEffort: 'high',
+    }));
+  });
+
   test('normalizes privacy PII workflow criteria and detector actions', async () => {
     const req = {
       body: {
