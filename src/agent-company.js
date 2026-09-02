@@ -190,6 +190,10 @@ function isSharedWhiteboardRefresh(reason = '') {
     return sanitizeText(reason) === SHARED_WHITEBOARD_REFRESH_REASON;
 }
 
+function getSoftwareWorkbenchPath() {
+    return sanitizeText(process.env.AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH) || '/opt/kimibuilt';
+}
+
 function isSoftwareWorkbenchItem(config = {}, item = {}) {
     if (isSharedWhiteboardRefresh(item.workloadReason)) {
         return false;
@@ -977,6 +981,7 @@ class AgentCompanyService {
         const modelSelection = this.buildModelSelection(config, item);
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
         const executionContract = buildExecutionContract(config, item);
+        const softwareWorkspace = getSoftwareWorkbenchPath();
         const whiteboardRefreshLines = item.workloadReason === SHARED_WHITEBOARD_REFRESH_REASON
             ? [
                 '',
@@ -1010,8 +1015,8 @@ class AgentCompanyService {
             executionContract.softwareWorkbench ? [
                 'Software workbench contract:',
                 '- This is an implementation job, not a request for a short text response, planning-only HTML page, or strategy document.',
-                '- Use the persistent /opt/kimibuilt workbench and remote-cli-agent terminal lane to inspect, edit, build, test, and, when the objective calls for production, deploy the actual source.',
-                '- Start remote-cli-agent with adminMode:true, targetId:"k3s-prod", cwd:"/opt/kimibuilt", collectResultFiles:true, and preserve its sessionId/jobId for continuation.',
+                `- Use the persistent ${softwareWorkspace} workbench and remote-cli-agent terminal lane to inspect, edit, build, test, and, when the objective calls for production, deploy the actual source.`,
+                `- Start remote-cli-agent with adminMode:true, targetId:"k3s-prod", cwd:"${softwareWorkspace}", collectResultFiles:true, and preserve its sessionId/jobId for continuation.`,
                 '- Produce durable code and project files. A generated HTML summary is communication only unless the requested product itself is a static HTML experience.',
                 '- For frontend work, implement real controls and states, run focused tests plus desktop/mobile browser QA, and include screenshot/report paths.',
                 '- For production delivery, require source-to-public proof: git change/commit, build image or artifact, rollout, public URL, and authenticated/browser read-back. PUBLIC_URL=not_available is incomplete when deployment is part of the objective.',
@@ -1037,6 +1042,7 @@ class AgentCompanyService {
         const requestedModel = modelSelection.model;
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
         const executionContract = buildExecutionContract(config, item);
+        const softwareWorkspace = getSoftwareWorkbenchPath();
         return this.workloadService.createWorkload({
             sessionId: config.sessionId,
             title: `${item.roleName}: ${item.title}`,
@@ -1105,10 +1111,10 @@ class AgentCompanyService {
                         productionWebRequires: ['managed-app-inventory', 'stable-hostname', 'dns-tls-public-proof'],
                         reuseBeforeRegenerate: true,
                         adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
-                        repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
+                        repoEvidenceStateRoot: `${softwareWorkspace}/.kimibuilt`,
                         softwareWorkbench: executionContract.softwareWorkbench ? {
                             executionProfile: executionContract.executionProfile,
-                            workspace: '/opt/kimibuilt',
+                            workspace: softwareWorkspace,
                             targetId: 'k3s-prod',
                             terminalTool: 'remote-cli-agent',
                             adminMode: true,

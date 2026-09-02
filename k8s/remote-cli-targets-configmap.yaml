@@ -17,9 +17,10 @@ data:
         allowedCwds:
           - /srv/apps
           - /opt/agent-apps
+          - /opt/lilly-agent-workbench
           - /opt/kimibuilt
           - /srv/gitlab
-        defaultCwd: /opt/kimibuilt
+        defaultCwd: /opt/lilly-agent-workbench
         opencodeExecutable: /usr/local/bin/codex-remote-run
         timeoutMs: 1800000
       - targetId: k3s-secondary
@@ -43,9 +44,10 @@ data:
         allowedCwds:
           - /srv/apps
           - /opt/agent-apps
+          - /opt/lilly-agent-workbench
           - /opt/kimibuilt
           - /srv/gitlab
-        defaultCwd: /opt/kimibuilt
+        defaultCwd: /opt/lilly-agent-workbench
         opencodeExecutable: /usr/local/bin/codex-remote-run
         timeoutMs: 1800000
       - targetId: prod
@@ -56,8 +58,9 @@ data:
         allowedCwds:
           - /srv/apps
           - /opt/agent-apps
+          - /opt/lilly-agent-workbench
           - /opt/kimibuilt
           - /srv/gitlab
-        defaultCwd: /opt/kimibuilt
+        defaultCwd: /opt/lilly-agent-workbench
         opencodeExecutable: /usr/local/bin/codex-remote-run
         timeoutMs: 1800000

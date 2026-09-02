@@ -452,6 +452,49 @@ describe('AgentCompanyService', () => {
         expect(operationsWorkload.prompt).toContain('Selected model lane: deepseek-v4-pro (operations-verification, competencyProfile).');
     });
 
+    test('uses the configured persistent Lilly workspace for software workbench jobs', async () => {
+        const previousWorkspace = process.env.AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH;
+        process.env.AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH = '/opt/lilly-agent-workbench';
+        const createWorkload = jest.fn(async (payload) => ({ id: 'workbench-1', ...payload }));
+        const service = new AgentCompanyService({
+            statePath,
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig(),
+            },
+            workloadService: {
+                isAvailable: () => true,
+                createWorkload,
+            },
+            sessionStore: {},
+        });
+
+        try {
+            const config = normalizeConfig(buildConfig());
+            await service.createScheduledWorkload(config, {
+                id: 'software-workbench-item',
+                roleId: 'production',
+                roleName: 'Production Lead',
+                title: 'Primary company deliverable',
+                objective: 'Implement the Lilly frontend and deploy it to production.',
+                plannedFor: '2026-06-22T13:00:00.000Z',
+            }, '2026-06-22', 'goal-hash');
+
+            const payload = createWorkload.mock.calls[0][0];
+            expect(payload.policy.executionProfile).toBe('remote-build');
+            expect(payload.prompt).toContain('cwd:"/opt/lilly-agent-workbench"');
+            expect(payload.metadata.agentCompany.outputContract.softwareWorkbench.workspace)
+                .toBe('/opt/lilly-agent-workbench');
+            expect(payload.metadata.agentCompany.outputContract.repoEvidenceStateRoot)
+                .toBe('/opt/lilly-agent-workbench/.kimibuilt');
+        } finally {
+            if (previousWorkspace === undefined) {
+                delete process.env.AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH;
+            } else {
+                process.env.AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH = previousWorkspace;
+            }
+        }
+    });
+
     test('drops stale created workload state when Postgres has no matching company workloads', async () => {
         await fs.writeFile(statePath, JSON.stringify({
             createdWorkloads: [{

@@ -25,6 +25,7 @@ data:
   REMOTE_CLI_CODEX_AGENT_BASE_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local"
   REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/opt/kimibuilt"
   CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS: "/opt/kimibuilt"
+  AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH: "/opt/lilly-agent-workbench"
   REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.6-sol"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
@@ -36,7 +37,7 @@ data:
   # Translate explicit SSH hosts in Web Chat into the gateway's canonical
   # target IDs so a saved primary session cannot override a secondary request.
   REMOTE_CLI_TARGET_HOST_MAP: "168.119.176.121=k3s-primary,162.55.163.199=k3s-secondary,secdevsolutions.help=k3s-primary,demoserver2.buzz=k3s-secondary,demosever2.buzz=k3s-secondary"
-  REMOTE_CLI_DEFAULT_CWD: "/opt/kimibuilt"
+  REMOTE_CLI_DEFAULT_CWD: "/opt/lilly-agent-workbench"
   REMOTE_CLI_AGENT_MODEL: "gpt-5.4"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
