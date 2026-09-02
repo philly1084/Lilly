@@ -52,13 +52,21 @@ class AgentWorkloadRunner {
 
         this.isTicking = true;
         try {
+            const availableSlots = Math.max(0, this.batchSize - this.activeRuns.size);
+            if (availableSlots === 0) {
+                return;
+            }
             const claimedRuns = await this.workloadService.claimDueRuns({
                 workerId: this.workerId,
-                limit: this.batchSize,
+                limit: availableSlots,
                 leaseMs: this.leaseMs,
             });
 
-            await Promise.all(claimedRuns.map((run) => this.processRun(run)));
+            for (const run of claimedRuns) {
+                this.processRun(run).catch((error) => {
+                    console.error(`[WorkloadRunner] Run ${run?.id || 'unknown'} processing failed:`, error.message);
+                });
+            }
         } finally {
             this.isTicking = false;
         }
