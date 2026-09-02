@@ -17,7 +17,7 @@ const { normalizeRemoteCliTargetIdCandidate } = require('./target-selection');
 const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
 const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
-const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
+const DEFAULT_AGENT_RUN_TIMEOUT_MS = 720000;
 const MAX_AGENT_RUN_TIMEOUT_MS = 3600000;
 const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
@@ -1332,6 +1332,7 @@ function buildProviderAgentTask({
   requestedModel = '',
   continuitySummary = '',
   handoff = null,
+  adminMode = false,
 } = {}) {
   const handoffPrompt = buildRemoteAgentHandoffPrompt(handoff);
   return [
@@ -1344,7 +1345,12 @@ function buildProviderAgentTask({
     'Completion contract:',
     '- Baseline the active target and workspace before any mutation.',
     '- Keep changes scoped, preserve unrelated git work, and verify the actual deployed surface when deployment is requested.',
+    '- Treat the remote workspace as a persistent computer workbench: use its terminal and coding tools to inspect, edit, build, test, and deploy real project files. Do not substitute a short prose response or planning-only HTML page for requested software implementation.',
+    '- If prior artifact/session continuity is missing, recover from the existing repository, workspace, deployments, and public routes. Missing optional context is not permission to replace the requested implementation with a brief.',
+    '- For long work, keep making verified incremental progress. If the foreground stream ends while the task is still running, preserve the task/session identifiers so the same job can be resumed.',
+    adminMode ? '- Admin mode is enabled for this scoped job. Use the available build, image, Kubernetes, ingress, and verification paths when production delivery is part of the task.' : '',
     '- For UI work, run browser/Playwright or kimibuilt-ui-check proof before claiming success.',
+    '- When deployment is requested, PUBLIC_URL=not_available or an intentionally undeployed change is incomplete. Continue through rollout and public verification, or return REMOTE_AGENT_RESULT: failed with the exact external blocker.',
     '- Finish with marker lines: WHAT_CHANGED=<summary>, VERIFY_COMMANDS=<commands>, VERIFY_RESULTS=<results>, PUBLIC_URL=<url or not_available>, BLOCKER=<none or exact blocker>.',
     '- Include Git and deployment continuity markers when known.',
     '- The final marker must be REMOTE_AGENT_RESULT: success <summary> or REMOTE_AGENT_RESULT: failed <reason>.',
@@ -2511,6 +2517,8 @@ class RemoteCliAgentsSdkRunner {
     let lastProgressMarker = '';
     let terminalEvent = null;
     let preserveRunningTask = false;
+    let retainTerminalTask = false;
+    let startedTaskInThisRun = false;
     const handoff = input.handoff || null;
     const requestedTaskId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
 
@@ -2678,6 +2686,7 @@ class RemoteCliAgentsSdkRunner {
               requestedModel: selection.requestedModel,
               continuitySummary,
               handoff,
+              adminMode,
             }),
             ...(selection.providerModel ? { model: selection.providerModel } : {}),
             ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
@@ -2691,6 +2700,7 @@ class RemoteCliAgentsSdkRunner {
           throw new Error(normalizeText(startBody?.error || startBody?.message) || `${selection.providerLabel} remote-agent start failed with status ${startResponse?.status || 'unknown'}.`);
         }
         taskId = normalizeText(startBody?.task?.id);
+        startedTaskInThisRun = Boolean(taskId);
         providerSessionId = normalizeText(startBody?.task?.sessionId);
         const streamUrl = normalizeText(startBody?.streamUrl);
         if (!taskId || !streamUrl) {
@@ -2798,6 +2808,7 @@ class RemoteCliAgentsSdkRunner {
       );
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
       const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
+      retainTerminalTask = true;
       return {
         finalOutput,
         humanSummary: structuredResult.humanSummary,
@@ -2887,6 +2898,9 @@ class RemoteCliAgentsSdkRunner {
               apiMode: 'provider-agent',
             };
           }
+          if (statusResponse?.ok && statusBody?.task) {
+            retainTerminalTask = true;
+          }
         }
         const timeoutError = new RemoteCliAgentRunTimeoutError(timeoutMs);
         timeoutError.cause = error;
@@ -2894,7 +2908,7 @@ class RemoteCliAgentsSdkRunner {
       }
       throw error;
     } finally {
-      if (taskId && !preserveRunningTask) {
+      if (taskId && startedTaskInThisRun && !preserveRunningTask && !retainTerminalTask) {
         await this.fetch(buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/cancel`), {
           method: 'POST',
           headers: {

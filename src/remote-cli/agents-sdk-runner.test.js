@@ -1056,6 +1056,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         ],
       }),
     ]));
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith(`/task-${providerId}/cancel`))).toBe(false);
   });
 
   test('uses the configured Codex provider when provider-agent has no explicit model', async () => {
@@ -1600,10 +1601,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       blocker: null,
     });
     expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=success CODEX_REMOTE_OK');
-    expect(fetchImpl).toHaveBeenLastCalledWith(
-      'https://gateway.example.com/admin/remote-agent-tasks/task-codex-split/cancel',
-      expect.objectContaining({ method: 'POST' }),
-    );
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/task-codex-split/cancel'))).toBe(false);
   });
 
   test('rejects cross-origin provider-agent streams before sending gateway credentials', async () => {

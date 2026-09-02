@@ -301,6 +301,37 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].policy).toEqual(expect.objectContaining({
             maxRounds: 5,
             maxToolCalls: 14,
+            executionProfile: 'default',
+            allowSideEffects: false,
+        }));
+        const productionWorkload = createdWorkloads.find((workload) => workload.title.startsWith('Production Lead:'));
+        expect(productionWorkload.policy).toEqual(expect.objectContaining({
+            executionProfile: 'remote-build',
+            allowSideEffects: true,
+            maxRounds: 8,
+            maxToolCalls: 28,
+            maxDurationMs: 3600000,
+            toolIds: expect.arrayContaining([
+                'remote-cli-agent',
+                'remote-command',
+                'remote-workbench',
+                'k3s-deploy',
+                'web-scrape',
+                'file-write',
+                'code-sandbox',
+            ]),
+        }));
+        expect(productionWorkload.prompt).toContain('Software workbench contract:');
+        expect(productionWorkload.prompt).toContain('not a request for a short text response');
+        expect(productionWorkload.prompt).toContain('PUBLIC_URL=not_available is incomplete');
+        expect(productionWorkload.metadata.agentCompany.outputContract.softwareWorkbench).toEqual(expect.objectContaining({
+            executionProfile: 'remote-build',
+            workspace: '/opt/kimibuilt',
+            targetId: 'k3s-prod',
+            terminalTool: 'remote-cli-agent',
+            adminMode: true,
+            collectResultFiles: true,
+            planningOnlyHtmlAccepted: false,
         }));
         expect(createdWorkloads[0].metadata.modelSelection).toEqual(expect.objectContaining({
             model: 'gpt-5.5',

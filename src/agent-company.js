@@ -29,6 +29,25 @@ const COMPANY_LONG_AGENT_COMPACTION_TRIGGER_CHARS = 10000;
 const COMPANY_LONG_AGENT_RETAIN_CHARS = 4500;
 const COMPANY_WORKLOAD_MAX_ROUNDS = 5;
 const COMPANY_WORKLOAD_MAX_TOOL_CALLS = 14;
+const SOFTWARE_WORKBENCH_MAX_ROUNDS = 8;
+const SOFTWARE_WORKBENCH_MAX_TOOL_CALLS = 28;
+const SOFTWARE_WORKBENCH_MAX_DURATION_MS = 3600000;
+const SOFTWARE_WORKBENCH_TOOL_IDS = [
+    'remote-cli-agent',
+    'remote-command',
+    'remote-workbench',
+    'k3s-deploy',
+    'web-search',
+    'web-fetch',
+    'web-scrape',
+    'file-read',
+    'file-write',
+    'file-search',
+    'file-mkdir',
+    'git-safe',
+    'code-sandbox',
+    'tool-doc-read',
+];
 const AGENT_COMPANY_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 const DEFAULT_MODEL_CANDIDATES = [
     'gpt-5.6-sol',
@@ -169,6 +188,50 @@ function addDays(date, days) {
 
 function isSharedWhiteboardRefresh(reason = '') {
     return sanitizeText(reason) === SHARED_WHITEBOARD_REFRESH_REASON;
+}
+
+function isSoftwareWorkbenchItem(config = {}, item = {}) {
+    if (isSharedWhiteboardRefresh(item.workloadReason)) {
+        return false;
+    }
+
+    const roleId = sanitizeText(item.roleId).toLowerCase();
+    if (!['production', 'operations', 'engineering', 'developer', 'development'].includes(roleId)) {
+        return false;
+    }
+
+    const role = (config.roles || []).find((candidate) => candidate.id === item.roleId) || {};
+    const taskText = [
+        config.companyGoal,
+        item.title,
+        item.objective,
+        role.mission,
+    ].map(sanitizeText).filter(Boolean).join('\n');
+
+    return /\b(?:software|source code|codebase|repository|frontend|back[ -]?end|full[ -]?stack|website|web app|application|dashboard|api|service|cli|agent platform|sandbox|desktop|terminal|kubernetes|k8s|deployment|deploy|production)\b/i.test(taskText);
+}
+
+function buildExecutionContract(config = {}, item = {}) {
+    const softwareWorkbench = isSoftwareWorkbenchItem(config, item);
+    return softwareWorkbench
+        ? {
+            softwareWorkbench: true,
+            executionProfile: 'remote-build',
+            toolIds: [...SOFTWARE_WORKBENCH_TOOL_IDS],
+            maxRounds: SOFTWARE_WORKBENCH_MAX_ROUNDS,
+            maxToolCalls: SOFTWARE_WORKBENCH_MAX_TOOL_CALLS,
+            maxDurationMs: SOFTWARE_WORKBENCH_MAX_DURATION_MS,
+            allowSideEffects: true,
+        }
+        : {
+            softwareWorkbench: false,
+            executionProfile: 'default',
+            toolIds: [],
+            maxRounds: COMPANY_WORKLOAD_MAX_ROUNDS,
+            maxToolCalls: COMPANY_WORKLOAD_MAX_TOOL_CALLS,
+            maxDurationMs: 900000,
+            allowSideEffects: false,
+        };
 }
 
 function uniqueStrings(values = []) {
@@ -913,6 +976,7 @@ class AgentCompanyService {
             : 'no configured escalation models';
         const modelSelection = this.buildModelSelection(config, item);
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
+        const executionContract = buildExecutionContract(config, item);
         const whiteboardRefreshLines = item.workloadReason === SHARED_WHITEBOARD_REFRESH_REASON
             ? [
                 '',
@@ -943,6 +1007,16 @@ class AgentCompanyService {
             `- Selected model lane: ${this.formatModelSelection(modelSelection)}.`,
             '- Do not create duplicate recurring jobs; inspect current work first and update the schedule or scratch summary instead.',
             '- Save tokens: cite paths, IDs, URLs, and concise deltas instead of pasting full prior plans, logs, source files, or unchanged prose.',
+            executionContract.softwareWorkbench ? [
+                'Software workbench contract:',
+                '- This is an implementation job, not a request for a short text response, planning-only HTML page, or strategy document.',
+                '- Use the persistent /opt/kimibuilt workbench and remote-cli-agent terminal lane to inspect, edit, build, test, and, when the objective calls for production, deploy the actual source.',
+                '- Start remote-cli-agent with adminMode:true, targetId:"k3s-prod", cwd:"/opt/kimibuilt", collectResultFiles:true, and preserve its sessionId/jobId for continuation.',
+                '- Produce durable code and project files. A generated HTML summary is communication only unless the requested product itself is a static HTML experience.',
+                '- For frontend work, implement real controls and states, run focused tests plus desktop/mobile browser QA, and include screenshot/report paths.',
+                '- For production delivery, require source-to-public proof: git change/commit, build image or artifact, rollout, public URL, and authenticated/browser read-back. PUBLIC_URL=not_available is incomplete when deployment is part of the objective.',
+                '- Long work may outlive one foreground wait. Leave the remote job running, record its jobId/sessionId, and continue the same job on the next agent step instead of replacing it with a brief.',
+            ].join('\n') : null,
             buildOutputQualityContract(),
             '',
             'Shared whiteboard:',
@@ -962,6 +1036,7 @@ class AgentCompanyService {
         const modelSelection = this.buildModelSelection(config, item);
         const requestedModel = modelSelection.model;
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
+        const executionContract = buildExecutionContract(config, item);
         return this.workloadService.createWorkload({
             sessionId: config.sessionId,
             title: `${item.roleName}: ${item.title}`,
@@ -972,12 +1047,12 @@ class AgentCompanyService {
                 runAt: item.plannedFor,
             },
             policy: {
-                executionProfile: 'default',
-                toolIds: [],
-                maxRounds: COMPANY_WORKLOAD_MAX_ROUNDS,
-                maxToolCalls: COMPANY_WORKLOAD_MAX_TOOL_CALLS,
-                maxDurationMs: 900000,
-                allowSideEffects: false,
+                executionProfile: executionContract.executionProfile,
+                toolIds: executionContract.toolIds,
+                maxRounds: executionContract.maxRounds,
+                maxToolCalls: executionContract.maxToolCalls,
+                maxDurationMs: executionContract.maxDurationMs,
+                allowSideEffects: executionContract.allowSideEffects,
             },
             ...(requestedModel ? { model: requestedModel } : {}),
             metadata: {
@@ -1031,6 +1106,17 @@ class AgentCompanyService {
                         reuseBeforeRegenerate: true,
                         adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
                         repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
+                        softwareWorkbench: executionContract.softwareWorkbench ? {
+                            executionProfile: executionContract.executionProfile,
+                            workspace: '/opt/kimibuilt',
+                            targetId: 'k3s-prod',
+                            terminalTool: 'remote-cli-agent',
+                            adminMode: true,
+                            collectResultFiles: true,
+                            durableOutputsRequired: true,
+                            planningOnlyHtmlAccepted: false,
+                            productionProof: ['git-change', 'tests', 'build', 'rollout', 'public-url', 'browser-read-back'],
+                        } : null,
                         qualityProfiles: buildQualityProfileMetadata([
                             'document-artifact',
                             'website-experience',
