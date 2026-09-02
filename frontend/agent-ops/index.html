@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <title>KimiBuilt Agent Command Center</title>
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css?v=6.4.0">
-  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v4">
+  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v5">
 </head>
 <body>
   <a class="skip-link" href="#fleet">Skip to agent fleet</a>
@@ -28,6 +28,7 @@
         <a href="#goals" data-view="goals"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><span>Goals</span></a>
         <a class="active" href="#agents" data-view="agents" aria-current="page"><i class="fa-solid fa-people-group" aria-hidden="true"></i><span>Agents</span></a>
         <a href="#workflows" data-view="workflows"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i><span>Workflows</span></a>
+        <a href="#messages" data-view="messages"><i class="fa-regular fa-comments" aria-hidden="true"></i><span>Updates</span></a>
         <a href="#artifacts" data-view="artifacts"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Artifacts</span></a>
         <a href="#approvals" data-view="approvals"><i class="fa-regular fa-square-check" aria-hidden="true"></i><span>Approvals</span><span class="nav-count" id="approvalCount">0</span></a>
       </nav>
@@ -41,12 +42,14 @@
       <section class="fleet-content" id="fleetContent" hidden aria-label="Agent operations">
         <section class="operations-view" id="view-agents" data-view-panel="agents" aria-labelledby="agentsViewTitle">
           <h1 class="sr-only" id="agentsViewTitle">Agents</h1>
+          <section id="latestAgentUpdate" class="latest-agent-update" aria-label="Latest agent update" hidden></section>
           <div id="agentGroups"></div>
           <div class="empty-state" id="filterEmpty" hidden><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><h2>No matching agents</h2><p>Try a name, task, action, model, or status.</p></div>
         </section>
         <section class="operations-view overview-view" id="view-goals" data-view-panel="goals" hidden></section>
         <section class="operations-view overview-view" id="view-workflows" data-view-panel="workflows" hidden></section>
         <section class="operations-view overview-view" id="view-artifacts" data-view-panel="artifacts" hidden></section>
+        <section class="operations-view overview-view" id="view-messages" data-view-panel="messages" hidden></section>
         <section class="operations-view overview-view" id="view-approvals" data-view-panel="approvals" hidden></section>
       </section>
     </main>
@@ -107,6 +110,6 @@
     </form>
   </dialog>
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="js/agent-ops.js?v=agent-command-center-v4"></script>
+  <script src="js/agent-ops.js?v=agent-command-center-v5"></script>
 </body>
 </html>

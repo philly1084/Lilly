@@ -352,6 +352,17 @@ describe('AgentOpsService', () => {
     expect(workspace.messages.length).toBeGreaterThan(0);
   });
 
+  test('surfaces a website handoff in overview and Messages without opening its HTML artifact', async () => {
+    const { service, fixture } = buildService();
+    fixture.workloadRuns[0].metadata.output.text = 'The website is built.\n[Open website](https://canada.demoserver2.buzz/).\nScreenshots still need review.';
+    const overview = await service.getOverview();
+    const workspace = await service.getAgentWorkspace('research');
+    expect(overview.messages[0].message).toContain('The website is built.');
+    expect(workspace.messages[0]).toEqual(overview.messages[0]);
+    expect(workspace.messages[0].message).toContain('Screenshots still need review.');
+    expect(workspace.browser[0]).toMatchObject({ url: 'https://canada.demoserver2.buzz/', detail: 'Link reported by agent' });
+  });
+
   test('persists a new goal on the active project and immediately starts coordination', async () => {
     const { service, updateAgentCompanySettings, tick } = buildService();
 

@@ -163,7 +163,7 @@ class ConversationRunService {
         }
         const sanitizedMessage = stripAgentJournalBlocks(message);
         const outputFormat = String(metadata?.outputFormat || '').trim().toLowerCase()
-            || inferRequestedOutputFormat(sanitizedMessage);
+            || (metadata?.agentCompanyRun === true ? null : inferRequestedOutputFormat(sanitizedMessage));
         const requestFrame = buildRequestDecisionFrame({
             text: sanitizedMessage,
             session: resolvedSession,
@@ -561,7 +561,7 @@ class ConversationRunService {
         reasoningEffort = null,
         metadata = {},
     }) {
-        if (metadata?.workloadRun !== true) {
+        if (metadata?.workloadRun !== true || metadata?.agentCompanyRun === true) {
             return {
                 artifacts: [],
                 artifactMessage: '',

@@ -11,6 +11,15 @@ const { AgentRunService } = require('../agent-runs/service');
 const { broadcastToSession } = require('../realtime-hub');
 
 describe('AgentWorkloadService', () => {
+    test('retains the company delivery contract on review and continuation stages', () => {
+        const subject = new AgentWorkloadService({});
+        const message = subject.buildStageMessage('Continue verifying.', {}, null, {
+            prompt: 'Build a site and report its URL directly to the user.',
+            metadata: { agentCompany: { enabled: true } },
+        });
+        expect(message).toContain('Build a site and report its URL directly to the user.');
+        expect(message).toContain('Continue verifying.');
+    });
     let store;
     let sessionStore;
     let conversationRunService;

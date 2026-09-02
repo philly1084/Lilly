@@ -37,6 +37,16 @@ const {
 const { ConversationRunService } = require('./conversation-run-service');
 
 describe('ConversationRunService', () => {
+    test('never converts Agent Company status messages into deferred HTML or XLSX artifacts', async () => {
+        const service = new ConversationRunService({ app: { locals: {} }, sessionStore: {}, memoryService: {} });
+        const result = await service.maybeGenerateDeferredArtifact({
+            message: 'Formats: HTML, PDF, XLSX. Public URL: https://example.test',
+            outputText: 'I am continuing the deployment handoff.',
+            metadata: { workloadRun: true, agentCompanyRun: true, outputFormat: 'html' },
+        });
+        expect(result).toEqual({ artifacts: [], artifactMessage: '' });
+        expect(maybeGenerateOutputArtifact).not.toHaveBeenCalled();
+    });
     beforeEach(() => {
         jest.clearAllMocks();
     });

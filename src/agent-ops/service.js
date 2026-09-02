@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { buildAgentMessages } = require('./messages');
 const { AGENT_RUN_SURFACE } = require('../agent-runs/constants');
 
 const ACTIVE_RUN_STATES = new Set([
@@ -674,6 +675,7 @@ class AgentOpsService {
           artifactCount: project.id === activeProject?.id ? projectArtifacts.length : null,
         })),
         workflows,
+        messages: buildAgentMessages(companyWorkloads, indexes.companyWorkloadRuns),
         artifacts: projectArtifacts,
         approvals: groups.needsInput
           .filter((agent) => agent.approval)
@@ -1194,24 +1196,19 @@ class AgentOpsService {
       command: event.type,
       output: [event.title, event.detail].filter(Boolean).join(' — '),
     }));
-    const messages = timeline
-      .filter((event) => event.title || event.detail)
-      .map((event) => ({
-        id: event.id,
-        timestamp: event.timestamp,
-        from: /handoff/i.test(event.type) ? 'Agent handoff' : agent.name,
-        message: [event.title, event.detail].filter(Boolean).join(': '),
-        status: event.status,
-      }));
+    const messages = buildAgentMessages(roleWorkloads, workloadRuns);
     const allArtifacts = [...artifacts, ...recordedOutputs];
-    const browser = allArtifacts
+    const publicLinks = [...new Map(messages.flatMap((message) => message.links).map((link) => [link.url, {
+      id: link.url, name: link.label, detail: 'Link reported by agent', url: link.url,
+    }])).values()];
+    const browser = [...publicLinks, ...allArtifacts
       .filter((artifact) => artifact.previewUrl || artifact.url)
       .map((artifact) => ({
         id: artifact.id,
         name: artifact.name || artifact.label,
         detail: artifact.detail || 'Recorded preview',
         url: artifact.previewUrl || artifact.url,
-      }));
+      }))];
 
     return {
       agentId: normalizedId,

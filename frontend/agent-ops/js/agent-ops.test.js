@@ -6,9 +6,20 @@ const {
   normalizeWorkspace,
   matchesAgent,
   escapeHtml,
+  renderMessageText,
+  renderMessageList,
 } = require('./agent-ops');
 
 describe('Agent Command Center data boundary', () => {
+  test('renders safe clickable handoff links without executing agent HTML', () => {
+    const dom = new JSDOM(renderMessageList([{ from: 'Builder', message: 'Ready\n[Open website](https://canada.demoserver2.buzz/)\n<img src=x onerror=alert(1)>\n[bad](javascript:alert(1))', links: [{ label: 'Unsafe', url: 'javascript:alert(1)' }], attachments: [{ label: 'Source', url: '/api/artifacts/source/download' }] }]));
+    expect(dom.window.document.querySelector('img')).toBeNull();
+    expect([...dom.window.document.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://canada.demoserver2.buzz/', '/api/artifacts/source/download']);
+    expect(dom.window.document.querySelector('a').textContent).toBe('Open website');
+    expect(dom.window.document.querySelector('a').rel).toContain('noopener');
+    expect(renderMessageText('See https://example.test/path.')).toContain('href="https://example.test/path"');
+    dom.window.close();
+  });
   test('normalizes missing groups and null runtime metrics without inventing values', () => {
     const overview = normalizeOverview({
       project: { name: 'Runtime truth' },
@@ -81,6 +92,7 @@ describe('Agent Command Center interactions', () => {
       workflows: [{ id: 'workflow-1', title: 'Build workflow', status: 'running' }],
       artifacts: [{ id: 'artifact-1', name: 'report.md', previewUrl: '/api/artifacts/artifact-1/preview', deletable: true }],
       approvals: [],
+      messages: [{ from: 'Builder', message: 'Site is ready. [Open website](https://example.test/site)', links: [{ label: 'Website', url: 'https://example.test/site' }] }],
       capabilities: {
         goalCreation: { enabled: true, endpoint: '/goals' },
         projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate', deleteEndpointTemplate: '/projects/{projectId}' },
@@ -113,7 +125,9 @@ describe('Agent Command Center interactions', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    for (const view of ['goals', 'agents', 'workflows', 'artifacts', 'approvals']) {
+    expect(dom.window.document.getElementById('latestAgentUpdate').hidden).toBe(false);
+    expect(dom.window.document.querySelector('#latestAgentUpdate a[href="https://example.test/site"]')).not.toBeNull();
+    for (const view of ['goals', 'agents', 'workflows', 'artifacts', 'approvals', 'messages']) {
       dom.window.document.querySelector(`[data-view="${view}"]`).click();
       expect(dom.window.document.getElementById(`view-${view}`).hidden).toBe(false);
       expect(dom.window.document.querySelector(`[data-view="${view}"]`).getAttribute('aria-current')).toBe('page');

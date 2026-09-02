@@ -18,6 +18,7 @@
     ],
     heartbeat: { healthy: true, ageSeconds: 12, label: 'All systems nominal' },
     budget: { spent: 1842.63, limit: 5000, period: 'MTD' },
+    messages: [{ id: 'demo-handoff', from: 'Mira', task: 'Verify checkout behavior', timestamp: '2026-08-30T13:11:38.000Z', message: 'The checkout fix is ready for review.\n\n[Open the preview](https://example.com/checkout). The pricing and retry checks passed on desktop and mobile.\n\nProduction deployment is still awaiting your approval.', links: [{ label: 'Checkout preview', url: 'https://example.com/checkout' }], attachments: [] }],
     capabilities: {
       goalCreation: { enabled: true, endpoint: '/goals' },
       projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate', deleteEndpointTemplate: '/projects/{projectId}' },
@@ -119,6 +120,7 @@
       goalItems: Array.isArray(source.goalItems) ? source.goalItems : [],
       workflows: Array.isArray(source.workflows) ? source.workflows : [],
       artifacts: Array.isArray(source.artifacts) ? source.artifacts : [],
+      messages: Array.isArray(source.messages) ? source.messages : [],
       approvals: Array.isArray(source.approvals) ? source.approvals : [],
       capabilities: source.capabilities && typeof source.capabilities === 'object' ? source.capabilities : {},
     };
@@ -238,14 +240,21 @@
     if (!Array.isArray(evidence) || evidence.length === 0) return '';
     return `<div class="evidence-links">${evidence.map((item) => {
       const label = item.label || item.name || item.title || item.id || 'Evidence';
-      return item.url
-        ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>${escapeHtml(label)}</a>`
+      const url = safeMessageUrl(item.url);
+      return url
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>${escapeHtml(label)}</a>`
         : `<span><i class="fa-regular fa-file-lines" aria-hidden="true"></i>${escapeHtml(label)}</span>`;
     }).join('')}</div>`;
   }
 
   function renderOverviewViews() {
-    const { project, goalItems, workflows, artifacts, approvals } = state.overview;
+    const { project, goalItems, workflows, artifacts, approvals, messages } = state.overview;
+    const reportedLinks = [...new Map(messages.flatMap((item) => item.links || []).map((link) => [link.url, link])).values()].slice(0, 24);
+    document.getElementById('view-messages').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Direct from your agents</span><h1>Updates</h1><p>Results, links, and blockers. Files stay in Artifacts; execution logs stay in Activity.</p></div><span class="view-count">${messages.length} update${messages.length === 1 ? '' : 's'}</span></header>${reportedLinks.length ? `<section class="reported-links" aria-label="Links reported by agents"><h2>Reported links</h2>${renderEvidenceLinks(reportedLinks)}</section>` : ''}${messages.length ? renderMessageList(messages) : '<div class="view-empty"><h2>No agent updates yet</h2><p>Agents will report their results here when a run returns.</p></div>'}`;
+    const latest = document.getElementById('latestAgentUpdate');
+    latest.hidden = messages.length === 0;
+    latest.innerHTML = messages.length ? `<div class="latest-update-heading"><h2>Latest agent update</h2><a href="#messages" data-open-updates>All updates</a></div>${renderMessageList(messages.slice(0, 1), true)}` : '';
+    latest.querySelector('[data-open-updates]')?.addEventListener('click', (event) => { event.preventDefault(); setView('messages'); });
     const hasProject = Boolean(project?.id);
     const goal = project.goal || project.title || 'No active goal';
     const projectActions = `<div class="view-actions"><button class="secondary-button view-new-project" type="button"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> New project</button>${hasProject ? `<button class="primary-button view-new-goal" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New goal</button><button class="danger-button view-delete-project" type="button"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Delete project</button>` : ''}</div>`;
@@ -266,7 +275,7 @@
   }
 
   function setView(viewName, updateHash = true) {
-    const allowed = ['goals', 'agents', 'workflows', 'artifacts', 'approvals'];
+    const allowed = ['goals', 'agents', 'workflows', 'artifacts', 'approvals', 'messages'];
     const nextView = allowed.includes(viewName) ? viewName : 'agents';
     state.activeView = nextView;
     document.querySelectorAll('[data-view-panel]').forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== nextView; });
@@ -362,9 +371,41 @@
     return true;
   }
 
+  function safeMessageUrl(value) {
+    const url = String(value || '').trim();
+    if (/^\/(?!\/)[^\s\\]*$/.test(url)) return url;
+    try {
+      const parsed = new URL(url);
+      return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : null;
+    } catch (_error) { return null; }
+  }
+
+  function renderMessageText(value = '') {
+    const source = String(value);
+    // Escape all text. Only a small, validated link subset becomes markup.
+    const pattern = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/(?!\/)[^\s)]+)\)|https?:\/\/[^\s<>"'`]+/g;
+    let html = ''; let cursor = 0;
+    for (const match of source.matchAll(pattern)) {
+      html += escapeHtml(source.slice(cursor, match.index));
+      const raw = match[2] || match[0].replace(/[.,;:!?)\]}]+$/, '');
+      const url = safeMessageUrl(raw);
+      html += url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(match[1] || raw)}</a>${match[2] ? '' : escapeHtml(match[0].slice(raw.length))}` : escapeHtml(match[0]);
+      cursor = match.index + match[0].length;
+    }
+    return html + escapeHtml(source.slice(cursor));
+  }
+
+  function renderMessageList(items, compact = false) {
+    return `<ol class="message-list agent-updates">${items.map((item) => {
+      const message = item.message || item.detail || 'Recorded update';
+      const body = `<p class="message-body">${renderMessageText(message)}</p>`;
+      return `<li><div class="message-heading"><strong>${escapeHtml(item.from || 'Agent')}</strong><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatDateTime(item.timestamp))}</time></div>${item.task ? `<p class="message-task">${escapeHtml(item.task)}</p>` : ''}${compact && message.length > 500 ? `<details><summary>${escapeHtml(message.slice(0, 180))}… Read full update</summary>${body}</details>` : body}${renderEvidenceLinks(item.links || [])}${item.attachments?.length ? `<div class="message-attachments"><span>Files</span>${renderEvidenceLinks(item.attachments)}</div>` : ''}</li>`;
+    }).join('')}</ol>`;
+  }
+
   function renderMessagesPanel(panel, items) {
     if (!items.length) return false;
-    panel.innerHTML = `<ol class="message-list">${items.map((item) => `<li><div><strong>${escapeHtml(item.from || 'Agent runtime')}</strong><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatEventTime(item.timestamp))}</time></div><p>${escapeHtml(item.message || item.detail || 'Recorded update')}</p></li>`).join('')}</ol>`;
+    panel.innerHTML = renderMessageList(items);
     return true;
   }
 
@@ -697,12 +738,12 @@
   function init() {
     state.demo = new URLSearchParams(globalScope.location.search).get('demo') === '1';
     const initialView = globalScope.location.hash.replace('#', '');
-    if (['goals', 'agents', 'workflows', 'artifacts', 'approvals'].includes(initialView)) state.activeView = initialView;
+    if (['goals', 'agents', 'workflows', 'artifacts', 'approvals', 'messages'].includes(initialView)) state.activeView = initialView;
     document.getElementById('previewBanner').hidden = !state.demo;
     bindEvents(); loadOverview();
   }
 
-  const publicApi = { normalizeOverview, normalizeWorkspace, matchesAgent, normalizeAgent, escapeHtml, demoOverview };
+  const publicApi = { normalizeOverview, normalizeWorkspace, matchesAgent, normalizeAgent, escapeHtml, safeMessageUrl, renderMessageText, renderMessageList, demoOverview };
   if (typeof module !== 'undefined' && module.exports) module.exports = publicApi;
   if (globalScope.document) {
     if (globalScope.document.readyState === 'loading') globalScope.document.addEventListener('DOMContentLoaded', init);

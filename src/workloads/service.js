@@ -990,6 +990,7 @@ class AgentWorkloadService {
                         runId: run.id,
                         agentRunId: agentRunShadow?.run?.id || null,
                         workloadRun: true,
+                        agentCompanyRun: workload.metadata?.agentCompany?.enabled === true,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
                         outputFormat: stageOutputFormat,
@@ -1468,6 +1469,8 @@ class AgentWorkloadService {
         const creationContext = this.renderCreationContext(workload?.metadata?.creationContext);
 
         const contextParts = [
+            workload?.metadata?.agentCompany?.enabled === true && trimmedPrompt !== workload.prompt
+                ? `[Original company task and delivery contract]\n${workload.prompt}` : '',
             projectContext,
             longAgentContext,
             creationContext,
