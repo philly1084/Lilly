@@ -84,6 +84,45 @@ describe('automatic chat tool-history recovery', () => {
             })],
         });
     });
+
+    test('bounds recovery context while preserving the goal and verified tool evidence', () => {
+        const messages = [
+            { role: 'system', content: `System constraints: ${'s'.repeat(30000)}` },
+            { role: 'user', content: `Build the operations deck. ${'u'.repeat(20000)}` },
+            {
+                role: 'assistant',
+                content: '',
+                tool_calls: [{
+                    id: 'call_large',
+                    type: 'function',
+                    function: { name: 'web-fetch', arguments: JSON.stringify({ url: 'https://example.com' }) },
+                }],
+            },
+            { role: 'tool', tool_call_id: 'call_large', content: 'provider-specific tool transcript' },
+        ];
+        const toolEvents = [{
+            toolCall: {
+                id: 'call_large',
+                function: { name: 'web-fetch', arguments: JSON.stringify({ url: 'https://example.com' }) },
+            },
+            result: {
+                success: true,
+                toolId: 'web-fetch',
+                data: { body: `verified beginning ${'x'.repeat(160000)} verified ending` },
+            },
+        }];
+
+        const recoveryMessages = __testUtils.buildToolHistoryRecoveryMessages(messages, toolEvents);
+        const serialized = JSON.stringify(recoveryMessages);
+
+        expect(recoveryMessages.some((message) => message.role === 'tool')).toBe(false);
+        expect(recoveryMessages.some((message) => Array.isArray(message.tool_calls))).toBe(false);
+        expect(serialized.length).toBeLessThan(40000);
+        expect(serialized).toContain('Build the operations deck.');
+        expect(serialized).toContain('web-fetch');
+        expect(serialized).toContain('verified beginning');
+        expect(serialized).toContain('verified ending');
+    });
 });
 
 function createToolManager() {

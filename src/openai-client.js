@@ -82,6 +82,11 @@ const DIRECT_REMOTE_STDERR_CHARS = Math.max(
     Math.min(MODEL_TOOL_RESULT_CHAR_LIMIT, parseInt(process.env.DIRECT_REMOTE_STDERR_CHARS, 10) || 12000),
 );
 const DIRECT_TOOL_MESSAGE_CHARS = 900;
+const TOOL_HISTORY_RECOVERY_CONTEXT_CHARS = 6000;
+const TOOL_HISTORY_RECOVERY_USER_CHARS = 8000;
+const TOOL_HISTORY_RECOVERY_ARGUMENT_CHARS = 1200;
+const TOOL_HISTORY_RECOVERY_RESULT_CHARS = 5000;
+const TOOL_HISTORY_RECOVERY_SUMMARY_CHARS = 24000;
 
 let chatClient = null;
 
@@ -3387,6 +3392,43 @@ function buildAutomaticToolSummaryMessage(toolEvents = []) {
     };
 }
 
+function buildCompactToolHistoryRecoveryMessage(toolEvents = []) {
+    const events = Array.isArray(toolEvents) ? toolEvents : [];
+    const researchDossier = buildResearchDossier(events, {
+        maxSearchResults: 8,
+        maxSources: 5,
+        excerptChars: 1200,
+    });
+    const compactResults = events.map((event, index) => {
+        const toolId = event?.toolCall?.function?.name || event?.result?.toolId || 'tool';
+        const toolArguments = trimString(
+            String(event?.toolCall?.function?.arguments || ''),
+            TOOL_HISTORY_RECOVERY_ARGUMENT_CHARS,
+        );
+        const normalizedResult = normalizeToolResultForModel(event?.result || {}, toolId);
+        const resultText = trimString(
+            JSON.stringify(normalizedResult),
+            TOOL_HISTORY_RECOVERY_RESULT_CHARS,
+        );
+
+        return [
+            `[Tool result ${index + 1}: ${toolId}]`,
+            toolArguments ? `Arguments: ${toolArguments}` : '',
+            `Result: ${resultText}`,
+        ].filter(Boolean).join('\n');
+    }).join('\n\n');
+
+    return {
+        role: 'system',
+        content: trimString([
+            '[Automatic tool results]',
+            'Use these verified tool results when answering. If a result contains an error, explain that exact error plainly instead of claiming success.',
+            researchDossier || '',
+            compactResults || 'No completed tool results were recorded.',
+        ].filter(Boolean).join('\n\n'), TOOL_HISTORY_RECOVERY_SUMMARY_CHARS),
+    };
+}
+
 function isIncompatibleToolHistoryFallbackError(error) {
     const message = String(error?.message || error || '');
     return (/thought[_\s-]?signature/i.test(message)
@@ -3398,18 +3440,33 @@ function buildToolHistoryRecoveryMessages(messages = [], toolEvents = []) {
     const replaySafeMessages = (Array.isArray(messages) ? messages : [])
         .filter((message) => message?.role !== 'tool')
         .filter((message) => !(message?.role === 'assistant' && Array.isArray(message?.tool_calls)));
+    const originalSystemMessage = replaySafeMessages.find((message) => message?.role === 'system');
+    const lastUserMessage = [...replaySafeMessages].reverse().find((message) => message?.role === 'user');
 
     return [
-        ...replaySafeMessages,
-        buildAutomaticToolSummaryMessage(toolEvents),
         {
             role: 'system',
             content: [
                 'The provider fallback could not replay the prior model-specific tool-call transcript.',
                 'Do not repeat tool actions that already completed.',
-                'Produce the best final answer from the verified automatic tool results above, and state any remaining failures plainly.',
+                'Produce the best final answer from the verified automatic tool results, and state any remaining failures plainly.',
             ].join(' '),
         },
+        ...(originalSystemMessage ? [{
+            role: 'system',
+            content: trimString(
+                normalizeMessageContent(originalSystemMessage.content),
+                TOOL_HISTORY_RECOVERY_CONTEXT_CHARS,
+            ),
+        }] : []),
+        buildCompactToolHistoryRecoveryMessage(toolEvents),
+        ...(lastUserMessage ? [{
+            role: 'user',
+            content: trimString(
+                normalizeMessageContent(lastUserMessage.content),
+                TOOL_HISTORY_RECOVERY_USER_CHARS,
+            ),
+        }] : []),
     ];
 }
 
