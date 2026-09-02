@@ -61,8 +61,20 @@ jobs:
         run: |
           set -euo pipefail
           kubectl apply -f k8s/remote-cli-targets-configmap.yaml
+
+          # Older gateway rollouts may still mount a content-addressed target
+          # ConfigMap. Point the named volume at the stable registry maintained
+          # by this repository and admit the dedicated Lilly workbench root.
+          kubectl patch deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" \
+            --type=strategic \
+            -p '{"spec":{"template":{"spec":{"volumes":[{"name":"remote-cli-targets","configMap":{"name":"n8n-openai-cli-gateway-targets","optional":true}}]}}}}'
+          kubectl set env deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" \
+            CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS="/opt/kimibuilt,/opt/lilly-agent-workbench"
           kubectl rollout restart deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}"
           kubectl rollout status deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" --timeout=300s
+
+          kubectl exec deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" -- \
+            sh -lc 'grep -q "/opt/lilly-agent-workbench" /app/config/remote-targets/targets.yaml'
 
           targets="$(kubectl get configmap n8n-openai-cli-gateway-targets \
             -n "${ROUTER_NAMESPACE}" \
@@ -235,6 +247,10 @@ jobs:
               KIMIBUILT_JWT_SECRET- \
               KIMIBUILT_ALLOWED_ORIGINS- \
               KUBERNETES_IN_CLUSTER_ENABLED- \
+              AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH- \
+              REMOTE_CLI_DEFAULT_CWD- \
+              REMOTE_CLI_CODEX_AGENT_MODEL- \
+              REMOTE_CLI_CODEX_AGENT_REASONING_EFFORT- \
               GITEA_BASE_URL- \
               GITEA_TOKEN- \
               GITEA_WEBHOOK_SECRET- \
@@ -547,6 +563,57 @@ jobs:
               --ignore-not-found=true
           }
 
+          cleanup_stale_agent_company_runner_hotfix_mount() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # A 2026 live repair mounted old Agent Company and workload source
+            # files over every new image. Remove it so the verified release owns
+            # the software-workbench policy and retained remote-job behavior.
+            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
+              --type=strategic \
+              -p='{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "backend",
+                          "volumeMounts": [
+                            {
+                              "name": "backend-agent-company-runner-hotfix",
+                              "mountPath": "/app/src/agent-company.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "backend-agent-company-runner-hotfix",
+                              "mountPath": "/app/src/workloads/service.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "backend-agent-company-runner-hotfix",
+                              "mountPath": "/app/src/workloads/store.js",
+                              "$patch": "delete"
+                            }
+                          ]
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "name": "backend-agent-company-runner-hotfix",
+                          "$patch": "delete"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              backend-agent-company-runner-hotfix-20260628 \
+              --ignore-not-found=true
+          }
+
           cleanup_stale_notes_index_hotfix_mount() {
             if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
               return 0
@@ -598,6 +665,7 @@ jobs:
           cleanup_stale_backend_env
           cleanup_stale_kokoro_hotfix_mounts
           cleanup_stale_backend_config_hotfix_mount
+          cleanup_stale_agent_company_runner_hotfix_mount
 
           # Create or patch runtime secrets from GitHub Actions secrets when they
           # are configured. Existing non-placeholder live values are preserved.
@@ -655,6 +723,11 @@ jobs:
           cleanup_stale_webchat_tts_manager_hotfix_mount
           cleanup_stale_webchat_state_refresh_hotfix_mount
           cleanup_stale_webchat_stream_hotfix_mount
+
+          # envFrom does not change the pod template when ConfigMap values change.
+          # Restart after reconciliation so the backend always consumes the
+          # configuration from this release rather than the previous pod's env.
+          kubectl rollout restart deployment/backend -n "${KUBE_NAMESPACE}"
           
           # Apply production ingress for the Rancher/k3s domain
           kubectl apply -f k8s/rancher-ingress.yaml

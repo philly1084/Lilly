@@ -26,7 +26,10 @@ data:
   REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/opt/kimibuilt"
   CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS: "/opt/kimibuilt"
   AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH: "/opt/lilly-agent-workbench"
-  REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.6-sol"
+  # Agent Company and direct remote-agent work default to the same capable,
+  # economical coding lane unless a workload explicitly selects another model.
+  REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.6-luna"
+  REMOTE_CLI_CODEX_AGENT_REASONING_EFFORT: "high"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
   REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX: "danger-full-access"
