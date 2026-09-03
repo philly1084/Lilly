@@ -33,6 +33,13 @@ describe('RemoteCliAgentTool', () => {
     fs.rmSync(storageDir, { recursive: true, force: true });
   });
 
+  test('preserves relative paths and code whitespace when removing outer tool wording', async () => {
+    const { tool, runner } = buildTool();
+    const task = 'Use remote-cli-agent to create only .kimibuilt/agent-company/proof.txt.\n\n```python\nif ready:\n  write_file()\n```';
+    await tool.execute({ task });
+    expect(runner.run.mock.calls[0][0].task).toBe('create only .kimibuilt/agent-company/proof.txt.\n\n```python\nif ready:\n  write_file()\n```');
+  });
+
   test('normalizes common orchestrator aliases before required task validation', async () => {
     const { tool, runner } = buildTool();
 

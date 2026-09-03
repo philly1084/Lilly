@@ -279,8 +279,8 @@ function sanitizeOuterRemoteCliToolReferences(task = '') {
     .replace(/\b(?:through|via|with|using|inside)\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\b/ig, '')
     .replace(/\bcall\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\s+(?:once\s+)?(?:to|for)\s+/ig, '')
     .replace(/\brun\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\s+(?:once\s+)?(?:to|for)\s+/ig, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+([.,;:!?])/g, '$1')
+    // Preserve relative paths ("only .kimibuilt/..."), code indentation and
+    // newlines. Whitespace is part of the requested task, not cosmetic noise.
     .trim();
 
   if (!text) {
