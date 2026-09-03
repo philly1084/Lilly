@@ -43,6 +43,22 @@ test('uses the secondary gateway default and forwards the selected model effort'
   }));
 });
 
+test('omits absent cwd on the provider wire so the gateway can apply its default', async () => {
+  const fetchImpl = jest.fn(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    expect(body.targetId).toBe('k3s-secondary');
+    expect(body).not.toHaveProperty('cwd');
+    expect(body.reasoningEffort).toBe('high');
+    return { ok: false, status: 400, text: async () => JSON.stringify({ error: 'wire contract inspected' }) };
+  });
+  const runner = new RemoteCliAgentsSdkRunner({ config: {
+    enabled: true, transport: 'provider-agent', defaultTargetId: 'k3s-prod', defaultCwd: '/opt/lilly-agent-workbench',
+    codexAgentBaseUrl: 'https://gateway.example.com', codexAgentApiKey: 'test',
+  }, fetchImpl });
+  await expect(runner.run({ task: 'Inspect workspace', targetId: 'k3s-secondary', model: 'gpt-5.6-luna', reasoningEffort: 'high' })).rejects.toThrow('wire contract inspected');
+  expect(fetchImpl).toHaveBeenCalled();
+});
+
 function buildVerifiedResultFiles(handoff, {
   filename = 'result.xml',
   mimeType = 'application/xml',

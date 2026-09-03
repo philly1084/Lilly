@@ -2690,7 +2690,7 @@ class RemoteCliAgentsSdkRunner {
           body: JSON.stringify({
             providerId: selection.providerId,
             targetId,
-            cwd,
+            ...(cwd ? { cwd } : {}),
             task: buildProviderAgentTask({
               task,
               providerLabel: selection.providerLabel,
