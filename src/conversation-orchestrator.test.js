@@ -11351,9 +11351,9 @@ describe('ConversationOrchestrator', () => {
                 tool: 'remote-cli-agent',
                 params: expect.objectContaining({
                     targetId: 'k3s-secondary',
-                    cwd: '/opt/kimibuilt',
                 }),
             }));
+            expect(directAction.params.cwd).toBeUndefined();
             expect(directAction.params.sessionId).toBeUndefined();
             expect(directAction.params.mcpSessionId).toBeUndefined();
             expect(directAction.params.jobId).toBeUndefined();
@@ -11421,9 +11421,9 @@ describe('ConversationOrchestrator', () => {
                 tool: 'remote-cli-agent',
                 params: expect.objectContaining({
                     targetId: 'k3s-secondary',
-                    cwd: '/opt/kimibuilt',
                 }),
             }));
+            expect(directAction.params.cwd).toBeUndefined();
         } finally {
             config.config.remoteCliMcp.targetHostMap = originalTargetHostMap;
             config.config.remoteCliMcp.defaultTargetId = originalDefaultTargetId;
@@ -11480,8 +11480,8 @@ describe('ConversationOrchestrator', () => {
 
             expect(normalizedStep.params).toEqual(expect.objectContaining({
                 targetId: 'k3s-secondary',
-                cwd: '/opt/kimibuilt',
             }));
+            expect(normalizedStep.params.cwd).toBeUndefined();
             expect(normalizedStep.params.sessionId).toBeUndefined();
             expect(normalizedStep.params.mcpSessionId).toBeUndefined();
             expect(normalizedStep.params.jobId).toBeUndefined();

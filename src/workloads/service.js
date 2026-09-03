@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { getCompanyExecutionFailure } = require('../agent-ops/execution-contract');
 const { getNextCronRun } = require('./cron-utils');
 const {
     applyProjectPlanPatch,
@@ -977,7 +978,12 @@ class AgentWorkloadService {
                     sessionId: workload.sessionId,
                     ownerId: workload.ownerId,
                     session,
-                    message,
+                    message: workload.metadata?.agentCompany?.enabled === true
+                        ? [
+                            String(workload.prompt || '').split('\nOperating rules:')[0],
+                            prompt !== workload.prompt ? `Current stage:\n${prompt}` : '',
+                        ].filter(Boolean).join('\n\n')
+                        : message,
                     model: requestedModel,
                     reasoningEffort,
                     executionProfile: workload.policy?.executionProfile,
@@ -991,12 +997,22 @@ class AgentWorkloadService {
                         agentRunId: agentRunShadow?.run?.id || null,
                         workloadRun: true,
                         agentCompanyRun: workload.metadata?.agentCompany?.enabled === true,
+                        companyGoalHash: workload.metadata?.agentCompany?.companyGoalHash || null,
+                        companyRunContext: workload.metadata?.agentCompany?.enabled === true ? message : null,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
                         outputFormat: stageOutputFormat,
                         remoteBuildAutonomyApproved: workload.policy?.allowSideEffects === true,
                     },
                 });
+            const companyFailure = workload.metadata?.agentCompany?.enabled === true
+                ? getCompanyExecutionFailure(result) : '';
+            if (companyFailure) {
+                const error = new Error(companyFailure);
+                error.code = 'AGENT_COMPANY_EXECUTION_BLOCKED';
+                error.executionResult = result;
+                throw error;
+            }
             const completionTrace = result.execution?.trace
                 || result.response?.metadata?.executionTrace
                 || (execution ? {
@@ -1076,6 +1092,7 @@ class AgentWorkloadService {
                 },
                 metadata: {
                     ...(run.metadata || {}),
+                    ...(error.executionResult ? this.buildCompletedRunMetadata(run, stage, error.executionResult) : {}),
                     lastError: {
                         message: error.message,
                         failedAt: new Date().toISOString(),
@@ -1667,10 +1684,17 @@ class AgentWorkloadService {
             evaluation,
         });
 
+        const failureFingerprint = succeeded ? '' : crypto.createHash('sha256')
+            .update(String(error?.message || result.outputText || '')).digest('hex');
         const nextMetadata = {
             ...(workload.metadata || {}),
             longAgent: {
                 ...(workload.metadata?.longAgent || {}),
+                lastFailure: succeeded ? null : {
+                    fingerprint: failureFingerprint,
+                    count: workload.metadata?.longAgent?.lastFailure?.fingerprint === failureFingerprint
+                        ? Number(workload.metadata.longAgent.lastFailure.count || 0) + 1 : 1,
+                },
                 enabled: true,
                 goal: longAgent.goal,
                 scratchFile: longAgent.scratchFile,
@@ -1701,6 +1725,12 @@ class AgentWorkloadService {
             console.warn(`[Workloads] Failed to persist long-agent review for ${workload.id}:`, updateError.message);
         }
 
+        if (workload.metadata?.agentCompany?.enabled === true && nextMetadata.longAgent.lastFailure?.count >= 2) {
+            await this.addRunEventSafe(run.id, 'long-agent-blocked', {
+                reason: 'Same execution failure repeated twice; needs a changed environment or explicit recovery.',
+            });
+            return null;
+        }
         if (evaluation.decision === 'complete' || evaluation.decision === 'stop_max_steps') {
             await this.addRunEventSafe(run.id, 'long-agent-complete', {
                 decision: evaluation.decision,

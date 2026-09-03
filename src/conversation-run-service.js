@@ -2,6 +2,7 @@
 
 const { ensureRuntimeToolManager } = require('./runtime-tool-manager');
 const { executeConversationRuntime } = require('./runtime-execution');
+const { buildCompanyExecutionGuide, createCompanySessionView } = require('./agent-ops/execution-contract');
 const {
     buildInstructionsWithArtifacts,
     buildArtifactCompletionMessage,
@@ -152,7 +153,7 @@ class ConversationRunService {
         requestedToolIds = [],
         policy = null,
     }) {
-        const resolvedSession = session || (ownerId
+        let resolvedSession = session || (ownerId
             ? await this.sessionStore.getOwned(sessionId, ownerId)
             : await this.sessionStore.get(sessionId));
 
@@ -161,6 +162,7 @@ class ConversationRunService {
             error.statusCode = 404;
             throw error;
         }
+        if (metadata.agentCompanyRun === true) resolvedSession = createCompanySessionView(resolvedSession);
         const sanitizedMessage = stripAgentJournalBlocks(message);
         const outputFormat = String(metadata?.outputFormat || '').trim().toLowerCase()
             || (metadata?.agentCompanyRun === true ? null : inferRequestedOutputFormat(sanitizedMessage));
@@ -180,6 +182,18 @@ class ConversationRunService {
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
 
         const runtimeToolManager = await ensureRuntimeToolManager(this.app);
+        let companyTargets = [];
+        let targetDiscoveryError = '';
+        if (metadata.agentCompanyRun === true) {
+            const runner = runtimeToolManager?.getTool?.('remote-cli-agent')?.runner;
+            if (runner?.listRemoteAgentTargets) {
+                try {
+                    companyTargets = await runner.listRemoteAgentTargets();
+                } catch (error) {
+                    targetDiscoveryError = error.code || 'REMOTE_AGENT_TARGETS_UNAVAILABLE';
+                }
+            }
+        }
         const sessionIsolation = isSessionIsolationEnabled(metadata, resolvedSession);
         const managedAppsSummary = this.app?.locals?.managedAppService?.buildPromptSummary
             ? await this.app.locals.managedAppService.buildPromptSummary({
@@ -187,7 +201,7 @@ class ConversationRunService {
                 maxApps: 4,
             })
             : '';
-        const agentJournalInstructions = buildAgentJournalInstructions(
+        const agentJournalInstructions = metadata.agentCompanyRun === true ? '' : buildAgentJournalInstructions(
             await loadAgentJournalEntries(this.sessionStore, resolvedSession, ownerId),
         );
         const instructions = await buildInstructionsWithArtifacts(
@@ -196,6 +210,11 @@ class ConversationRunService {
                 formatRequestDecisionFrameForPrompt(requestFrame),
                 agentJournalInstructions,
                 buildContinuityInstructions(),
+                metadata.agentCompanyRun === true ? buildCompanyExecutionGuide({
+                    toolManager: runtimeToolManager, model, reasoningEffort, metadata, policy: policy || {},
+                    targets: companyTargets, targetDiscoveryError,
+                }) : '',
+                metadata.agentCompanyRun === true ? metadata.companyRunContext || '' : '',
             ].filter(Boolean).join('\n\n'),
             [],
         );
@@ -211,7 +230,9 @@ class ConversationRunService {
             model,
             reasoningEffort,
             toolManager: runtimeToolManager,
+            ...(metadata.agentCompanyRun === true ? { loadRecentMessages: false, loadContextMessages: false, previousResponseId: null } : {}),
             toolContext: {
+                reasoningEffort,
                 sessionId,
                 runId: metadata?.agentRunId || null,
                 agentRunId: metadata?.agentRunId || null,

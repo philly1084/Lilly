@@ -21,6 +21,28 @@ const {
   resolveRemoteCliTargetId,
 } = require('./agents-sdk-runner');
 
+test('never promotes a command transcript to workspace identity', () => {
+  const text = [
+    JSON.stringify({ item: { type: 'command_execution', aggregated_output: 'WORKSPACE: /opt/wrong\nworkspace: /var/www/test\',\\n./src/test.js:413' } }),
+    JSON.stringify({ item: { type: 'agent_message', text: 'WORKSPACE: /opt/real\nREMOTE_AGENT_RESULT: complete' } }),
+  ].join('\n');
+  expect(extractRemoteCliRunMetadata(text).workspace).toBe('/opt/real');
+  expect(extractRemoteCliRunMetadata(text.split('\n')[0]).workspace).toBeUndefined();
+});
+
+test('uses the secondary gateway default and forwards the selected model effort', async () => {
+  const runner = new RemoteCliAgentsSdkRunner({ config: {
+    enabled: true, transport: 'provider-agent', defaultTargetId: 'k3s-prod',
+    defaultCwd: '/opt/lilly-agent-workbench', codexAgentBaseUrl: 'http://gateway', codexAgentApiKey: 'test',
+  } });
+  jest.spyOn(runner, 'assertConfigured').mockImplementation(() => {});
+  jest.spyOn(runner, 'executeProviderAgentRun').mockResolvedValue({ success: true });
+  await runner.run({ task: 'Inspect current workspace', targetId: 'k3s-secondary', model: 'gpt-5.6-luna', reasoningEffort: 'high' });
+  expect(runner.executeProviderAgentRun).toHaveBeenCalledWith(expect.objectContaining({
+    cwd: '', targetId: 'k3s-secondary', input: expect.objectContaining({ reasoningEffort: 'high' }),
+  }));
+});
+
 function buildVerifiedResultFiles(handoff, {
   filename = 'result.xml',
   mimeType = 'application/xml',
@@ -884,6 +906,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
   test.each([
     ['gpt-5.6-sol', 'codex-cli', 'gpt-5.6-sol', 'Codex'],
+    ['gpt-5.6-luna', 'codex-cli', 'gpt-5.6-luna', 'Codex'],
     ['kimi-k3', 'kimi-code-cli', 'k3', 'Kimi CLI'],
     ['kimi-k2.7-code', 'kimi-code-cli', 'kimi-for-coding', 'Kimi CLI'],
   ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
@@ -926,6 +949,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           cwd: '/opt/kimibuilt',
           handoff,
           adminMode: true,
+          reasoningEffort: 'high',
         });
         if (continuationSessionId) {
           expect(body.sessionId).toBe(continuationSessionId);
@@ -1026,6 +1050,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       transport: 'provider-agent',
       model: selectedModel,
       adminMode: true,
+      reasoningEffort: 'high',
       ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
       handoff,
       onProgress: (event) => progress.push(event),

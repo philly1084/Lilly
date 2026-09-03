@@ -62,6 +62,42 @@ describe('AgentWorkloadService', () => {
         });
     });
 
+    test('records failed CLI replies as failed and keeps the user-facing evidence', async () => {
+        const workload = {
+            id: 'company-w', ownerId: 'phill', sessionId: 'company-s', title: 'Build',
+            prompt: 'Company goal: Build\nObjective: Verify app\nOperating rules:\nUse tools.',
+            trigger: { type: 'manual' }, stages: [], policy: {},
+            metadata: { agentCompany: { enabled: true } },
+        };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'remote-cli-agent failed: outside target roots' });
+        store.failRun.mockResolvedValue({ id: 'company-r', status: 'failed' });
+        const result = await service.executeClaimedRun({ id: 'company-r', workload, stageIndex: -1, metadata: {} }, 'worker');
+        expect(result.status).toBe('failed');
+        expect(store.completeRun).not.toHaveBeenCalled();
+        expect(store.failRun).toHaveBeenCalledWith('company-r', 'worker', expect.objectContaining({
+            error: expect.objectContaining({ code: 'AGENT_COMPANY_EXECUTION_BLOCKED' }),
+            metadata: expect.objectContaining({ output: expect.objectContaining({ text: 'remote-cli-agent failed: outside target roots' }) }),
+        }));
+        const request = conversationRunService.runChatTurn.mock.calls[0][0];
+        expect(request.message).not.toContain('Operating rules');
+        expect(request.metadata.companyRunContext).toContain('Operating rules');
+    });
+
+    test('stops company continuation after two identical failures', async () => {
+        const workload = {
+            id: 'w', ownerId: 'phill', prompt: 'Build', metadata: {
+                agentCompany: { enabled: true }, longAgent: { enabled: true, goal: 'Build', maxAutoSteps: 4 },
+            },
+        };
+        store.enqueueRun.mockResolvedValue({ id: 'next' });
+        await service.handleLongAgentStop(workload, { id: 'r1', metadata: { longAgentStep: 1 } }, { succeeded: false, error: new Error('outside target roots') });
+        workload.metadata = store.updateWorkload.mock.calls[0][2].metadata;
+        store.enqueueRun.mockClear();
+        await service.handleLongAgentStop(workload, { id: 'r2', metadata: { longAgentStep: 2 } }, { succeeded: false, error: new Error('outside target roots') });
+        expect(store.enqueueRun).not.toHaveBeenCalled();
+        expect(store.addRunEvent).toHaveBeenCalledWith('r2', 'long-agent-blocked', expect.any(Object));
+    });
+
     test('queues the initial scheduled run for once workloads', async () => {
         const workload = {
             id: 'workload-1',

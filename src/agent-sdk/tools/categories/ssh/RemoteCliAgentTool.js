@@ -10,6 +10,8 @@ const { persistRemoteAgentResultArtifacts } = require('../../../../remote-cli/ag
 const { artifactService } = require('../../../../artifacts/artifact-service');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
 const { getSessionControlState } = require('../../../../runtime-control-state');
+const { normalizeInheritedRemoteWorkspace } = require('../../../../remote-cli/workspace-contract');
+const { config } = require('../../../../config');
 
 function parseObjectLike(value) {
   if (!value) {
@@ -202,7 +204,7 @@ function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
 
   applyAlias(params, 'sessionId', prior.sessionId, prior.remoteCodeSessionId);
   applyAlias(params, 'mcpSessionId', prior.mcpSessionId);
-  applyAlias(params, 'cwd', prior.cwd);
+  applyAlias(params, 'cwd', normalizeInheritedRemoteWorkspace(prior.cwd, params.targetId || prior.targetId, config.remoteCliMcp));
   applyAlias(params, 'targetId', prior.targetId);
 
   if (!params.jobId && prior.remoteCodeJobId && /(?:continue|resume|poll|status|running|same|that|again|retry)/i.test(task)) {
@@ -340,6 +342,7 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
   applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
   applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
   applyAlias(params, 'transport', params.remoteCliTransport, params.remote_cli_transport, argumentObject?.transport, argumentObject?.remoteCliTransport, argumentObject?.remote_cli_transport);
+  applyAlias(params, 'reasoningEffort', params.reasoning_effort, context?.reasoningEffort, context?.metadata?.reasoningEffort);
   const selectedHeaderModel = firstNonEmptyText(
     context?.model,
     context?.requestedModel,
@@ -461,7 +464,11 @@ class RemoteCliAgentTool extends ToolBase {
           },
           cwd: {
             type: 'string',
-            description: 'Allowed working directory/workspace path. Defaults to REMOTE_CLI_DEFAULT_CWD or REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH.',
+            description: 'Verified absolute Linux workspace on the selected target. Omit to use that target default; never reuse paths across targets or copy terminal output into cwd.',
+          },
+          reasoningEffort: {
+            type: 'string',
+            description: 'Reasoning effort for the selected CLI model; preserve the workload setting (normally high for company agents).',
           },
           workspacePath: {
             type: 'string',

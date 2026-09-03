@@ -168,7 +168,7 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
         || /\b(blocked|cannot continue|need user|needs user|missing credential|permission denied|auth required|failed|error)\b/i.test(problemSignalText);
     const needsReview = blocked
         || /\b(incomplete|needs repair|needs review|not verified|tests? failing|still broken|regression)\b/i.test(problemSignalText);
-    const goalComplete = succeeded
+    const goalComplete = succeeded && !needsReview
         && /\b(overall goal complete|project complete|all acceptance criteria (?:met|passed)|nothing remains|ready for final handoff)\b/i.test(lowerOutput);
     const maxStepsReached = step >= longAgent.maxAutoSteps;
     const decision = goalComplete

@@ -1,4 +1,6 @@
 const fs = require('fs');
+const { createCompanySessionView } = require('./agent-ops/execution-contract');
+const { normalizeRemoteWorkspace, normalizeInheritedRemoteWorkspace, resolveTargetDefaultWorkspace } = require('./remote-cli/workspace-contract');
 const path = require('path');
 const EventEmitter = require('events');
 const { createResponse } = require('./openai-client');
@@ -6885,17 +6887,24 @@ function resolvePreferredRemoteCliWorkspacePath({
     session = null,
     toolContext = {},
     includeSessionState = true,
+    targetId = null,
 } = {}) {
-    return String(
+    if (targetId === null) {
+        // Non-CLI workflow callers can still operate on a local Windows repo.
+        return String(toolContext?.remoteWorkspacePath || toolContext?.workspacePath
+            || (includeSessionState ? session?.metadata?.remoteWorkingState?.workspacePath : '')
+            || (includeSessionState ? session?.metadata?.lastRemoteWorkspacePath : '')
+            || config.remoteCliMcp.defaultCwd || config.deploy.defaultTargetDirectory
+            || config.deploy.defaultRepositoryPath || '').trim();
+    }
+    return normalizeRemoteWorkspace(
         toolContext?.remoteWorkspacePath
         || toolContext?.workspacePath
-        || (includeSessionState ? session?.metadata?.remoteWorkingState?.workspacePath : '')
-        || (includeSessionState ? session?.metadata?.lastRemoteWorkspacePath : '')
-        || config.remoteCliMcp.defaultCwd
-        || config.deploy.defaultTargetDirectory
-        || config.deploy.defaultRepositoryPath
+        || (includeSessionState ? normalizeInheritedRemoteWorkspace(session?.metadata?.remoteWorkingState?.workspacePath, targetId, config.remoteCliMcp) : '')
+        || (includeSessionState ? normalizeInheritedRemoteWorkspace(session?.metadata?.lastRemoteWorkspacePath, targetId, config.remoteCliMcp) : '')
+        || resolveTargetDefaultWorkspace(targetId, config.remoteCliMcp)
         || '',
-    ).trim();
+    );
 }
 
 function resolveConfiguredRemoteCliTargetIdForHost(host = '') {
@@ -6924,24 +6933,23 @@ function resolvePreferredRemoteCliTarget({
     ].filter(Boolean).join('\n'), config.remoteCliMcp?.targetHostMap || {});
     const targetId = normalizeRemoteCliTargetIdCandidate(
         explicitSshTargetId
-        || projectTargetId
         || normalizeRemoteCliTargetIdCandidate(explicitTargetId)
         || normalizeRemoteCliTargetIdCandidate(toolContext?.remoteCliTargetId)
         || normalizeRemoteCliTargetIdCandidate(toolContext?.remoteTargetId)
         || normalizeRemoteCliTargetIdCandidate(toolContext?.metadata?.remoteCliTargetId)
         || normalizeRemoteCliTargetIdCandidate(toolContext?.metadata?.remoteTargetId)
+        || projectTargetId
         || normalizeRemoteCliTargetIdCandidate(priorAgentState.targetId)
         || normalizeRemoteCliTargetIdCandidate(session?.metadata?.activeProject?.remoteCliAgent?.targetId),
     );
-    const selectedExplicitTargetId = explicitSshTargetId
-        || projectTargetId
-        || normalizeRemoteCliTargetIdCandidate(explicitTargetId);
+    const selectedExplicitTargetId = targetId;
     const priorTargetId = normalizeRemoteCliTargetIdCandidate(priorAgentState.targetId);
     const hasPriorContinuity = Boolean(
         priorAgentState.sessionId
         || priorAgentState.remoteCodeSessionId
         || priorAgentState.mcpSessionId
-        || priorAgentState.remoteCodeJobId,
+        || priorAgentState.remoteCodeJobId
+        || priorAgentState.cwd,
     );
     const resetPriorContinuity = Boolean(
         selectedExplicitTargetId
@@ -9870,13 +9878,14 @@ class ConversationOrchestrator extends EventEmitter {
             metadata,
         });
         let executionTrace = [];
-        const session = ownerId && this.sessionStore?.getOrCreateOwned
+        let session = ownerId && this.sessionStore?.getOrCreateOwned
             ? await this.sessionStore.getOrCreateOwned(sessionId, scopedSessionMetadata, ownerId)
             : this.sessionStore?.getOrCreate
                 ? await this.sessionStore.getOrCreate(sessionId, scopedSessionMetadata)
                 : ownerId && this.sessionStore?.getOwned
                     ? await this.sessionStore.getOwned(sessionId, ownerId)
                     : (this.sessionStore?.get ? await this.sessionStore.get(sessionId) : null);
+        if (metadata.agentCompanyRun === true) session = createCompanySessionView(session);
         const resolvedProfile = inferRuntimeExecutionProfile({
             executionProfile: requestedProfile,
             taskType,
@@ -12993,16 +13002,17 @@ class ConversationOrchestrator extends EventEmitter {
             const reusablePriorAgentState = targetSelection.resetPriorContinuity
                 ? {}
                 : priorAgentState;
-            const cwd = String(reusablePriorAgentState.cwd || '').trim()
+            const cwd = normalizeInheritedRemoteWorkspace(reusablePriorAgentState.cwd, targetSelection.targetId, config.remoteCliMcp)
                 || resolvePreferredRemoteCliWorkspacePath({
                     session,
                     toolContext,
+                    targetId: targetSelection.targetId,
                     includeSessionState: !targetSelection.resetPriorContinuity,
                 });
             const task = buildRemoteCliAgentTaskForPrompt({
                 objective,
-                priorAgentState,
-                forceContinuation: projectContinuation,
+                priorAgentState: reusablePriorAgentState,
+                forceContinuation: !targetSelection.resetPriorContinuity && projectContinuation,
             });
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState: reusablePriorAgentState,
@@ -13237,6 +13247,13 @@ class ConversationOrchestrator extends EventEmitter {
                 ? {}
                 : priorAgentState;
             if (targetSelection.resetPriorContinuity) {
+                if (normalizedStep.params.targetId && normalizedStep.params.targetId !== targetSelection.targetId) {
+                    delete normalizedStep.params.cwd;
+                    delete normalizedStep.params.workspacePath;
+                    delete normalizedStep.params.workspace_path;
+                    delete normalizedStep.params.workingDirectory;
+                    delete normalizedStep.params.working_directory;
+                }
                 delete normalizedStep.params.sessionId;
                 delete normalizedStep.params.session_id;
                 delete normalizedStep.params.mcpSessionId;
@@ -13248,10 +13265,11 @@ class ConversationOrchestrator extends EventEmitter {
             }
             const cwd = String(
                 normalizedStep.params.cwd
-                || reusablePriorAgentState.cwd
+                || normalizeInheritedRemoteWorkspace(reusablePriorAgentState.cwd, targetSelection.targetId, config.remoteCliMcp)
                 || resolvePreferredRemoteCliWorkspacePath({
                     session,
                     toolContext,
+                    targetId: targetSelection.targetId,
                     includeSessionState: !targetSelection.resetPriorContinuity,
                 })
                 || '',
@@ -13280,8 +13298,8 @@ class ConversationOrchestrator extends EventEmitter {
                 ...normalizedStep.params,
                 task: buildRemoteCliAgentTaskForPrompt({
                     objective: rawTask,
-                    priorAgentState,
-                    forceContinuation: String(sessionControlState.lastToolIntent || '').trim() === 'remote-cli-agent'
+                    priorAgentState: reusablePriorAgentState,
+                    forceContinuation: !targetSelection.resetPriorContinuity && String(sessionControlState.lastToolIntent || '').trim() === 'remote-cli-agent'
                         && shouldResumeRemoteCliProject(rawTask || objective, {
                             storedPlan: sessionControlState.projectPlan || null,
                             priorAgentState,

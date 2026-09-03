@@ -35,8 +35,27 @@ const {
     resolveArtifactContextIds,
 } = require('./ai-route-utils');
 const { ConversationRunService } = require('./conversation-run-service');
+const { buildInstructionsWithArtifacts } = require('./ai-route-utils');
 
 describe('ConversationRunService', () => {
+    test('injects the registered tool and live target guide without stale shared CLI state', async () => {
+        const runner = { listRemoteAgentTargets: jest.fn(async () => [{ targetId: 'k3s-secondary', defaultCwd: '/opt/kimibuilt' }]) };
+        ensureRuntimeToolManager.mockResolvedValue({ getTool: (id) => id === 'remote-cli-agent' ? { runner } : null });
+        executeConversationRuntime.mockResolvedValue({ handledPersistence: true, response: {
+            id: 'response', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Inspected environment.' }] }], metadata: { toolEvents: [] },
+        } });
+        const sessionStore = { get: jest.fn(), update: jest.fn(), getOwned: jest.fn(), appendMessages: jest.fn() };
+        const service = new ConversationRunService({ app: { locals: {} }, sessionStore, memoryService: {} });
+        await service.runChatTurn({ sessionId: 'shared', ownerId: 'owner', message: 'Inspect workspace', model: 'gpt-5.6-luna', reasoningEffort: 'high',
+            session: { id: 'shared', previousResponseId: 'old-response', metadata: { remoteCliAgent: { cwd: '/opt/stale' } } },
+            metadata: { agentCompanyRun: true, workloadRun: true, workloadId: 'w1', runId: 'r1' }, policy: {},
+        });
+        expect(runner.listRemoteAgentTargets).toHaveBeenCalled();
+        expect(buildInstructionsWithArtifacts.mock.calls.at(-1)[1]).toContain('k3s-secondary: default cwd /opt/kimibuilt');
+        const request = executeConversationRuntime.mock.calls.at(-1)[1];
+        expect(request).toMatchObject({ previousResponseId: null, loadRecentMessages: false, loadContextMessages: false, toolContext: { reasoningEffort: 'high' } });
+        expect(request.session.metadata.remoteCliAgent).toBeUndefined();
+    });
     test('never converts Agent Company status messages into deferred HTML or XLSX artifacts', async () => {
         const service = new ConversationRunService({ app: { locals: {} }, sessionStore: {}, memoryService: {} });
         const result = await service.maybeGenerateDeferredArtifact({

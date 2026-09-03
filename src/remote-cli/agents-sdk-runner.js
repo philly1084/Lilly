@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeRemoteWorkspace, resolveTargetDefaultWorkspace } = require('./workspace-contract');
+
 const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
@@ -652,13 +654,21 @@ function hasTerminalRemoteCliProof(metadata = {}) {
 
 function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = expandRemoteCliProofText(finalOutput);
+  // A command may print source code containing WORKSPACE markers. Only assistant
+  // messages (or a plain-text handoff) may supply execution identity metadata.
+  const workspaceProof = String(finalOutput || '').split(/\r?\n/).flatMap((line) => {
+    const parsed = parseRemoteCliJson(line.trim());
+    if (!parsed) return line;
+    const item = parsed.item || parsed;
+    return item.type === 'agent_message' || item.role === 'assistant'
+      ? collectCodexJsonlTextFragments(JSON.stringify(item)) : [];
+  }).join('\n');
   const remoteAgentResult = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_AGENT_RESULT', 'REMOTE_CLI_STATUS', 'RUN_STATUS']));
   const sessionId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID']))
     || normalizeOptionalProofValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
   const jobId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID']))
     || normalizeOptionalProofValue(text.match(/(?:job\s*id|jobId|job_id|runId|run_id)\s*[:=]\s*`?([a-z0-9_.:-]{3,128})/i)?.[1] || '');
-  const workspace = readMarkerLine(text, ['WORKSPACE', 'REMOTE_WORKSPACE', 'CWD'])
-    || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
+  const workspace = normalizeRemoteWorkspace(readMarkerLine(workspaceProof, ['WORKSPACE', 'REMOTE_WORKSPACE', 'CWD']));
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
     || cleanMarkerValue(text.match(/(?:git\s+repo|repository)\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitBranch = readMarkerLine(text, ['GIT_BRANCH', 'BRANCH'])
@@ -2034,6 +2044,7 @@ class RemoteCliAgentsSdkRunner {
 
     const response = await this.fetch(buildCodexAgentUrl(baseUrl, '/admin/remote-agent-targets'), {
       method: 'GET',
+      signal: AbortSignal.timeout(5000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: 'application/json',
@@ -2689,6 +2700,9 @@ class RemoteCliAgentsSdkRunner {
               adminMode,
             }),
             ...(selection.providerModel ? { model: selection.providerModel } : {}),
+            ...(input.reasoningEffort || input.reasoning_effort || this.config.codexAgentReasoningEffort ? {
+              reasoningEffort: input.reasoningEffort || input.reasoning_effort || this.config.codexAgentReasoningEffort,
+            } : {}),
             ...(continuationSessionId ? { sessionId: continuationSessionId } : {}),
             ...(handoff ? { handoff } : {}),
             ...(adminMode ? { adminMode: true } : {}),
@@ -3104,14 +3118,17 @@ class RemoteCliAgentsSdkRunner {
       input.targetId || input.target_id,
       this.config.defaultTargetId || 'prod',
     );
-    const cwd = normalizeText(
+    const requestedCwd = normalizeText(
       input.cwd
       || input.workingDirectory
       || input.working_directory
       || input.workspacePath
-      || input.workspace_path
-      || this.config.defaultCwd,
+      || input.workspace_path,
     );
+    if (requestedCwd && !normalizeRemoteWorkspace(requestedCwd)) {
+      throw new Error('Invalid remote workspace: cwd must be one absolute Linux path, not command output. Omit cwd to use the selected target default.');
+    }
+    const cwd = normalizeRemoteWorkspace(requestedCwd) || resolveTargetDefaultWorkspace(targetId, this.config);
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs ?? input.wait_ms, 30000, { min: 1000, max: 300000 });
