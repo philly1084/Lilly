@@ -13017,6 +13017,8 @@ class ConversationOrchestrator extends EventEmitter {
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState: reusablePriorAgentState,
                 objective,
+                params: toolContext.companyWorkloadId && reusablePriorAgentState.completionStatus === 'running'
+                    ? { jobId: reusablePriorAgentState.remoteCodeJobId } : {},
             });
             const remoteAgentArtifactIds = collectRemoteCliAgentArtifactIds({
                 objective,
@@ -13286,7 +13288,9 @@ class ConversationOrchestrator extends EventEmitter {
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState: reusablePriorAgentState,
                 objective: rawTask || objective,
-                params: normalizedStep.params,
+                params: toolContext.companyWorkloadId && reusablePriorAgentState.completionStatus === 'running'
+                    ? { ...normalizedStep.params, jobId: reusablePriorAgentState.remoteCodeJobId }
+                    : normalizedStep.params,
             });
             const remoteAgentArtifactIds = collectRemoteCliAgentArtifactIds({
                 objective: rawTask || objective,

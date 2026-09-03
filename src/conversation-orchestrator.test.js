@@ -21,6 +21,25 @@ const {
     resolveRemoteObjectiveFromSession,
 } = require('./conversation-orchestrator');
 
+test.each(['direct', 'planned'])('company %s dispatch resumes its running job even when the original goal says new', (mode) => {
+    settingsController.getEffectiveSshConfig.mockReturnValue({ enabled: false });
+    settingsController.getEffectiveDeployConfig.mockReturnValue({});
+    settingsController.getEffectiveOpencodeConfig.mockReturnValue({ enabled: false });
+    const toolManager = { getTool: (id) => ['remote-cli-agent', 'tool-doc-read'].includes(id) ? { id, description: id } : null };
+    const orchestrator = new ConversationOrchestrator({ toolManager, llmClient: {} });
+    const objective = 'Use remote cli agent to build a new terminal utility.';
+    const session = { metadata: {}, controlState: { remoteCliAgent: {
+        targetId: 'k3s-secondary', cwd: '/opt/kimibuilt', completionStatus: 'running', remoteCodeJobId: 'owned-job', sessionId: 'owned-session',
+    } } };
+    const toolContext = { companyWorkloadId: 'owned-workload' };
+    const action = mode === 'planned'
+        ? orchestrator.normalizePlannedStep({ tool: 'remote-cli-agent', params: { task: objective } }, { objective, session, toolContext, executionProfile: 'remote-build' })
+        : orchestrator.buildDirectAction({ objective, session, toolContext, toolPolicy: orchestrator.buildToolPolicy({ objective, session, toolManager, executionProfile: 'remote-build' }) });
+    expect(action.tool).toBe('remote-cli-agent');
+    expect(action.params.jobId).toBe('owned-job');
+    expect(action.params.targetId).toBe('k3s-secondary');
+});
+
 function buildResponse(text, id = 'resp_test') {
     return {
         id,

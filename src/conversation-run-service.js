@@ -233,6 +233,7 @@ class ConversationRunService {
             ...(metadata.agentCompanyRun === true ? { loadRecentMessages: false, loadContextMessages: false, previousResponseId: null } : {}),
             toolContext: {
                 reasoningEffort,
+                companyWorkloadId: metadata.agentCompanyRun === true ? metadata.workloadId : null,
                 sessionId,
                 runId: metadata?.agentRunId || null,
                 agentRunId: metadata?.agentRunId || null,
