@@ -20,6 +20,8 @@ const {
     buildReviewPrompt,
     evaluateLongAgentStop,
     getLongAgentStep,
+    getRemoteExecutionState,
+    isRemoteExecutionPending,
     normalizeLongAgentMetadata,
 } = require('./long-agent-mode');
 const { RUN_STATUS, workloadStore } = require('./store');
@@ -1023,6 +1025,8 @@ class AgentWorkloadService {
                 error.executionResult = result;
                 throw error;
             }
+            const remoteExecution = getRemoteExecutionState(result, workload);
+            const remoteExecutionPending = isRemoteExecutionPending(remoteExecution);
             const completionTrace = result.execution?.trace
                 || result.response?.metadata?.executionTrace
                 || (execution ? {
@@ -1045,13 +1049,16 @@ class AgentWorkloadService {
                 stage,
                 outputText: result.outputText || result.artifactMessage || '',
                 artifacts: result.artifacts || [],
+                remoteExecutionPending,
             });
             await this.addRunEventSafe(run.id, 'completed', {
                 responseId: result.response?.id || null,
                 structuredExecution: Boolean(execution),
                 artifactOnly: artifactOnlyStage,
+                ...(remoteExecution ? { remoteExecution, ...(remoteExecutionPending ? { goalComplete: false } : {}) } : {}),
             });
-            const explicitFollowupRun = await this.scheduleFollowupStage(trackedWorkload, run, true);
+            // Dependent stages must not consume a CLI handoff while its job is still running.
+            const explicitFollowupRun = remoteExecutionPending ? null : await this.scheduleFollowupStage(trackedWorkload, run, true);
             if (!explicitFollowupRun) {
                 await this.handleLongAgentStop(trackedWorkload, run, {
                     succeeded: true,
@@ -1064,15 +1071,18 @@ class AgentWorkloadService {
             await this.appendSyntheticMessageSafe(
                 trackedWorkload.sessionId,
                 'system',
-                `Deferred workload "${trackedWorkload.title}" completed${stage ? ` (stage ${run.stageIndex + 1})` : ''}.`,
+                remoteExecutionPending
+                    ? `Deferred workload "${trackedWorkload.title}" stage returned; remote execution is still pending. The goal is not complete.`
+                    : `Deferred workload "${trackedWorkload.title}" completed${stage ? ` (stage ${run.stageIndex + 1})` : ''}.`,
             );
             await advanceSurfaceAgentRun(agentRunShadow, 'completed', {
-                reason: 'Deferred workload completed.',
+                reason: remoteExecutionPending ? 'Scheduler stage completed; remote execution is still pending.' : 'Deferred workload completed.',
                 details: {
                     workloadId: trackedWorkload.id,
                     workloadRunId: run.id,
                     responseId: result.response?.id || null,
                     artifactCount: Array.isArray(result.artifacts) ? result.artifacts.length : 0,
+                    ...(remoteExecution ? { remoteExecution, ...(remoteExecutionPending ? { goalComplete: false } : {}) } : {}),
                 },
                 usage: result.response?.usage || result.response?.metadata?.usage || null,
                 outputs: (result.artifacts || []).map((artifact) => ({
@@ -1087,6 +1097,7 @@ class AgentWorkloadService {
                 output: result.outputText || '',
                 responseId: result.response?.id || null,
                 artifacts: result.artifacts || [],
+                ...(remoteExecution ? { remoteExecution, ...(remoteExecutionPending ? { goalComplete: false } : {}) } : {}),
             }, agentRunShadow, { eventType: 'workload.completed' }));
             return attachAgentRunMetadata(completed, agentRunShadow, { eventType: 'workload.completed' });
         } catch (error) {
@@ -1127,6 +1138,7 @@ class AgentWorkloadService {
                     stage,
                     error,
                     result: {
+                        ...(error.executionResult || {}),
                         outputText: error.message,
                     },
                 });
@@ -1577,6 +1589,7 @@ class AgentWorkloadService {
         const artifactMessage = this.truncateStoredOutput(
             String(result?.artifactMessage || '').trim(),
         );
+        const remoteExecution = getRemoteExecutionState(result, run.workload);
 
         const metadata = {
             ...(run.metadata || {}),
@@ -1585,6 +1598,7 @@ class AgentWorkloadService {
                 text: outputText,
                 artifactMessage,
                 artifacts,
+                ...(remoteExecution ? { remoteExecution, ...(isRemoteExecutionPending(remoteExecution) ? { goalComplete: false } : {}) } : {}),
             },
         };
         const longAgent = normalizeLongAgentMetadata(run?.workload?.metadata || {}, {
@@ -1635,7 +1649,7 @@ class AgentWorkloadService {
             runId: run?.id || '',
             reviewedAt: new Date().toISOString(),
             milestoneId: project.activeMilestoneId,
-            status: review.succeeded ? 'completed' : 'failed',
+            status: review.remoteExecutionPending ? 'running' : review.succeeded ? 'completed' : 'failed',
             summary: this.truncateStoredOutput(String(review.outputText || '').trim(), 400),
             stageIndex: run?.stageIndex,
             artifacts: review.artifacts || [],
@@ -1742,11 +1756,16 @@ class AgentWorkloadService {
             return null;
         }
         if (evaluation.decision === 'complete' || evaluation.decision === 'stop_max_steps') {
-            await this.addRunEventSafe(run.id, 'long-agent-complete', {
+            await this.addRunEventSafe(run.id, evaluation.decision === 'complete' ? 'long-agent-complete' : 'long-agent-paused', {
                 decision: evaluation.decision,
                 reason: evaluation.reason,
                 scratchSummary: evaluation.scratchSummary,
+                ...(evaluation.remoteExecution ? { remoteExecution: evaluation.remoteExecution, goalComplete: evaluation.goalComplete } : {}),
             });
+            if (evaluation.decision === 'stop_max_steps' && evaluation.remoteExecutionPending) {
+                await this.appendSyntheticMessageSafe(workload.sessionId, 'system',
+                    `Long agent "${workload.title}" reached its automatic stage limit while its remote job remains unfinished. The job cursor is preserved; resume this goal to continue observing it.`);
+            }
             return null;
         }
 

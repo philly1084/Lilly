@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { buildAgentMessages } = require('./messages');
+const { isRemoteExecutionPending } = require('../workloads/long-agent-mode');
 const { AGENT_RUN_SURFACE } = require('../agent-runs/constants');
 
 const ACTIVE_RUN_STATES = new Set([
@@ -358,15 +359,33 @@ class AgentOpsService {
     )) || null;
   }
 
-  deriveAgentStatus(workloadRun = null, canonicalRun = null) {
-    if (this.getPendingApproval(canonicalRun)
-      || normalizeRunStatus(canonicalRun?.state) === 'waiting_for_approval'
-      || normalizeRunStatus(canonicalRun?.state) === 'blocked') {
-      return 'needs_input';
-    }
+  resolveWorkloadExecutionStatus(workload = null, workloadRun = null, canonicalRun = null, fallback = 'idle') {
     const canonicalState = normalizeRunStatus(canonicalRun?.state);
     const workloadState = normalizeRunStatus(workloadRun?.status);
-    if (ACTIVE_RUN_STATES.has(canonicalState) || ACTIVE_RUN_STATES.has(workloadState)) {
+    if (this.getPendingApproval(canonicalRun) || canonicalState === 'waiting_for_approval') return 'waiting_for_approval';
+    if (canonicalState === 'blocked') return 'blocked';
+    if (['failed', 'cancelled'].includes(workloadState)) return workloadState;
+    if (ACTIVE_RUN_STATES.has(workloadState) || ACTIVE_RUN_STATES.has(canonicalState)) {
+      return ACTIVE_RUN_STATES.has(workloadState) ? workloadState : canonicalState;
+    }
+    const remote = workloadRun?.metadata?.output?.remoteExecution;
+    const lastDecision = workload?.metadata?.longAgent?.lastDecision;
+    const decision = workloadRun?.id && lastDecision?.runId === workloadRun.id ? lastDecision.decision : null;
+    if (decision === 'stop_max_steps') return 'paused';
+    if (isRemoteExecutionPending(remote)) return 'running';
+    if (remote && ['failed', 'blocked', 'cancelled', 'canceled', 'error', 'rejected', 'waiting_for_input'].includes(remote.completionStatus)) return 'blocked';
+    if (decision === 'review') return 'blocked';
+    if (decision === 'next_step') return 'planning';
+    return normalizeRunStatus(canonicalRun?.state || workloadRun?.status || fallback);
+  }
+
+  deriveAgentStatus(workloadRun = null, canonicalRun = null, workload = null) {
+    const state = this.resolveWorkloadExecutionStatus(workload, workloadRun, canonicalRun);
+    if (this.getPendingApproval(canonicalRun)
+      || ['waiting_for_approval', 'blocked', 'paused'].includes(state)) {
+      return 'needs_input';
+    }
+    if (ACTIVE_RUN_STATES.has(state)) {
       return 'working';
     }
     return 'idle';
@@ -377,12 +396,12 @@ class AgentOpsService {
     const companyMetadata = getCompanyMetadata(workload || {});
     const roleId = cleanText(role.id || companyMetadata.roleId || workload?.id, 160);
     const roleName = cleanText(role.name || companyMetadata.roleName || workload?.title || roleId, 200);
-    const status = this.deriveAgentStatus(run, canonicalRun);
-    const runState = normalizeRunStatus(canonicalRun?.state || run?.status);
+    const status = this.deriveAgentStatus(run, canonicalRun, workload);
+    const runState = this.resolveWorkloadExecutionStatus(workload, run, canonicalRun);
     const pendingApproval = this.getPendingApproval(canonicalRun);
     const task = cleanText(workload?.title || role.mission, 500) || null;
     let currentAction = 'Awaiting assignment';
-    if (task && status === 'needs_input') currentAction = `Approval needed: ${task}`;
+    if (task && status === 'needs_input') currentAction = `${pendingApproval || runState === 'waiting_for_approval' ? 'Approval needed' : runState === 'paused' ? 'Continuation needed' : 'Needs attention'}: ${task}`;
     else if (task && status === 'working') currentAction = `Working on ${task}`;
     else if (task && runState === 'completed') currentAction = `Completed ${task}`;
     else if (task && runState === 'failed') currentAction = `Run failed: ${task}`;
@@ -416,6 +435,7 @@ class AgentOpsService {
       status,
       runId: canonicalRun?.id || run?.id || null,
       workloadId: workload?.id || null,
+      ...(run?.metadata?.output?.remoteExecution ? { remoteExecution: run.metadata.output.remoteExecution } : {}),
       needsApproval: Boolean(pendingApproval),
       approval: pendingApproval ? {
         id: cleanText(pendingApproval.id, 240),
@@ -431,7 +451,7 @@ class AgentOpsService {
       const run = pickLatest(runs);
       const canonicalRun = run ? indexes.canonicalByWorkloadRun.get(run.id) || null : null;
       const metadata = getCompanyMetadata(workload);
-      const status = normalizeRunStatus(canonicalRun?.state || run?.status || 'idle');
+      const status = this.resolveWorkloadExecutionStatus(workload, run, canonicalRun);
       return {
         id: workload.id,
         title: cleanText(workload.title, 500) || 'Untitled workflow',
@@ -509,9 +529,9 @@ class AgentOpsService {
       const run = workload ? pickLatest(indexes.runsByWorkload.get(workload.id) || []) : null;
       const canonicalRun = run ? indexes.canonicalByWorkloadRun.get(run.id) || null : null;
       const approval = this.getPendingApproval(canonicalRun);
-      const rawStatus = normalizeRunStatus(canonicalRun?.state || run?.status || item.status || 'planned');
+      const rawStatus = this.resolveWorkloadExecutionStatus(workload, run, canonicalRun, item.status || 'planned');
       let status = rawStatus;
-      if (approval || rawStatus === 'waiting_for_approval') status = 'needs_input';
+      if (approval || rawStatus === 'waiting_for_approval' || rawStatus === 'paused') status = 'needs_input';
       else if (ACTIVE_RUN_STATES.has(rawStatus)) status = 'working';
       else if (rawStatus === 'failed' || rawStatus === 'blocked' || rawStatus === 'cancelled') status = 'blocked';
       else if (rawStatus !== 'completed') status = 'planned';
@@ -532,7 +552,8 @@ class AgentOpsService {
         status,
         blockedBy: status === 'blocked'
           ? cleanText(error.message || run?.reason || canonicalRun?.completion?.reason, 500) || 'Run did not complete.'
-          : (approval ? cleanText(approval.reason || approval.title, 500) || 'Approval required.' : null),
+          : (approval ? cleanText(approval.reason || approval.title, 500) || 'Approval required.'
+            : rawStatus === 'paused' ? 'Automatic stage limit reached. Resume the goal to continue; the remote job cursor is preserved.' : null),
         evidence,
       };
     });

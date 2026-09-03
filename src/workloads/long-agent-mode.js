@@ -151,6 +151,42 @@ function removeNegatedProblemSignals(text = '') {
         .replace(/\b(?:is|are|was|were)\s+not\s+blocked\b/gi, '');
 }
 
+function getRemoteExecutionState(result = {}, workload = {}) {
+    const events = result.toolEvents || result.response?.metadata?.toolEvents || [];
+    const event = [...events].reverse().find((entry) =>
+        (entry.toolCall?.function?.name || entry.toolId || entry.tool) === 'remote-cli-agent' && entry.result);
+    const cursor = workload.metadata?.companyRemoteExecution;
+    const ownedPendingState = cursor?.workloadId === workload.id
+        && cursor?.companyGoalHash === (workload.metadata?.agentCompany?.companyGoalHash || null)
+        && isRemoteExecutionPending(cursor?.state) ? cursor.state : null;
+    if (!event && !ownedPendingState) return null;
+    // Silence is not a terminal observation. Carry the already-owned pending
+    // cursor into this run's snapshot when the planner skipped its status call.
+    const outcome = event ? event.result : { data: ownedPendingState };
+    const data = outcome.data || outcome;
+    const completionStatus = outcome.success === false ? 'failed' : sanitizeText(data.completionStatus).toLowerCase() || 'unknown';
+    const state = { completionStatus };
+    for (const key of ['targetId', 'remoteCodeJobId', 'sessionId', 'remoteCodeSessionId', 'observationStatus', 'providerId', 'providerModel']) {
+        if (typeof data[key] === 'string') state[key] = data[key];
+    }
+    const receipt = data.reasoningEffortReceipt;
+    const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+    if (receipt?.status === 'applied' && receipt.appliedTo === 'cli-invocation'
+        && efforts.includes(receipt.requested) && efforts.includes(receipt.applied)) {
+        state.reasoningEffortReceipt = {
+            requested: receipt.requested, applied: receipt.applied, status: 'applied', appliedTo: 'cli-invocation',
+        };
+    } else if (receipt?.status === 'forwarded' && efforts.includes(receipt.requested)) {
+        state.reasoningEffortReceipt = { requested: receipt.requested, status: 'forwarded' };
+    }
+    return state;
+}
+
+function isRemoteExecutionPending(state) {
+    return Boolean(state && (state.observationStatus === 'unavailable'
+        || !['complete', 'completed', 'failed', 'blocked', 'cancelled', 'canceled', 'rejected', 'error', 'waiting_for_input'].includes(state.completionStatus)));
+}
+
 function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded = true, error = null } = {}) {
     const longAgent = normalizeLongAgentMetadata(workload?.metadata || {}, {
         goal: workload?.prompt,
@@ -162,21 +198,25 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
     const step = getLongAgentStep(run);
     const outputText = sanitizeText(result?.outputText || result?.artifactMessage || error?.message || '');
     const scratchSummary = extractScratchSummary(outputText, longAgent.compaction.retainChars);
+    const remoteExecution = getRemoteExecutionState(result, workload);
+    const remoteExecutionPending = isRemoteExecutionPending(remoteExecution);
+    const remoteExecutionFailed = remoteExecution && !remoteExecutionPending
+        && !['complete', 'completed'].includes(remoteExecution.completionStatus);
     const lowerOutput = outputText.toLowerCase();
     const problemSignalText = removeNegatedProblemSignals(outputText);
-    const blocked = !succeeded
+    const blocked = !succeeded || Boolean(remoteExecutionFailed)
         || /\b(blocked|cannot continue|need user|needs user|missing credential|permission denied|auth required|failed|error)\b/i.test(problemSignalText);
     const needsReview = blocked
         || /\b(incomplete|needs repair|needs review|not verified|tests? failing|still broken|regression)\b/i.test(problemSignalText);
-    const goalComplete = succeeded && !needsReview
+    const goalComplete = succeeded && !needsReview && !remoteExecutionPending
         && /\b(overall goal complete|project complete|all acceptance criteria (?:met|passed)|nothing remains|ready for final handoff)\b/i.test(lowerOutput);
     const maxStepsReached = step >= longAgent.maxAutoSteps;
     const decision = goalComplete
         ? 'complete'
-        : needsReview
-            ? 'review'
-            : maxStepsReached
-                ? 'stop_max_steps'
+        : maxStepsReached
+            ? 'stop_max_steps'
+            : needsReview
+                ? 'review'
                 : 'next_step';
 
     return {
@@ -188,10 +228,16 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
         succeeded: Boolean(succeeded),
         needsReview,
         blocked,
+        remoteExecution,
+        remoteExecutionPending,
         goalComplete,
         maxStepsReached,
         decision,
-        reason: needsReview
+        reason: remoteExecutionPending
+            ? maxStepsReached
+                ? 'Automatic stage budget reached while the remote job remains unfinished; resume the same job after continuation is approved.'
+                : 'Remote execution is unfinished; observe the same job before declaring the goal complete or starting dependent work.'
+            : needsReview
             ? 'Evaluator found a blocker, incomplete work, or failed verification.'
             : goalComplete
                 ? 'Evaluator found a completion signal.'
@@ -207,6 +253,7 @@ function buildReviewPrompt(longAgent = {}, evaluation = {}, priorOutput = '') {
         longAgent.goal ? `Goal: ${longAgent.goal}` : null,
         `Scratch file: ${longAgent.scratchFile || DEFAULT_SCRATCH_FILE}`,
         'The previous agent stage stopped with a review-needed signal.',
+        evaluation.remoteExecutionPending ? 'The remote job is still pending. Observe/resume the preserved job on its recorded target before attempting repairs. Do not start a replacement job or treat an observation failure as completion.' : null,
         'Review the scratch summary and prior output, repair the smallest necessary issue, and update the scratch summary.',
         'If the issue is truly blocked by missing user-owned input or credentials, state that clearly and do not invent a workaround.',
         '',
@@ -220,7 +267,9 @@ function buildNextStepPrompt(longAgent = {}, evaluation = {}) {
         '[Long agent next stage]',
         longAgent.goal ? `Goal: ${longAgent.goal}` : null,
         `Scratch file: ${longAgent.scratchFile || DEFAULT_SCRATCH_FILE}`,
-        'Based on the scratch summary, choose the next obvious useful step and do it.',
+        evaluation.remoteExecutionPending
+            ? `Remote execution is still pending${evaluation.remoteExecution?.remoteCodeJobId ? ` (job ${evaluation.remoteExecution.remoteCodeJobId})` : ''}. Use remote-cli-agent to observe/resume that same job on its recorded target. Do not launch a replacement job or advance dependent stages while it is pending. An unavailable observation is not a terminal result.`
+            : 'Based on the scratch summary, choose the next obvious useful step and do it.',
         'Keep the step scoped. Prefer implementation plus verification over broad planning.',
         'End with a fresh "Stage scratch summary" that is compact enough to carry into the next event.',
         '',
@@ -236,6 +285,8 @@ module.exports = {
     evaluateLongAgentStop,
     extractScratchSummary,
     getLongAgentStep,
+    getRemoteExecutionState,
+    isRemoteExecutionPending,
     isLongAgentWorkload,
     normalizeLongAgentMetadata,
 };

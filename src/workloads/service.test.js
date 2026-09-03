@@ -112,6 +112,54 @@ describe('AgentWorkloadService', () => {
         expect(store.addRunEvent).toHaveBeenCalledWith('r2', 'long-agent-blocked', expect.any(Object));
     });
 
+    test('continues the same pending CLI job despite final prose and does not advance dependent stages', async () => {
+        const workload = { id: 'company-w', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build', trigger: { type: 'manual' },
+            stages: [{ prompt: 'Publish the built app', trigger: { type: 'after-success' } }], policy: {},
+            metadata: { agentCompany: { enabled: true, companyGoalHash: 'goal1' }, longAgent: { enabled: true, maxAutoSteps: 3 } } };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'Overall goal complete.', toolEvents: [{ toolId: 'remote-cli-agent', result: { success: true, data: {
+            targetId: 'k3s-secondary', remoteCodeJobId: 'job1', sessionId: 'remote-session1', completionStatus: 'running',
+        } } }] });
+        store.completeRun.mockResolvedValue({ id: 'r1', status: 'completed' });
+        await service.executeClaimedRun({ id: 'r1', workload, stageIndex: -1, metadata: { longAgentStep: 1 } }, 'worker');
+        expect(store.completeRun).toHaveBeenCalledWith('r1', 'worker', expect.objectContaining({ metadata: expect.objectContaining({ output: expect.objectContaining({
+            remoteExecution: expect.objectContaining({ completionStatus: 'running', remoteCodeJobId: 'job1' }), goalComplete: false,
+        }) }) }));
+        expect(store.enqueueRun).toHaveBeenCalledTimes(1);
+        expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({
+            stageIndex: -1, reason: 'long-agent-next-step', prompt: expect.stringContaining('observe/resume that same job'),
+        }));
+        expect(conversationRunService.appendSyntheticMessage).toHaveBeenCalledWith('shared', 'system', expect.stringContaining('The goal is not complete.'));
+        expect(conversationRunService.appendSyntheticMessage).not.toHaveBeenCalledWith('shared', 'system', 'Deferred workload "Build" completed.');
+        expect(broadcastToSession).toHaveBeenCalledWith('shared', expect.objectContaining({ type: 'workload_completed', data: expect.objectContaining({ goalComplete: false, remoteExecution: expect.objectContaining({ remoteCodeJobId: 'job1' }) }) }));
+    });
+
+    test('pauses instead of declaring completion when the stage budget expires on a running job', async () => {
+        const workload = { id: 'w', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build', metadata: {
+            agentCompany: { enabled: true }, longAgent: { enabled: true, maxAutoSteps: 2 },
+        } };
+        await service.handleLongAgentStop(workload, { id: 'r2', metadata: { longAgentStep: 2 } }, { result: {
+            outputText: 'Overall goal complete.', toolEvents: [{ toolId: 'remote-cli-agent', result: { data: { completionStatus: 'running', remoteCodeJobId: 'job1' } } }],
+        } });
+        expect(store.enqueueRun).not.toHaveBeenCalled();
+        expect(store.addRunEvent).toHaveBeenCalledWith('r2', 'long-agent-paused', expect.objectContaining({ goalComplete: false }));
+        expect(store.addRunEvent).not.toHaveBeenCalledWith('r2', 'long-agent-complete', expect.any(Object));
+        expect(conversationRunService.appendSyntheticMessage).toHaveBeenCalledWith('shared', 'system', expect.stringContaining('job cursor is preserved'));
+    });
+
+    test('stores the owned pending observation on a stage where the planner skipped the tool call', async () => {
+        const workload = { id: 'w1', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build', trigger: { type: 'manual' }, stages: [], policy: {},
+            metadata: { agentCompany: { enabled: true, companyGoalHash: 'g1' }, longAgent: { enabled: true, maxAutoSteps: 3 },
+                companyRemoteExecution: { workloadId: 'w1', companyGoalHash: 'g1', state: { completionStatus: 'running', remoteCodeJobId: 'job1', targetId: 'primary' } },
+            } };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'Overall goal complete.' });
+        store.completeRun.mockResolvedValue({ id: 'r2', status: 'completed' });
+        await service.executeClaimedRun({ id: 'r2', workload, stageIndex: -1, metadata: { longAgentStep: 2 } }, 'worker');
+        expect(store.completeRun).toHaveBeenCalledWith('r2', 'worker', expect.objectContaining({ metadata: expect.objectContaining({ output: expect.objectContaining({
+            remoteExecution: expect.objectContaining({ completionStatus: 'running', remoteCodeJobId: 'job1' }), goalComplete: false,
+        }) }) }));
+        expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ longAgentStep: 3 }) }));
+    });
+
     test('queues the initial scheduled run for once workloads', async () => {
         const workload = {
             id: 'workload-1',

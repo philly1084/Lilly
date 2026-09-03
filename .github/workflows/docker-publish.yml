@@ -55,6 +55,14 @@ jobs:
 
       - name: Verify remote agent artifact handoff
         run: |
+          bash -n scripts/remote-cli/codex-remote-run.sh
+          node --test scripts/remote-cli/codex-remote-run.test.cjs
+          npm test -- --runInBand --coverage=false --runTestsByPath \
+            src/agent-ops/execution-contract.test.js \
+            src/agent-ops/messages.test.js \
+            src/remote-cli/workspace-contract.test.js \
+            src/workloads/long-agent-mode.test.js \
+            src/workloads/service.test.js
           node --check src/remote-cli/agent-handoff.js
           node --check src/remote-cli/agent-result-artifacts.js
           node --check src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.js

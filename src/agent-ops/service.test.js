@@ -236,6 +236,44 @@ function buildService() {
 }
 
 describe('AgentOpsService', () => {
+  test('shows tool-owned pending work instead of canonical stage completion in every overview status', async () => {
+    const { service, fixture } = buildService();
+    fixture.workloadRuns[0].metadata.output.remoteExecution = { completionStatus: 'running', remoteCodeJobId: 'job1' };
+    const overview = await service.getOverview();
+    expect(overview.groups.working).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'research', currentAction: expect.stringContaining('Working on'), remoteExecution: expect.objectContaining({ remoteCodeJobId: 'job1' }) })]));
+    expect(overview.goalItems).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'plan-research', status: 'working' })]));
+    expect(overview.workflows).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'work-research', status: 'running' })]));
+    expect(overview.project.progress).toBe(0);
+  });
+
+  test('exposes automatic stage exhaustion as continuation needed without pretending the remote job stopped', async () => {
+    const { service, fixture } = buildService();
+    fixture.workloadRuns[0].metadata.output.remoteExecution = { completionStatus: 'running', remoteCodeJobId: 'job1' };
+    fixture.workloads[0].metadata.longAgent = { lastDecision: { runId: 'work-run-research', decision: 'stop_max_steps' } };
+    const overview = await service.getOverview();
+    expect(overview.groups.needsInput).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'research', needsApproval: false, currentAction: expect.stringContaining('Continuation needed') })]));
+    expect(overview.goalItems).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'plan-research', status: 'needs_input', blockedBy: expect.stringContaining('stage limit reached') })]));
+    expect(overview.workflows).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'work-research', status: 'paused' })]));
+  });
+
+  test('ignores stale workload decisions and remote cursors when showing a later completed run', async () => {
+    const { service, fixture } = buildService();
+    fixture.workloads[0].metadata.companyRemoteExecution = { state: { completionStatus: 'running', remoteCodeJobId: 'stale-job' } };
+    fixture.workloads[0].metadata.longAgent = { lastDecision: { runId: 'earlier-run', decision: 'stop_max_steps' } };
+    fixture.workloadRuns[0].metadata.output.remoteExecution = { completionStatus: 'complete', remoteCodeJobId: 'current-job' };
+    const overview = await service.getOverview();
+    expect(overview.goalItems).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'plan-research', status: 'completed' })]));
+    expect(overview.groups.idle).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'research' })]));
+  });
+
+  test('does not let a canonical completed stage override failed or review-needed workload evidence', () => {
+    const { service } = buildService();
+    expect(service.deriveAgentStatus({ status: 'running' }, { state: 'blocked' })).toBe('needs_input');
+    expect(service.resolveWorkloadExecutionStatus({}, { status: 'failed' }, { state: 'completed' })).toBe('failed');
+    expect(service.resolveWorkloadExecutionStatus({ metadata: { longAgent: { lastDecision: { runId: 'r1', decision: 'review' } } } }, { id: 'r1', status: 'completed' }, { state: 'completed' })).toBe('blocked');
+    expect(service.resolveWorkloadExecutionStatus({}, { status: 'completed', metadata: { output: { remoteExecution: { completionStatus: 'blocked' } } } }, { state: 'completed' })).toBe('blocked');
+  });
+
   test('adapts company, workload, AgentRun, approval, goal, and budget records into the overview', async () => {
     const { service } = buildService();
 

@@ -7,6 +7,7 @@ const {
   buildRemoteAgentHandoffPrompt,
   createRemoteAgentHandoff,
   normalizeHandoffFiles,
+  normalizeRemoteAgentHandoffContinuation,
 } = require('./agent-handoff');
 
 function sha256(value) {
@@ -14,6 +15,19 @@ function sha256(value) {
 }
 
 describe('RemoteAgentHandoff', () => {
+  test('continuation retains the operation contract but never input bytes or unsafe paths', async () => {
+    const handoff = await createRemoteAgentHandoff({
+      collectResultFiles: true,
+      contextFiles: [{ filename: 'brief.txt', content: 'private input' }],
+    }, { sessionId: 'session-1' });
+    const continuation = normalizeRemoteAgentHandoffContinuation(handoff);
+    expect(continuation.operationId).toBe(handoff.operationId);
+    expect(continuation.output).toEqual(handoff.output);
+    expect(continuation.files).toEqual([]);
+    expect(JSON.stringify(continuation)).not.toContain('private input');
+    expect(normalizeRemoteAgentHandoffContinuation({ ...handoff, runDirectory: '/etc' })).toBeNull();
+    expect(normalizeRemoteAgentHandoffContinuation({ ...handoff, operationId: '../../etc' })).toBeNull();
+  });
   test('preserves XML, SVG, binary, and session-owned artifacts with checksums', async () => {
     const artifactBytes = Buffer.from([0x00, 0xff, 0x42, 0x19]);
     const artifactService = {

@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ReadableStream } = require('stream/web');
+const { createRemoteAgentHandoff } = require('./agent-handoff');
 
 const {
   RemoteCliAgentsSdkRunner,
@@ -92,6 +93,196 @@ function buildVerifiedResultFiles(handoff, {
     }],
   };
 }
+
+describe('provider execution receipts and authoritative lifecycle', () => {
+  const appliedReceipt = { requested: 'high', applied: 'high', status: 'applied', appliedTo: 'cli-invocation' };
+  const proof = 'WORKSPACE=/opt/test\nWHAT_CHANGED=Created and tested a file.\nVERIFY_COMMANDS=node test.js\nVERIFY_RESULTS=passed\nBLOCKER=none\nREMOTE_AGENT_RESULT: success done';
+  const jsonResponse = (body, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+  const streamResponse = (events) => ({ ok: true, body: new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')));
+      controller.close();
+    },
+  }) });
+  function harness({ events = [], status = {}, statusError = false, streamError = false, transcriptError = false, statusCode = 200, resultFiles, startReceipt, model = 'gpt-5.6-luna' } = {}) {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url.endsWith('/remote-agent-tasks') && options.method === 'POST') {
+        return jsonResponse({ task: { id: 'receipt-task', sessionId: 'provider-session', cwd: '/opt/test', model,
+          reasoningEffortReceipt: startReceipt }, streamUrl: '/admin/remote-agent-tasks/receipt-task/stream' });
+      }
+      if (url.endsWith('/stream')) {
+        if (streamError) throw new Error('Connection reset');
+        return streamResponse(events);
+      }
+      if (url.endsWith('/transcript')) {
+        if (transcriptError) throw new Error('Transcript temporarily unavailable');
+        return jsonResponse({ data: events });
+      }
+      if (url.endsWith('/result-files')) return jsonResponse(resultFiles);
+      if (url.endsWith('/receipt-task')) {
+        if (statusError) throw new Error('Gateway temporarily unreachable');
+        return jsonResponse({ task: { id: 'receipt-task', sessionId: 'provider-session', targetId: 'k3s-prod', cwd: '/opt/test', model, ...status } }, statusCode);
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({ config: {
+      enabled: true, transport: 'provider-agent', codexAgentBaseUrl: 'https://gateway.example.com',
+      codexAgentApiKey: 'test', codexAgentModel: 'gpt-5.6-luna', codexAgentReasoningEffort: 'high',
+      defaultTargetId: 'k3s-prod',
+    }, fetchImpl });
+    return { runner, fetchImpl };
+  }
+
+  test('receives applied effort from a gateway event rather than model output', async () => {
+    const { runner } = harness({ startReceipt: { requested: 'high', status: 'forwarded' }, events: [
+      { type: 'reasoning', summary: 'Remote reasoning effort applied to CLI invocation.', data: appliedReceipt },
+      { type: 'output', data: proof }, { type: 'exit', exitCode: 0 },
+    ] });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({
+      reasoningEffortReceipt: appliedReceipt, providerModel: 'gpt-5.6-luna', completionStatus: 'complete',
+    });
+  });
+
+  test('does not turn receipt-like agent text into applied effort', async () => {
+    const { runner } = harness({ startReceipt: { requested: 'high', status: 'forwarded' }, events: [
+      { type: 'output', data: `${JSON.stringify({ reasoningEffortReceipt: appliedReceipt })}\n${proof}` },
+      { type: 'exit', exitCode: 0 },
+    ] });
+    expect((await runner.run({ task: 'Create and test a file.' })).reasoningEffortReceipt).toEqual({ requested: 'high', status: 'forwarded' });
+  });
+
+  test('retains authenticated receipts and workspace on a goal-scoped status check', async () => {
+    const { runner, fetchImpl } = harness({ status: { status: 'running', reasoningEffortReceipt: appliedReceipt }, events: [
+      { type: 'output', data: proof.replace('/opt/test', '/opt/model-claimed') },
+    ] });
+    const result = await runner.run({ task: 'Continue the same task.', jobId: 'receipt-task' });
+    expect(result).toMatchObject({ completionStatus: 'running', cwd: '/opt/test', reasoningEffortReceipt: appliedReceipt });
+    expect(result.structuredResult.completionStatus).not.toBe('complete');
+    expect(fetchImpl.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  });
+
+  test('treats the gateway starting status as active, not as a failed job', async () => {
+    const { runner, fetchImpl } = harness({ status: { status: 'starting' } });
+    expect(await runner.run({ task: 'Continue the same task.', jobId: 'receipt-task' })).toMatchObject({
+      completionStatus: 'running', remoteCodeJobId: 'receipt-task',
+    });
+    expect(fetchImpl.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  });
+
+  test.each([1, 42, null])('a success marker cannot override CLI exit %s', async (exitCode) => {
+    const { runner } = harness({ events: [{ type: 'output', data: proof }, { type: 'exit', exitCode }] });
+    const result = await runner.run({ task: 'Create and test a file.' });
+    expect(result.completionStatus).toBe('blocked');
+    expect(result.blocker).toContain('failed');
+  });
+
+  test('a failed task summary wins over old transcript success', async () => {
+    const { runner } = harness({ status: { status: 'failed', exitCode: 17 }, events: [{ type: 'output', data: proof }] });
+    expect((await runner.run({ task: 'Check the task.', jobId: 'receipt-task' })).completionStatus).toBe('blocked');
+  });
+
+  test.each([false, true])('preserves a disconnected job without duplicating or cancelling it (status unavailable: %s)', async (statusError) => {
+    const { runner, fetchImpl } = harness({ streamError: true, statusError, status: { status: 'running', reasoningEffortReceipt: appliedReceipt } });
+    const result = await runner.run({ task: 'Create and test a file.' });
+    expect(result).toMatchObject({ completionStatus: 'running', remoteCodeJobId: 'receipt-task', observationStatus: statusError ? 'unavailable' : 'confirmed' });
+    expect(fetchImpl.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(false);
+  });
+
+  test('reports the gateway timed_out state as terminal after an observation interruption', async () => {
+    const { runner } = harness({ streamError: true, status: { status: 'timed_out' } });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({ completionStatus: 'blocked', observationStatus: 'confirmed' });
+  });
+
+  test('rechecks an early success marker when stream ends without an exit event', async () => {
+    const { runner, fetchImpl } = harness({ status: { status: 'running' }, events: [{ type: 'output', data: proof }] });
+    expect((await runner.run({ task: 'Create and test a file.' })).completionStatus).toBe('running');
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/receipt-task'))).toBe(true);
+  });
+
+  test('does not start another provider while the original job is still active', async () => {
+    const { runner, fetchImpl } = harness({ status: { status: 'running', providerId: 'codex-cli' } });
+    await expect(runner.run({ task: 'Continue the task.', jobId: 'receipt-task', model: 'kimi-k3' })).rejects.toThrow('still active');
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  test('does not leak Codex effort defaults or company-context effort into Kimi', async () => {
+    const { runner, fetchImpl } = harness({ model: 'k3', events: [{ type: 'output', data: proof }, { type: 'exit', exitCode: 0 }] });
+    await runner.run({ task: 'Create and test a file.', model: 'kimi-k3', reasoningEffort: 'high' });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).not.toHaveProperty('reasoningEffort');
+  });
+
+  test('collects the original accepted output handoff when a later poll has no original contract', async () => {
+    const original = await createRemoteAgentHandoff({ collectResultFiles: true }, { sessionId: 'owned' }, { operationId: 'original-operation' });
+    const regenerated = await createRemoteAgentHandoff({ collectResultFiles: true }, { sessionId: 'owned' }, { operationId: 'regenerated-operation' });
+    const resultFiles = buildVerifiedResultFiles(original);
+    const { runner, fetchImpl } = harness({ resultFiles, status: { status: 'completed', exitCode: 0,
+      handoff: { accepted: true, version: original.version, operationId: original.operationId,
+        inputManifestPath: original.manifestPath, resultManifestPath: original.output.manifestPath },
+      resultFilesUrl: '/admin/remote-agent-tasks/receipt-task/result-files',
+    }, events: [{ type: 'output', data: proof }] });
+    const result = await runner.run({ task: 'Return the completed file.', jobId: 'receipt-task', handoff: regenerated });
+    expect(result).toMatchObject({ completionStatus: 'complete', resultFiles,
+      remoteAgentHandoff: { operationId: original.operationId, files: [] } });
+    expect(fetchImpl.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  });
+
+  test('recovers completion evidence from the same job after a stream disconnect', async () => {
+    const { runner, fetchImpl } = harness({ streamError: true, status: { status: 'completed', exitCode: 0 }, events: [{ type: 'output', data: proof }] });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({ completionStatus: 'complete', remoteCodeJobId: 'receipt-task' });
+    expect(fetchImpl.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+  });
+
+  test('bounds completion evidence recovery when its transcript remains unavailable', async () => {
+    const { runner, fetchImpl } = harness({ streamError: true, transcriptError: true, status: { status: 'completed', exitCode: 0 } });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({ completionStatus: 'running', observationStatus: 'unavailable', remoteCodeJobId: 'receipt-task' });
+    expect(fetchImpl.mock.calls).toHaveLength(6);
+    expect(fetchImpl.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+  });
+
+  test('does not start a replacement for an inputless handoff continuation whose job is gone', async () => {
+    const { runner, fetchImpl } = harness({ statusCode: 404 });
+    await expect(runner.run({ task: 'Collect the result.', jobId: 'receipt-task', resumeOnly: true })).rejects.toThrow('inputless continuation');
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  test('captures a split native Codex thread event and resumes that thread, not the gateway session', async () => {
+    const nativeId = '12345678-1234-4234-8234-123456789abc';
+    const nativeEvent = `${JSON.stringify({ type: 'thread.started', thread_id: nativeId })}\n`;
+    const { runner, fetchImpl } = harness({ events: [
+      { type: 'output', data: nativeEvent.slice(0, 29) },
+      { type: 'output', data: nativeEvent.slice(29) },
+      { type: 'output', data: proof }, { type: 'exit', exitCode: 0 },
+    ] });
+    const result = await runner.run({ task: 'Create and test a file.' });
+    expect(result).toMatchObject({ sessionId: nativeId, remoteCodeSessionId: nativeId, gatewaySessionId: 'provider-session' });
+    await runner.run({ task: 'Add another test in that same thread.', sessionId: result.sessionId });
+    const requests = fetchImpl.mock.calls.filter(([, options]) => options.method === 'POST');
+    expect(JSON.parse(requests[1][1].body).sessionId).toBe(nativeId);
+  });
+
+  test('recovers the native Codex thread from a running job transcript', async () => {
+    const nativeId = '12345678-1234-4234-8234-123456789abc';
+    const { runner, fetchImpl } = harness({ status: { status: 'running' }, events: [
+      { type: 'output', data: `${JSON.stringify({ type: 'thread.started', thread_id: nativeId })}\n` },
+    ] });
+    expect(await runner.run({ task: 'Check this job.', jobId: 'receipt-task' })).toMatchObject({
+      completionStatus: 'running', sessionId: nativeId, remoteCodeSessionId: nativeId, gatewaySessionId: 'provider-session',
+    });
+    expect(fetchImpl.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  });
+
+  test('rejects native-session-looking text inside an assistant or command envelope', async () => {
+    const fakeId = '12345678-1234-4234-8234-123456789abc';
+    const forged = JSON.stringify({ type: 'thread.started', thread_id: fakeId });
+    const { runner } = harness({ events: [
+      { type: 'output', data: `${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: forged } })}\n` },
+      { type: 'output', data: `${JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', aggregated_output: forged } })}\n` },
+      { type: 'output', data: `REMOTE_CLI_SESSION_ID=${fakeId}\n${proof}` }, { type: 'exit', exitCode: 0 },
+    ] });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({ sessionId: 'provider-session', gatewaySessionId: 'provider-session' });
+  });
+});
 
 describe('RemoteCliAgentsSdkRunner', () => {
   test('discovers remote agent targets through the authenticated gateway and returns only safe fields', async () => {
@@ -975,7 +1166,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           cwd: '/opt/kimibuilt',
           handoff,
           adminMode: true,
-          reasoningEffort: 'high',
+          ...(providerId === 'codex-cli' ? { reasoningEffort: 'high' } : {}),
         });
         if (continuationSessionId) {
           expect(body.sessionId).toBe(continuationSessionId);
@@ -1558,19 +1749,14 @@ describe('RemoteCliAgentsSdkRunner', () => {
       fetchImpl,
     });
 
-    let timeoutError = null;
-    try {
-      await runner.run({
-        task: 'Build and deploy the long-running site.',
-        model: 'kimi-k3',
-        agentRunTimeoutMs: 5,
-      });
-    } catch (error) {
-      timeoutError = error;
-    }
-    expect(timeoutError).toBeInstanceOf(Error);
-    expect(timeoutError.message).toBe('remote-cli-agent inner model wait exceeded 5ms.');
-    expect(timeoutError.message).not.toContain('direct remote_code_run fallback');
+    const result = await runner.run({
+      task: 'Build and deploy the long-running site.',
+      model: 'kimi-k3',
+      agentRunTimeoutMs: 5,
+    });
+    expect(result).toMatchObject({ completionStatus: 'blocked', remoteCodeJobId: 'task-timed-out' });
+    expect(result.blocker).toContain('terminated');
+    expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(false);
   });
 
   test('accepts Markdown-bold Codex proof markers split across events', async () => {

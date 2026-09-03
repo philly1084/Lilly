@@ -1,6 +1,7 @@
 'use strict';
 
 const { buildCompanyExecutionGuide, getCompanyExecutionFailure, getCompanyRemoteExecution, createCompanySessionView } = require('./execution-contract');
+const { createRemoteAgentHandoff } = require('../remote-cli/agent-handoff');
 
 test('resumes only its own workload and goal cursor', () => {
   const workload = { id: 'w1', metadata: { agentCompany: { companyGoalHash: 'g1' } } };
@@ -11,6 +12,34 @@ test('resumes only its own workload and goal cursor', () => {
   expect(createCompanySessionView({}, context).controlState.remoteCliAgent.remoteCodeJobId).toBe('job1');
   expect(createCompanySessionView({}, { ...context, workloadId: 'w2' }).controlState).toEqual({});
   expect(createCompanySessionView({}, { ...context, companyGoalHash: 'g2' }).controlState).toEqual({});
+});
+
+test('retains gateway invocation receipts and unconfirmed observation state in the goal cursor', () => {
+  const receipt = { requested: 'high', applied: 'high', status: 'applied', appliedTo: 'cli-invocation', ignored: 'untrusted extra' };
+  const cursor = getCompanyRemoteExecution({ toolEvents: [{ toolId: 'remote-cli-agent', result: { data: {
+    targetId: 'k3s-primary', remoteCodeJobId: 'job1', providerId: 'codex-cli', providerModel: 'gpt-5.6-luna',
+    reasoningEffortReceipt: receipt, observationStatus: 'unavailable', completionStatus: 'running',
+  } } }] }, { id: 'w1' });
+  expect(cursor.state).toMatchObject({ providerId: 'codex-cli', providerModel: 'gpt-5.6-luna', observationStatus: 'unavailable',
+    reasoningEffortReceipt: { requested: 'high', applied: 'high', status: 'applied', appliedTo: 'cli-invocation' } });
+  expect(cursor.state.reasoningEffortReceipt).not.toHaveProperty('ignored');
+});
+
+test('does not retain malformed effort receipts or derive them from assistant text', () => {
+  const cursor = getCompanyRemoteExecution({ outputText: 'Reasoning high was applied.', toolEvents: [{ toolId: 'remote-cli-agent', result: { data: {
+    targetId: 'k3s-primary', remoteCodeJobId: 'job1', reasoningEffortReceipt: { requested: 'high', applied: 'high', status: 'applied' },
+  } } }] }, { id: 'w1' });
+  expect(cursor.state).not.toHaveProperty('reasoningEffortReceipt');
+});
+
+test('retains the original output handoff paths without input file contents', async () => {
+  const handoff = await createRemoteAgentHandoff({ collectResultFiles: true, contextFiles: [{ filename: 'brief.txt', content: 'Private content' }] },
+    { sessionId: 'owned' }, { operationId: 'retained-operation' });
+  const cursor = getCompanyRemoteExecution({ toolEvents: [{ toolId: 'remote-cli-agent', result: { data: {
+    targetId: 'k3s-primary', remoteCodeJobId: 'job1', remoteAgentHandoff: handoff,
+  } } }] }, { id: 'w1' });
+  expect(cursor.state.remoteAgentHandoff).toMatchObject({ operationId: 'retained-operation', files: [], output: { manifestPath: handoff.output.manifestPath } });
+  expect(JSON.stringify(cursor)).not.toContain('Private content');
 });
 
 test('shares the company transcript without inheriting another goal CLI cursor', () => {

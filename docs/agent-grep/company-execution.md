@@ -21,11 +21,26 @@ example domains and deployment guidance must not redirect a research goal.
    target, cwd, job, changes, checks, blockers and next owner/action in the
    existing shared whiteboard. Backend file tools and remote filesystems are
    different; verify read-back at the intended surface.
+   An interrupted stream or status timeout is an observation failure, not a
+   cancelled job. When `observationStatus: unavailable` is returned, retain the
+   same cursor and recheck it; do not launch duplicate work.
+   Persist the original `remoteAgentHandoff` snapshot with that job, without
+   inline file content. Polls reuse its isolated result manifest; they must not
+   create another operation ID or re-export inputs. Missing inputless
+   continuations require recovery or a newly approved handoff.
+   Codex's native `thread.started` ID is the coding session used for a later
+   resume; `gatewaySessionId` identifies only the gateway transport. Keep both
+   separate and use the current job ID for polling unfinished work.
 6. A failed/blocked terminal outcome fails the company run even if the model
    claims success. Two identical failures stop automatic long-agent continuation.
    Diagnose a changed recovery path or request the missing user-owned decision.
 7. Deliver a normal user-facing reply with clickable links, verified changes,
    checks and unfinished work. An HTML status brief is not implementation proof.
+8. Distinguish requested effort from applied effort. Only an authenticated
+   gateway `reasoningEffortReceipt` with `status: applied` and
+   `appliedTo: cli-invocation` proves which effort reached the CLI; a forwarded
+   request or a model's text is not confirmation. Codex effort settings must not
+   leak into Kimi or other provider requests.
 
 Implementation: `src/agent-ops/execution-contract.js`,
 `src/remote-cli/workspace-contract.js`, `src/workloads/service.js`.

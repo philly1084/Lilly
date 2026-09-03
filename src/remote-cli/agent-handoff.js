@@ -440,6 +440,42 @@ async function createRemoteAgentHandoff(params = {}, context = {}, options = {})
   };
 }
 
+// Persist only the operation contract for polling; never keep or resend input
+// file bytes in a workload cursor. Paths are derived, not inherited from text.
+function normalizeRemoteAgentHandoffContinuation(handoff = null) {
+  if (!handoff || handoff.version !== REMOTE_AGENT_HANDOFF_VERSION
+    || !/^[a-z0-9][a-z0-9-]{7,79}$/i.test(String(handoff.operationId || ''))
+    || handoff.output?.version !== REMOTE_AGENT_RESULT_FILES_VERSION) return null;
+  const operationId = handoff.operationId;
+  const runDirectory = `${REMOTE_AGENT_RUNS_ROOT}/${operationId}`;
+  const contextDirectory = `${runDirectory}/input`;
+  const directory = `${runDirectory}/output`;
+  const paths = { runDirectory, contextDirectory, manifestPath: `${contextDirectory}/manifest.json` };
+  const outputPaths = { directory, filesDirectory: `${directory}/files`, manifestPath: `${directory}/manifest.json` };
+  if (Object.entries(paths).some(([key, value]) => handoff[key] !== value)
+    || Object.entries(outputPaths).some(([key, value]) => handoff.output[key] !== value)) return null;
+  try {
+    return {
+      version: REMOTE_AGENT_HANDOFF_VERSION,
+      operationId,
+      ...paths,
+      sourceArtifactIds: uniqueText(handoff.sourceArtifactIds).slice(0, MAX_REMOTE_AGENT_ARTIFACTS),
+      files: [],
+      output: {
+        version: REMOTE_AGENT_RESULT_FILES_VERSION,
+        enabled: handoff.output.enabled === true,
+        ...outputPaths,
+        requestedGlobs: normalizeResultFileGlobs(handoff.output.requestedGlobs || []),
+        maxFiles: MAX_REMOTE_AGENT_FILES,
+        maxFileBytes: MAX_REMOTE_AGENT_FILE_BYTES,
+        maxTotalBytes: MAX_REMOTE_AGENT_TOTAL_BYTES,
+      },
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildRemoteAgentHandoffPrompt(handoff = null) {
   if (!handoff || handoff.version !== REMOTE_AGENT_HANDOFF_VERSION) {
     return '';
@@ -620,6 +656,7 @@ module.exports = {
   buildRemoteAgentHandoffPrompt,
   createRemoteAgentHandoff,
   normalizeHandoffFiles,
+  normalizeRemoteAgentHandoffContinuation,
   normalizeRelativeWorkspacePath,
   normalizeRemoteAgentResultFiles,
   resolveArtifactContextFiles,

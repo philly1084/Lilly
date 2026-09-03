@@ -31,4 +31,57 @@ describe('Agent user handoffs', () => {
     expect(safeLink('/api/artifacts/123/download')).toBe('/api/artifacts/123/download');
     expect(extractLinks('https://example.test/. Again https://example.test/.')).toEqual([{ url: 'https://example.test/', label: 'example.test' }]);
   });
+
+  test('separates a finished scheduler run from pending remote execution', () => {
+    const result = buildAgentMessages(workloads, [{
+      id: 'pending', workloadId: 'w1', status: 'completed', metadata: { output: {
+        text: 'Overall goal complete.', remoteExecution: { completionStatus: 'running', remoteCodeJobId: 'job1' },
+      } },
+    }]);
+    expect(result[0]).toMatchObject({ status: 'running', runStatus: 'completed', goalComplete: false, remoteExecution: { remoteCodeJobId: 'job1' } });
+    expect(result[0].message).toMatch(/^At this stage, remote execution was still pending; this update is not a completed goal\./);
+  });
+
+  test('historical handoffs use only their own observations, never a newer workload cursor', () => {
+    const changedWorkloads = [{ ...workloads[0], metadata: { ...workloads[0].metadata,
+      companyRemoteExecution: { state: { completionStatus: 'running', remoteCodeJobId: 'different-goal-job' } },
+    } }];
+    const result = buildAgentMessages(changedWorkloads, [{
+      id: 'old', workloadId: 'w1', status: 'completed', metadata: { output: {
+        text: 'Verified and ready.', remoteExecution: { completionStatus: 'complete', remoteCodeJobId: 'old-job' },
+      } },
+    }, {
+      id: 'legacy', workloadId: 'w1', status: 'completed', metadata: { output: { text: 'Historical handoff.' } },
+    }]);
+    expect(result.find((item) => item.runId === 'old')).toMatchObject({ status: 'completed', message: 'Verified and ready.', remoteExecution: { remoteCodeJobId: 'old-job' } });
+    expect(result.find((item) => item.runId === 'legacy')).toMatchObject({ status: 'completed', message: 'Historical handoff.' });
+  });
+
+  test.each([
+    [{ requested: 'high', applied: 'high', status: 'applied', appliedTo: 'cli-invocation' }, 'high effort applied to CLI invocation.'],
+    [{ requested: 'high', status: 'forwarded' }, 'high requested; application unconfirmed.'],
+  ])('shows the same-run runtime receipt honestly', (reasoningEffortReceipt, label) => {
+    const result = buildAgentMessages(workloads, [{
+      id: 'receipt', workloadId: 'w1', status: 'completed', metadata: { output: {
+        text: 'Files verified.', remoteExecution: { completionStatus: 'complete', providerModel: 'gpt-5.6-luna', reasoningEffortReceipt },
+      } },
+    }]);
+    expect(result[0].message).toBe(`Files verified.\n\nRuntime: gpt-5.6-luna · ${label}`);
+  });
+
+  test('does not infer applied effort from model prose, requested settings, or a receipt for another stage', () => {
+    const changedWorkloads = [{ ...workloads[0], metadata: { ...workloads[0].metadata,
+      reasoningEffort: 'high', companyRemoteExecution: { state: { providerModel: 'gpt-5.6-luna', reasoningEffortReceipt: {
+        requested: 'high', applied: 'high', status: 'applied', appliedTo: 'cli-invocation',
+      } } },
+    } }];
+    const result = buildAgentMessages(changedWorkloads, [{
+      id: 'no-receipt', workloadId: 'w1', status: 'completed', metadata: { output: { text: 'I used high effort.' } },
+    }, {
+      id: 'invalid-receipt', workloadId: 'w1', status: 'completed', metadata: { output: { text: 'Verified.', remoteExecution: {
+        providerModel: 'gpt-5.6-luna', reasoningEffortReceipt: { requested: 'high', applied: 'high', status: 'applied', appliedTo: 'planner' },
+      } } },
+    }]);
+    expect(result.every((item) => !item.message.includes('Runtime:'))).toBe(true);
+  });
 });

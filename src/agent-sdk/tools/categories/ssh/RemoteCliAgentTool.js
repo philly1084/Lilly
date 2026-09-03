@@ -5,7 +5,7 @@ const {
   buildRemoteCliStructuredResult,
   remoteCliAgentsSdkRunner,
 } = require('../../../../remote-cli/agents-sdk-runner');
-const { createRemoteAgentHandoff } = require('../../../../remote-cli/agent-handoff');
+const { createRemoteAgentHandoff, normalizeRemoteAgentHandoffContinuation } = require('../../../../remote-cli/agent-handoff');
 const { persistRemoteAgentResultArtifacts } = require('../../../../remote-cli/agent-result-artifacts');
 const { artifactService } = require('../../../../artifacts/artifact-service');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
@@ -634,23 +634,33 @@ class RemoteCliAgentTool extends ToolBase {
       task: String(params.task || '').slice(0, 200),
     });
 
-    const handoff = await createRemoteAgentHandoff(params, _context, {
+    const prior = getRemoteCliAgentStateFromContext(_context);
+    const isOwnedJobPoll = Boolean(params.jobId && params.jobId === prior.remoteCodeJobId
+      && (!params.targetId || params.targetId === prior.targetId));
+    const priorHandoff = isOwnedJobPoll
+      ? normalizeRemoteAgentHandoffContinuation(prior.remoteAgentHandoff) : null;
+    const handoff = priorHandoff || await createRemoteAgentHandoff(params, _context, {
       artifactService: this.artifactService,
     });
     const runParams = {
       ...params,
       handoff,
+      ...(priorHandoff ? { resumeOnly: true } : {}),
       ...(typeof _context?.onProgress === 'function' ? { onProgress: _context.onProgress } : {}),
     };
 
     const result = await this.runner.run(runParams);
     const { resultFiles: rawResultFiles, ...safeResult } = result || {};
+    const effectiveHandoff = normalizeRemoteAgentHandoffContinuation(result?.remoteAgentHandoff) || handoff;
+    if (safeResult.remoteCodeJobId && effectiveHandoff) {
+      safeResult.remoteAgentHandoff = normalizeRemoteAgentHandoffContinuation(effectiveHandoff);
+    }
     let persistedResultArtifacts = {};
     if (rawResultFiles) {
       try {
         persistedResultArtifacts = await persistRemoteAgentResultArtifacts({
           resultFiles: rawResultFiles,
-          handoff,
+          handoff: effectiveHandoff,
           artifactService: this.artifactService,
           context: _context,
           runResult: result,
@@ -679,9 +689,9 @@ class RemoteCliAgentTool extends ToolBase {
     return omitNullishRemoteCliResultFields({
       ...safeResult,
       ...persistedResultArtifacts,
-      ...(handoff ? {
-        requestedHandoffVersion: handoff.version,
-        inputArtifactIds: handoff.sourceArtifactIds,
+      ...(effectiveHandoff ? {
+        requestedHandoffVersion: effectiveHandoff.version,
+        inputArtifactIds: effectiveHandoff.sourceArtifactIds,
       } : {}),
     });
   }

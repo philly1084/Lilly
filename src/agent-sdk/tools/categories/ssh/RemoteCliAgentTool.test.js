@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { RemoteCliAgentTool } = require('./RemoteCliAgentTool');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
+const { createRemoteAgentHandoff } = require('../../../../remote-cli/agent-handoff');
 
 function buildTool() {
   const runner = {
@@ -19,6 +20,36 @@ function buildTool() {
 }
 
 describe('RemoteCliAgentTool', () => {
+  test('polls an owned artifact job with the original operation and no repeated input export', async () => {
+    const handoff = await createRemoteAgentHandoff({
+      contextFiles: [{ filename: 'source.txt', content: 'original bytes' }],
+      collectResultFiles: true,
+    }, { sessionId: 'session-1' });
+    const runner = { run: jest.fn(async () => ({ remoteCodeJobId: 'job-owned', targetId: 'k3s-primary', completionStatus: 'running' })) };
+    const tool = new RemoteCliAgentTool({ runner });
+    const result = await tool.execute({ task: 'Check the same running job', jobId: 'job-owned', targetId: 'k3s-primary', collectResultFiles: true }, {
+      sessionId: 'session-1',
+      controlState: { remoteCliAgent: { remoteCodeJobId: 'job-owned', targetId: 'k3s-primary', remoteAgentHandoff: handoff } },
+    });
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      resumeOnly: true,
+      handoff: expect.objectContaining({ operationId: handoff.operationId, files: [] }),
+    }));
+    expect(result.data.remoteAgentHandoff.operationId).toBe(handoff.operationId);
+    expect(result.data.remoteAgentHandoff.files).toEqual([]);
+  });
+
+  test('does not inherit another job artifact operation', async () => {
+    const handoff = await createRemoteAgentHandoff({ collectResultFiles: true }, { sessionId: 'session-1' });
+    const { tool, runner } = buildTool();
+    await tool.execute({ task: 'Check job', jobId: 'job-other', targetId: 'k3s-primary', collectResultFiles: true }, {
+      sessionId: 'session-1',
+      controlState: { remoteCliAgent: { remoteCodeJobId: 'job-owned', targetId: 'k3s-primary', remoteAgentHandoff: handoff } },
+    });
+    expect(runner.run.mock.calls[0][0].handoff.operationId).not.toBe(handoff.operationId);
+    expect(runner.run.mock.calls[0][0].resumeOnly).not.toBe(true);
+  });
   let storageDir;
   let originalStoragePath;
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizeRemoteWorkspace } = require('../remote-cli/workspace-contract');
+const { normalizeRemoteAgentHandoffContinuation } = require('../remote-cli/agent-handoff');
 
 const VERSION = 'AgentCompanyExecution/v1';
 const LANES = {
@@ -33,6 +34,7 @@ function buildCompanyExecutionGuide({ toolManager, targets = [], targetDiscovery
     'Only the inner CLI runner uses remote_code_run/remote_code_status. The company agent calls remote-cli-agent; preserve its returned jobId/sessionId and poll the same running job instead of launching a duplicate.',
     'Coordinate through the existing shared whiteboard and stage scratch record. Label each entry with goal/workload, owner, target, cwd, jobId/sessionId, changed files, verification, blocker and next owner/action. Read only entries relevant to this goal; do not act on stale goals or example domains.',
     'A heartbeat schedules/checks work; it is not proof of progress. A scheduler step returning does not mean its remote job or overall goal finished. Report running jobs as still running and blocked jobs as blocked; a final reply alone does not prove files were built or deployed.',
+    'A requested model/effort is not an execution receipt. Only gateway reasoningEffortReceipt with status applied proves the CLI effort was applied. If observationStatus is unavailable, keep the returned job cursor and retry observation; never assume completion or restart the job.',
     'On failure, read the actual tool error and refresh the relevant target/tool contract. Make one materially different recovery attempt; stop and surface the blocker if the same failure repeats. Never broaden allowed roots, bypass permissions or substitute an HTML brief for unfinished implementation.',
     'Final handoff: speak directly to the user, link the actual website/preview/download with Markdown, state what changed and which checks passed, and disclose unfinished work. Do not hide links in HTML. Claim completion only with tool evidence and read-back.',
   ].join('\n');
@@ -63,10 +65,21 @@ function getCompanyRemoteExecution(result = {}, workload = {}) {
   const data = event?.result?.data || event?.result;
   if (!data?.targetId || !(data.remoteCodeJobId || data.sessionId)) return null;
   const state = {};
-  for (const key of ['targetId', 'sessionId', 'mcpSessionId', 'remoteCodeSessionId', 'remoteCodeJobId', 'completionStatus', 'publicUrl', 'publicHost']) {
+  for (const key of ['targetId', 'sessionId', 'mcpSessionId', 'remoteCodeSessionId', 'remoteCodeJobId', 'gatewaySessionId', 'completionStatus', 'publicUrl', 'publicHost', 'providerId', 'providerModel', 'observationStatus']) {
     if (typeof data[key] === 'string') state[key] = data[key];
   }
+  const receipt = data.reasoningEffortReceipt;
+  const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+  if (receipt && efforts.includes(receipt.requested)) {
+    if (receipt.status === 'applied' && efforts.includes(receipt.applied) && receipt.appliedTo === 'cli-invocation') {
+      state.reasoningEffortReceipt = { requested: receipt.requested, applied: receipt.applied, status: 'applied', appliedTo: 'cli-invocation' };
+    } else if (receipt.status === 'forwarded') {
+      state.reasoningEffortReceipt = { requested: receipt.requested, status: 'forwarded' };
+    }
+  }
   state.cwd = normalizeRemoteWorkspace(data.cwd);
+  const remoteAgentHandoff = normalizeRemoteAgentHandoffContinuation(data.remoteAgentHandoff);
+  if (remoteAgentHandoff) state.remoteAgentHandoff = remoteAgentHandoff;
   return { workloadId: workload.id, companyGoalHash: workload.metadata?.agentCompany?.companyGoalHash || null, state };
 }
 
