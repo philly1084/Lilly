@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { getCompanyExecutionFailure } = require('../agent-ops/execution-contract');
+const { getCompanyExecutionFailure, getCompanyRemoteExecution } = require('../agent-ops/execution-contract');
 const { getNextCronRun } = require('./cron-utils');
 const {
     applyProjectPlanPatch,
@@ -885,7 +885,7 @@ class AgentWorkloadService {
             throw new Error('Claimed run is missing workload context');
         }
 
-        const workload = run.workload;
+        let workload = run.workload;
         const stage = Number(run.stageIndex) >= 0 && Array.isArray(workload.stages)
             ? workload.stages[run.stageIndex] || null
             : null;
@@ -998,6 +998,7 @@ class AgentWorkloadService {
                         workloadRun: true,
                         agentCompanyRun: workload.metadata?.agentCompany?.enabled === true,
                         companyGoalHash: workload.metadata?.agentCompany?.companyGoalHash || null,
+                        companyRemoteExecution: workload.metadata?.companyRemoteExecution || null,
                         companyRunContext: workload.metadata?.agentCompany?.enabled === true ? message : null,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
@@ -1005,6 +1006,15 @@ class AgentWorkloadService {
                         remoteBuildAutonomyApproved: workload.policy?.allowSideEffects === true,
                     },
                 });
+            if (workload.metadata?.agentCompany?.enabled === true) {
+                const companyRemoteExecution = getCompanyRemoteExecution(result, workload);
+                if (companyRemoteExecution) {
+                    const updatedMetadata = { ...(workload.metadata || {}), companyRemoteExecution };
+                    // Persist before scheduling continuation, never in the shared session cursor.
+                    await this.store.updateWorkload(workload.id, workload.ownerId, { metadata: updatedMetadata });
+                    workload = { ...workload, metadata: updatedMetadata };
+                }
+            }
             const companyFailure = workload.metadata?.agentCompany?.enabled === true
                 ? getCompanyExecutionFailure(result) : '';
             if (companyFailure) {

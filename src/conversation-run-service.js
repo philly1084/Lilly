@@ -162,7 +162,7 @@ class ConversationRunService {
             error.statusCode = 404;
             throw error;
         }
-        if (metadata.agentCompanyRun === true) resolvedSession = createCompanySessionView(resolvedSession);
+        if (metadata.agentCompanyRun === true) resolvedSession = createCompanySessionView(resolvedSession, metadata);
         const sanitizedMessage = stripAgentJournalBlocks(message);
         const outputFormat = String(metadata?.outputFormat || '').trim().toLowerCase()
             || (metadata?.agentCompanyRun === true ? null : inferRequestedOutputFormat(sanitizedMessage));

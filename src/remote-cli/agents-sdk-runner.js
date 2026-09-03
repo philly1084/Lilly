@@ -2590,6 +2590,10 @@ class RemoteCliAgentsSdkRunner {
           const existingTask = statusBody?.task && typeof statusBody.task === 'object'
             ? statusBody.task
             : statusBody;
+          if (existingTask?.targetId && existingTask.targetId !== targetId) {
+            throw new Error('Remote job belongs to a different target; do not reuse job IDs across targets.');
+          }
+          cwd = normalizeRemoteWorkspace(existingTask?.cwd) || cwd;
           const existingProviderId = normalizeText(existingTask?.providerId);
           if (existingProviderId && existingProviderId !== selection.providerId) {
             emitProgress(
@@ -2714,6 +2718,7 @@ class RemoteCliAgentsSdkRunner {
           throw new Error(normalizeText(startBody?.error || startBody?.message) || `${selection.providerLabel} remote-agent start failed with status ${startResponse?.status || 'unknown'}.`);
         }
         taskId = normalizeText(startBody?.task?.id);
+        cwd = normalizeRemoteWorkspace(startBody?.task?.cwd) || cwd;
         startedTaskInThisRun = Boolean(taskId);
         providerSessionId = normalizeText(startBody?.task?.sessionId);
         const streamUrl = normalizeText(startBody?.streamUrl);

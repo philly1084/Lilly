@@ -1,6 +1,17 @@
 'use strict';
 
-const { buildCompanyExecutionGuide, getCompanyExecutionFailure, createCompanySessionView } = require('./execution-contract');
+const { buildCompanyExecutionGuide, getCompanyExecutionFailure, getCompanyRemoteExecution, createCompanySessionView } = require('./execution-contract');
+
+test('resumes only its own workload and goal cursor', () => {
+  const workload = { id: 'w1', metadata: { agentCompany: { companyGoalHash: 'g1' } } };
+  const companyRemoteExecution = getCompanyRemoteExecution({ toolEvents: [{ toolId: 'remote-cli-agent', result: { success: true, data: {
+    targetId: 'k3s-secondary', remoteCodeJobId: 'job1', sessionId: 'session1', cwd: '/opt/kimibuilt', completionStatus: 'running',
+  } } }] }, workload);
+  const context = { workloadId: 'w1', companyGoalHash: 'g1', companyRemoteExecution };
+  expect(createCompanySessionView({}, context).controlState.remoteCliAgent.remoteCodeJobId).toBe('job1');
+  expect(createCompanySessionView({}, { ...context, workloadId: 'w2' }).controlState).toEqual({});
+  expect(createCompanySessionView({}, { ...context, companyGoalHash: 'g2' }).controlState).toEqual({});
+});
 
 test('shares the company transcript without inheriting another goal CLI cursor', () => {
   const session = { id: 'shared', ownerId: 'owner', previousResponseId: 'old', controlState: { activeTaskFrame: { objective: 'old goal' } }, metadata: {

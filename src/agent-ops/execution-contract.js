@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeRemoteWorkspace } = require('../remote-cli/workspace-contract');
+
 const VERSION = 'AgentCompanyExecution/v1';
 const LANES = {
   'tool-doc-read': 'Read the current parameter schema and examples before using an unfamiliar tool.',
@@ -30,7 +32,7 @@ function buildCompanyExecutionGuide({ toolManager, targets = [], targetDiscovery
     'The gateway owns target-specific default workspaces and allowed roots. Never copy a cwd, jobId or sessionId between targets, projects or goals. A log line, grep match or model claim is not workspace metadata.',
     'Only the inner CLI runner uses remote_code_run/remote_code_status. The company agent calls remote-cli-agent; preserve its returned jobId/sessionId and poll the same running job instead of launching a duplicate.',
     'Coordinate through the existing shared whiteboard and stage scratch record. Label each entry with goal/workload, owner, target, cwd, jobId/sessionId, changed files, verification, blocker and next owner/action. Read only entries relevant to this goal; do not act on stale goals or example domains.',
-    'A heartbeat schedules/checks work; it is not proof of progress. Running stays running, blocked stays blocked, and a final reply alone does not prove files were built or deployed.',
+    'A heartbeat schedules/checks work; it is not proof of progress. A scheduler step returning does not mean its remote job or overall goal finished. Report running jobs as still running and blocked jobs as blocked; a final reply alone does not prove files were built or deployed.',
     'On failure, read the actual tool error and refresh the relevant target/tool contract. Make one materially different recovery attempt; stop and surface the blocker if the same failure repeats. Never broaden allowed roots, bypass permissions or substitute an HTML brief for unfinished implementation.',
     'Final handoff: speak directly to the user, link the actual website/preview/download with Markdown, state what changed and which checks passed, and disclose unfinished work. Do not hide links in HTML. Claim completion only with tool evidence and read-back.',
   ].join('\n');
@@ -54,7 +56,21 @@ function getCompanyExecutionFailure(result = {}) {
   return /^(?:remote-cli-agent failed\s*:|Remote CLI task is blocked\.)/i.test(text) ? text : '';
 }
 
-function createCompanySessionView(session) {
+function getCompanyRemoteExecution(result = {}, workload = {}) {
+  const events = result.toolEvents || result.response?.metadata?.toolEvents || [];
+  const event = [...events].reverse().find((entry) =>
+    (entry.toolCall?.function?.name || entry.toolId || entry.tool) === 'remote-cli-agent' && entry.result);
+  const data = event?.result?.data || event?.result;
+  if (!data?.targetId || !(data.remoteCodeJobId || data.sessionId)) return null;
+  const state = {};
+  for (const key of ['targetId', 'sessionId', 'mcpSessionId', 'remoteCodeSessionId', 'remoteCodeJobId', 'completionStatus', 'publicUrl', 'publicHost']) {
+    if (typeof data[key] === 'string') state[key] = data[key];
+  }
+  state.cwd = normalizeRemoteWorkspace(data.cwd);
+  return { workloadId: workload.id, companyGoalHash: workload.metadata?.agentCompany?.companyGoalHash || null, state };
+}
+
+function createCompanySessionView(session, context = {}) {
   if (!session) return session;
   // Company roles share a transcript for communication, not an implicit CLI
   // cursor. Continuation evidence comes from this workload's stage context.
@@ -64,7 +80,10 @@ function createCompanySessionView(session) {
       delete metadata[key];
     }
   }
-  return { ...session, metadata, controlState: {}, previousResponseId: null };
+  const cursor = context.companyRemoteExecution;
+  const state = cursor?.workloadId === context.workloadId
+    && cursor?.companyGoalHash === (context.companyGoalHash || null) ? cursor?.state : null;
+  return { ...session, metadata, controlState: state ? { remoteCliAgent: state } : {}, previousResponseId: null };
 }
 
-module.exports = { VERSION, buildCompanyExecutionGuide, getCompanyExecutionFailure, createCompanySessionView };
+module.exports = { VERSION, buildCompanyExecutionGuide, getCompanyExecutionFailure, getCompanyRemoteExecution, createCompanySessionView };

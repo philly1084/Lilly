@@ -15,7 +15,9 @@ example domains and deployment guidance must not redirect a research goal.
 4. Let the gateway select the target's default cwd. Supply an absolute Linux
    path only after verifying it on that target. Never reuse terminal output as
    a path, or carry job/session identity to a different target.
-5. Preserve returned job/session IDs and poll running work. Record goal, owner,
+5. Preserve returned job/session IDs and poll running work. The framework stores
+   the cursor on the workload, scoped to its goal, rather than inheriting another
+   role's shared-session cursor. Record goal, owner,
    target, cwd, job, changes, checks, blockers and next owner/action in the
    existing shared whiteboard. Backend file tools and remote filesystems are
    different; verify read-back at the intended surface.

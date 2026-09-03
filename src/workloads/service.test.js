@@ -83,6 +83,20 @@ describe('AgentWorkloadService', () => {
         expect(request.metadata.companyRunContext).toContain('Operating rules');
     });
 
+    test('persists a remote job on its workload before the next heartbeat', async () => {
+        const workload = { id: 'company-w', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build', trigger: { type: 'manual' }, stages: [], policy: {},
+            metadata: { agentCompany: { enabled: true, companyGoalHash: 'goal1' } } };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'Remote job is still running.', toolEvents: [{ toolId: 'remote-cli-agent', result: { success: true, data: {
+            targetId: 'k3s-secondary', cwd: '/opt/kimibuilt', remoteCodeJobId: 'job1', sessionId: 'remote-session1', completionStatus: 'running',
+        } } }] });
+        store.completeRun.mockResolvedValue({ id: 'r1', status: 'completed' });
+        await service.executeClaimedRun({ id: 'r1', workload, stageIndex: -1, metadata: {} }, 'worker');
+        const saved = store.updateWorkload.mock.calls[0][2].metadata;
+        expect(saved.companyRemoteExecution).toMatchObject({ workloadId: 'company-w', companyGoalHash: 'goal1', state: { remoteCodeJobId: 'job1' } });
+        await service.executeClaimedRun({ id: 'r2', workload: { ...workload, metadata: saved }, stageIndex: -1, metadata: {} }, 'worker');
+        expect(conversationRunService.runChatTurn.mock.calls[1][0].metadata.companyRemoteExecution.state.remoteCodeJobId).toBe('job1');
+    });
+
     test('stops company continuation after two identical failures', async () => {
         const workload = {
             id: 'w', ownerId: 'phill', prompt: 'Build', metadata: {

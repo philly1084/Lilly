@@ -9885,7 +9885,7 @@ class ConversationOrchestrator extends EventEmitter {
                 : ownerId && this.sessionStore?.getOwned
                     ? await this.sessionStore.getOwned(sessionId, ownerId)
                     : (this.sessionStore?.get ? await this.sessionStore.get(sessionId) : null);
-        if (metadata.agentCompanyRun === true) session = createCompanySessionView(session);
+        if (metadata.agentCompanyRun === true) session = createCompanySessionView(session, metadata);
         const resolvedProfile = inferRuntimeExecutionProfile({
             executionProfile: requestedProfile,
             taskType,
