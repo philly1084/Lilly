@@ -83,6 +83,21 @@ function readCodexNativeSessionId(output = '') {
   return sessionId;
 }
 
+function readRemoteFinalAssistantMessage(output = '') {
+  let message = '';
+  for (const line of String(output).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').split(/\r?\n/)) {
+    let event;
+    try {
+      event = JSON.parse(line.trim());
+    } catch (_error) {
+      continue;
+    }
+    if (event?.type === 'item.completed' && event.item?.type === 'agent_message'
+      && typeof event.item.text === 'string') message = event.item.text.trim();
+  }
+  return message;
+}
+
 function parseRemoteCliJson(value = '') {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text) {
@@ -2961,10 +2976,12 @@ class RemoteCliAgentsSdkRunner {
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
       const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
       retainTerminalTask = true;
+      const finalAssistantMessage = readRemoteFinalAssistantMessage(outputParts.join(''));
       return {
         finalOutput,
         humanSummary: structuredResult.humanSummary,
         structuredResult,
+        ...(finalAssistantMessage ? { finalAssistantMessage, finalAssistantMessageSource: 'remote-assistant-final' } : {}),
         transport: 'provider-agent',
         handoffVersion: handoffAcknowledgement?.version || null,
         providerId: selection.providerId,

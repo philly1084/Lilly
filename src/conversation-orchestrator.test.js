@@ -11865,6 +11865,9 @@ describe('ConversationOrchestrator', () => {
         }));
         expect(directAction.params.task).toContain('Original task:');
         expect(directAction.params.task).toContain('Fix the deployed Tetris game');
+        session.controlState.remoteCliAgent.blocker = 'remote_code_run failed with exit 1.';
+        const failedAction = orchestrator.buildDirectAction({ objective, session, toolPolicy, toolContext: {} });
+        expect(failedAction.params.jobId).toBeUndefined();
     });
 
     test('does not attach a stale remote_code_run job id to a new remote-cli-agent task', () => {

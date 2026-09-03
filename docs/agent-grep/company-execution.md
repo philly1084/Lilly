@@ -31,11 +31,18 @@ example domains and deployment guidance must not redirect a research goal.
    Codex's native `thread.started` ID is the coding session used for a later
    resume; `gatewaySessionId` identifies only the gateway transport. Keep both
    separate and use the current job ID for polling unfinished work.
+   Once that invocation is terminal, follow-up work must start a new invocation
+   in the native session; continuation wording must not silently reinsert the
+   old job ID. Requested downloadable deliverables require `collectResultFiles`
+   in the actual tool call, including the direct model-client dispatch lane.
 6. A failed/blocked terminal outcome fails the company run even if the model
    claims success. Two identical failures stop automatic long-agent continuation.
    Diagnose a changed recovery path or request the missing user-owned decision.
 7. Deliver a normal user-facing reply with clickable links, verified changes,
    checks and unfinished work. An HTML status brief is not implementation proof.
+   The framework retains the framed remote assistant final message for explicit
+   overall-goal review; command output or terminal success alone is not a goal
+   completion claim.
 8. Distinguish requested effort from applied effort. Only an authenticated
    gateway `reasoningEffortReceipt` with `status: applied` and
    `appliedTo: cli-invocation` proves which effort reached the CLI; a forwarded

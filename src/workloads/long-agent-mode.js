@@ -5,6 +5,7 @@ const DEFAULT_MAX_AUTO_STEPS = 4;
 const MAX_AUTO_STEPS = 12;
 const DEFAULT_RETAIN_CHARS = 6000;
 const DEFAULT_TRIGGER_CHARS = 12000;
+const GOAL_COMPLETION_PATTERN = /\b(overall goal complete|project complete|all acceptance criteria (?:met|passed)|nothing remains|ready for final handoff)\b/i;
 
 function sanitizeText(value = '') {
     return String(value || '').trim();
@@ -151,18 +152,23 @@ function removeNegatedProblemSignals(text = '') {
         .replace(/\b(?:is|are|was|were)\s+not\s+blocked\b/gi, '');
 }
 
-function getRemoteExecutionState(result = {}, workload = {}) {
+function getLatestRemoteToolOutcome(result = {}) {
     const events = result.toolEvents || result.response?.metadata?.toolEvents || [];
     const event = [...events].reverse().find((entry) =>
         (entry.toolCall?.function?.name || entry.toolId || entry.tool) === 'remote-cli-agent' && entry.result);
+    return event?.result || null;
+}
+
+function getRemoteExecutionState(result = {}, workload = {}) {
+    const observedOutcome = getLatestRemoteToolOutcome(result);
     const cursor = workload.metadata?.companyRemoteExecution;
     const ownedPendingState = cursor?.workloadId === workload.id
         && cursor?.companyGoalHash === (workload.metadata?.agentCompany?.companyGoalHash || null)
         && isRemoteExecutionPending(cursor?.state) ? cursor.state : null;
-    if (!event && !ownedPendingState) return null;
+    if (!observedOutcome && !ownedPendingState) return null;
     // Silence is not a terminal observation. Carry the already-owned pending
     // cursor into this run's snapshot when the planner skipped its status call.
-    const outcome = event ? event.result : { data: ownedPendingState };
+    const outcome = observedOutcome || { data: ownedPendingState };
     const data = outcome.data || outcome;
     const completionStatus = outcome.success === false ? 'failed' : sanitizeText(data.completionStatus).toLowerCase() || 'unknown';
     const state = { completionStatus };
@@ -187,6 +193,40 @@ function isRemoteExecutionPending(state) {
         || !['complete', 'completed', 'failed', 'blocked', 'cancelled', 'canceled', 'rejected', 'error', 'waiting_for_input'].includes(state.completionStatus)));
 }
 
+function hasGoalCompletionClaim(text = '') {
+    return GOAL_COMPLETION_PATTERN.test(String(text).replace(
+        /\b(?:not|never)\s+(?:yet\s+)?(?:overall goal complete|project complete|all acceptance criteria (?:met|passed)|ready for final handoff)\b/gi,
+        '',
+    ));
+}
+
+function getRemoteGoalEvidence(result = {}, workload = {}) {
+    const outcome = getLatestRemoteToolOutcome(result);
+    const data = outcome?.data || outcome || {};
+    const terminalSuccess = outcome?.success !== false
+        && ['complete', 'completed'].includes(data.completionStatus)
+        && data.observationStatus !== 'unavailable';
+    const commands = Array.isArray(data.verifyCommands) ? data.verifyCommands.filter(Boolean) : [];
+    const checks = Array.isArray(data.verifyResults) ? data.verifyResults.filter(Boolean) : [];
+    const verificationPassed = commands.length > 0 && checks.length > 0
+        && !/\b(failed|failing|error|unverified|not verified)\b/i.test(removeNegatedProblemSignals(checks.join('\n')));
+    const resultFilesRequested = data.remoteAgentHandoff?.output?.enabled === true
+        || workload.metadata?.collectResultFiles === true || workload.metadata?.remoteAgentCollectResultFiles === true
+        || /\bcollectResultFiles\s*[:=]\s*true\b/i.test(String(workload.prompt || ''));
+    const artifacts = [...(Array.isArray(result.artifacts) ? result.artifacts : []), ...(Array.isArray(data.artifacts) ? data.artifacts : [])];
+    const artifactIds = new Set(artifacts.map(artifact => artifact?.id).filter(Boolean));
+    const files = Array.isArray(data.resultFiles) ? data.resultFiles : [];
+    const resultFilesVerified = files.length > 0 && data.artifactQuality?.status === 'passed'
+        && files.every(file => artifactIds.has(file.artifactId)
+            && /^[a-f0-9]{64}$/i.test(file.sha256 || '')
+            && String(file.sha256).toLowerCase() === String(file.persistedSha256 || '').toLowerCase()
+            && Number.isFinite(file.persistedSizeBytes) && file.persistedSizeBytes >= 0);
+    const finalAssistantClaim = data.finalAssistantMessageSource === 'remote-assistant-final'
+        && typeof data.finalAssistantMessage === 'string'
+        && hasGoalCompletionClaim(data.finalAssistantMessage);
+    return { terminalSuccess, verificationPassed, resultFilesRequested, resultFilesVerified, finalAssistantClaim };
+}
+
 function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded = true, error = null } = {}) {
     const longAgent = normalizeLongAgentMetadata(workload?.metadata || {}, {
         goal: workload?.prompt,
@@ -202,14 +242,17 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
     const remoteExecutionPending = isRemoteExecutionPending(remoteExecution);
     const remoteExecutionFailed = remoteExecution && !remoteExecutionPending
         && !['complete', 'completed'].includes(remoteExecution.completionStatus);
-    const lowerOutput = outputText.toLowerCase();
+    const remoteGoalEvidence = getRemoteGoalEvidence(result, workload);
+    const resultFilesMissing = !remoteExecutionPending && remoteGoalEvidence.resultFilesRequested && !remoteGoalEvidence.resultFilesVerified;
     const problemSignalText = removeNegatedProblemSignals(outputText);
     const blocked = !succeeded || Boolean(remoteExecutionFailed)
         || /\b(blocked|cannot continue|need user|needs user|missing credential|permission denied|auth required|failed|error)\b/i.test(problemSignalText);
-    const needsReview = blocked
+    const needsReview = blocked || resultFilesMissing
         || /\b(incomplete|needs repair|needs review|not verified|tests? failing|still broken|regression)\b/i.test(problemSignalText);
-    const goalComplete = succeeded && !needsReview && !remoteExecutionPending
-        && /\b(overall goal complete|project complete|all acceptance criteria (?:met|passed)|nothing remains|ready for final handoff)\b/i.test(lowerOutput);
+    const visibleGoalClaim = hasGoalCompletionClaim(outputText);
+    const remoteProofReady = !remoteExecution || (remoteGoalEvidence.terminalSuccess && remoteGoalEvidence.verificationPassed);
+    const goalComplete = succeeded && !needsReview && !remoteExecutionPending && remoteProofReady
+        && (visibleGoalClaim || remoteGoalEvidence.finalAssistantClaim);
     const maxStepsReached = step >= longAgent.maxAutoSteps;
     const decision = goalComplete
         ? 'complete'
@@ -230,6 +273,9 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
         blocked,
         remoteExecution,
         remoteExecutionPending,
+        resultFilesMissing,
+        remoteGoalEvidence,
+        goalCompletionSource: goalComplete ? (remoteGoalEvidence.finalAssistantClaim ? 'remote-assistant-final' : 'stage-output') : null,
         goalComplete,
         maxStepsReached,
         decision,
@@ -237,6 +283,8 @@ function evaluateLongAgentStop({ workload = {}, run = {}, result = {}, succeeded
             ? maxStepsReached
                 ? 'Automatic stage budget reached while the remote job remains unfinished; resume the same job after continuation is approved.'
                 : 'Remote execution is unfinished; observe the same job before declaring the goal complete or starting dependent work.'
+            : resultFilesMissing
+                ? 'Requested result files have no verified persisted artifact receipt; collect and verify the actual downloads before final handoff.'
             : needsReview
             ? 'Evaluator found a blocker, incomplete work, or failed verification.'
             : goalComplete
@@ -253,6 +301,7 @@ function buildReviewPrompt(longAgent = {}, evaluation = {}, priorOutput = '') {
         longAgent.goal ? `Goal: ${longAgent.goal}` : null,
         `Scratch file: ${longAgent.scratchFile || DEFAULT_SCRATCH_FILE}`,
         'The previous agent stage stopped with a review-needed signal.',
+        evaluation.resultFilesMissing ? 'Requested downloadable files are not verified. Continue the same native session/workspace with collectResultFiles:true and return the actual source/output files through the result manifest. Do not replace them with a report, claim completion, or merely poll a completed job.' : null,
         evaluation.remoteExecutionPending ? 'The remote job is still pending. Observe/resume the preserved job on its recorded target before attempting repairs. Do not start a replacement job or treat an observation failure as completion.' : null,
         'Review the scratch summary and prior output, repair the smallest necessary issue, and update the scratch summary.',
         'If the issue is truly blocked by missing user-owned input or credentials, state that clearly and do not invent a workaround.',
@@ -269,7 +318,9 @@ function buildNextStepPrompt(longAgent = {}, evaluation = {}) {
         `Scratch file: ${longAgent.scratchFile || DEFAULT_SCRATCH_FILE}`,
         evaluation.remoteExecutionPending
             ? `Remote execution is still pending${evaluation.remoteExecution?.remoteCodeJobId ? ` (job ${evaluation.remoteExecution.remoteCodeJobId})` : ''}. Use remote-cli-agent to observe/resume that same job on its recorded target. Do not launch a replacement job or advance dependent stages while it is pending. An unavailable observation is not a terminal result.`
-            : 'Based on the scratch summary, choose the next obvious useful step and do it.',
+            : evaluation.remoteExecution && ['complete', 'completed'].includes(evaluation.remoteExecution.completionStatus)
+                ? 'The prior remote invocation finished, but that does not establish overall goal completion. Continue the same native CLI session and workspace with a new follow-up instruction; do not poll or replay the completed job. Review the full goal against actual verification and delivered outputs. Finish any missing implementation, tests, or requested downloads. If every acceptance requirement is verified, explicitly report "Overall goal complete" in the final assistant handoff with the checks and actual deliverable links; otherwise report what remains and do the next useful step.'
+                : 'Based on the scratch summary, choose the next obvious useful step and do it.',
         'Keep the step scoped. Prefer implementation plus verification over broad planning.',
         'End with a fresh "Stage scratch summary" that is compact enough to carry into the next event.',
         '',

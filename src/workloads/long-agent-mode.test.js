@@ -83,7 +83,7 @@ describe('long agent stop evaluation', () => {
     test('uses latest tool observation and does not trust unrelated tool status', () => {
         const result = { outputText: 'Overall goal complete.', response: { metadata: { toolEvents: [
             { tool: 'remote-cli-agent', result: { success: true, data: { completionStatus: 'running', remoteCodeJobId: 'job1' } } },
-            { toolCall: { function: { name: 'remote-cli-agent' } }, result: { success: true, data: { completionStatus: 'complete', remoteCodeJobId: 'job1', secret: 'never-copy' } } },
+            { toolCall: { function: { name: 'remote-cli-agent' } }, result: { success: true, data: { completionStatus: 'complete', remoteCodeJobId: 'job1', secret: 'never-copy', verifyCommands: ['node --test'], verifyResults: ['5 tests passed'] } } },
             { toolId: 'web-search', result: { success: true, data: { completionStatus: 'running' } } },
         ] } } };
         expect(getRemoteExecutionState(result)).toEqual({ completionStatus: 'complete', remoteCodeJobId: 'job1' });
@@ -99,6 +99,75 @@ describe('long agent stop evaluation', () => {
         } } }] });
         expect(state).toMatchObject({ providerModel: 'gpt-5.6-luna', reasoningEffortReceipt });
         expect(state.reasoningEffortReceipt).not.toHaveProperty('secret');
+    });
+
+    test('post-terminal stage reviews goal acceptance in the same native session instead of replaying the completed job', () => {
+        const prompt = buildNextStepPrompt({ goal: 'Build code and provide downloads.' }, { remoteExecution: { completionStatus: 'complete', remoteCodeJobId: 'old-job' } });
+        expect(prompt).toContain('same native CLI session and workspace with a new follow-up instruction');
+        expect(prompt).toContain('do not poll or replay the completed job');
+        expect(prompt).toContain('If every acceptance requirement is verified');
+        expect(prompt).not.toContain('job old-job');
+    });
+
+    test('preserves explicit final-assistant overall completion only with terminal checks and persisted requested outputs', () => {
+        const workload = buildWorkload();
+        workload.prompt = 'Build source and return it with collectResultFiles:true.';
+        const data = {
+            completionStatus: 'complete', finalAssistantMessage: 'Overall goal complete. Five tests passed and requested files verified.',
+            finalAssistantMessageSource: 'remote-assistant-final', verifyCommands: ['node --test'], verifyResults: ['5 tests passed'],
+            resultFiles: [{ artifactId: 'file1', sha256: 'a'.repeat(64), persistedSha256: 'a'.repeat(64), persistedSizeBytes: 20 }],
+            artifacts: [{ id: 'file1' }], artifactQuality: { status: 'passed' },
+        };
+        const result = { outputText: 'Remote CLI task completed. Workspace verified.', toolEvents: [{ toolId: 'remote-cli-agent', result: { success: true, data } }] };
+        expect(evaluateLongAgentStop({ workload, result })).toMatchObject({ goalComplete: true, decision: 'complete', goalCompletionSource: 'remote-assistant-final' });
+        data.completionStatus = 'running';
+        expect(evaluateLongAgentStop({ workload, result })).toMatchObject({ goalComplete: false, remoteExecutionPending: true });
+        data.completionStatus = 'complete';
+        data.resultFiles[0].persistedSha256 = 'b'.repeat(64);
+        expect(evaluateLongAgentStop({ workload, result })).toMatchObject({ goalComplete: false, resultFilesMissing: true, decision: 'review' });
+        data.resultFiles[0].persistedSha256 = 'a'.repeat(64);
+        data.artifacts = [];
+        expect(evaluateLongAgentStop({ workload, result })).toMatchObject({ goalComplete: false, resultFilesMissing: true });
+    });
+
+    test('does not promote task completion, raw transcript text, or an unverified final claim into overall goal completion', () => {
+        const workload = buildWorkload();
+        const data = { completionStatus: 'complete', finalOutput: 'command stdout: Overall goal complete.', verifyCommands: ['node --test'], verifyResults: ['5 passed'] };
+        const result = { outputText: 'Remote task complete.', toolEvents: [{ toolId: 'remote-cli-agent', result: { success: true, data } }] };
+        expect(evaluateLongAgentStop({ workload, result })).toMatchObject({ goalComplete: false, decision: 'next_step' });
+        data.finalAssistantMessage = 'Overall goal complete.';
+        data.finalAssistantMessageSource = 'command-stdout';
+        expect(evaluateLongAgentStop({ workload, result }).goalComplete).toBe(false);
+        data.finalAssistantMessageSource = 'remote-assistant-final';
+        data.verifyCommands = [];
+        expect(evaluateLongAgentStop({ workload, result }).goalComplete).toBe(false);
+        data.verifyCommands = ['node --test'];
+        data.verifyResults = ['Tests failed'];
+        expect(evaluateLongAgentStop({ workload, result }).goalComplete).toBe(false);
+        data.verifyResults = ['5 tests passed'];
+        data.finalAssistantMessage = 'Not all acceptance criteria met.';
+        expect(evaluateLongAgentStop({ workload, result }).goalComplete).toBe(false);
+    });
+
+    test('missing explicitly requested downloads defeats a visible completion claim', () => {
+        const workload = buildWorkload();
+        workload.prompt = 'Use collectResultFiles:true to return the source.';
+        const evaluation = evaluateLongAgentStop({ workload, result: {
+            outputText: 'Overall goal complete.', toolEvents: [{ toolId: 'remote-cli-agent', result: { data: {
+                completionStatus: 'complete', verifyCommands: ['node --test'], verifyResults: ['5 passed'],
+            } } }],
+        } });
+        expect(evaluation).toMatchObject({ goalComplete: false, decision: 'review', resultFilesMissing: true });
+    });
+
+    test('an enabled tool result-file contract requires persisted receipts even without a literal prompt flag', () => {
+        const evaluation = evaluateLongAgentStop({ workload: buildWorkload(), result: {
+            outputText: 'Overall goal complete.', toolEvents: [{ toolId: 'remote-cli-agent', result: { data: {
+                completionStatus: 'complete', remoteAgentHandoff: { output: { enabled: true } },
+                verifyCommands: ['node --test'], verifyResults: ['5 passed'],
+            } } }],
+        } });
+        expect(evaluation).toMatchObject({ goalComplete: false, resultFilesMissing: true });
     });
 
     test('continues after successful verification reports with no problem signals', () => {

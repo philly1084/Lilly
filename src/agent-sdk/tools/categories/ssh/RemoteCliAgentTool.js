@@ -207,7 +207,11 @@ function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
   applyAlias(params, 'cwd', normalizeInheritedRemoteWorkspace(prior.cwd, params.targetId || prior.targetId, config.remoteCliMcp));
   applyAlias(params, 'targetId', prior.targetId);
 
-  if (!params.jobId && prior.remoteCodeJobId && /(?:continue|resume|poll|status|running|same|that|again|retry)/i.test(task)) {
+  const priorStatus = normalizeLower(prior.completionStatus || prior.status);
+  const terminalStatus = ['complete', 'completed', 'failed', 'blocked', 'terminated', 'cancelled', 'canceled', 'timed_out'].includes(priorStatus);
+  const pendingJob = ['running', 'starting', 'queued', 'pending', 'active', 'in_progress'].includes(priorStatus)
+    || (!terminalStatus && prior.observationStatus === 'unavailable');
+  if (!params.jobId && prior.remoteCodeJobId && pendingJob && /(?:continue|resume|poll|status|running|same|that|again|retry)/i.test(task)) {
     params.jobId = prior.remoteCodeJobId;
   }
 
@@ -245,8 +249,10 @@ function buildSessionRemoteCliContinuity(prior = {}) {
   return [
     '[Current conversation remote-cli-agent state]',
     'Reuse only when this task is a continuation of the same repo, workspace, deployment, or domain.',
+    ['complete', 'completed', 'failed', 'blocked', 'terminated', 'cancelled', 'timed_out'].includes(normalizeLower(prior.completionStatus))
+      ? 'The prior job is terminal. New follow-up work uses the native coding session and workspace; do not poll the old job as a substitute for doing the follow-up.' : '',
     `- ${fragments.join('; ')}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function buildRemoteCliContinuitySummary(params = {}, context = {}, prior = {}) {

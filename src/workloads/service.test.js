@@ -160,6 +160,42 @@ describe('AgentWorkloadService', () => {
         expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ longAgentStep: 3 }) }));
     });
 
+    test('a recursive stage executes its queued review instruction rather than replaying the static stage prompt', async () => {
+        const workload = { id: 'w1', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build and verify all deliverables.',
+            trigger: { type: 'manual' }, policy: {}, stages: [{ prompt: 'STATIC INITIAL BUILD INSTRUCTION' }],
+            metadata: { agentCompany: { enabled: true }, longAgent: { enabled: true, maxAutoSteps: 3 } },
+        };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'Verification stage finished.' });
+        store.completeRun.mockResolvedValue({ id: 'r2', status: 'completed' });
+        await service.executeClaimedRun({ id: 'r2', workload, stageIndex: 0, reason: 'long-agent-next-step',
+            prompt: 'REVIEW ACTUAL ACCEPTANCE AND DOWNLOADS', metadata: { longAgentStep: 2 } }, 'worker');
+        const request = conversationRunService.runChatTurn.mock.calls[0][0];
+        expect(request.message).toContain('REVIEW ACTUAL ACCEPTANCE AND DOWNLOADS');
+        expect(request.message).not.toContain('STATIC INITIAL BUILD INSTRUCTION');
+    });
+
+    test('finishes the goal on an explicit remote assistant claim with checks and persisted downloads even when humanSummary omits the claim', async () => {
+        const workload = { id: 'w1', ownerId: 'phill', sessionId: 'shared', title: 'Build', prompt: 'Build and return source with collectResultFiles:true.',
+            trigger: { type: 'manual' }, policy: {}, stages: [],
+            metadata: { agentCompany: { enabled: true }, longAgent: { enabled: true, maxAutoSteps: 3 } },
+        };
+        conversationRunService.runChatTurn.mockResolvedValue({ outputText: 'Remote task completed. Files and five tests verified.', artifacts: [{ id: 'source1' }], toolEvents: [{
+            toolId: 'remote-cli-agent', result: { success: true, data: {
+                targetId: 'primary', remoteCodeJobId: 'job1', completionStatus: 'complete',
+                finalAssistantMessage: 'Overall goal complete.', finalAssistantMessageSource: 'remote-assistant-final',
+                verifyCommands: ['node --test'], verifyResults: ['5 tests passed'], artifactQuality: { status: 'passed' },
+                resultFiles: [{ artifactId: 'source1', sha256: 'a'.repeat(64), persistedSha256: 'a'.repeat(64), persistedSizeBytes: 20 }],
+            } },
+        }] });
+        store.completeRun.mockResolvedValue({ id: 'r1', status: 'completed' });
+        await service.executeClaimedRun({ id: 'r1', workload, stageIndex: -1, metadata: { longAgentStep: 1 } }, 'worker');
+        expect(store.enqueueRun).not.toHaveBeenCalled();
+        expect(store.addRunEvent).toHaveBeenCalledWith('r1', 'long-agent-complete', expect.objectContaining({ decision: 'complete' }));
+        expect(store.completeRun).toHaveBeenCalledWith('r1', 'worker', expect.objectContaining({ metadata: expect.objectContaining({ output: expect.objectContaining({
+            goalComplete: true, goalCompletionSource: 'remote-assistant-final',
+        }) }) }));
+    });
+
     test('queues the initial scheduled run for once workloads', async () => {
         const workload = {
             id: 'workload-1',

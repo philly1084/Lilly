@@ -5748,16 +5748,11 @@ function shouldReuseRemoteCliAgentJobIdForDirectMode(priorAgentState = {}, promp
         || /\b(?:try again|retry|rerun|again|still|same|that|it|repair|fix|button|buttons|app|site|game|deployment|deploy)\b/.test(normalizedPrompt);
     const newDistinctTaskIntent = /\b(?:new|another|different|fresh)\b[\s\S]{0,60}\b(?:app|site|game|project|deploy|deployment)\b/.test(normalizedPrompt)
         || /\b(?:build|create|launch|deploy|publish)\b[\s\S]{0,40}\b(?:new|another|different|fresh)\b/.test(normalizedPrompt);
-    const runningJobBlocker = status === 'running'
+    const runningJobBlocker = ['running', 'starting', 'queued', 'pending', 'active', 'in_progress'].includes(status)
         || (
             status === 'blocked'
-            && (
-                /\b(?:remote_code_run|remote_code_status|running|poll|polling)\b/.test(statusText)
-                || (
-                    /\b(?:job|jobid)\b/.test(statusText)
-                    && /\b(?:running|poll|polling|status)\b/.test(statusText)
-                )
-            )
+            && /\b(?:still|is|remains?|remained)\s+(?:running|queued|pending|active)\b/.test(statusText)
+            && !/\b(?:failed|failure|exited|terminated|timed[_ ]out)\b/.test(blocker)
         );
 
     return sameWorkIntent && runningJobBlocker && !newDistinctTaskIntent;
@@ -5825,6 +5820,33 @@ function resolveRemoteCliTargetForDirectMode(prompt = '', priorAgentState = {}) 
     return {
         targetId: explicitTargetId || priorTargetId || fallbackTargetId,
         resetPriorContinuity,
+    };
+}
+
+function buildDirectRemoteCliHandoffParams(prompt = '', toolContext = {}) {
+    const metadata = getToolContextMetadata(toolContext);
+    const artifactIds = Array.from(new Set([
+        ...(Array.isArray(toolContext.artifactIds) ? toolContext.artifactIds : []),
+        ...(Array.isArray(metadata.artifactIds) ? metadata.artifactIds : []),
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+    const requestedGlobs = toolContext.remoteAgentResultFileGlobs || metadata.remoteAgentResultFileGlobs;
+    const text = String(prompt || '');
+    const namedCollectionFlag = text.match(/\b(?:collectResultFiles|collect_result_files)\s*[:=]\s*(true|false)\b/i);
+    const explicitCollection = toolContext.remoteAgentCollectResultFiles ?? metadata.remoteAgentCollectResultFiles
+        ?? (namedCollectionFlag ? namedCollectionFlag[1].toLowerCase() === 'true' : undefined);
+    const declinesFiles = /\b(?:do not|don't|never)\s+(?:return|attach|export|collect|send)\b[^.\n]{0,80}\b(?:files?|artifacts?)\b/i.test(text)
+        || /\b(?:no|without)\s+(?:file|artifact)\s+(?:exports?|attachments?|downloads?|collection)\b/i.test(text);
+    const requestsFiles = /\b(?:return|attach|download|deliver|export|collect|provid|send)(?:e|ing|ed|s)?\b[\s\S]{0,140}\b(?:files?|artifacts?|sources?|downloads?)\b/i.test(text)
+        || /\b(?:files?|artifacts?)\b[^.\n]{0,80}\b(?:downloadable|attached|returned)\b/i.test(text);
+    const authorsDeliverable = /\b(?:build|create|make|generate|write|edit|update|fix|implement|develop)\b[\s\S]{0,100}\b(?:app|website|site|frontend|game|utility|script|files?|document|report|spreadsheet|presentation|pdf|svg)\b/i.test(text);
+    const collectResultFiles = typeof explicitCollection === 'boolean'
+        ? explicitCollection
+        : !declinesFiles && (requestsFiles || authorsDeliverable || artifactIds.length > 0
+            || (Array.isArray(requestedGlobs) && requestedGlobs.length > 0));
+    return {
+        ...(artifactIds.length ? { artifactIds } : {}),
+        ...(Array.isArray(requestedGlobs) && requestedGlobs.length ? { resultFileGlobs: requestedGlobs } : {}),
+        ...(collectResultFiles || explicitCollection === false || declinesFiles ? { collectResultFiles } : {}),
     };
 }
 
@@ -6038,6 +6060,7 @@ async function runDirectRequiredToolAction({
     const params = requiredToolId === 'remote-cli-agent'
         ? {
             task: buildRemoteCliAgentTaskForDirectMode(prompt, priorRemoteCliAgentState),
+            ...buildDirectRemoteCliHandoffParams(prompt, toolContext),
             ...(model ? { model } : {}),
             ...(toolContext.reasoningEffort ? { reasoningEffort: toolContext.reasoningEffort } : {}),
             waitMs: 30000,

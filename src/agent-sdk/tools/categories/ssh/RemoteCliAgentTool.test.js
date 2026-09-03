@@ -619,7 +619,6 @@ describe('RemoteCliAgentTool', () => {
       task: 'Continue that deployment and verify it.',
       sessionId: 'rcli_calan_session',
       mcpSessionId: 'mcp_calan_session',
-      jobId: 'job_calan_running',
       targetId: 'k3s-prod',
       cwd: '/srv/apps/calan-calendar',
       continuitySummary: expect.stringContaining('Current conversation remote-cli-agent state'),
@@ -630,6 +629,8 @@ describe('RemoteCliAgentTool', () => {
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('/srv/apps/calan-calendar/ui-checks/desktop.png');
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('UI check passed.');
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('Updated the calendar UI.');
+    expect(runner.run.mock.calls[0][0].jobId).toBeUndefined();
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('prior job is terminal');
   });
 
   test('does not reuse prior sessions or jobs when the requested target changes', async () => {
@@ -663,6 +664,28 @@ describe('RemoteCliAgentTool', () => {
     expect(observedParams.sessionId).toBeUndefined();
     expect(observedParams.mcpSessionId).toBeUndefined();
     expect(observedParams.jobId).toBeUndefined();
+  });
+
+  test.each(['complete', 'completed', 'failed', 'blocked', 'terminated'])('does not silently re-add a %s job for new follow-up work', async (completionStatus) => {
+    const { tool, runner } = buildTool();
+    const nativeId = '12345678-1234-4234-8234-123456789abc';
+    await tool.execute({ task: 'Continue the same goal and return the source files.', collectResultFiles: true }, {
+      sessionId: 'owned', controlState: { remoteCliAgent: {
+        remoteCodeJobId: 'old-terminal-job', sessionId: nativeId, remoteCodeSessionId: nativeId,
+        targetId: 'k3s-primary', cwd: '/opt/project', completionStatus,
+      } },
+    });
+    expect(runner.run.mock.calls[0][0]).toMatchObject({ sessionId: nativeId, handoff: { output: { enabled: true } } });
+    expect(runner.run.mock.calls[0][0].jobId).toBeUndefined();
+    expect(runner.run.mock.calls[0][0].resumeOnly).not.toBe(true);
+  });
+
+  test('keeps an unobserved pending job rather than launching another task', async () => {
+    const { tool, runner } = buildTool();
+    await tool.execute({ task: 'Continue that job.' }, {
+      controlState: { remoteCliAgent: { remoteCodeJobId: 'pending-job', completionStatus: 'running', observationStatus: 'unavailable' } },
+    });
+    expect(runner.run.mock.calls[0][0].jobId).toBe('pending-job');
   });
 
   test('does not blindly reuse prior remote context when the task names a different domain', async () => {
@@ -701,6 +724,7 @@ describe('RemoteCliAgentTool', () => {
           remoteCliAgent: {
             mcpSessionId: 'mcp-only-session',
             remoteCodeJobId: 'job-only-running',
+            completionStatus: 'running',
           },
         },
       },

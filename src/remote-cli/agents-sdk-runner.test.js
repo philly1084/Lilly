@@ -282,6 +282,26 @@ describe('provider execution receipts and authoritative lifecycle', () => {
     ] });
     expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({ sessionId: 'provider-session', gatewaySessionId: 'provider-session' });
   });
+
+  test('preserves the last framed assistant final message for goal-level evidence review', async () => {
+    const finalText = `${proof}\nOverall goal complete: the requested files were built, tested and returned.`;
+    const { runner } = harness({ events: [
+      { type: 'output', data: `${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: finalText } })}\n` },
+      { type: 'exit', exitCode: 0 },
+    ] });
+    expect(await runner.run({ task: 'Create and test a file.' })).toMatchObject({
+      finalAssistantMessage: finalText, finalAssistantMessageSource: 'remote-assistant-final',
+    });
+  });
+
+  test('does not promote command stdout or unframed goal-completion claims to assistant-final evidence', async () => {
+    const finalText = 'Overall goal complete.';
+    const { runner } = harness({ events: [
+      { type: 'output', data: `${JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', aggregated_output: finalText } })}\n${finalText}\n${proof}` },
+      { type: 'exit', exitCode: 0 },
+    ] });
+    expect(await runner.run({ task: 'Create and test a file.' })).not.toHaveProperty('finalAssistantMessage');
+  });
 });
 
 describe('RemoteCliAgentsSdkRunner', () => {

@@ -3393,7 +3393,60 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
         expect(toolManager.executeTool.mock.calls[0][1]).toMatchObject({
             targetId: 'k3s-secondary', cwd: '/srv/current', jobId: 'owned-job', model: 'gpt-5.6-luna', reasoningEffort: 'high',
+            collectResultFiles: true,
         });
+    });
+
+    test('direct remote-build dispatch preserves requested downloadable files and selected inputs', async () => {
+        const toolManager = createToolManager();
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: 'Create a Node utility, test it, and return the actual source and test files as downloadable artifacts.',
+            toolContext: { executionProfile: 'remote-build', companyWorkloadId: 'w1', artifactIds: ['brief-1'],
+                metadata: { remoteAgentResultFileGlobs: ['*.js', '*.json'] } },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1]).toMatchObject({
+            collectResultFiles: true, artifactIds: ['brief-1'], resultFileGlobs: ['*.js', '*.json'],
+        });
+    });
+
+    test('direct terminal inspection does not implicitly request artifact export', async () => {
+        const toolManager = createToolManager();
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: 'Print hostname and pwd only. Do not return files.',
+            toolContext: { executionProfile: 'remote-build', companyWorkloadId: 'w1' },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1].collectResultFiles).toBe(false);
+    });
+
+    test.each([true, false])('direct dispatch honors the explicit collectResultFiles:%s parameter in a goal', async (collectResultFiles) => {
+        const toolManager = createToolManager();
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: `Request collectResultFiles:${collectResultFiles} on the remote tool.`,
+            toolContext: { executionProfile: 'remote-build', companyWorkloadId: 'w1' },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1].collectResultFiles).toBe(collectResultFiles);
+    });
+
+    test('completed company invocation becomes a new follow-up in the native session, not another job poll', async () => {
+        const toolManager = createToolManager();
+        const nativeId = '12345678-1234-4234-8234-123456789abc';
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: 'Continue the same goal by returning the verified source files.',
+            toolContext: { executionProfile: 'remote-build', companyWorkloadId: 'w1', metadata: {
+                agentCompanyRun: true, workloadId: 'w1', companyGoalHash: 'g1', companyRemoteExecution: {
+                    workloadId: 'w1', companyGoalHash: 'g1', state: {
+                        targetId: 'k3s-primary', cwd: '/srv/current', remoteCodeJobId: 'old-terminal-job',
+                        sessionId: nativeId, remoteCodeSessionId: nativeId, gatewaySessionId: 'ps_old', completionStatus: 'complete',
+                    },
+                },
+            } },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1]).toMatchObject({ sessionId: nativeId, collectResultFiles: true });
+        expect(toolManager.executeTool.mock.calls[0][1]).not.toHaveProperty('jobId');
     });
 
     test('passes prior remote-cli-agent continuity into direct required tool mode', async () => {
@@ -3483,6 +3536,18 @@ describe('openai-client automatic tool orchestration helpers', () => {
             }),
             expect.any(Object),
         );
+    });
+
+    test('does not treat a terminal remote_code_run failure as a pending job merely because the tool name appears', async () => {
+        const toolManager = createToolManager();
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: 'Retry fixing that app.', toolContext: { executionProfile: 'remote-build', remoteCliAgent: {
+                targetId: 'prod', remoteCodeJobId: 'failed-job', completionStatus: 'blocked',
+                blocker: 'remote_code_run failed with exit 1.',
+            } },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1].jobId).toBeUndefined();
     });
 
     test('emits progress for direct remote-cli-agent runs so bypass streams do not look frozen', async () => {

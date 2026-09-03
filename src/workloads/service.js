@@ -891,9 +891,10 @@ class AgentWorkloadService {
         const stage = Number(run.stageIndex) >= 0 && Array.isArray(workload.stages)
             ? workload.stages[run.stageIndex] || null
             : null;
-        const prompt = stage
+        const recursiveStagePrompt = String(run.reason || '').startsWith('long-agent-') && String(run.prompt || '').trim();
+        const prompt = recursiveStagePrompt || (stage
             ? (stage?.prompt || run.prompt || '')
-            : (run.prompt || workload.prompt);
+            : (run.prompt || workload.prompt));
         const execution = stage?.execution || workload.execution || null;
         const stageInputs = await this.resolveStageInputs(run, stage);
         const message = this.buildStageMessage(prompt, stageInputs, stage, workload, run);
@@ -1613,6 +1614,8 @@ class AgentWorkloadService {
             });
             metadata.longAgentStep = evaluation?.step || getLongAgentStep(run);
             metadata.longAgentScratchSummary = evaluation?.scratchSummary || '';
+            metadata.output.goalComplete = evaluation?.goalComplete === true;
+            if (evaluation?.goalCompletionSource) metadata.output.goalCompletionSource = evaluation.goalCompletionSource;
         }
 
         return metadata;
