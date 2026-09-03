@@ -57,12 +57,17 @@ jobs:
         run: |
           bash -n scripts/remote-cli/codex-remote-run.sh
           node --test scripts/remote-cli/codex-remote-run.test.cjs
+          node --test scripts/remote-cli/verify-router-targets.test.cjs
           npm test -- --runInBand --coverage=false --runTestsByPath \
             src/agent-ops/execution-contract.test.js \
             src/agent-ops/messages.test.js \
             src/remote-cli/workspace-contract.test.js \
             src/workloads/long-agent-mode.test.js \
-            src/workloads/service.test.js
+            src/workloads/service.test.js \
+            src/openai-client.test.js \
+            src/conversation-orchestrator.test.js \
+            src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.test.js \
+            src/remote-cli/agents-sdk-runner.test.js
           node --check src/remote-cli/agent-handoff.js
           node --check src/remote-cli/agent-result-artifacts.js
           node --check src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.js

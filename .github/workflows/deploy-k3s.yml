@@ -57,53 +57,13 @@ jobs:
           test -s "$HOME/.kube/config"
           kubectl config current-context
 
-      - name: Reconcile stable remote CLI server targets
+      - name: Verify stable remote CLI server targets without restarting agents
         run: |
           set -euo pipefail
-          kubectl apply -f k8s/remote-cli-targets-configmap.yaml
-
-          # Older gateway rollouts may still mount a content-addressed target
-          # ConfigMap. Point the named volume at the stable registry maintained
-          # by this repository and admit the dedicated Lilly workbench root.
-          kubectl patch deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" \
-            --type=strategic \
-            -p '{"spec":{"template":{"spec":{"volumes":[{"name":"remote-cli-targets","configMap":{"name":"n8n-openai-cli-gateway-targets","optional":true}}]}}}}'
-          kubectl set env deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" \
-            CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS="/opt/kimibuilt,/opt/lilly-agent-workbench"
-          kubectl rollout restart deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}"
-          kubectl rollout status deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" --timeout=300s
-
-          kubectl exec deployment/${ROUTER_SERVICE} -n "${ROUTER_NAMESPACE}" -- \
-            sh -lc 'grep -q "/opt/lilly-agent-workbench" /app/config/remote-targets/targets.yaml'
-
-          targets="$(kubectl get configmap n8n-openai-cli-gateway-targets \
-            -n "${ROUTER_NAMESPACE}" \
-            -o jsonpath='{.data.targets\.yaml}')"
-          TARGETS_YAML="${targets}" node -e '
-            const actual = {};
-            let currentTargetId = "";
-            for (const line of process.env.TARGETS_YAML.split(/\r?\n/u)) {
-              const value = line.trim();
-              if (value.startsWith("- targetId:")) {
-                currentTargetId = value.slice("- targetId:".length).trim();
-              } else if (currentTargetId && value.startsWith("host:")) {
-                actual[currentTargetId] = value.slice("host:".length).trim();
-                currentTargetId = "";
-              }
-            }
-            const expected = {
-              "k3s-primary": "168.119.176.121",
-              "k3s-secondary": "162.55.163.199",
-              "k3s-prod": "168.119.176.121",
-              "prod": "168.119.176.121",
-            };
-            for (const [targetId, host] of Object.entries(expected)) {
-              if (actual[targetId] !== host) {
-                throw new Error(`Remote CLI target ${targetId} resolved to ${actual[targetId] || "missing"}, expected ${host}.`);
-              }
-            }
-            console.log("Remote CLI target registry verified.");
-          '
+          # The router owns in-memory jobs and sessions. Even an otherwise
+          # harmless restart interrupts their tracking and artifact handoffs.
+          # Configuration drift requires separately approved router maintenance.
+          node scripts/remote-cli/verify-router-targets.cjs
 
       - name: Verify live router handoff contract
         run: |
