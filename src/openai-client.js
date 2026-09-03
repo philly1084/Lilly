@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const { normalizeInheritedRemoteWorkspace, resolveTargetDefaultWorkspace } = require('./remote-cli/workspace-contract');
+const { createCompanySessionView } = require('./agent-ops/execution-contract');
 const OpenAI = require('openai');
 const { toFile } = OpenAI;
 const { config } = require('./config');
@@ -5763,6 +5765,12 @@ function shouldReuseRemoteCliAgentJobIdForDirectMode(priorAgentState = {}, promp
 
 function getRemoteCliAgentStateFromToolContext(toolContext = {}) {
     const metadata = getToolContextMetadata(toolContext);
+    if (metadata.agentCompanyRun === true || toolContext.companyWorkloadId) {
+        return createCompanySessionView({}, {
+            ...metadata,
+            workloadId: toolContext.companyWorkloadId || metadata.workloadId,
+        }).controlState.remoteCliAgent || {};
+    }
     const activeProject = (
         toolContext?.activeProject
         || metadata?.activeProject
@@ -6024,15 +6032,14 @@ async function runDirectRequiredToolAction({
         ? {}
         : priorRemoteCliAgentState;
     const remoteCliCwd = requiredToolId === 'remote-cli-agent'
-        ? String(
-            reusablePriorRemoteCliAgentState.cwd
-            || (remoteCliTargetSelection.targetId ? config.remoteCliMcp?.defaultCwd : '')
-            || '',
-        ).trim()
+        ? normalizeInheritedRemoteWorkspace(reusablePriorRemoteCliAgentState.cwd, remoteCliTargetSelection.targetId, config.remoteCliMcp)
+            || resolveTargetDefaultWorkspace(remoteCliTargetSelection.targetId, config.remoteCliMcp)
         : '';
     const params = requiredToolId === 'remote-cli-agent'
         ? {
             task: buildRemoteCliAgentTaskForDirectMode(prompt, priorRemoteCliAgentState),
+            ...(model ? { model } : {}),
+            ...(toolContext.reasoningEffort ? { reasoningEffort: toolContext.reasoningEffort } : {}),
             waitMs: 30000,
             adminMode: hasRemoteSoftwareDeploymentIntent(prompt)
                 || normalizeExecutionProfile(toolContext?.executionProfile) === REMOTE_BUILD_EXECUTION_PROFILE,
@@ -6042,7 +6049,8 @@ async function runDirectRequiredToolAction({
                 ? { sessionId: reusablePriorRemoteCliAgentState.sessionId || reusablePriorRemoteCliAgentState.remoteCodeSessionId }
                 : {}),
             ...(reusablePriorRemoteCliAgentState.mcpSessionId ? { mcpSessionId: reusablePriorRemoteCliAgentState.mcpSessionId } : {}),
-            ...(shouldReuseRemoteCliAgentJobIdForDirectMode(reusablePriorRemoteCliAgentState, prompt)
+            ...((toolContext.companyWorkloadId && reusablePriorRemoteCliAgentState.completionStatus === 'running')
+                || shouldReuseRemoteCliAgentJobIdForDirectMode(reusablePriorRemoteCliAgentState, prompt)
                 ? { jobId: reusablePriorRemoteCliAgentState.remoteCodeJobId }
                 : {}),
         }

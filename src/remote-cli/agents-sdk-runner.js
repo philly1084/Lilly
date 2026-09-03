@@ -684,9 +684,11 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
       .filter(Boolean),
   ));
   const deployment = readMarkerLine(text, ['DEPLOYMENT', 'K8S_DEPLOYMENT']);
-  const publicHost = readMarkerLine(text, ['PUBLIC_HOST', 'HOST', 'URL'])
-    || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
-  const publicUrl = normalizeOptionalProofValue(readMarkerLine(text, ['PUBLIC_URL', 'LIVE_URL']));
+  const publicUrl = normalizeOptionalProofValue(readMarkerLine(workspaceProof, ['PUBLIC_URL', 'PUBLIC URL', 'LIVE_URL', 'LIVE URL']));
+  let publicHost = readMarkerLine(workspaceProof, ['PUBLIC_HOST', 'PUBLIC HOST', 'HOST']);
+  if (!publicHost && publicUrl) {
+    try { publicHost = new URL(publicUrl).hostname; } catch (_error) { /* No invented host. */ }
+  }
   const uiCheckReport = readMarkerLine(text, ['UI_CHECK_REPORT']);
   let resultFilesManifest = '';
   const resultFilesManifestMarker = normalizeOptionalProofValue(readMarkerLine(text, [

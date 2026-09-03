@@ -30,6 +30,16 @@ test('never promotes a command transcript to workspace identity', () => {
   expect(extractRemoteCliRunMetadata(text.split('\n')[0]).workspace).toBeUndefined();
 });
 
+test('does not promote CLI tool-service URLs to public deliverable links', () => {
+  const transcript = [
+    JSON.stringify({ item: { type: 'command_execution', aggregated_output: 'MCP connected: https://mcp.cloudflare.com\nPUBLIC_URL=https://fixture.example.test' } }),
+    JSON.stringify({ item: { type: 'agent_message', text: 'WORKSPACE=/opt/real\nWHAT_CHANGED=Created the terminal canary file.' } }),
+  ].join('\n');
+  expect(extractRemoteCliRunMetadata(transcript).publicHost).toBeUndefined();
+  expect(extractRemoteCliRunMetadata(transcript).publicUrl).toBeUndefined();
+  expect(extractRemoteCliRunMetadata('PUBLIC_URL=https://real.example.test/app').publicHost).toBe('real.example.test');
+});
+
 test('uses the secondary gateway default and forwards the selected model effort', async () => {
   const runner = new RemoteCliAgentsSdkRunner({ config: {
     enabled: true, transport: 'provider-agent', defaultTargetId: 'k3s-prod',

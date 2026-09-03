@@ -3258,10 +3258,10 @@ describe('openai-client automatic tool orchestration helpers', () => {
                 expect.objectContaining({
                     task: prompt,
                     targetId: 'k3s-secondary',
-                    cwd: '/opt/kimibuilt',
                 }),
                 expect.any(Object),
             );
+            expect(toolManager.executeTool.mock.calls[0][1].cwd).toBeUndefined();
         } finally {
             config.remoteCliMcp.targetHostMap = originalTargetHostMap;
             config.remoteCliMcp.defaultCwd = originalDefaultCwd;
@@ -3306,8 +3306,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
             expect(params).toEqual(expect.objectContaining({
                 task: expect.stringContaining('Original task:'),
                 targetId: 'k3s-secondary',
-                cwd: '/opt/kimibuilt',
             }));
+            expect(params.cwd).toBeUndefined();
             expect(params.sessionId).toBeUndefined();
             expect(params.mcpSessionId).toBeUndefined();
             expect(params.jobId).toBeUndefined();
@@ -3364,8 +3364,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
             const params = toolManager.executeTool.mock.calls[0][1];
             expect(params).toEqual(expect.objectContaining({
                 targetId: 'k3s-secondary',
-                cwd: '/opt/kimibuilt',
             }));
+            expect(params.cwd).toBeUndefined();
             expect(params.task).toContain('Project recovery requirement:');
             expect(params.task).toContain('Build and deploy the Penguin site.');
             expect(params.task).toContain('penguin.demoserver2.buzz');
@@ -3376,6 +3376,24 @@ describe('openai-client automatic tool orchestration helpers', () => {
             config.remoteCliMcp.defaultTargetId = originalDefaultTargetId;
             config.remoteCliMcp.defaultCwd = originalDefaultCwd;
         }
+    });
+
+    test('direct company dispatch uses only its owned running job and selected model effort', async () => {
+        const toolManager = createToolManager();
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager, requiredToolId: 'remote-cli-agent', selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt: 'Use remote cli agent to build a new terminal utility.', model: 'gpt-5.6-luna',
+            toolContext: {
+                executionProfile: 'remote-build', companyWorkloadId: 'w1', reasoningEffort: 'high',
+                remoteCliAgent: { targetId: 'wrong-target', cwd: '/opt/stale', remoteCodeJobId: 'wrong-job' },
+                metadata: { agentCompanyRun: true, workloadId: 'w1', companyGoalHash: 'g1', companyRemoteExecution: {
+                    workloadId: 'w1', companyGoalHash: 'g1', state: { targetId: 'k3s-secondary', cwd: '/srv/current', remoteCodeJobId: 'owned-job', completionStatus: 'running' },
+                } },
+            },
+        });
+        expect(toolManager.executeTool.mock.calls[0][1]).toMatchObject({
+            targetId: 'k3s-secondary', cwd: '/srv/current', jobId: 'owned-job', model: 'gpt-5.6-luna', reasoningEffort: 'high',
+        });
     });
 
     test('passes prior remote-cli-agent continuity into direct required tool mode', async () => {
