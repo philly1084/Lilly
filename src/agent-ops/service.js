@@ -429,6 +429,7 @@ class AgentOpsService {
     if (ACTIVE_RUN_STATES.has(workloadState) || ACTIVE_RUN_STATES.has(canonicalState)) {
       return ACTIVE_RUN_STATES.has(workloadState) ? workloadState : canonicalState;
     }
+    if (workload?.enabled === false) return 'stopped';
     const remote = workloadRun?.metadata?.output?.remoteExecution;
     const lastDecision = workload?.metadata?.longAgent?.lastDecision;
     const decision = workloadRun?.id && lastDecision?.runId === workloadRun.id ? lastDecision.decision : null;
@@ -466,6 +467,7 @@ class AgentOpsService {
     else if (task && status === 'working') currentAction = `Working on ${task}`;
     else if (task && runState === 'completed') currentAction = `Completed ${task}`;
     else if (task && runState === 'failed') currentAction = `Run failed: ${task}`;
+    else if (task && runState === 'stopped') currentAction = `Stopped · ready to restart ${task}`;
     else if (task) currentAction = task;
     const heartbeatAt = run?.updatedAt
       || canonicalRun?.updatedAt
@@ -498,6 +500,13 @@ class AgentOpsService {
       workloadId: workload?.id || null,
       sessionId: cleanText(workload?.sessionId, 160) || null,
       canReceiveInput: Boolean(workload?.id && workload?.sessionId),
+      enabled: workload?.enabled !== false,
+      lifecycle: asObject(workload?.metadata?.subAgent).enabled === true ? 'sub-agent' : 'crew-agent',
+      parentRunId: cleanText(asObject(workload?.metadata?.subAgent).parentRunId, 160) || null,
+      controls: {
+        canStop: Boolean(workload?.id && workload?.enabled !== false),
+        canRestart: Boolean(workload?.id && workload?.enabled === false),
+      },
       ...(run?.metadata?.output?.remoteExecution ? { remoteExecution: run.metadata.output.remoteExecution } : {}),
       needsApproval: Boolean(pendingApproval),
       approval: pendingApproval ? {
@@ -682,6 +691,7 @@ class AgentOpsService {
       status: cleanText(heartbeat.status, 80) || 'unavailable',
       lastAt: heartbeat.lastAt || null,
       nextAt: heartbeat.nextAt || null,
+      restUntil: heartbeat.restUntil || null,
       intervalSeconds: Number(config.heartbeatMinutes) > 0
         ? Number(config.heartbeatMinutes) * 60
         : null,
@@ -804,6 +814,11 @@ class AgentOpsService {
           operatorInput: typeof this.workloadService?.runWorkloadNow === 'function'
             && typeof this.sessionStore?.appendMessages === 'function'
             ? { enabled: true, endpointTemplate: '/agents/{agentId}/input' }
+            : { enabled: false },
+          agentControl: typeof this.workloadService?.pauseAdminWorkload === 'function'
+            && typeof this.workloadService?.resumeAdminWorkload === 'function'
+            && typeof this.workloadService?.runWorkloadNow === 'function'
+            ? { enabled: true, endpointTemplate: '/agents/{agentId}/control', actions: ['stop', 'restart'] }
             : { enabled: false },
           whiteboard: typeof this.sessionStore?.appendMessages === 'function'
             ? { enabled: true, endpoint: '/whiteboard/notes' }
@@ -1469,6 +1484,72 @@ class AgentOpsService {
       sessionId: workload.sessionId,
       runId: run.id,
       status: run.status || 'queued',
+    };
+  }
+
+  async controlAgent(agentId = '', input = {}, actor = '') {
+    const normalizedId = cleanText(agentId, 160);
+    const action = cleanText(input.action, 40).toLowerCase();
+    if (!['stop', 'restart'].includes(action)) {
+      throw createAgentOpsError('Agent control action must be stop or restart.', 400, 'agent_control_action_invalid');
+    }
+    if (typeof this.workloadService?.pauseAdminWorkload !== 'function'
+      || typeof this.workloadService?.resumeAdminWorkload !== 'function'
+      || typeof this.workloadService?.runWorkloadNow !== 'function') {
+      throw createAgentOpsError('Agent lifecycle control is unavailable in this runtime.', 503, 'agent_control_unavailable');
+    }
+
+    const snapshot = await this.buildSnapshot();
+    const agent = snapshot.context.agents.find((candidate) => candidate.id === normalizedId);
+    if (!agent) {
+      throw createAgentOpsError('Agent not found.', 404, 'agent_not_found');
+    }
+    const roleWorkloads = snapshot.context.companyWorkloads.filter((workload) => {
+      const metadata = getCompanyMetadata(workload);
+      return cleanText(metadata.roleId || workload.id, 160) === normalizedId;
+    });
+    const workload = pickLatest(roleWorkloads);
+    if (!workload?.id) {
+      throw createAgentOpsError('This agent has no controllable workload.', 409, 'agent_workload_unavailable');
+    }
+
+    if (action === 'stop') {
+      const stopped = await this.workloadService.pauseAdminWorkload(workload.id);
+      if (!stopped) {
+        throw createAgentOpsError('Agent workload could not be stopped.', 409, 'agent_stop_failed');
+      }
+      return {
+        action,
+        agentId: normalizedId,
+        workloadId: workload.id,
+        status: 'stopped',
+        stopMode: 'after-current-run',
+        actor: cleanText(actor, 160) || null,
+      };
+    }
+
+    const resumed = await this.workloadService.resumeAdminWorkload(workload.id);
+    if (!resumed) {
+      throw createAgentOpsError('Agent workload could not be restarted.', 409, 'agent_restart_failed');
+    }
+    const workloadRuns = snapshot.context.indexes.runsByWorkload.get(workload.id) || [];
+    const activeRun = workloadRuns.find((run) => ACTIVE_RUN_STATES.has(normalizeRunStatus(run.status)));
+    const latestRun = pickLatest(workloadRuns);
+    const run = activeRun || await this.workloadService.runWorkloadNow(workload.id, workload.ownerId, {
+      reason: 'agent-ops-restart',
+      idempotencyKey: `agent-ops-restart:${workload.id}:${latestRun?.id || 'initial'}`,
+    });
+    if (!run?.id) {
+      throw createAgentOpsError('Agent workload resumed, but no run was available.', 502, 'agent_restart_queue_failed');
+    }
+    return {
+      action,
+      agentId: normalizedId,
+      workloadId: workload.id,
+      runId: run.id,
+      status: run.status || 'queued',
+      reusedActiveRun: Boolean(activeRun),
+      actor: cleanText(actor, 160) || null,
     };
   }
 

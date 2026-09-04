@@ -107,6 +107,19 @@ function createAgentOpsRouter({ service = null } = {}) {
     }
   });
 
+  router.post('/agents/:agentId/control', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).controlAgent(
+        req.params.agentId,
+        req.body || {},
+        getActor(req),
+      );
+      return res.status(202).json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
   router.post('/whiteboard/notes', async (req, res, next) => {
     try {
       const result = await resolveService(req).createWhiteboardNote(req.body || {}, getActor(req));

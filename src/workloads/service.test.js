@@ -1718,6 +1718,63 @@ describe('AgentWorkloadService', () => {
         })).rejects.toThrow('Sub-agents cannot spawn more sub-agents.');
     });
 
+    test('stops and restarts the same bounded sub-agent workload', async () => {
+        const workload = {
+            id: 'subagent-workload-1',
+            ownerId: 'phill',
+            sessionId: 'session-1',
+            title: 'Browser verifier',
+            prompt: 'Verify the private browser flow.',
+            enabled: true,
+            metadata: {
+                subAgent: {
+                    enabled: true,
+                    orchestrationId: 'subagent-orchestration-1',
+                    childIndex: 0,
+                    depth: 1,
+                    parentRunId: 'parent-run-1',
+                },
+            },
+        };
+        jest.spyOn(service, 'listSessionSubAgentWorkloads').mockResolvedValue([workload]);
+        const pauseWorkload = jest.spyOn(service, 'pauseWorkload').mockResolvedValue({ ...workload, enabled: false });
+        const resumeWorkload = jest.spyOn(service, 'resumeWorkload').mockResolvedValue({ ...workload, enabled: true });
+        jest.spyOn(service, 'listRunsForWorkload').mockResolvedValue([{ id: 'completed-run-1', status: 'completed' }]);
+        const runWorkloadNow = jest.spyOn(service, 'runWorkloadNow').mockResolvedValue({ id: 'restart-run-1', status: 'queued' });
+
+        const stopped = await service.controlSubAgentOrchestration(
+            'stop',
+            'subagent-orchestration-1',
+            'phill',
+            'session-1',
+            'subagent-workload-1',
+        );
+        const restarted = await service.controlSubAgentOrchestration(
+            'restart',
+            'subagent-orchestration-1',
+            'phill',
+            'session-1',
+            'subagent-workload-1',
+        );
+
+        expect(pauseWorkload).toHaveBeenCalledWith('subagent-workload-1', 'phill');
+        expect(stopped.tasks[0]).toEqual(expect.objectContaining({
+            workloadId: 'subagent-workload-1',
+            enabled: false,
+            stopMode: 'after-current-run',
+        }));
+        expect(resumeWorkload).toHaveBeenCalledWith('subagent-workload-1', 'phill');
+        expect(runWorkloadNow).toHaveBeenCalledWith('subagent-workload-1', 'phill', expect.objectContaining({
+            reason: 'sub-agent-restart',
+            idempotencyKey: 'sub-agent-restart:subagent-workload-1:completed-run-1',
+        }));
+        expect(restarted.tasks[0]).toEqual(expect.objectContaining({
+            workloadId: 'subagent-workload-1',
+            runId: 'restart-run-1',
+            reusedActiveRun: false,
+        }));
+    });
+
     test('rejects overlapping write targets against active sub-agents', async () => {
         jest.spyOn(service, 'listActiveSubAgentTasks').mockResolvedValue([{
             title: 'Active child',

@@ -23,6 +23,7 @@ const DEFAULT_STATE_FILENAME = 'agent-company-state.json';
 const DEFAULT_OWNER_ID = 'system';
 const DEFAULT_SESSION_ID = 'agent-company';
 const MIN_HEARTBEAT_MINUTES = 15;
+const DEFAULT_REST_MINUTES = 30;
 const SHARED_WHITEBOARD_REFRESH_REASON = 'shared-whiteboard-refresh';
 const COMPANY_LONG_AGENT_MAX_AUTO_STEPS = 4;
 const COMPANY_LONG_AGENT_COMPACTION_TRIGGER_CHARS = 10000;
@@ -295,6 +296,10 @@ function normalizeConfig(config = {}) {
         companyGoal: sanitizeText(config.companyGoal || config.goal || ''),
         heartbeatMinutes: clampInteger(config.heartbeatMinutes, 60, {
             min: MIN_HEARTBEAT_MINUTES,
+            max: 1440,
+        }),
+        restMinutes: clampInteger(config.restMinutes, DEFAULT_REST_MINUTES, {
+            min: 5,
             max: 1440,
         }),
         scheduleHorizonDays: clampInteger(config.scheduleHorizonDays, 7, {
@@ -703,6 +708,62 @@ class AgentCompanyService {
         const createFailures = [];
         const activeWorkCount = runningWork.running + runningWork.queued;
         const availableSlots = Math.max(0, config.maxConcurrentWorkloads - activeWorkCount);
+        let restUntil = null;
+
+        if (!force && activeWorkCount === 0 && typeof this.workloadService.listAdminRuns === 'function') {
+            try {
+                const workloadIds = new Set(companyWorkloads.map((workload) => workload?.id).filter(Boolean));
+                const runs = await this.workloadService.listAdminRuns(300);
+                const latestFinishedAt = runs
+                    .filter((run) => workloadIds.has(run?.workloadId)
+                        && ['completed', 'failed', 'cancelled', 'canceled'].includes(sanitizeText(run?.status).toLowerCase()))
+                    .map((run) => run?.finishedAt || run?.updatedAt || run?.createdAt)
+                    .filter(Boolean)
+                    .sort((left, right) => String(right).localeCompare(String(left)))[0];
+                if (latestFinishedAt) {
+                    const finishedAt = new Date(latestFinishedAt);
+                    const candidate = new Date(finishedAt.getTime() + config.restMinutes * 60 * 1000);
+                    if (!Number.isNaN(candidate.getTime()) && candidate.getTime() > now.getTime()) {
+                        restUntil = candidate.toISOString();
+                    }
+                }
+            } catch (error) {
+                console.warn('[AgentCompany] Could not inspect recent runs for the recovery window:', error.message);
+            }
+        }
+
+        if (restUntil) {
+            const heartbeat = {
+                status: 'resting',
+                lastAt: now.toISOString(),
+                nextAt: restUntil,
+                restUntil,
+                reason: 'crew_recovery_window',
+                createdWorkloads: 0,
+                failedWorkloads: 0,
+                skipped: schedule.length,
+            };
+            const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
+            const saved = await this.writeState({
+                ...currentState,
+                enabled: true,
+                companyGoal: config.companyGoal,
+                companyGoalHash: goalHash,
+                roles: config.roles,
+                shortTermSchedule: schedule,
+                longTermGoals: this.buildLongTermGoals(config, goalHash),
+                modelPolicy: {
+                    primaryModel: config.primaryModel,
+                    escalationModels: config.escalationModels,
+                    reasoningEffort: config.reasoningEffort,
+                },
+                runningWork,
+                heartbeat,
+                dailyAlignment,
+                createdWorkloads: currentState.createdWorkloads || [],
+            }, config);
+            return { available: true, config, state: saved, createdWorkloads: [] };
+        }
 
         if (availableSlots > 0) {
             const pendingItems = schedule
@@ -1014,6 +1075,9 @@ class AgentCompanyService {
             `- Escalation models: ${escalation}.`,
             `- Selected model lane: ${this.formatModelSelection(modelSelection)}.`,
             '- Do not create duplicate recurring jobs; inspect current work first and update the schedule or scratch summary instead.',
+            '- Delegate only when the objective splits into two or three independent bounded tasks. Use agent-delegate, give every helper a distinct target, read their status, and converge their results into this owned workload.',
+            '- Stop helper agents when their bounded task is done or no longer useful. If more work is later needed, restart the same helper workload instead of spawning a duplicate.',
+            '- Respect recovery windows: when there is no concrete next action, record the verified state, hand off cleanly, and rest until the next heartbeat or operator instruction.',
             '- Save tokens: cite paths, IDs, URLs, and concise deltas instead of pasting full prior plans, logs, source files, or unchanged prose.',
             executionContract.softwareWorkbench ? [
                 'Software workbench contract:',

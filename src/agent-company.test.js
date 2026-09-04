@@ -55,6 +55,7 @@ describe('AgentCompanyService', () => {
         });
 
         expect(config.heartbeatMinutes).toBe(15);
+        expect(config.restMinutes).toBe(30);
         expect(config.weeklyWorkloadLimit).toBe(12);
         expect(config.maxConcurrentWorkloads).toBe(4);
         expect(config.primaryModel).toBe('gpt-5.6-sol');
@@ -381,6 +382,9 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].prompt).toContain('guardrails as release gates');
         expect(createdWorkloads[0].prompt).toContain('Start from current evidence, not a blank slate');
         expect(createdWorkloads[0].prompt).toContain('Save tokens: cite paths, IDs, URLs, and concise deltas');
+        expect(createdWorkloads[0].prompt).toContain('Delegate only when the objective splits into two or three independent bounded tasks');
+        expect(createdWorkloads[0].prompt).toContain('restart the same helper workload instead of spawning a duplicate');
+        expect(createdWorkloads[0].prompt).toContain('Respect recovery windows');
         expect(createdWorkloads[0].prompt).toContain('Selected model lane: gpt-5.5 (strategy-planning, primaryModel).');
         expect(createdWorkloads[0].prompt).toContain('Shared whiteboard:');
         expect(createdWorkloads[0].prompt).toContain('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
@@ -393,6 +397,57 @@ describe('AgentCompanyService', () => {
             adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
             repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
         }));
+    });
+
+    test('rests after a finished workload before scheduling the next crew task', async () => {
+        const existing = [{
+            id: 'workload-finished',
+            ownerId: 'system',
+            sessionId: 'agent-company',
+            title: 'Strategy Lead: Company weekly plan',
+            metadata: {
+                agentCompany: {
+                    enabled: true,
+                    companyGoalHash: hashGoal(buildConfig().companyGoal),
+                    weekKey: '2026-06-22',
+                    planItemId: `2026-06-22-${hashGoal(buildConfig().companyGoal)}-strategy-weekly-plan`,
+                },
+            },
+            workloadSummary: { running: 0, queued: 0 },
+        }];
+        const workloadService = {
+            isAvailable: () => true,
+            listAdminWorkloads: jest.fn(async () => existing),
+            listAdminRuns: jest.fn(async () => [{
+                id: 'run-finished',
+                workloadId: 'workload-finished',
+                status: 'completed',
+                finishedAt: '2026-06-22T11:50:00.000Z',
+            }]),
+            createWorkload: jest.fn(),
+        };
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({ restMinutes: 30 }),
+            },
+            workloadService,
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        const result = await service.tick({ reason: 'timer' });
+
+        expect(result.createdWorkloads).toEqual([]);
+        expect(result.state.heartbeat).toEqual(expect.objectContaining({
+            status: 'resting',
+            reason: 'crew_recovery_window',
+            restUntil: '2026-06-22T12:20:00.000Z',
+            nextAt: '2026-06-22T12:20:00.000Z',
+        }));
+        expect(workloadService.createWorkload).not.toHaveBeenCalled();
     });
 
     test('selects a competency-fit model and skips known unavailable defaults', async () => {

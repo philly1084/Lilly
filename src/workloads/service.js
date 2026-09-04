@@ -556,6 +556,80 @@ class AgentWorkloadService {
         return summaries.sort((left, right) => String(right?.title || '').localeCompare(String(left?.title || '')));
     }
 
+    async controlSubAgentOrchestration(action = '', orchestrationId = '', ownerId = null, sessionId = '', workloadId = '') {
+        const normalizedAction = sanitizeText(action).toLowerCase();
+        const normalizedId = sanitizeText(orchestrationId);
+        const normalizedSessionId = sanitizeText(sessionId);
+        const normalizedWorkloadId = sanitizeText(workloadId);
+        if (!['stop', 'restart'].includes(normalizedAction)) {
+            const error = new Error('Sub-agent control action must be stop or restart.');
+            error.statusCode = 400;
+            throw error;
+        }
+        if (!normalizedId || !normalizedSessionId) {
+            const error = new Error('Sub-agent control requires an orchestrationId and session context.');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const workloads = await this.listSessionSubAgentWorkloads(normalizedSessionId, ownerId);
+        const matching = workloads.filter((workload) => (
+            workload?.metadata?.subAgent?.orchestrationId === normalizedId
+            && (!normalizedWorkloadId || workload.id === normalizedWorkloadId)
+        ));
+        if (matching.length === 0) {
+            const error = new Error('Sub-agent orchestration task not found.');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const results = [];
+        for (const workload of matching) {
+            if (normalizedAction === 'stop') {
+                await this.pauseWorkload(workload.id, ownerId);
+                results.push({
+                    workloadId: workload.id,
+                    action: normalizedAction,
+                    enabled: false,
+                    stopMode: 'after-current-run',
+                    runId: null,
+                });
+                continue;
+            }
+
+            const resumed = await this.resumeWorkload(workload.id, ownerId);
+            const runs = await this.listRunsForWorkload(workload.id, ownerId, 10);
+            const activeRun = runs.find((run) => ['queued', 'running'].includes(sanitizeText(run?.status).toLowerCase()));
+            const latestRun = runs[0] || null;
+            const subAgent = workload?.metadata?.subAgent || {};
+            const run = activeRun || await this.runWorkloadNow(workload.id, ownerId, {
+                reason: 'sub-agent-restart',
+                metadata: {
+                    orchestrationId: normalizedId,
+                    childIndex: normalizeInteger(subAgent.childIndex, 0),
+                    subAgentDepth: normalizeSubAgentDepth(subAgent.depth),
+                    parentRunId: sanitizeText(subAgent.parentRunId || '') || null,
+                },
+                idempotencyKey: `sub-agent-restart:${workload.id}:${latestRun?.id || 'initial'}`,
+            });
+            results.push({
+                workloadId: workload.id,
+                action: normalizedAction,
+                enabled: resumed?.enabled !== false,
+                reusedActiveRun: Boolean(activeRun),
+                runId: run?.id || null,
+                status: run?.status || 'queued',
+            });
+        }
+
+        return {
+            orchestrationId: normalizedId,
+            action: normalizedAction,
+            taskCount: results.length,
+            tasks: results,
+        };
+    }
+
     async createWorkload(payload = {}, ownerId = null) {
         const normalized = validateWorkloadPayload(payload, {
             ownerId,

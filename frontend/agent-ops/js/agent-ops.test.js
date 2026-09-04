@@ -36,6 +36,22 @@ describe('Agent Workroom data boundary', () => {
     expect(normalizeAgent({ id: 'a1' }, 'working').statusClass).toBe('working');
   });
 
+  test('preserves stopped agent lifecycle controls without inventing a replacement agent', () => {
+    expect(normalizeAgent({
+      id: 'helper-1',
+      enabled: false,
+      lifecycle: 'sub-agent',
+      controls: { canStop: false, canRestart: true },
+      status: 'stopped',
+    }, 'idle')).toMatchObject({
+      id: 'helper-1',
+      enabled: false,
+      lifecycle: 'sub-agent',
+      controls: { canStop: false, canRestart: true },
+      status: 'stopped',
+    });
+  });
+
   test('normalizes every recorded workstation channel', () => {
     const workspace = normalizeWorkspace({
       agentId: 'builder',
@@ -98,7 +114,7 @@ describe('Agent Workroom interactions', () => {
       budget: {},
       groups: {
         needsInput: [{ id: 'release', name: 'Rex', role: 'Release guardian', task: 'Approve rollout', status: 'needs_input', approval: { id: 'approval-1', title: 'Promote release' } }],
-        working: [{ id: 'builder', name: 'Mira', role: 'Builder', task: 'Build the site', status: 'working', currentAction: 'Running tests' }],
+        working: [{ id: 'builder', name: 'Mira', role: 'Builder', task: 'Build the site', status: 'working', currentAction: 'Running tests', enabled: true, controls: { canStop: true, canRestart: false } }],
         idle: [],
       },
       selectedAgentId: 'release',
@@ -114,6 +130,7 @@ describe('Agent Workroom interactions', () => {
         projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate' },
         workspace: { enabled: true, endpointTemplate: '/agents/{agentId}/workspace' },
         operatorInput: { enabled: true, endpointTemplate: '/agents/{agentId}/input' },
+        agentControl: { enabled: true, endpointTemplate: '/agents/{agentId}/control', actions: ['stop', 'restart'] },
         whiteboard: { enabled: true, endpoint: '/whiteboard/notes' },
         approvals: true,
       },
@@ -132,9 +149,20 @@ describe('Agent Workroom interactions', () => {
     const dom = new JSDOM(html, { url: 'https://example.test/agent-ops/', runScripts: 'outside-only', pretendToBeVisual: true });
     dom.window.HTMLDialogElement.prototype.showModal = function showModal() { this.open = true; };
     dom.window.HTMLDialogElement.prototype.close = function close() { this.open = false; };
-    dom.window.fetch = jest.fn(async (url) => {
+    dom.window.fetch = jest.fn(async (url, options = {}) => {
       const source = String(url);
       const workspaceMatch = source.match(/\/agents\/([^/]+)\/workspace$/);
+      const controlMatch = source.match(/\/agents\/([^/]+)\/control$/);
+      if (controlMatch) {
+        const action = JSON.parse(options.body || '{}').action;
+        const agent = overview.groups.working.find((item) => item.id === decodeURIComponent(controlMatch[1]))
+          || overview.groups.idle.find((item) => item.id === decodeURIComponent(controlMatch[1]));
+        if (agent) {
+          agent.enabled = action === 'restart';
+          agent.status = agent.enabled ? 'queued' : 'stopped';
+          agent.controls = { canStop: agent.enabled, canRestart: !agent.enabled };
+        }
+      }
       const body = source.endsWith('/overview') ? overview : workspaceMatch ? workspaces[decodeURIComponent(workspaceMatch[1])] : {};
       return { ok: true, status: 200, statusText: 'OK', json: async () => body };
     });
@@ -181,6 +209,43 @@ describe('Agent Workroom interactions', () => {
 
     expect(dom.window.document.getElementById('heartbeatCard').textContent).toContain('Heartbeat offline');
     expect(dom.window.document.getElementById('heartbeatCard').textContent).not.toContain('Heartbeat online');
+    dom.window.close();
+  });
+
+  test('renders recovery time while the crew is deliberately resting', async () => {
+    const { dom, overview } = createWorkroom();
+    overview.heartbeat = {
+      status: 'resting',
+      reason: 'crew_recovery_window',
+      restUntil: '2026-09-03T12:30:00.000Z',
+    };
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(dom.window.document.getElementById('heartbeatCard').textContent).toContain('Crew resting');
+    expect(dom.window.document.getElementById('heartbeatCard').textContent).toContain('crew_recovery_window');
+    dom.window.close();
+  });
+
+  test('stops and restarts the same selected agent through lifecycle controls', async () => {
+    const { dom } = createWorkroom();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    dom.window.document.querySelector('[data-agent-id="builder"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    dom.window.document.getElementById('stopAgentButton').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(dom.window.fetch).toHaveBeenCalledWith(
+      '/api/admin/agent-ops/agents/builder/control',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ action: 'stop' }) }),
+    );
+
+    dom.window.document.getElementById('restartAgentButton').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(dom.window.fetch).toHaveBeenCalledWith(
+      '/api/admin/agent-ops/agents/builder/control',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ action: 'restart' }) }),
+    );
     dom.window.close();
   });
 

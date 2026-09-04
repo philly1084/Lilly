@@ -208,7 +208,16 @@ function buildService() {
     return { id: 'agent-company-alpha' };
   });
   const runWorkloadNow = jest.fn(async () => ({ id: 'operator-run-1', status: 'queued' }));
-  const resumeAdminWorkload = jest.fn(async (id) => fixture.workloads.find((workload) => workload.id === id));
+  const pauseAdminWorkload = jest.fn(async (id) => {
+    const workload = fixture.workloads.find((entry) => entry.id === id);
+    if (workload) workload.enabled = false;
+    return workload;
+  });
+  const resumeAdminWorkload = jest.fn(async (id) => {
+    const workload = fixture.workloads.find((entry) => entry.id === id);
+    if (workload) workload.enabled = true;
+    return workload;
+  });
   const artifactStore = {
     listBySession: jest.fn(async () => [storedArtifact]),
     get: jest.fn(async (id) => (id === storedArtifact.id ? storedArtifact : null)),
@@ -228,6 +237,7 @@ function buildService() {
       listAdminRuns: jest.fn(async () => fixture.workloadRuns),
       getSessionSummaries,
       runWorkloadNow,
+      pauseAdminWorkload,
       resumeAdminWorkload,
     },
     agentRunService,
@@ -253,11 +263,65 @@ function buildService() {
     sessionMessages,
     appendMessages,
     runWorkloadNow,
+    pauseAdminWorkload,
     resumeAdminWorkload,
   };
 }
 
 describe('AgentOpsService', () => {
+  test('stops and restarts the same agent workload without creating a duplicate agent', async () => {
+    const { service, fixture, pauseAdminWorkload, resumeAdminWorkload, runWorkloadNow } = buildService();
+
+    const stopped = await service.controlAgent('research', { action: 'stop' }, 'admin');
+    const stoppedOverview = await service.getOverview();
+    const restarted = await service.controlAgent('research', { action: 'restart' }, 'admin');
+
+    expect(pauseAdminWorkload).toHaveBeenCalledWith('work-research');
+    expect(stopped).toEqual(expect.objectContaining({
+      agentId: 'research',
+      workloadId: 'work-research',
+      status: 'stopped',
+      stopMode: 'after-current-run',
+    }));
+    expect(stoppedOverview.groups.idle).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: 'research',
+      enabled: false,
+      currentAction: expect.stringContaining('Stopped'),
+      controls: { canStop: false, canRestart: true },
+    })]));
+    expect(resumeAdminWorkload).toHaveBeenCalledWith('work-research');
+    expect(runWorkloadNow).toHaveBeenCalledWith('work-research', 'system', expect.objectContaining({
+      reason: 'agent-ops-restart',
+      idempotencyKey: 'agent-ops-restart:work-research:work-run-research',
+    }));
+    expect(restarted).toEqual(expect.objectContaining({
+      agentId: 'research',
+      workloadId: 'work-research',
+      runId: 'operator-run-1',
+      reusedActiveRun: false,
+    }));
+    expect(fixture.workloads.filter((workload) => workload.id === 'work-research')).toHaveLength(1);
+  });
+
+  test('publishes an explicit crew recovery window on the heartbeat', async () => {
+    const { service, fixture } = buildService();
+    fixture.companyStatus.state.heartbeat = {
+      status: 'resting',
+      lastAt: '2026-08-30T12:59:30.000Z',
+      nextAt: '2026-08-30T13:29:30.000Z',
+      restUntil: '2026-08-30T13:29:30.000Z',
+      reason: 'crew_recovery_window',
+    };
+
+    const overview = await service.getOverview();
+
+    expect(overview.heartbeat).toEqual(expect.objectContaining({
+      status: 'resting',
+      restUntil: '2026-08-30T13:29:30.000Z',
+      reason: 'crew_recovery_window',
+    }));
+  });
+
   test('shows tool-owned pending work instead of canonical stage completion in every overview status', async () => {
     const { service, fixture } = buildService();
     fixture.workloadRuns[0].metadata.output.remoteExecution = { completionStatus: 'running', remoteCodeJobId: 'job1' };

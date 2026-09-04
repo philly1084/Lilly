@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <title>KimiBuilt Agent Workroom</title>
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css?v=6.4.0">
-  <link rel="stylesheet" href="css/agent-ops.css?v=agent-workroom-v2">
+  <link rel="stylesheet" href="css/agent-ops.css?v=agent-workroom-v3">
 </head>
 <body>
   <a class="skip-link" href="#workroomStage">Skip to live workroom</a>
@@ -73,6 +73,8 @@
             </div>
             <div class="agent-header-actions">
               <span class="agent-state-pill" id="selectedAgentState">Offline</span>
+              <button class="hud-button agent-control-button stop" id="stopAgentButton" type="button" disabled><i class="fa-solid fa-stop" aria-hidden="true"></i><span>Stop</span></button>
+              <button class="hud-button agent-control-button restart" id="restartAgentButton" type="button" disabled><i class="fa-solid fa-play" aria-hidden="true"></i><span>Restart</span></button>
               <button class="hud-button" id="focusDeskButton" type="button" disabled><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Focus desk</span></button>
             </div>
           </header>
@@ -142,6 +144,6 @@
   </dialog>
 
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="js/agent-ops.js?v=agent-workroom-v2"></script>
+  <script src="js/agent-ops.js?v=agent-workroom-v3"></script>
 </body>
 </html>

@@ -440,10 +440,13 @@ describe('settings.controller personality support', () => {
 
     expect(normalized.primaryModel).toBe('gpt-5.6-luna');
     expect(normalized.reasoningEffort).toBe('high');
+    expect(normalized.restMinutes).toBe(30);
+    expect(controller.normalizeAgentCompanySettings({ restMinutes: 2 }).restMinutes).toBe(5);
     expect(controller.normalizeAgentCompanySettings({ reasoningEffort: 'unsupported' }).reasoningEffort).toBe('high');
     expect(controller.getDefaultSettings().agentCompany).toEqual(expect.objectContaining({
       primaryModel: 'gpt-5.6-luna',
       reasoningEffort: 'high',
+      restMinutes: 30,
     }));
   });
 

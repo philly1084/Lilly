@@ -14,12 +14,12 @@
     heartbeat: { status: 'healthy', ageSeconds: 7, reason: 'crew_tick_completed', intervalSeconds: 30 },
     budget: { usedTokens: 29400, limitTokens: 72000, utilizationPercent: 40.8 },
     groups: {
-      needsInput: [{ id: 'release', name: 'Rex', role: 'Release guardian', task: 'Promote build 2.18', currentAction: 'Approval needed: production rollout', status: 'needs_input', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 9, approval: { id: 'approval-demo', title: 'Production approval' } }],
+      needsInput: [{ id: 'release', name: 'Rex', role: 'Release guardian', task: 'Promote build 2.18', currentAction: 'Approval needed: production rollout', status: 'needs_input', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 9, enabled: true, controls: { canStop: true, canRestart: false }, approval: { id: 'approval-demo', title: 'Production approval' } }],
       working: [
-        { id: 'builder', name: 'Mira', role: 'Builder', task: 'Repair checkout workspace', currentAction: 'Running browser verification', status: 'working', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 4 },
-        { id: 'research', name: 'Ada', role: 'Researcher', task: 'Check provider contracts', currentAction: 'Comparing primary sources', status: 'working', model: 'gpt-5.6-terra', lastHeartbeatSeconds: 6 },
+        { id: 'builder', name: 'Mira', role: 'Builder', task: 'Repair checkout workspace', currentAction: 'Running browser verification', status: 'working', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 4, enabled: true, controls: { canStop: true, canRestart: false } },
+        { id: 'research', name: 'Ada', role: 'Researcher', task: 'Check provider contracts', currentAction: 'Comparing primary sources', status: 'working', model: 'gpt-5.6-terra', lastHeartbeatSeconds: 6, enabled: true, controls: { canStop: true, canRestart: false } },
       ],
-      idle: [{ id: 'review', name: 'Lin', role: 'Reviewer', task: 'Await verified artifact', currentAction: 'Standing by', status: 'idle', model: 'gpt-5.6-luna', lastHeartbeatSeconds: 18 }],
+      idle: [{ id: 'review', name: 'Lin', role: 'Reviewer', task: 'Await verified artifact', currentAction: 'Standing by', status: 'idle', model: 'gpt-5.6-luna', lastHeartbeatSeconds: 18, enabled: false, controls: { canStop: false, canRestart: true } }],
     },
     selectedAgentId: 'release',
     goalItems: [
@@ -37,6 +37,7 @@
       projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate' },
       workspace: { enabled: true, endpointTemplate: '/agents/{agentId}/workspace' },
       operatorInput: { enabled: true, endpointTemplate: '/agents/{agentId}/input' },
+      agentControl: { enabled: true, endpointTemplate: '/agents/{agentId}/control', actions: ['stop', 'restart'] },
       whiteboard: { enabled: true, endpoint: '/whiteboard/notes' },
       approvals: true,
       approvalDecisions: ['approve'],
@@ -261,10 +262,14 @@
     const interval = Number(heartbeat.intervalSeconds);
     const stale = Number.isFinite(age) && age > Math.max(Number.isFinite(interval) ? interval * 2 : 0, 120);
     const offline = ['disabled', 'unavailable', 'idle'].includes(status) || status.includes('no_active') || stale;
+    const resting = ['resting', 'cooldown'].includes(status);
     const unhealthy = status.includes('fail') || status.includes('degrad') || status.includes('error');
-    const label = offline ? 'Heartbeat offline' : unhealthy ? 'Heartbeat needs attention' : 'Heartbeat online';
-    card.className = `heartbeat-card${offline || unhealthy ? ' unhealthy' : ''}`;
-    card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${label}</strong><small>${escapeHtml(formatAge(heartbeat.ageSeconds))}${heartbeat.reason ? ` · ${escapeHtml(heartbeat.reason)}` : ''}</small></div>`;
+    const label = offline ? 'Heartbeat offline' : unhealthy ? 'Heartbeat needs attention' : resting ? 'Crew resting' : 'Heartbeat online';
+    const detail = resting && heartbeat.restUntil
+      ? `until ${formatTime(heartbeat.restUntil)}`
+      : formatAge(heartbeat.ageSeconds);
+    card.className = `heartbeat-card${offline || unhealthy ? ' unhealthy' : ''}${resting ? ' resting' : ''}`;
+    card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${label}</strong><small>${escapeHtml(detail)}${heartbeat.reason ? ` · ${escapeHtml(heartbeat.reason)}` : ''}</small></div>`;
   }
 
   function renderCrew() {
@@ -361,6 +366,8 @@
       tab.tabIndex = active ? 0 : -1;
     });
     const focus = globalScope.document.getElementById('focusDeskButton');
+    const stop = globalScope.document.getElementById('stopAgentButton');
+    const restart = globalScope.document.getElementById('restartAgentButton');
     if (!agent) {
       globalScope.document.getElementById('selectedAvatar').textContent = '?';
       globalScope.document.getElementById('selectedAgentRole').textContent = 'No workstation selected';
@@ -368,6 +375,10 @@
       globalScope.document.getElementById('selectedAgentTask').textContent = 'Create a mission to begin.';
       globalScope.document.getElementById('selectedAgentState').textContent = 'Offline';
       focus.disabled = true;
+      stop.disabled = true;
+      restart.disabled = true;
+      stop.hidden = false;
+      restart.hidden = true;
       panels.forEach((panel) => { panel.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><h3>Waiting for a player</h3><p>Select an agent workstation when the crew arrives.</p></div>'; });
       return;
     }
@@ -379,6 +390,11 @@
     globalScope.document.getElementById('selectedAgentName').textContent = agent.name;
     globalScope.document.getElementById('selectedAgentTask').textContent = agent.task;
     focus.disabled = false;
+    const controlEnabled = state.demo || capabilityEnabled('agentControl');
+    stop.disabled = !controlEnabled || agent.controls?.canStop === false || agent.enabled === false;
+    restart.disabled = !controlEnabled || agent.controls?.canRestart === false || agent.enabled !== false;
+    stop.hidden = agent.enabled === false;
+    restart.hidden = agent.enabled !== false;
     const workspace = state.workspaces.get(agent.id);
     renderTerminal(agent, workspace);
     renderDesk(agent);
@@ -564,6 +580,36 @@
     }
   }
 
+  async function controlAgent(action, button) {
+    const agent = selectedAgent();
+    if (!agent || !['stop', 'restart'].includes(action)) return;
+    button.disabled = true;
+    try {
+      if (state.demo) {
+        agent.enabled = action === 'restart';
+        agent.controls = { canStop: agent.enabled, canRestart: !agent.enabled };
+        agent.status = agent.enabled ? 'queued' : 'stopped';
+        agent.statusClass = agentStatusClass(agent.status);
+        agent.currentAction = agent.enabled ? `Restarting ${agent.task}` : `Stopped · ready to restart ${agent.task}`;
+      } else {
+        const template = capability('agentControl')?.endpointTemplate;
+        if (!template) throw new Error('Agent lifecycle control is unavailable in this runtime.');
+        await request(endpointFromTemplate(template, 'agentId', agent.id), {
+          method: 'POST',
+          body: JSON.stringify({ action }),
+        });
+      }
+      showToast(action === 'stop'
+        ? 'Agent will stop after its current command and keep its workspace.'
+        : 'Existing agent workspace restarted; no duplicate was created.');
+      if (state.demo) renderAll();
+      else await refresh(true);
+    } catch (error) {
+      button.disabled = false;
+      showToast(`Could not ${action} agent: ${error.message}`, true);
+    }
+  }
+
   async function createBoardNote() {
     const dialog = globalScope.document.getElementById('boardNoteDialog');
     const input = globalScope.document.getElementById('boardNoteInput');
@@ -640,6 +686,8 @@
       sendAgentInstruction(form.dataset.agentId, form);
     });
     globalScope.document.getElementById('focusDeskButton').addEventListener('click', () => setPanel('desk'));
+    globalScope.document.getElementById('stopAgentButton').addEventListener('click', (event) => controlAgent('stop', event.currentTarget));
+    globalScope.document.getElementById('restartAgentButton').addEventListener('click', (event) => controlAgent('restart', event.currentTarget));
     globalScope.document.getElementById('projectSelect').addEventListener('change', async (event) => {
       const template = capability('projects')?.activateEndpointTemplate;
       if (!event.target.value || !template || state.demo) return;

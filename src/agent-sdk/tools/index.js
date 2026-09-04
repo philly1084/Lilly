@@ -4500,7 +4500,7 @@ class ToolManager {
         id: 'agent-delegate',
         name: 'Sub-Agent Orchestrator',
         category: 'system',
-        description: 'Spawn and track up to 3 bounded sub-agents for long-running background work in the current conversation. Sub-agents inherit the caller model, cannot spawn more sub-agents, and should use distinct write targets when they modify files.',
+        description: 'Spawn, track, stop, and restart up to 3 bounded sub-agents for long-running background work in the current conversation. Sub-agents inherit the caller model, cannot spawn more sub-agents, and should use distinct write targets when they modify files.',
         backend: {
           handler: async (params = {}, context = {}) => {
             const { service, ownerId, sessionId } = resolveSessionWorkloadService(context);
@@ -4555,6 +4555,33 @@ class ToolManager {
               };
             }
 
+            if (action === 'stop' || action === 'restart') {
+              const orchestrationId = String(
+                params.orchestrationId
+                || params.orchestration_id
+                || params.id
+                || '',
+              ).trim();
+              if (!orchestrationId) {
+                throw new Error(`agent-delegate ${action} requires an \`orchestrationId\`.`);
+              }
+              const orchestration = await service.controlSubAgentOrchestration(
+                action,
+                orchestrationId,
+                ownerId,
+                sessionId,
+                params.workloadId || params.workload_id || '',
+              );
+              return {
+                action,
+                sessionId,
+                orchestration,
+                message: action === 'stop'
+                  ? `Stopped ${orchestration.taskCount} sub-agent task${orchestration.taskCount === 1 ? '' : 's'} after any current run finishes.`
+                  : `Restarted ${orchestration.taskCount} existing sub-agent task${orchestration.taskCount === 1 ? '' : 's'}.`,
+              };
+            }
+
             throw new Error(`Unsupported agent-delegate action: ${action}`);
           },
           sideEffects: ['write'],
@@ -4566,12 +4593,14 @@ class ToolManager {
           properties: {
             action: {
               type: 'string',
-              enum: ['spawn', 'status', 'list'],
+              enum: ['spawn', 'status', 'list', 'stop', 'restart'],
             },
             title: { type: 'string' },
             name: { type: 'string' },
             orchestrationId: { type: 'string' },
             orchestration_id: { type: 'string' },
+            workloadId: { type: 'string' },
+            workload_id: { type: 'string' },
             maxRetries: { type: 'integer' },
             task: {
               type: 'object',

@@ -1324,6 +1324,7 @@ class SettingsController {
       : current.enabled === true;
     next.companyGoal = String(next.companyGoal || next.goal || '').trim().slice(0, 4000);
     next.heartbeatMinutes = Math.max(15, parseBoundedPositiveInteger(next.heartbeatMinutes, current.heartbeatMinutes || 60, 1440));
+    next.restMinutes = Math.max(5, parseBoundedPositiveInteger(next.restMinutes, current.restMinutes || 30, 1440));
     next.scheduleHorizonDays = parseBoundedPositiveInteger(next.scheduleHorizonDays, current.scheduleHorizonDays || 7, 30);
     next.weeklyWorkloadLimit = parseBoundedPositiveInteger(next.weeklyWorkloadLimit, current.weeklyWorkloadLimit || 3, 12);
     next.maxConcurrentWorkloads = parseBoundedPositiveInteger(next.maxConcurrentWorkloads, current.maxConcurrentWorkloads || 1, 4);
@@ -1882,6 +1883,7 @@ class SettingsController {
         enabled: false,
         companyGoal: '',
         heartbeatMinutes: 60,
+        restMinutes: 30,
         scheduleHorizonDays: 7,
         weeklyWorkloadLimit: 3,
         maxConcurrentWorkloads: 1,

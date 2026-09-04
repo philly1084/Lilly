@@ -98,6 +98,32 @@ describe('/api/admin/agent-ops', () => {
     expect(response.body.runId).toBe('run-input-1');
   });
 
+  test('stops and restarts an existing agent through the lifecycle adapter', async () => {
+    const service = {
+      controlAgent: jest.fn(async (agentId, input) => ({
+        agentId,
+        action: input.action,
+        workloadId: 'work-research',
+        status: input.action === 'stop' ? 'stopped' : 'queued',
+      })),
+    };
+    const app = buildApp(service);
+
+    const stopped = await request(app)
+      .post('/api/admin/agent-ops/agents/research/control')
+      .send({ action: 'stop' });
+    const restarted = await request(app)
+      .post('/api/admin/agent-ops/agents/research/control')
+      .send({ action: 'restart' });
+
+    expect(stopped.status).toBe(202);
+    expect(restarted.status).toBe(202);
+    expect(service.controlAgent).toHaveBeenNthCalledWith(1, 'research', { action: 'stop' }, 'admin');
+    expect(service.controlAgent).toHaveBeenNthCalledWith(2, 'research', { action: 'restart' }, 'admin');
+    expect(stopped.body.status).toBe('stopped');
+    expect(restarted.body.status).toBe('queued');
+  });
+
   test('persists a shared whiteboard note and preserves the actor', async () => {
     const service = {
       createWhiteboardNote: jest.fn(async () => ({

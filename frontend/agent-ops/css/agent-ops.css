@@ -233,6 +233,9 @@ a { color: inherit; }
   background: rgba(97, 230, 166, 0.055);
 }
 .heartbeat-card.unhealthy { border-color: rgba(255, 123, 134, 0.35); background: rgba(255, 123, 134, 0.06); }
+.heartbeat-card.resting { border-color: rgba(255, 200, 102, 0.34); background: rgba(255, 200, 102, 0.065); }
+.heartbeat-card.resting .heartbeat-orbit { border-color: rgba(255, 200, 102, 0.5); animation-duration: 8s; }
+.heartbeat-card.resting .heartbeat-orbit span { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
 .heartbeat-card > div { display: grid; min-width: 0; }
 .heartbeat-card strong { font-size: 12px; }
 .heartbeat-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -359,6 +362,8 @@ a { color: inherit; }
 .selected-agent h2, .selected-agent p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selected-agent p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .agent-header-actions { display: flex; align-items: center; gap: 8px; }
+.agent-control-button.stop { border-color: rgba(255, 123, 134, 0.34); color: #ff9aa3; }
+.agent-control-button.restart { border-color: rgba(97, 230, 166, 0.36); color: var(--green); }
 .agent-state-pill { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .agent-state-pill.working { border-color: rgba(97, 230, 166, 0.36); color: var(--green); }
 .agent-state-pill.waiting { border-color: rgba(255, 200, 102, 0.42); color: var(--amber); }
@@ -531,7 +536,9 @@ a { color: inherit; }
   .floor-avatar { width: 38px; height: 38px; }
   .agent-console-header { align-items: flex-start; }
   .selected-agent p { white-space: normal; }
-  .agent-header-actions .hud-button { display: none; }
+  .agent-header-actions #focusDeskButton { display: none; }
+  .agent-header-actions .agent-control-button { width: 36px; min-width: 36px; padding: 0; }
+  .agent-header-actions .agent-control-button span { display: none; }
   .workstation-panel { min-height: 360px; }
   .agent-desk-frame, .agent-screen-frame { min-height: 540px; }
   .board-wall { overflow: visible; padding: 0 10px 30px; }

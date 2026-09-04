@@ -2594,6 +2594,47 @@ describe('ToolManager image tools', () => {
     expect(result.data.orchestration.counts.running).toBe(1);
   });
 
+  test('routes sub-agent stop and restart to the existing orchestration', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+    const controlSubAgentOrchestration = jest.fn(async (action) => ({
+      orchestrationId: 'subagent-1',
+      action,
+      taskCount: 1,
+      tasks: [{ workloadId: 'w1', action }],
+    }));
+    const context = {
+      ownerId: 'user-1',
+      sessionId: 'session-1',
+      workloadService: {
+        isAvailable: () => true,
+        controlSubAgentOrchestration,
+      },
+    };
+
+    const stopped = await toolManager.executeTool('agent-delegate', {
+      action: 'stop',
+      orchestrationId: 'subagent-1',
+      workloadId: 'w1',
+    }, context);
+    const restarted = await toolManager.executeTool('agent-delegate', {
+      action: 'restart',
+      orchestrationId: 'subagent-1',
+      workloadId: 'w1',
+    }, context);
+
+    expect(stopped.success).toBe(true);
+    expect(stopped.data.message).toContain('Stopped 1 sub-agent task');
+    expect(restarted.success).toBe(true);
+    expect(restarted.data.message).toContain('Restarted 1 existing sub-agent task');
+    expect(controlSubAgentOrchestration).toHaveBeenNthCalledWith(
+      1, 'stop', 'subagent-1', 'user-1', 'session-1', 'w1',
+    );
+    expect(controlSubAgentOrchestration).toHaveBeenNthCalledWith(
+      2, 'restart', 'subagent-1', 'user-1', 'session-1', 'w1',
+    );
+  });
+
   test('infers a cron trigger for create when the prompt still contains schedule text', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();
