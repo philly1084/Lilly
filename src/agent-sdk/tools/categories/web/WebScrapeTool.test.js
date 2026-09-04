@@ -83,6 +83,11 @@ describe('WebScrapeTool content extraction', () => {
                 },
             },
             actions: [{ type: 'click', selector: 'button.load-more' }],
+            privateWorkspace: {
+                private: true,
+                persistent: true,
+                scope: 'workload',
+            },
         });
 
         const tool = new WebScrapeTool();
@@ -127,6 +132,11 @@ describe('WebScrapeTool content extraction', () => {
             engine: 'playwright',
             actions: [{ type: 'click', selector: 'button.load-more' }],
             warnings: [],
+            privateWorkspace: {
+                private: true,
+                persistent: true,
+                scope: 'workload',
+            },
         });
         expect(result.screenshot).toEqual({
             available: true,
@@ -138,6 +148,42 @@ describe('WebScrapeTool content extraction', () => {
         expect(result.method).toBe('playwright-css-selectors');
         expect(result.stats.linksCaptured).toBe(1);
         expect(result.stats.headingsCaptured).toBe(1);
+    });
+
+    test('binds company browser work to the private workload profile automatically', async () => {
+        browsePage.mockResolvedValue({
+            engine: 'playwright',
+            url: 'https://example.com/app',
+            title: 'Private app',
+            html: '<html><body>Private app</body></html>',
+            text: 'Private app',
+            links: [],
+            headings: [],
+            images: [],
+            selectorData: {},
+            screenshot: null,
+            actions: [],
+            privateWorkspace: { private: true, persistent: true, scope: 'workload' },
+        });
+
+        const tool = new WebScrapeTool();
+        const result = await tool.handler({
+            url: 'https://example.com/app',
+            browser: true,
+        }, {
+            sessionId: 'agent-company-room',
+            companyWorkloadId: 'workload-7',
+        }, { recordRead: jest.fn() });
+
+        expect(browsePage).toHaveBeenCalledWith('https://example.com/app', expect.objectContaining({
+            browserWorkspaceId: 'agent-workload:agent-company-room:workload-7',
+            workloadId: 'workload-7',
+        }));
+        expect(result.browser.privateWorkspace).toEqual({
+            private: true,
+            persistent: true,
+            scope: 'workload',
+        });
     });
 
     test('uses direct artifact preview lookup instead of browser auth for internal sandbox urls', async () => {

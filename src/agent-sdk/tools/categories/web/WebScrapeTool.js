@@ -9,12 +9,22 @@ const { artifactService } = require('../../../../artifacts/artifact-service');
 const { browsePage, normalizeBrowserUrl } = require('./browser-runtime');
 const { evaluateResearchSitePolicy, normalizeDomainList } = require('./research-site-policy');
 
+function resolveAgentBrowserWorkspaceContext(context = {}) {
+  const workloadId = String(context.companyWorkloadId || context.workloadId || '').trim();
+  const sessionId = String(context.sessionId || '').trim();
+  if (!workloadId || !sessionId) return null;
+  return {
+    browserWorkspaceId: `agent-workload:${sessionId}:${workloadId}`,
+    workloadId,
+  };
+}
+
 class WebScrapeTool extends ToolBase {
   constructor() {
     super({
       id: 'web-scrape',
       name: 'Web Scraper',
-      description: 'Extract structured data from web pages using selectors, with optional headless-browser rendering for dynamic pages and TLS/certificate-problem sites',
+      description: 'Extract and interact with rendered web pages. Agent-company calls automatically use a private persistent browser profile scoped to the current workload; its full viewport is not exposed in the command center.',
       category: 'web',
       version: '1.0.0',
       backend: {
@@ -329,6 +339,7 @@ class WebScrapeTool extends ToolBase {
     let links = [];
     let headings = [];
     let browserData = null;
+    const agentBrowserWorkspace = resolveAgentBrowserWorkspaceContext(context);
     
     const fetchTool = this.resolveFetchTool(context);
     const internalArtifactPreview = fetchTool
@@ -356,6 +367,8 @@ class WebScrapeTool extends ToolBase {
         viewport,
         fullPageScreenshot,
         sessionId: context?.sessionId || null,
+        browserWorkspaceId: agentBrowserWorkspace?.browserWorkspaceId || null,
+        workloadId: agentBrowserWorkspace?.workloadId || null,
         imageLimit,
         contentCharLimit: config.scrape.contentCharLimit,
       });
@@ -383,6 +396,8 @@ class WebScrapeTool extends ToolBase {
             viewport,
             fullPageScreenshot,
             sessionId: context?.sessionId || null,
+            browserWorkspaceId: agentBrowserWorkspace?.browserWorkspaceId || null,
+            workloadId: agentBrowserWorkspace?.workloadId || null,
             imageLimit,
             contentCharLimit: config.scrape.contentCharLimit,
           });
@@ -464,6 +479,7 @@ class WebScrapeTool extends ToolBase {
           engine: browserData.engine,
           actions: browserData.actions || [],
           warnings: browserData.warnings || [],
+          privateWorkspace: browserData.privateWorkspace || null,
         }
         : null,
       screenshot: browserData?.screenshot || null,

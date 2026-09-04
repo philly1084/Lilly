@@ -10,6 +10,7 @@ const {
   assertNotAuthWall,
   buildInternalBrowserHeaders,
   normalizeBrowserUrl,
+  resolvePrivateBrowserWorkspace,
 } = require('./browser-runtime');
 
 describe('browser-runtime URL normalization', () => {
@@ -77,5 +78,19 @@ describe('browser-runtime URL normalization', () => {
       text: '{"error":{"message":"Authentication required","code":"missing_token"}}',
       html: '',
     }, 'http://localhost:3000/api/artifacts/site/sandbox')).toThrow(/authentication wall/i);
+  });
+
+  test('derives a durable private profile without putting raw workload identity in its path', () => {
+    const workspace = resolvePrivateBrowserWorkspace('agent-workload:session-secret:workload-secret');
+
+    expect(workspace).toMatchObject({
+      private: true,
+      persistent: true,
+      scope: 'workload',
+    });
+    expect(workspace.id).toMatch(/^[a-f0-9]{24}$/);
+    expect(workspace.userDataDir).toContain('agent-browser-workspaces');
+    expect(workspace.userDataDir).not.toContain('session-secret');
+    expect(workspace.userDataDir).not.toContain('workload-secret');
   });
 });

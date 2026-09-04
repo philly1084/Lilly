@@ -1,4 +1,5 @@
 const fs = require('fs/promises');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -24,6 +25,7 @@ const DEFAULT_USER_AGENT = 'KimiBuilt-Agent/1.0 (Automated Browser Research)';
 const DEFAULT_VIEWPORT = { width: 1440, height: 960 };
 const MIN_VIEWPORT_EDGE = 240;
 const MAX_VIEWPORT_EDGE = 4096;
+const privateWorkspaceLocks = new Map();
 
 function splitArgs(value = '') {
   return String(value || '')
@@ -149,6 +151,36 @@ function normalizeViewport(value = null) {
   };
 }
 
+function resolvePrivateBrowserWorkspace(value = '') {
+  const scope = String(value || '').trim();
+  if (!scope) return null;
+  const digest = crypto.createHash('sha256').update(scope).digest('hex');
+  return {
+    private: true,
+    persistent: true,
+    scope: 'workload',
+    id: digest.slice(0, 24),
+    userDataDir: path.join(config.persistence.dataDir, 'agent-browser-workspaces', digest),
+  };
+}
+
+async function withPrivateWorkspaceLock(workspace, action) {
+  if (!workspace?.id) return action();
+  const previous = privateWorkspaceLocks.get(workspace.id) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  privateWorkspaceLocks.set(workspace.id, current);
+  await previous.catch(() => {});
+  try {
+    return await action();
+  } finally {
+    release();
+    if (privateWorkspaceLocks.get(workspace.id) === current) {
+      privateWorkspaceLocks.delete(workspace.id);
+    }
+  }
+}
+
 function normalizeUrl(url) {
   const value = normalizeBrowserReachableUrl(url);
   if (!value) {
@@ -235,7 +267,17 @@ function assertNotAuthWall(snapshot = {}, url = '') {
   }
 }
 
-async function captureScreenshotArtifact({ page, sessionId, url, title = '', contentText = '', fullPage = true, viewport = null }) {
+async function captureScreenshotArtifact({
+  page,
+  sessionId,
+  url,
+  title = '',
+  contentText = '',
+  fullPage = true,
+  viewport = null,
+  privateWorkspace = null,
+  workloadId = null,
+}) {
   if (!sessionId) {
     return {
       available: false,
@@ -267,6 +309,12 @@ async function captureScreenshotArtifact({ page, sessionId, url, title = '', con
       sourceUrl: url,
       pageTitle: title,
       viewport,
+      ...(privateWorkspace ? {
+        privateAgentWorkspace: true,
+        browserWorkspaceId: privateWorkspace.id,
+        browserWorkspaceScope: privateWorkspace.scope,
+        workloadId: String(workloadId || '').trim() || null,
+      } : {}),
     },
     vectorize: false,
   });
@@ -503,7 +551,7 @@ async function collectPageSnapshot(page, {
   };
 }
 
-async function browseWithPlaywright(normalizedUrl, options = {}) {
+async function browseWithPlaywrightUnlocked(normalizedUrl, options = {}, privateWorkspace = null) {
   const loaded = loadPlaywrightPackage();
   if (!loaded) {
     throw new Error('Playwright is not installed in the backend runtime');
@@ -523,19 +571,30 @@ async function browseWithPlaywright(normalizedUrl, options = {}) {
     launchOptions.executablePath = executablePath;
   }
 
-  const browser = await loaded.chromium.launch(launchOptions);
+  let browser;
   let context;
   let page;
   const viewport = normalizeViewport(options.viewport);
 
   try {
-    context = await browser.newContext({
+    const contextOptions = {
       ignoreHTTPSErrors: true,
       userAgent: DEFAULT_USER_AGENT,
       viewport,
       extraHTTPHeaders: buildInternalBrowserHeaders(normalizedUrl),
-    });
-    page = await context.newPage();
+    };
+    if (privateWorkspace) {
+      await fs.mkdir(privateWorkspace.userDataDir, { recursive: true });
+      context = await loaded.chromium.launchPersistentContext(privateWorkspace.userDataDir, {
+        ...launchOptions,
+        ...contextOptions,
+      });
+      page = context.pages()[0] || await context.newPage();
+    } else {
+      browser = await loaded.chromium.launch(launchOptions);
+      context = await browser.newContext(contextOptions);
+      page = await context.newPage();
+    }
     await page.goto(normalizedUrl, {
       waitUntil: options.waitUntil || 'domcontentloaded',
       timeout: launchOptions.timeout,
@@ -567,6 +626,8 @@ async function browseWithPlaywright(normalizedUrl, options = {}) {
         contentText: snapshot.text,
         fullPage: options.fullPageScreenshot,
         viewport,
+        privateWorkspace,
+        workloadId: options.workloadId,
       });
     }
 
@@ -582,12 +643,25 @@ async function browseWithPlaywright(normalizedUrl, options = {}) {
       selectorData: snapshot.selectorData,
       screenshot,
       actions,
+      privateWorkspace: privateWorkspace ? {
+        private: true,
+        persistent: true,
+        scope: privateWorkspace.scope,
+      } : null,
     };
   } finally {
     await page?.close().catch(() => {});
     await context?.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await browser?.close().catch(() => {});
   }
+}
+
+async function browseWithPlaywright(normalizedUrl, options = {}) {
+  const privateWorkspace = resolvePrivateBrowserWorkspace(options.browserWorkspaceId);
+  return withPrivateWorkspaceLock(
+    privateWorkspace,
+    () => browseWithPlaywrightUnlocked(normalizedUrl, options, privateWorkspace),
+  );
 }
 
 function assertSelectorPresentInHtml(html, selector) {
@@ -719,4 +793,5 @@ module.exports = {
   browsePage,
   normalizeBrowserUrl: normalizeUrl,
   normalizeBrowserViewport: normalizeViewport,
+  resolvePrivateBrowserWorkspace,
 };

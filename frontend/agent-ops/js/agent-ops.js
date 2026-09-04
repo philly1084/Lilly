@@ -57,6 +57,7 @@
       artifacts: [{ id: 'artifact-demo', name: 'checkout-proof.md', detail: 'Markdown · 18 KB', previewUrl: '#demo-artifact' }],
       editor: [],
       activity: [],
+      privateBrowser: { private: true, persistent: true, exposedToOperator: false, status: 'active', captureCount: 2, lastActivityAt: new Date().toISOString(), signals: [{ title: 'Release canary', host: 'localhost', timestamp: new Date().toISOString() }] },
     },
     builder: {
       agentId: 'builder',
@@ -64,6 +65,7 @@
       messages: [{ from: 'Mira', message: 'The repaired workspace is visible on desktop and mobile.', timestamp: new Date().toISOString() }],
       browser: [{ name: 'Checkout preview', url: '/web-chat/' }],
       files: [], artifacts: [], editor: [], activity: [],
+      privateBrowser: { private: true, persistent: true, exposedToOperator: false, status: 'active', captureCount: 1, lastActivityAt: new Date().toISOString(), signals: [{ title: 'Checkout preview', host: 'localhost', timestamp: new Date().toISOString() }] },
     },
   };
 
@@ -175,6 +177,9 @@
       messages: asArray(source.messages),
       whiteboard: source.whiteboard && typeof source.whiteboard === 'object' ? source.whiteboard : {},
       controls: source.controls && typeof source.controls === 'object' ? source.controls : {},
+      privateBrowser: source.privateBrowser && typeof source.privateBrowser === 'object'
+        ? source.privateBrowser
+        : { private: true, persistent: true, exposedToOperator: false, status: 'ready', captureCount: 0, signals: [] },
     };
   }
 
@@ -186,12 +191,6 @@
   function capability(name) { return state.overview?.capabilities?.[name]; }
   function capabilityEnabled(name) { const value = capability(name); return value === true || value?.enabled === true; }
   function endpointFromTemplate(template, key, value) { return String(template || '').replace(`{${key}}`, encodeURIComponent(value)); }
-
-  function buildAgentWorkspaceUrl(agent = {}) {
-    const workspace = `agent-${slug(agent.id || agent.name)}`;
-    const params = new URLSearchParams({ workspace, workspaceLabel: `${text(agent.name, 'Agent')} desk`, embedded: '1' });
-    return `/web-chat/?${params.toString()}`;
-  }
 
   async function request(path, options = {}) {
     const abortController = typeof globalScope.AbortController === 'function' ? new globalScope.AbortController() : null;
@@ -257,9 +256,15 @@
   function renderHeartbeat() {
     const heartbeat = state.overview.heartbeat;
     const card = globalScope.document.getElementById('heartbeatCard');
-    const unhealthy = String(heartbeat.status || '').toLowerCase().includes('fail') || String(heartbeat.status || '').toLowerCase().includes('degrad');
-    card.className = `heartbeat-card${unhealthy ? ' unhealthy' : ''}`;
-    card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${unhealthy ? 'Heartbeat needs attention' : 'Heartbeat online'}</strong><small>${escapeHtml(formatAge(heartbeat.ageSeconds))}${heartbeat.reason ? ` · ${escapeHtml(heartbeat.reason)}` : ''}</small></div>`;
+    const status = String(heartbeat.status || 'unavailable').toLowerCase();
+    const age = Number(heartbeat.ageSeconds);
+    const interval = Number(heartbeat.intervalSeconds);
+    const stale = Number.isFinite(age) && age > Math.max(Number.isFinite(interval) ? interval * 2 : 0, 120);
+    const offline = ['disabled', 'unavailable', 'idle'].includes(status) || status.includes('no_active') || stale;
+    const unhealthy = status.includes('fail') || status.includes('degrad') || status.includes('error');
+    const label = offline ? 'Heartbeat offline' : unhealthy ? 'Heartbeat needs attention' : 'Heartbeat online';
+    card.className = `heartbeat-card${offline || unhealthy ? ' unhealthy' : ''}`;
+    card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${label}</strong><small>${escapeHtml(formatAge(heartbeat.ageSeconds))}${heartbeat.reason ? ` · ${escapeHtml(heartbeat.reason)}` : ''}</small></div>`;
   }
 
   function renderCrew() {
@@ -320,31 +325,20 @@
 
   function renderDesk(agent) {
     const panel = globalScope.document.getElementById('panel-desk');
-    if (state.activePanel !== 'desk') {
-      panel.innerHTML = '<div class="desk-empty"><i class="fa-regular fa-message" aria-hidden="true"></i><h3>Web Chat desk is parked</h3><p>Open this tab to start the agent’s isolated Web Chat workspace with the full chat, file, tool, voice, and artifact interface.</p></div>';
-      return;
-    }
-    const url = buildAgentWorkspaceUrl(agent);
-    const current = panel.querySelector('iframe')?.getAttribute('src');
-    if (current === url) return;
-    panel.innerHTML = `<div class="desk-toolbar"><span>${escapeHtml(agent.name)} · isolated Web Chat workspace</span><a class="text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open full screen <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div><iframe class="agent-desk-frame" src="${escapeHtml(url)}" title="${escapeHtml(agent.name)} Web Chat desk" allow="microphone; clipboard-read; clipboard-write" referrerpolicy="same-origin"></iframe>`;
+    const workspace = state.workspaces.get(agent.id);
+    const browser = workspace?.privateBrowser || {};
+    const last = browser.lastActivityAt ? formatAge((Date.now() - new Date(browser.lastActivityAt).getTime()) / 1000) : 'not used yet';
+    panel.innerHTML = `<div class="desk-empty"><i class="fa-solid fa-user-secret" aria-hidden="true"></i><h3>Private browser belongs to ${escapeHtml(agent.name)}</h3><p>The rendered Web Chat and page viewport are sent to the agent’s browser model, not embedded in your command center.</p><div class="private-browser-facts"><span>${escapeHtml(text(browser.status, 'ready'))}</span><span>${escapeHtml(String(browser.captureCount || 0))} private captures</span><span>last activity ${escapeHtml(last)}</span></div></div>`;
   }
 
   function renderScreen(agent, workspace) {
     const panel = globalScope.document.getElementById('panel-screen');
-    if (state.activePanel !== 'screen') {
-      panel.innerHTML = '<div class="empty-panel"><i class="fa-regular fa-window-maximize" aria-hidden="true"></i><h3>Visual feed is parked</h3><p>Open this tab to load the agent’s latest recorded browser preview without keeping hidden pages running.</p></div>';
+    const signals = asArray(workspace?.privateBrowser?.signals);
+    if (!signals.length) {
+      panel.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i><h3>No private browser signals yet</h3><p>When the agent operates its browser, this panel reports bounded page titles and hosts without revealing the rendered viewport.</p></div>';
       return;
     }
-    const preview = workspace?.browser?.find((item) => safeUrl(item.url));
-    if (!preview) {
-      panel.innerHTML = '<div class="empty-panel"><i class="fa-regular fa-window-maximize" aria-hidden="true"></i><h3>No visual feed recorded</h3><p>Browser previews and screenshots will appear here when the agent publishes them. The UI does not pretend a computer-vision feed exists when none was recorded.</p></div>';
-      return;
-    }
-    const url = safeUrl(preview.url);
-    let sameOrigin = false;
-    try { sameOrigin = new URL(url, globalScope.location.href).origin === globalScope.location.origin; } catch (_error) { sameOrigin = false; }
-    panel.innerHTML = `<div class="screen-toolbar"><span>${escapeHtml(preview.name || 'Agent screen')}</span><a class="text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open feed <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>${sameOrigin ? `<iframe class="agent-screen-frame" src="${escapeHtml(url)}" title="${escapeHtml(agent.name)} recorded preview" sandbox="allow-scripts allow-forms allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>` : '<div class="empty-panel"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h3>External visual feed</h3><p>This preview opens separately because it is outside the KimiBuilt origin.</p></div>'}`;
+    panel.innerHTML = `<div class="private-signal-list">${signals.map((signal) => `<article><i class="fa-solid fa-eye" aria-hidden="true"></i><span><strong>${escapeHtml(signal.title || 'Rendered page')}</strong><small>${escapeHtml(signal.host || 'private page')} · ${escapeHtml(formatTime(signal.timestamp))}</small></span></article>`).join('')}</div>`;
   }
 
   function renderFiles(workspace) {
@@ -694,7 +688,7 @@
     refresh(false);
   }
 
-  const publicApi = { normalizeOverview, normalizeWorkspace, normalizeAgent, agentStatusClass, buildAgentWorkspaceUrl, safeUrl, escapeHtml, demoOverview };
+  const publicApi = { normalizeOverview, normalizeWorkspace, normalizeAgent, agentStatusClass, safeUrl, escapeHtml, demoOverview };
   if (typeof module !== 'undefined' && module.exports) module.exports = publicApi;
   if (globalScope.document) {
     if (globalScope.document.readyState === 'loading') globalScope.document.addEventListener('DOMContentLoaded', init);

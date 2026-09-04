@@ -416,6 +416,15 @@ a { color: inherit; }
 .desk-empty i, .empty-panel i, .error-state i { margin-bottom: 12px; color: var(--cyan); font-size: 24px; }
 .desk-empty h3, .empty-panel h3, .error-state h3 { margin: 0 0 6px; color: var(--text); font-size: 14px; }
 .desk-empty p, .empty-panel p, .error-state p { max-width: 430px; margin: 0; line-height: 1.55; }
+.private-browser-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-top: 16px; }
+.private-browser-facts span { border: 1px solid #29455b; border-radius: 999px; padding: 5px 9px; background: #0a1723; color: #a9c9db; font: 10px/1.2 "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+.private-signal-list { display: grid; gap: 8px; padding: 14px; }
+.private-signal-list article { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #1f3445; border-radius: 8px; background: #09131d; }
+.private-signal-list article > i { color: var(--cyan); text-align: center; }
+.private-signal-list article span { display: grid; min-width: 0; gap: 3px; text-align: left; }
+.private-signal-list strong, .private-signal-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.private-signal-list strong { color: var(--text); font-size: 12px; }
+.private-signal-list small { color: var(--muted); font: 10px/1.3 "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
 .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; padding: 14px; }
 .file-card { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--panel-soft); text-decoration: none; }
 .file-card:hover { border-color: var(--cyan); }

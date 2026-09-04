@@ -9,7 +9,6 @@ const {
   normalizeWorkspace,
   normalizeAgent,
   agentStatusClass,
-  buildAgentWorkspaceUrl,
   safeUrl,
   escapeHtml,
 } = require('./agent-ops');
@@ -49,6 +48,7 @@ describe('Agent Workroom data boundary', () => {
       messages: [{ message: 'Done' }],
       whiteboard: { path: '.kimibuilt/agent-company/board.md' },
       controls: { canReceiveInput: true },
+      privateBrowser: { private: true, exposedToOperator: false, persistent: true, status: 'active', captureCount: 3 },
     });
 
     expect(workspace).toMatchObject({
@@ -59,6 +59,7 @@ describe('Agent Workroom data boundary', () => {
       messages: [{ message: 'Done' }],
       whiteboard: { path: '.kimibuilt/agent-company/board.md' },
       controls: { canReceiveInput: true },
+      privateBrowser: expect.objectContaining({ private: true, exposedToOperator: false, persistent: true, captureCount: 3 }),
     });
   });
 
@@ -76,16 +77,6 @@ describe('Agent Workroom data boundary', () => {
       sections: ['now', 'waiting', 'done'],
       notes: [{ id: 'note-1', column: 'waiting', content: 'Need operator evidence.' }],
     });
-  });
-
-  test('builds an isolated embedded Web Chat desk for each agent', () => {
-    const url = buildAgentWorkspaceUrl({ id: 'Release Guardian', name: 'Rex' });
-    const parsed = new URL(url, 'https://example.test');
-
-    expect(parsed.pathname).toBe('/web-chat/');
-    expect(parsed.searchParams.get('workspace')).toBe('agent-release-guardian');
-    expect(parsed.searchParams.get('workspaceLabel')).toBe('Rex desk');
-    expect(parsed.searchParams.get('embedded')).toBe('1');
   });
 
   test('escapes UI text and only accepts bounded preview URLs', () => {
@@ -134,8 +125,9 @@ describe('Agent Workroom interactions', () => {
         browser: [{ name: 'Canary', url: '/launchpad/' }],
         files: [{ id: 'artifact-1', name: 'report.md', detail: 'Markdown', url: '/api/artifacts/artifact-1/download' }],
         artifacts: [], messages: [], editor: [], activity: [], controls: { canReceiveInput: true },
+        privateBrowser: { private: true, exposedToOperator: false, persistent: true, status: 'active', captureCount: 2, lastActivityAt: '2026-09-03T12:00:00.000Z', signals: [{ title: 'Release canary', host: 'example.test', timestamp: '2026-09-03T12:00:00.000Z' }] },
       },
-      builder: { agentId: 'builder', terminal: [{ command: 'npm test', output: '12 passed' }], browser: [], files: [], artifacts: [], messages: [], editor: [], activity: [], controls: { canReceiveInput: true } },
+      builder: { agentId: 'builder', terminal: [{ command: 'npm test', output: '12 passed' }], browser: [], files: [], artifacts: [], messages: [], editor: [], activity: [], controls: { canReceiveInput: true }, privateBrowser: { private: true, exposedToOperator: false, persistent: true, status: 'ready', captureCount: 0, signals: [] } },
     };
     const dom = new JSDOM(html, { url: 'https://example.test/agent-ops/', runScripts: 'outside-only', pretendToBeVisual: true });
     dom.window.HTMLDialogElement.prototype.showModal = function showModal() { this.open = true; };
@@ -165,7 +157,7 @@ describe('Agent Workroom interactions', () => {
     dom.window.close();
   });
 
-  test('switches workstations and opens a real isolated Web Chat desk only on demand', async () => {
+  test('keeps the rendered browser private while exposing only bounded agent signals', async () => {
     const { dom } = createWorkroom();
     await new Promise((resolve) => setTimeout(resolve, 25));
 
@@ -176,10 +168,19 @@ describe('Agent Workroom interactions', () => {
     expect(dom.window.document.querySelector('#panel-desk iframe')).toBeNull();
 
     dom.window.document.getElementById('tab-desk').click();
-    const frame = dom.window.document.querySelector('#panel-desk iframe');
-    expect(frame).not.toBeNull();
-    expect(new URL(frame.src).searchParams.get('workspace')).toBe('agent-builder');
-    expect(new URL(frame.src).searchParams.get('embedded')).toBe('1');
+    expect(dom.window.document.querySelector('#panel-desk iframe')).toBeNull();
+    expect(dom.window.document.getElementById('panel-desk').textContent).toContain('Private browser belongs to Mira');
+    expect(dom.window.document.getElementById('panel-desk').textContent).toContain('not embedded in your command center');
+    dom.window.close();
+  });
+
+  test('renders disabled heartbeats as offline instead of online', async () => {
+    const { dom, overview } = createWorkroom();
+    overview.heartbeat = { status: 'disabled', ageSeconds: 900, reason: 'timer', intervalSeconds: 300 };
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(dom.window.document.getElementById('heartbeatCard').textContent).toContain('Heartbeat offline');
+    expect(dom.window.document.getElementById('heartbeatCard').textContent).not.toContain('Heartbeat online');
     dom.window.close();
   });
 

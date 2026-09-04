@@ -346,6 +346,8 @@ describe('AgentOpsService', () => {
     ]);
     expect(overview.groups.idle).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'research', runId: 'agent-run-research' }),
+    ]));
+    expect(overview.groups.idle).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'review', workloadId: null }),
     ]));
     expect(overview.goalItems).toEqual(expect.arrayContaining([
@@ -410,6 +412,57 @@ describe('AgentOpsService', () => {
       expect.objectContaining({ id: 'artifact-research' }),
     ]));
     expect(workspace.messages.length).toBeGreaterThan(0);
+  });
+
+  test('keeps agent browser captures private while projecting bounded browser signals', async () => {
+    const { service, artifactStore } = buildService();
+    artifactStore.listBySession.mockResolvedValue([
+      {
+        id: 'artifact-research',
+        sessionId: 'agent-company-alpha',
+        filename: 'research.md',
+        mimeType: 'text/markdown',
+        sizeBytes: 512,
+        extractedText: '# Verified research',
+        createdAt: '2026-08-30T12:40:00.000Z',
+        metadata: { workloadId: 'work-research', runId: 'work-run-research' },
+      },
+      {
+        id: 'private-browser-capture',
+        sessionId: 'agent-company-alpha',
+        filename: 'private-screen.png',
+        mimeType: 'image/png',
+        createdAt: '2026-08-30T12:55:00.000Z',
+        metadata: {
+          workloadId: 'work-research',
+          browserCapture: true,
+          privateAgentWorkspace: true,
+          browserWorkspaceId: 'hashed-browser-workspace',
+          sourceUrl: 'https://private.example.test/account',
+          pageTitle: 'Private account page',
+          viewport: { width: 1440, height: 960 },
+        },
+      },
+    ]);
+
+    const overview = await service.getOverview();
+    const workspace = await service.getAgentWorkspace('research');
+
+    expect(overview.artifacts.map((artifact) => artifact.id)).toEqual(['artifact-research']);
+    expect(workspace.files.map((file) => file.id)).toEqual(['artifact-research']);
+    expect(workspace.artifacts.map((artifact) => artifact.id)).not.toContain('private-browser-capture');
+    expect(workspace.privateBrowser).toMatchObject({
+      private: true,
+      exposedToOperator: false,
+      persistent: true,
+      status: 'active',
+      captureCount: 1,
+      signals: [expect.objectContaining({
+        title: 'Private account page',
+        host: 'private.example.test',
+      })],
+    });
+    expect(JSON.stringify(workspace.privateBrowser)).not.toContain('/account');
   });
 
   test('records operator input in the owned session and queues the same agent workload', async () => {

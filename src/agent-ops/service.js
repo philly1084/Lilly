@@ -197,6 +197,20 @@ function normalizeStoredArtifact(artifact = {}, { includeContent = false } = {})
   };
 }
 
+function isPrivateAgentBrowserArtifact(artifact = {}) {
+  const metadata = asObject(artifact?.metadata);
+  return metadata.privateAgentWorkspace === true
+    || (metadata.browserCapture === true && Boolean(metadata.browserWorkspaceId));
+}
+
+function safeHostname(value = '') {
+  try {
+    return new URL(String(value || '')).hostname || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function normalizeWhiteboardNote(message = {}) {
   const source = asObject(message);
   const metadata = asObject(source.metadata);
@@ -542,12 +556,6 @@ class AgentOpsService {
       }));
     });
 
-    roleMap.forEach((role, roleId) => {
-      if (!candidates.some((candidate) => candidate.id === roleId)) {
-        candidates.push(this.buildAgentSummary({ role, heartbeat }));
-      }
-    });
-
     const rank = { needs_input: 3, working: 2, idle: 1 };
     const byAgent = new Map();
     candidates.forEach((candidate) => {
@@ -735,7 +743,9 @@ class AgentOpsService {
     const canManageProjects = typeof settingsController?.updateAgentCompanySettings === 'function';
     const canDeleteArtifacts = typeof this.artifactStore?.get === 'function'
       && typeof this.artifactService?.deleteArtifact === 'function';
-    const projectArtifacts = sources.artifacts.map((artifact) => normalizeStoredArtifact(artifact));
+    const projectArtifacts = sources.artifacts
+      .filter((artifact) => !isPrivateAgentBrowserArtifact(artifact))
+      .map((artifact) => normalizeStoredArtifact(artifact));
 
     return {
       public: {
@@ -789,7 +799,7 @@ class AgentOpsService {
           workspace: {
             enabled: true,
             endpointTemplate: '/agents/{agentId}/workspace',
-            panels: ['activity', 'files', 'editor', 'terminal', 'browser', 'artifacts', 'messages'],
+            panels: ['activity', 'files', 'editor', 'terminal', 'browser-signals', 'artifacts', 'messages'],
           },
           operatorInput: typeof this.workloadService?.runWorkloadNow === 'function'
             && typeof this.sessionStore?.appendMessages === 'function'
@@ -1256,7 +1266,15 @@ class AgentOpsService {
       ...workloadRuns.flatMap((run) => asArray(run?.metadata?.output?.artifacts).map((entry) => entry?.id || entry?.artifactId)),
       ...canonicalRuns.flatMap((run) => [...asArray(run.evidence), ...asArray(run.outputs)].map((entry) => entry?.id || entry?.artifactId)),
     ].filter(Boolean));
+    const privateBrowserCaptures = snapshot.context.artifacts.filter((artifact) => {
+      if (!isPrivateAgentBrowserArtifact(artifact)) return false;
+      const metadata = asObject(artifact.metadata);
+      return workloadIds.has(metadata.workloadId)
+        || workloadRunIds.has(metadata.runId)
+        || asObject(metadata.agentCompany).roleId === normalizedId;
+    });
     const storedArtifacts = snapshot.context.artifacts.filter((artifact) => {
+      if (isPrivateAgentBrowserArtifact(artifact)) return false;
       const metadata = asObject(artifact.metadata);
       const companyMetadata = asObject(metadata.agentCompany);
       return referencedArtifactIds.has(artifact.id)
@@ -1317,6 +1335,19 @@ class AgentOpsService {
         detail: artifact.detail || 'Recorded preview',
         url: artifact.previewUrl || artifact.url,
       }))];
+    const recentPrivateBrowserSignals = privateBrowserCaptures
+      .map((artifact) => {
+        const metadata = asObject(artifact.metadata);
+        return {
+          id: cleanText(artifact.id, 240) || null,
+          title: cleanText(metadata.pageTitle, 240) || 'Rendered page',
+          host: safeHostname(metadata.sourceUrl),
+          viewport: asObject(metadata.viewport),
+          timestamp: artifact.updatedAt || artifact.createdAt || null,
+        };
+      })
+      .sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))
+      .slice(0, 8);
 
     return {
       agentId: normalizedId,
@@ -1333,6 +1364,16 @@ class AgentOpsService {
       editor: artifacts.filter((artifact) => artifact.language && artifact.content),
       terminal,
       browser,
+      privateBrowser: {
+        private: true,
+        renderedFor: 'agent',
+        exposedToOperator: false,
+        persistent: true,
+        status: privateBrowserCaptures.length > 0 ? 'active' : 'ready',
+        captureCount: privateBrowserCaptures.length,
+        lastActivityAt: recentPrivateBrowserSignals[0]?.timestamp || null,
+        signals: recentPrivateBrowserSignals,
+      },
       artifacts: allArtifacts,
       messages,
       whiteboard: this.buildWhiteboard(roleWorkloads, snapshot.context.sessionMessages),
