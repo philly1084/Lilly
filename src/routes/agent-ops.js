@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { artifactService } = require('../artifacts/artifact-service');
 const { artifactStore } = require('../artifacts/artifact-store');
+const { sessionStore } = require('../session-store');
 const { AgentOpsService } = require('../agent-ops/service');
 
 function getActor(req = {}) {
@@ -38,6 +39,7 @@ function buildRequestService(req) {
     agentCompanyService: req.app.locals.agentCompanyService,
     workloadService: req.app.locals.agentWorkloadService,
     agentRunService: req.app.locals.agentRunService,
+    sessionStore: req.app.locals.sessionStore || sessionStore,
     artifactStore: req.app.locals.artifactStore || artifactStore,
     artifactService: req.app.locals.artifactService || artifactService,
   });
@@ -87,6 +89,28 @@ function createAgentOpsRouter({ service = null } = {}) {
     try {
       const workspace = await resolveService(req).getAgentWorkspace(req.params.agentId);
       return res.json(workspace);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.post('/agents/:agentId/input', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).sendAgentInput(
+        req.params.agentId,
+        req.body || {},
+        getActor(req),
+      );
+      return res.status(202).json(result);
+    } catch (error) {
+      return respondAgentOpsError(res, error) ? undefined : next(error);
+    }
+  });
+
+  router.post('/whiteboard/notes', async (req, res, next) => {
+    try {
+      const result = await resolveService(req).createWhiteboardNote(req.body || {}, getActor(req));
+      return res.status(201).json(result);
     } catch (error) {
       return respondAgentOpsError(res, error) ? undefined : next(error);
     }

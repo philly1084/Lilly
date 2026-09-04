@@ -75,6 +75,49 @@ describe('/api/admin/agent-ops', () => {
     expect(service.getAgentWorkspace).toHaveBeenCalledWith('research');
   });
 
+  test('queues an operator instruction for the selected agent', async () => {
+    const service = {
+      sendAgentInput: jest.fn(async () => ({
+        accepted: true,
+        agentId: 'research',
+        runId: 'run-input-1',
+        status: 'queued',
+      })),
+    };
+
+    const response = await request(buildApp(service))
+      .post('/api/admin/agent-ops/agents/research/input')
+      .send({ message: 'Check the shared board and continue the existing run.' });
+
+    expect(response.status).toBe(202);
+    expect(service.sendAgentInput).toHaveBeenCalledWith(
+      'research',
+      { message: 'Check the shared board and continue the existing run.' },
+      'admin',
+    );
+    expect(response.body.runId).toBe('run-input-1');
+  });
+
+  test('persists a shared whiteboard note and preserves the actor', async () => {
+    const service = {
+      createWhiteboardNote: jest.fn(async () => ({
+        note: { id: 'note-1', column: 'waiting', content: 'Need public proof.' },
+      })),
+    };
+
+    const response = await request(buildApp(service))
+      .post('/api/admin/agent-ops/whiteboard/notes')
+      .send({ column: 'waiting', content: 'Need public proof.', wakeCrew: true });
+
+    expect(response.status).toBe(201);
+    expect(service.createWhiteboardNote).toHaveBeenCalledWith({
+      column: 'waiting',
+      content: 'Need public proof.',
+      wakeCrew: true,
+    }, 'admin');
+    expect(response.body.note.column).toBe('waiting');
+  });
+
   test('creates a goal through the operations adapter and preserves the actor', async () => {
     const service = {
       createGoal: jest.fn(async () => ({

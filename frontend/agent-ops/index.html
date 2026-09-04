@@ -4,112 +4,144 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>KimiBuilt Agent Command Center</title>
+  <title>KimiBuilt Agent Workroom</title>
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css?v=6.4.0">
-  <link rel="stylesheet" href="css/agent-ops.css?v=agent-command-center-v5">
+  <link rel="stylesheet" href="css/agent-ops.css?v=agent-workroom-v1">
 </head>
 <body>
-  <a class="skip-link" href="#fleet">Skip to agent fleet</a>
-  <div class="app-shell" id="appShell">
-    <header class="topbar">
-      <button class="icon-button mobile-only" id="navToggle" type="button" aria-label="Open navigation" aria-controls="primaryNav" aria-expanded="false"><i class="fa-solid fa-bars" aria-hidden="true"></i></button>
-      <a class="brand" href="/admin/" aria-label="KimiBuilt admin"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><strong>KimiBuilt</strong></a>
-      <span class="product-name">Agent Command Center</span>
-      <label class="project-picker">Project <select id="projectSelect" aria-label="Active project"><option>Loading…</option></select></label>
-      <div class="heartbeat" id="heartbeat" role="status" aria-live="polite"><span class="status-dot"></span><span>Connecting…</span></div>
-      <div class="budget" id="budget"><span>Budget</span><strong>—</strong><div class="meter"><span></span></div></div>
-      <label class="global-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Search agents</span><input id="agentSearch" type="search" placeholder="Search agents" autocomplete="off"></label>
-      <button class="icon-button desktop-only" type="button" aria-label="Notifications"><i class="fa-regular fa-bell" aria-hidden="true"></i></button>
-      <button class="primary-button" id="newGoalButton" type="button" aria-label="New goal"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New goal</span></button>
+  <a class="skip-link" href="#workroomStage">Skip to live workroom</a>
+  <div class="workroom-shell" id="workroomShell">
+    <header class="command-bar">
+      <a class="brand" href="/admin/" aria-label="Back to KimiBuilt admin">
+        <span class="brand-mark"><i class="fa-solid fa-cubes-stacked" aria-hidden="true"></i></span>
+        <span><strong>KimiBuilt</strong><small>Agent workroom</small></span>
+      </a>
+      <div class="mission-copy">
+        <span class="eyebrow">Current mission</span>
+        <strong id="missionTitle">Connecting to the crew…</strong>
+      </div>
+      <div class="command-actions">
+        <div class="sync-state" id="syncState" role="status" aria-live="polite">
+          <span class="pulse-dot"></span><span>Connecting</span>
+        </div>
+        <button class="hud-button" id="refreshButton" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Sync</span></button>
+        <button class="primary-button" id="newGoalButton" type="button"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i><span>New mission</span></button>
+      </div>
     </header>
 
-    <aside class="nav-rail" id="primaryNav" aria-label="Command center navigation">
-      <nav>
-        <a href="#goals" data-view="goals"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><span>Goals</span></a>
-        <a class="active" href="#agents" data-view="agents" aria-current="page"><i class="fa-solid fa-people-group" aria-hidden="true"></i><span>Agents</span></a>
-        <a href="#workflows" data-view="workflows"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i><span>Workflows</span></a>
-        <a href="#messages" data-view="messages"><i class="fa-regular fa-comments" aria-hidden="true"></i><span>Updates</span></a>
-        <a href="#artifacts" data-view="artifacts"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span>Artifacts</span></a>
-        <a href="#approvals" data-view="approvals"><i class="fa-regular fa-square-check" aria-hidden="true"></i><span>Approvals</span><span class="nav-count" id="approvalCount">0</span></a>
-      </nav>
-      <div class="nav-footer"><span><span class="status-dot"></span> Connected</span><div class="operator"><span>AD</span><p><strong>Admin</strong><small>Operator</small></p></div></div>
-    </aside>
-    <button class="drawer-backdrop" id="drawerBackdrop" type="button" hidden aria-label="Close open panel"></button>
-
-    <main class="fleet" id="fleet" tabindex="-1">
-      <div class="preview-banner" id="previewBanner" hidden><i class="fa-solid fa-flask" aria-hidden="true"></i> Preview data — not live operations</div>
-      <section class="load-state" id="loadState" aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h1>Connecting to agent operations</h1><p>Loading fleet, heartbeat, and goal state…</p></section>
-      <section class="fleet-content" id="fleetContent" hidden aria-label="Agent operations">
-        <section class="operations-view" id="view-agents" data-view-panel="agents" aria-labelledby="agentsViewTitle">
-          <h1 class="sr-only" id="agentsViewTitle">Agents</h1>
-          <section id="latestAgentUpdate" class="latest-agent-update" aria-label="Latest agent update" hidden></section>
-          <div id="agentGroups"></div>
-          <div class="empty-state" id="filterEmpty" hidden><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><h2>No matching agents</h2><p>Try a name, task, action, model, or status.</p></div>
-        </section>
-        <section class="operations-view overview-view" id="view-goals" data-view-panel="goals" hidden></section>
-        <section class="operations-view overview-view" id="view-workflows" data-view-panel="workflows" hidden></section>
-        <section class="operations-view overview-view" id="view-artifacts" data-view-panel="artifacts" hidden></section>
-        <section class="operations-view overview-view" id="view-messages" data-view-panel="messages" hidden></section>
-        <section class="operations-view overview-view" id="view-approvals" data-view-panel="approvals" hidden></section>
-      </section>
-    </main>
-
-    <aside class="inspector" id="inspector" aria-label="Agent workspace inspector" aria-hidden="true">
-      <div class="inspector-empty" id="inspectorEmpty"><i class="fa-solid fa-arrow-pointer" aria-hidden="true"></i><h2>Select an agent</h2><p>Choose a fleet row to inspect its real-time workspace.</p></div>
-      <div id="inspectorContent" hidden>
-        <header class="inspector-header">
-          <div class="agent-heading"><span class="agent-glyph"><i class="fa-solid fa-play" aria-hidden="true"></i></span><div><h2 id="inspectorTitle">Agent</h2><p id="inspectorTask">Task</p></div></div>
-          <div class="inspector-actions"><button class="primary-button" id="takeOverButton" type="button"><i class="fa-solid fa-code-branch" aria-hidden="true"></i> Take over</button><button class="icon-button mobile-only" id="closeInspector" type="button" aria-label="Close inspector"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
-        </header>
-        <div class="takeover-note" id="takeoverNote" hidden role="status"></div>
-        <div class="tabs-scroll"><div class="tabs" id="workspaceTabs" role="tablist" aria-label="Agent workspace">
-          <button role="tab" aria-selected="true" aria-controls="panel-activity" id="tab-activity" data-tab="activity">Activity</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-files" id="tab-files" data-tab="files" tabindex="-1">Files</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-editor" id="tab-editor" data-tab="editor" tabindex="-1">Editor</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-terminal" id="tab-terminal" data-tab="terminal" tabindex="-1">Terminal</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-browser" id="tab-browser" data-tab="browser" tabindex="-1">Browser</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-artifacts" id="tab-artifacts" data-tab="artifacts" tabindex="-1">Artifacts</button>
-          <button role="tab" aria-selected="false" aria-controls="panel-messages" id="tab-messages" data-tab="messages" tabindex="-1">Messages</button>
-        </div></div>
-        <div class="workspace-panels" id="workspacePanels"></div>
+    <aside class="crew-rail" aria-label="Agent crew">
+      <div class="rail-heading">
+        <div><span class="eyebrow">Crew channels</span><h1>Live agents</h1></div>
+        <span class="crew-count" id="crewCount">0</span>
+      </div>
+      <label class="project-field">
+        <span>Project room</span>
+        <select id="projectSelect" aria-label="Active project"><option>Loading…</option></select>
+      </label>
+      <div class="heartbeat-card" id="heartbeatCard">
+        <span class="heartbeat-orbit"><span></span></span>
+        <div><strong>Heartbeat</strong><small>Waiting for runtime</small></div>
+      </div>
+      <div class="crew-list" id="crewList" aria-live="polite"></div>
+      <div class="rail-footer">
+        <button class="text-button" id="newProjectButton" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</button>
+        <a class="text-button" href="/web-chat/" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open Web Chat</a>
       </div>
     </aside>
 
-    <section class="goal-strip" id="goalStrip" aria-label="Active goal">
-      <button class="goal-mobile-toggle mobile-only" id="goalToggle" type="button" aria-expanded="false" aria-controls="goalBody"><span><i class="fa-solid fa-bullseye" aria-hidden="true"></i> Active goal</span><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button>
-      <div class="goal-body" id="goalBody"><div class="goal-summary" id="goalSummary"><h2>No active goal</h2><p>Goal progress will appear when the operations API returns it.</p></div><ol class="goal-items" id="goalItems"></ol></div>
-    </section>
+    <main class="workroom-stage" id="workroomStage" tabindex="-1">
+      <section class="loading-state" id="loadingState" aria-live="polite">
+        <div class="loader-grid" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <h1>Opening the agent workroom</h1>
+        <p>Connecting crew sessions, run logs, previews, and artifacts.</p>
+      </section>
+
+      <div class="stage-content" id="stageContent" hidden>
+        <section class="ops-floor-panel" aria-labelledby="floorTitle">
+          <header class="panel-heading">
+            <div><span class="eyebrow">Visual collaboration map</span><h2 id="floorTitle">Operations floor</h2></div>
+            <div class="floor-legend" aria-label="Agent status legend"><span class="working">Working</span><span class="waiting">Waiting</span><span class="idle">Available</span></div>
+          </header>
+          <div class="ops-floor" id="opsFloor" aria-label="Select an agent workstation"></div>
+        </section>
+
+        <section class="agent-console-panel" aria-labelledby="selectedAgentName">
+          <header class="agent-console-header">
+            <div class="selected-agent">
+              <span class="selected-avatar" id="selectedAvatar">?</span>
+              <div><span class="eyebrow" id="selectedAgentRole">Select a workstation</span><h2 id="selectedAgentName">No agent selected</h2><p id="selectedAgentTask">Choose an agent on the floor to inspect its desk.</p></div>
+            </div>
+            <div class="agent-header-actions">
+              <span class="agent-state-pill" id="selectedAgentState">Offline</span>
+              <button class="hud-button" id="focusDeskButton" type="button" disabled><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Focus desk</span></button>
+            </div>
+          </header>
+          <div class="workroom-tabs" id="workroomTabs" role="tablist" aria-label="Agent workstation views">
+            <button role="tab" id="tab-console" aria-controls="panel-console" aria-selected="true" data-panel="console"><i class="fa-solid fa-terminal" aria-hidden="true"></i> Live terminal</button>
+            <button role="tab" id="tab-desk" aria-controls="panel-desk" aria-selected="false" tabindex="-1" data-panel="desk"><i class="fa-regular fa-message" aria-hidden="true"></i> Web Chat desk</button>
+            <button role="tab" id="tab-screen" aria-controls="panel-screen" aria-selected="false" tabindex="-1" data-panel="screen"><i class="fa-regular fa-window-maximize" aria-hidden="true"></i> Screen</button>
+            <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1" data-panel="files"><i class="fa-regular fa-folder-open" aria-hidden="true"></i> Files</button>
+          </div>
+          <div class="workstation-panels" id="workstationPanels">
+            <section class="workstation-panel terminal-panel" id="panel-console" role="tabpanel" aria-labelledby="tab-console"></section>
+            <section class="workstation-panel desk-panel" id="panel-desk" role="tabpanel" aria-labelledby="tab-desk" hidden></section>
+            <section class="workstation-panel screen-panel" id="panel-screen" role="tabpanel" aria-labelledby="tab-screen" hidden></section>
+            <section class="workstation-panel files-panel" id="panel-files" role="tabpanel" aria-labelledby="tab-files" hidden></section>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="board-wall" aria-label="Shared workroom board">
+      <section class="mission-card">
+        <div class="mission-card-heading"><span class="eyebrow">Shared objective</span><span class="progress-number" id="missionProgress">0%</span></div>
+        <h2 id="missionGoal">No active mission</h2>
+        <div class="progress-track" aria-hidden="true"><span id="missionProgressBar"></span></div>
+        <p id="missionStatus">Create a project and mission to start the crew.</p>
+      </section>
+
+      <section class="whiteboard" aria-labelledby="whiteboardTitle">
+        <header class="panel-heading compact"><div><span class="eyebrow">Crew memory</span><h2 id="whiteboardTitle">Shared whiteboard</h2></div><button class="board-note-button" id="newBoardNoteButton" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> Note</button></header>
+        <div class="board-columns" id="boardColumns"></div>
+      </section>
+
+      <section class="artifact-wall" aria-labelledby="artifactTitle">
+        <header class="panel-heading compact"><div><span class="eyebrow">Delivered below</span><h2 id="artifactTitle">Artifact shelf</h2></div><span class="artifact-count" id="artifactCount">0</span></header>
+        <div class="artifact-list" id="artifactList"></div>
+      </section>
+
+      <section class="handoff-feed" aria-labelledby="handoffTitle">
+        <header class="panel-heading compact"><div><span class="eyebrow">Agent to agent</span><h2 id="handoffTitle">Handoffs</h2></div></header>
+        <div id="handoffList"></div>
+      </section>
+    </aside>
   </div>
 
-  <dialog class="goal-dialog" id="goalDialog" aria-labelledby="goalDialogTitle">
+  <dialog class="workroom-dialog" id="goalDialog" aria-labelledby="goalDialogTitle">
     <form method="dialog">
-      <header><div><span class="eyebrow">Goal setup</span><h2 id="goalDialogTitle">Create a coordinated goal</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close goal dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
-      <div class="dialog-body"><label>Goal title<input id="goalTitleInput" required maxlength="120" placeholder="What should the agent fleet deliver?"></label><label>Success criteria<textarea id="goalCriteriaInput" rows="4" placeholder="Define the observable output and verification"></textarea></label><div class="capability-note" id="goalCapabilityNote"></div></div>
-      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createGoalSubmit" value="default">Create goal</button></footer>
+      <header><div><span class="eyebrow">Dispatch to the crew</span><h2 id="goalDialogTitle">Create a mission</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><label>Mission title<input id="goalTitleInput" required maxlength="120" placeholder="What should the crew deliver?"></label><label>Done means<textarea id="goalCriteriaInput" rows="4" maxlength="2000" placeholder="Describe the observable result and checks"></textarea></label><p class="capability-note" id="goalCapabilityNote"></p></div>
+      <footer><button class="hud-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createGoalSubmit" value="default">Start mission</button></footer>
     </form>
   </dialog>
-  <dialog class="goal-dialog" id="projectDialog" aria-labelledby="projectDialogTitle">
+
+  <dialog class="workroom-dialog" id="projectDialog" aria-labelledby="projectDialogTitle">
     <form method="dialog">
-      <header><div><span class="eyebrow">Project setup</span><h2 id="projectDialogTitle">Start a new project</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close project dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
-      <div class="dialog-body"><label>Project name<input id="projectNameInput" required maxlength="120" placeholder="Name this body of work"></label><label>Starting objective <span class="optional-label">Optional</span><textarea id="projectGoalInput" rows="4" maxlength="4000" placeholder="Add an objective to start the coordination heartbeat immediately"></textarea></label><div class="capability-note" id="projectCapabilityNote">The new project becomes active. Add an objective now, or create a goal later.</div></div>
-      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createProjectSubmit" value="default">Start project</button></footer>
+      <header><div><span class="eyebrow">New room</span><h2 id="projectDialogTitle">Create a project room</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><label>Project name<input id="projectNameInput" required maxlength="120" placeholder="Name this body of work"></label><label>Starting mission <span class="optional">Optional</span><textarea id="projectGoalInput" rows="4" maxlength="4000" placeholder="Give the crew its first objective"></textarea></label><p class="capability-note" id="projectCapabilityNote"></p></div>
+      <footer><button class="hud-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createProjectSubmit" value="default">Open room</button></footer>
     </form>
   </dialog>
-  <dialog class="goal-dialog danger-dialog" id="deleteProjectDialog" aria-labelledby="deleteProjectDialogTitle">
+
+  <dialog class="workroom-dialog" id="boardNoteDialog" aria-labelledby="boardNoteDialogTitle">
     <form method="dialog">
-      <header><div><span class="eyebrow">Permanent removal</span><h2 id="deleteProjectDialogTitle">Delete this project?</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close delete project dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
-      <div class="dialog-body"><p id="deleteProjectMessage">This removes the project and its recorded files. Run history remains available for audit.</p><div class="capability-note danger-note">This cannot be undone. Active runs must be finished or cancelled first.</div></div>
-      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="danger-button" id="deleteProjectSubmit" value="default">Delete project and files</button></footer>
+      <header><div><span class="eyebrow">Shared crew memory</span><h2 id="boardNoteDialogTitle">Pin a whiteboard note</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+      <div class="dialog-body"><label>Board column<select id="boardNoteColumn"><option value="now">Now</option><option value="waiting">Waiting</option><option value="done">Done</option></select></label><label>Note<textarea id="boardNoteInput" required rows="4" maxlength="1200" placeholder="Record a checked fact, blocker, decision, or next agent task"></textarea></label><label class="wake-crew-field"><input id="wakeCrewInput" type="checkbox" checked> Wake the coordination heartbeat so agents read the note</label><p class="capability-note" id="boardCapabilityNote"></p></div>
+      <footer><button class="hud-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" id="createBoardNoteSubmit" value="default">Pin and wake crew</button></footer>
     </form>
   </dialog>
-  <dialog class="goal-dialog danger-dialog" id="deleteArtifactDialog" aria-labelledby="deleteArtifactDialogTitle">
-    <form method="dialog">
-      <header><div><span class="eyebrow">Permanent removal</span><h2 id="deleteArtifactDialogTitle">Delete this file?</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close delete file dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
-      <div class="dialog-body"><p id="deleteArtifactMessage">The selected file will be removed from this project.</p><div class="capability-note danger-note">This also removes its indexed memory and linked sandbox preview. This cannot be undone.</div></div>
-      <footer><button class="secondary-button" value="cancel" formnovalidate>Cancel</button><button class="danger-button" id="deleteArtifactSubmit" value="default">Delete file</button></footer>
-    </form>
-  </dialog>
+
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="js/agent-ops.js?v=agent-command-center-v5"></script>
+  <script src="js/agent-ops.js?v=agent-workroom-v1"></script>
 </body>
 </html>

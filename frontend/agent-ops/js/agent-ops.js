@@ -1,749 +1,700 @@
-(function agentOpsModule(globalScope) {
+(function agentWorkroomModule(globalScope) {
   'use strict';
 
   const API_ROOT = '/api/admin/agent-ops';
-  const GROUPS = [
-    { key: 'needsInput', label: 'Needs you' },
-    { key: 'working', label: 'Working' },
-    { key: 'idle', label: 'Idle' },
-  ];
-  const TABS = ['activity', 'files', 'editor', 'terminal', 'browser', 'artifacts', 'messages'];
+  const ACTIVE_REFRESH_MS = 4500;
+  const IDLE_REFRESH_MS = 11000;
+  const REQUEST_TIMEOUT_MS = 12000;
+  const PANELS = ['console', 'desk', 'screen', 'files'];
 
   const demoOverview = {
-    generatedAt: '2026-08-30T13:11:38.000Z',
-    project: { id: 'checkout-reliability', name: 'Checkout Reliability', goal: 'Eliminate checkout flakes and ship verified pricing behavior.', status: 'On track', progress: 42, target: 'Sep 5, 2026' },
-    projects: [
-      { id: 'checkout-reliability', name: 'Checkout Reliability', active: true, artifactCount: 1 },
-      { id: 'release-readiness', name: 'Release Readiness', active: false, artifactCount: 0 },
+    generatedAt: new Date().toISOString(),
+    project: { id: 'demo-project', name: 'Orbital release room', goal: 'Ship the verified release without losing the remote job cursor.', progress: 58, status: 'active' },
+    projects: [{ id: 'demo-project', name: 'Orbital release room', active: true, sessionId: 'agent-company-demo' }],
+    heartbeat: { status: 'healthy', ageSeconds: 7, reason: 'crew_tick_completed', intervalSeconds: 30 },
+    budget: { usedTokens: 29400, limitTokens: 72000, utilizationPercent: 40.8 },
+    groups: {
+      needsInput: [{ id: 'release', name: 'Rex', role: 'Release guardian', task: 'Promote build 2.18', currentAction: 'Approval needed: production rollout', status: 'needs_input', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 9, approval: { id: 'approval-demo', title: 'Production approval' } }],
+      working: [
+        { id: 'builder', name: 'Mira', role: 'Builder', task: 'Repair checkout workspace', currentAction: 'Running browser verification', status: 'working', model: 'gpt-5.6-sol', lastHeartbeatSeconds: 4 },
+        { id: 'research', name: 'Ada', role: 'Researcher', task: 'Check provider contracts', currentAction: 'Comparing primary sources', status: 'working', model: 'gpt-5.6-terra', lastHeartbeatSeconds: 6 },
+      ],
+      idle: [{ id: 'review', name: 'Lin', role: 'Reviewer', task: 'Await verified artifact', currentAction: 'Standing by', status: 'idle', model: 'gpt-5.6-luna', lastHeartbeatSeconds: 18 }],
+    },
+    selectedAgentId: 'release',
+    goalItems: [
+      { id: 'goal-1', title: 'Repair checkout workspace', agentName: 'Mira', status: 'working' },
+      { id: 'goal-2', title: 'Verify provider contract', agentName: 'Ada', status: 'working' },
+      { id: 'goal-3', title: 'Approve production rollout', agentName: 'Rex', status: 'needs_input', blockedBy: 'Operator approval required.' },
+      { id: 'goal-4', title: 'Publish release evidence', agentName: 'Lin', status: 'planned' },
     ],
-    heartbeat: { healthy: true, ageSeconds: 12, label: 'All systems nominal' },
-    budget: { spent: 1842.63, limit: 5000, period: 'MTD' },
-    messages: [{ id: 'demo-handoff', from: 'Mira', task: 'Verify checkout behavior', timestamp: '2026-08-30T13:11:38.000Z', message: 'The checkout fix is ready for review.\n\n[Open the preview](https://example.com/checkout). The pricing and retry checks passed on desktop and mobile.\n\nProduction deployment is still awaiting your approval.', links: [{ label: 'Checkout preview', url: 'https://example.com/checkout' }], attachments: [] }],
+    artifacts: [{ id: 'artifact-demo', name: 'checkout-proof.md', detail: 'Markdown · 18 KB', previewUrl: '#demo-artifact' }],
+    messages: [{ id: 'handoff-demo', from: 'Mira', task: 'Checkout repair', message: 'Browser verification passed. Handing the release proof to Rex.', timestamp: new Date().toISOString() }],
+    whiteboard: { path: '.kimibuilt/agent-company/2026-W36-whiteboard.md', notes: [] },
+    approvals: [{ id: 'approval-demo', agentId: 'release', agentName: 'Rex', title: 'Production approval', task: 'Promote build 2.18' }],
     capabilities: {
       goalCreation: { enabled: true, endpoint: '/goals' },
-      projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate', deleteEndpointTemplate: '/projects/{projectId}' },
-      artifactDeletion: { enabled: true, endpointTemplate: '/artifacts/{artifactId}' },
-      workspace: { enabled: true },
-      takeOver: false,
+      projects: { enabled: true, collectionEndpoint: '/projects', activateEndpointTemplate: '/projects/{projectId}/activate' },
+      workspace: { enabled: true, endpointTemplate: '/agents/{agentId}/workspace' },
+      operatorInput: { enabled: true, endpointTemplate: '/agents/{agentId}/input' },
+      whiteboard: { enabled: true, endpoint: '/whiteboard/notes' },
+      approvals: true,
+      approvalDecisions: ['approve'],
       stream: false,
     },
-    selectedAgentId: 'mira',
-    groups: {
-      needsInput: [{ id: 'rex', name: 'Rex', role: 'Release guardian', task: 'Prepare v2.18.0', action: 'Promote release to prod', actionDetail: 'Production approval gate', status: 'waiting', model: 'gpt-4o', elapsed: '02:17', cpu: 2, memory: '412MB', lastHeartbeat: '8s', approval: { id: 'approval-release-218', title: 'Approval required' } }],
-      working: [
-        { id: 'mira', name: 'Mira', role: 'Test investigator', task: 'Investigate CI flake', action: 'Re-running flaky spec', actionDetail: 'cart.spec.ts · checkout flow', status: 'running', model: 'claude-3.5', elapsed: '14:32', cpu: 18, memory: '1.2GB', lastHeartbeat: '6s', files: [{ name: 'cart.spec.ts', detail: 'Modified' }, { name: 'checkout.ts', detail: 'Read' }], artifacts: [{ name: 'flake-analysis.md', detail: '18.6 KB', previewUrl: 'https://example.invalid/flake-analysis' }] },
-        { id: 'sol', name: 'Sol', role: 'Code implementer', task: 'Fix discount rounding', action: 'Committing changes', actionDetail: 'feat(pricing): round discount totals', status: 'running', model: 'claude-3.5', elapsed: '22:08', cpu: 22, memory: '1.6GB', lastHeartbeat: '5s' },
-        { id: 'kai', name: 'Kai', role: 'Docs writer', task: 'Update pricing docs', action: 'Editing document', actionDetail: 'docs/pricing/discounts.md', status: 'running', model: 'gpt-4o-mini', elapsed: '07:43', cpu: 6, memory: '384MB', lastHeartbeat: '9s' },
-      ],
-      idle: [
-        { id: 'uma', name: 'Uma', role: 'Data explorer', task: 'Analyze failure patterns', action: 'Waiting for next goal', actionDetail: 'No active work', status: 'idle', model: 'gpt-4o-mini', elapsed: '—', cpu: 0, memory: '256MB', lastHeartbeat: '14s' },
-        { id: 'nia', name: 'Nia', role: 'Research scout', task: 'Evaluate retry strategies', action: 'Standing by', actionDetail: 'Ready for assignment', status: 'idle', model: 'claude-3.5-haiku', elapsed: '—', cpu: 0, memory: '248MB', lastHeartbeat: '16s' },
-      ],
-    },
-    goalItems: [
-      { id: 'g1', title: 'Reproduce CI flake', assignee: 'Mira · Test investigator', status: 'complete' },
-      { id: 'g2', title: 'Fix discount rounding', assignee: 'Sol · Code implementer', status: 'in progress' },
-      { id: 'g3', title: 'Add regression tests', assignee: 'Mira · Test investigator', status: 'pending' },
-      { id: 'g4', title: 'Update docs', assignee: 'Kai · Docs writer', status: 'pending' },
-      { id: 'g5', title: 'Release v2.18.0', assignee: 'Rex · Release guardian', status: 'blocked' },
-    ],
-    workflows: [
-      { id: 'wf-1', title: 'Investigate CI flake', agentName: 'Mira', status: 'running', updatedAt: '2026-08-30T13:11:38.000Z' },
-      { id: 'wf-2', title: 'Fix discount rounding', agentName: 'Sol', status: 'running', updatedAt: '2026-08-30T13:10:38.000Z' },
-    ],
-    artifacts: [{ id: 'artifact-1', name: 'flake-analysis.md', detail: 'markdown · 18.6 KB', previewUrl: '#preview-artifact', deletable: true }],
-    approvals: [{ id: 'approval-release-218', agentId: 'rex', agentName: 'Rex', title: 'Promote release to production', task: 'Prepare v2.18.0' }],
   };
 
-  const demoTimeline = [
-    { id: 'e1', type: 'start', status: 'success', title: 'Agent started', detail: 'Goal: Investigate CI flake in cart checkout flow', timestamp: '2026-08-30T13:11:02.000Z' },
-    { id: 'e2', type: 'tool', status: 'success', title: 'Tool call', detail: 'checkout__fetch_run · run_id=20987456231', evidence: '{ "status": "completed", "result": "success" }', timestamp: '2026-08-30T13:11:05.000Z' },
-    { id: 'e3', type: 'checkpoint', status: 'success', title: 'Checkpoint', detail: 'Baseline captured before re-run · cp-7f3a9b2', timestamp: '2026-08-30T13:11:13.000Z' },
-    { id: 'e4', type: 'tool', status: 'failure', title: 'Test failed', detail: 'cart.spec.ts:42 should apply percentage discount', evidence: 'Expected: 89.99\nReceived: 90.99', timestamp: '2026-08-30T13:11:15.000Z' },
-    { id: 'e5', type: 'handoff', status: 'success', title: 'Handoff from Sol · Code implementer', detail: 'Potential rounding fix pushed to branch bugfix/discount-rounding', timestamp: '2026-08-30T13:11:28.000Z' },
-    { id: 'e6', type: 'tool', status: 'success', title: 'Test passed', detail: 'cart.spec.ts:42 should apply percentage discount', timestamp: '2026-08-30T13:11:38.000Z' },
-  ];
+  const demoWorkspaces = {
+    release: {
+      agentId: 'release',
+      terminal: [
+        { timestamp: new Date(Date.now() - 18000).toISOString(), status: 'running', command: 'kubectl rollout status', output: 'deployment/kimibuilt successfully rolled out' },
+        { timestamp: new Date(Date.now() - 9000).toISOString(), status: 'waiting', command: 'agent.wait', output: 'Production promotion is waiting for operator approval.' },
+      ],
+      messages: [{ from: 'Rex', message: 'The image and public canary are ready. I need approval to promote.', timestamp: new Date().toISOString() }],
+      browser: [{ name: 'Release canary', url: '/launchpad/' }],
+      files: [{ id: 'artifact-demo', name: 'checkout-proof.md', detail: 'Verified release evidence', url: '#demo-artifact' }],
+      artifacts: [{ id: 'artifact-demo', name: 'checkout-proof.md', detail: 'Markdown · 18 KB', previewUrl: '#demo-artifact' }],
+      editor: [],
+      activity: [],
+    },
+    builder: {
+      agentId: 'builder',
+      terminal: [{ timestamp: new Date().toISOString(), status: 'running', command: 'node bin/kimibuilt-ui-check.js', output: 'desktop: passed\nmobile: passed\nhorizontal-overflow: 0' }],
+      messages: [{ from: 'Mira', message: 'The repaired workspace is visible on desktop and mobile.', timestamp: new Date().toISOString() }],
+      browser: [{ name: 'Checkout preview', url: '/web-chat/' }],
+      files: [], artifacts: [], editor: [], activity: [],
+    },
+  };
 
   const state = {
+    demo: false,
     overview: null,
-    selectedAgent: null,
-    activeTab: 'activity',
-    activeView: 'agents',
-    activity: new Map(),
+    selectedAgentId: null,
+    activePanel: 'console',
     workspaces: new Map(),
     workspaceErrors: new Map(),
-    pendingArtifact: null,
-    query: '',
-    demo: false,
+    refreshTimer: null,
+    refreshing: false,
+    hasLoaded: false,
+    lastSyncAt: null,
+    deskFocused: false,
   };
 
-  function text(value, fallback = 'Not reported') {
-    if (value === null || value === undefined || value === '') return fallback;
-    return String(value);
-  }
-
+  function asArray(value) { return Array.isArray(value) ? value : []; }
+  function text(value, fallback = '') { return value === null || value === undefined || value === '' ? fallback : String(value); }
   function escapeHtml(value) {
-    return text(value, '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+    return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+  }
+  function slug(value) {
+    return String(value || 'agent').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'agent';
+  }
+  function initials(value) {
+    return String(value || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
+  }
+  function safeUrl(value) {
+    const source = String(value || '').trim();
+    if (/^\/(?!\/)[^\s\\]*$/.test(source) || /^#[a-z0-9_-]+$/i.test(source)) return source;
+    try {
+      const parsed = new URL(source);
+      return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : null;
+    } catch (_error) { return null; }
+  }
+  function formatTime(value) {
+    const date = new Date(value || 0);
+    return Number.isNaN(date.getTime()) ? '--:--:--' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function formatAge(seconds) {
+    const amount = Number(seconds);
+    if (!Number.isFinite(amount)) return 'not reported';
+    if (amount < 60) return `${Math.max(0, Math.round(amount))}s ago`;
+    return `${Math.round(amount / 60)}m ago`;
   }
 
-  function normalizeAgent(agent, groupKey) {
-    const raw = agent && typeof agent === 'object' ? agent : {};
+  function agentStatusClass(status = '') {
+    const normalized = String(status).toLowerCase();
+    if (['needs_input', 'waiting', 'waiting_for_input', 'waiting_for_approval', 'blocked', 'paused'].some((part) => normalized.includes(part))) return 'waiting';
+    if (['working', 'running', 'planning', 'executing', 'verifying', 'queued'].some((part) => normalized.includes(part))) return 'working';
+    return 'idle';
+  }
+
+  function normalizeAgent(agent = {}, groupKey = '') {
+    const status = text(agent.status, groupKey === 'needsInput' ? 'needs_input' : groupKey === 'working' ? 'working' : 'idle');
     return {
-      ...raw,
-      id: text(raw.id || raw.agentId, `agent-${groupKey}`),
-      name: text(raw.name || raw.displayName, 'Unnamed agent'),
-      role: text(raw.role || raw.agentRole, 'Role not reported'),
-      task: text(raw.task || raw.goal || raw.assignment, 'No task reported'),
-      action: text(raw.action || raw.currentAction, 'No current action reported'),
-      actionDetail: text(raw.actionDetail || raw.currentPath || raw.resource || raw.detail, 'No action detail reported'),
-      status: text(raw.status, groupKey === 'needsInput' ? 'waiting' : groupKey === 'working' ? 'running' : 'idle').toLowerCase(),
-      model: text(raw.model), elapsed: text(raw.elapsed, '—'), cpu: raw.cpu ?? raw.metrics?.cpu ?? null,
-      memory: raw.memory ?? raw.metrics?.memory ?? null,
-      lastHeartbeat: raw.lastHeartbeat ?? raw.heartbeatAge ?? null,
-      approval: raw.approval || (raw.approvalId ? { id: raw.approvalId } : null),
+      ...agent,
+      id: text(agent.id || agent.agentId || agent.roleId, 'unknown-agent'),
+      name: text(agent.name || agent.displayName || agent.role, 'Unnamed agent'),
+      role: text(agent.role || agent.roleName || agent.name, 'Agent'),
+      task: text(agent.task || agent.mission || agent.title, 'Awaiting assignment'),
+      currentAction: text(agent.currentAction || agent.action || agent.actionDetail, 'Standing by'),
+      status,
+      statusClass: agentStatusClass(status),
+      model: text(agent.model, 'model not reported'),
+      lastHeartbeatSeconds: agent.lastHeartbeatSeconds ?? agent.heartbeatAge ?? null,
+      approval: agent.approval && typeof agent.approval === 'object' ? agent.approval : null,
       groupKey,
     };
   }
 
-  function normalizeOverview(payload) {
+  function normalizeOverview(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
     const groups = {};
-    GROUPS.forEach(({ key }) => { groups[key] = Array.isArray(source.groups?.[key]) ? source.groups[key].map((agent) => normalizeAgent(agent, key)) : []; });
+    ['needsInput', 'working', 'idle'].forEach((key) => {
+      groups[key] = asArray(source.groups?.[key]).map((agent) => normalizeAgent(agent, key));
+    });
     return {
       generatedAt: source.generatedAt || null,
-      project: source.project && typeof source.project === 'object' ? source.project : { name: text(source.project, 'No project reported') },
-      projects: Array.isArray(source.projects) ? source.projects : [],
+      project: source.project && typeof source.project === 'object' ? source.project : {},
+      projects: asArray(source.projects),
       heartbeat: source.heartbeat && typeof source.heartbeat === 'object' ? source.heartbeat : {},
       budget: source.budget && typeof source.budget === 'object' ? source.budget : {},
       groups,
       selectedAgentId: source.selectedAgentId || null,
-      goalItems: Array.isArray(source.goalItems) ? source.goalItems : [],
-      workflows: Array.isArray(source.workflows) ? source.workflows : [],
-      artifacts: Array.isArray(source.artifacts) ? source.artifacts : [],
-      messages: Array.isArray(source.messages) ? source.messages : [],
-      approvals: Array.isArray(source.approvals) ? source.approvals : [],
+      goalItems: asArray(source.goalItems),
+      artifacts: asArray(source.artifacts),
+      messages: asArray(source.messages),
+      whiteboard: source.whiteboard && typeof source.whiteboard === 'object'
+        ? { path: source.whiteboard.path || null, sections: asArray(source.whiteboard.sections), notes: asArray(source.whiteboard.notes) }
+        : { path: null, sections: [], notes: [] },
+      approvals: asArray(source.approvals),
       capabilities: source.capabilities && typeof source.capabilities === 'object' ? source.capabilities : {},
     };
   }
 
-  function allAgents(overview = state.overview) {
-    return overview ? GROUPS.flatMap(({ key }) => overview.groups[key]) : [];
-  }
-
-  function matchesAgent(agent, query) {
-    const needle = String(query || '').trim().toLowerCase();
-    if (!needle) return true;
-    return [agent.name, agent.role, agent.task, agent.action, agent.status, agent.model].some((value) => String(value || '').toLowerCase().includes(needle));
-  }
-
-  function money(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(number) : 'Not reported';
-  }
-
-  function capability(name) {
-    return state.overview?.capabilities?.[name];
-  }
-
-  function capabilityEnabled(name) {
-    const value = capability(name);
-    return value === true || value?.enabled === true;
-  }
-
-  function endpointFromTemplate(template, key, value) {
-    return String(template || '').replace(`{${key}}`, encodeURIComponent(value));
-  }
-
-  async function request(path, options = {}) {
-    const response = await fetch(`${API_ROOT}${path}`, {
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...options,
-    });
-    let body = null;
-    try { body = await response.json(); } catch (_error) { body = null; }
-    if (!response.ok) {
-      const error = new Error(body?.message || body?.error?.message || body?.error || `${response.status} ${response.statusText}`);
-      error.status = response.status;
-      throw error;
-    }
-    return body;
-  }
-
-  function showToast(message, isError = false) {
-    const region = document.getElementById('toastRegion');
-    if (!region) return;
-    const toast = document.createElement('div');
-    toast.className = `toast${isError ? ' error' : ''}`;
-    toast.textContent = message;
-    region.replaceChildren(toast);
-    globalScope.setTimeout(() => toast.remove(), 4200);
-  }
-
-  function renderHeader() {
-    const { project, projects, heartbeat, budget } = state.overview;
-    const select = document.getElementById('projectSelect');
-    const options = projects.map((candidate) => new Option(
-      text(candidate.name || candidate.title, 'Untitled project'),
-      text(candidate.id, ''),
-      false,
-      candidate.id === project.id || candidate.active === true,
-    ));
-    if (!options.length) options.push(new Option('No active project', '', true, true));
-    select.replaceChildren(...options);
-    select.disabled = options.length === 1 && !options[0].value;
-    const heartbeatEl = document.getElementById('heartbeat');
-    const healthy = heartbeat.healthy !== false;
-    heartbeatEl.className = `heartbeat${healthy ? '' : ' error'}`;
-    const heartbeatTitle = healthy ? `Healthy · ${text(heartbeat.ageSeconds, '?')}s` : 'Heartbeat unhealthy';
-    heartbeatEl.innerHTML = `<span class="status-dot"></span><span class="heartbeat-copy"><strong>${escapeHtml(heartbeatTitle)}</strong><small>${escapeHtml(text(heartbeat.label, healthy ? 'All systems nominal' : 'Coordination needs attention'))}</small></span>`;
-    const spent = Number(budget.spent); const limit = Number(budget.limit);
-    const ratio = Number.isFinite(spent) && Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.max(0, spent / limit * 100)) : 0;
-    document.getElementById('budget').innerHTML = `<span>Budget</span><strong>${money(budget.spent)} / ${money(budget.limit)}</strong><div class="meter" title="${Math.round(ratio)}% used"><span style="width:${ratio}%"></span></div>`;
-  }
-
-  function renderAgentRow(agent) {
-    const selected = state.selectedAgent?.id === agent.id;
-    const needsInput = agent.groupKey === 'needsInput';
-    const approval = agent.approval;
-    const statusCell = approval ? `<div class="approval-actions"><button class="approve-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="approve">Approve</button><button class="reject-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="reject">Reject</button></div>` : `<span class="status-chip ${escapeHtml(agent.status)}">${escapeHtml(agent.status)}</span>`;
-    return `<tr class="agent-row ${needsInput ? 'needs-input' : ''}${selected ? ' selected' : ''}" data-agent-id="${escapeHtml(agent.id)}" tabindex="0" aria-selected="${selected}">
-      <td><span class="agent-primary"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(agent.name)} · ${escapeHtml(agent.role)}</span><span class="agent-secondary">${escapeHtml(agent.task)}</span></td>
-      <td><span class="action-primary"><span class="action-dot"></span>${escapeHtml(approval?.title || agent.action)}</span><span class="action-secondary">${escapeHtml(approval ? agent.action : agent.actionDetail)}</span></td>
-      <td><span class="row-metric">${escapeHtml(agent.elapsed)}</span><span class="row-submetric">${escapeHtml(text(agent.lastHeartbeat, 'Not reported'))} heartbeat</span></td>
-      <td><span class="model-chip">${escapeHtml(agent.model)}</span><span class="row-submetric">${escapeHtml(agent.cpu === null ? 'CPU not reported' : `${agent.cpu}% CPU`)} · ${escapeHtml(text(agent.memory))}</span></td>
-      <td>${statusCell}</td>
-    </tr>`;
-  }
-
-  function renderGroups() {
-    const container = document.getElementById('agentGroups');
-    let visibleCount = 0;
-    container.innerHTML = GROUPS.map(({ key, label }) => {
-      const agents = state.overview.groups[key].filter((agent) => matchesAgent(agent, state.query));
-      visibleCount += agents.length;
-      if (state.query && agents.length === 0) return '';
-      return `<section class="agent-group" data-group="${key}"><button class="group-header" type="button" aria-expanded="true"><span class="group-dot"></span><h2>${label}</h2><span class="group-count">${agents.length}</span><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button><div class="group-table"><table><thead><tr><th>Agent / Task</th><th>Current action</th><th>Elapsed</th><th>Runtime</th><th>Status</th></tr></thead><tbody>${agents.map(renderAgentRow).join('') || `<tr><td colspan="5"><span class="agent-secondary">No agents reported in this group.</span></td></tr>`}</tbody></table></div></section>`;
-    }).join('');
-    document.getElementById('filterEmpty').hidden = visibleCount !== 0;
-    const approvals = state.overview.groups.needsInput.filter((agent) => agent.approval).length;
-    document.getElementById('approvalCount').textContent = String(approvals);
-  }
-
-  function formatDateTime(value) {
-    if (!value) return 'Not reported';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? text(value) : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-  }
-
-  function renderEvidenceLinks(evidence = []) {
-    if (!Array.isArray(evidence) || evidence.length === 0) return '';
-    return `<div class="evidence-links">${evidence.map((item) => {
-      const label = item.label || item.name || item.title || item.id || 'Evidence';
-      const url = safeMessageUrl(item.url);
-      return url
-        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>${escapeHtml(label)}</a>`
-        : `<span><i class="fa-regular fa-file-lines" aria-hidden="true"></i>${escapeHtml(label)}</span>`;
-    }).join('')}</div>`;
-  }
-
-  function renderOverviewViews() {
-    const { project, goalItems, workflows, artifacts, approvals, messages } = state.overview;
-    const reportedLinks = [...new Map(messages.flatMap((item) => item.links || []).map((link) => [link.url, link])).values()].slice(0, 24);
-    document.getElementById('view-messages').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Direct from your agents</span><h1>Updates</h1><p>Results, links, and blockers. Files stay in Artifacts; execution logs stay in Activity.</p></div><span class="view-count">${messages.length} update${messages.length === 1 ? '' : 's'}</span></header>${reportedLinks.length ? `<section class="reported-links" aria-label="Links reported by agents"><h2>Reported links</h2>${renderEvidenceLinks(reportedLinks)}</section>` : ''}${messages.length ? renderMessageList(messages) : '<div class="view-empty"><h2>No agent updates yet</h2><p>Agents will report their results here when a run returns.</p></div>'}`;
-    const latest = document.getElementById('latestAgentUpdate');
-    latest.hidden = messages.length === 0;
-    latest.innerHTML = messages.length ? `<div class="latest-update-heading"><h2>Latest agent update</h2><a href="#messages" data-open-updates>All updates</a></div>${renderMessageList(messages.slice(0, 1), true)}` : '';
-    latest.querySelector('[data-open-updates]')?.addEventListener('click', (event) => { event.preventDefault(); setView('messages'); });
-    const hasProject = Boolean(project?.id);
-    const goal = project.goal || project.title || 'No active goal';
-    const projectActions = `<div class="view-actions"><button class="secondary-button view-new-project" type="button"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> New project</button>${hasProject ? `<button class="primary-button view-new-goal" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New goal</button><button class="danger-button view-delete-project" type="button"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Delete project</button>` : ''}</div>`;
-    const goalBody = hasProject
-      ? `<article class="goal-hero"><div><span class="status-chip ${escapeHtml(project.status || 'idle')}">${escapeHtml(project.status || 'Not reported')}</span><h2>${escapeHtml(project.name || 'Active project')}</h2><p>${escapeHtml(goal)}</p></div><div class="goal-score"><strong>${Number.isFinite(Number(project.progress)) ? `${Number(project.progress)}%` : '—'}</strong><span>complete</span></div></article>
-      <div class="operations-grid">${goalItems.map((item, index) => `<article class="operation-card"><span class="card-index">${index + 1}</span><div><h2>${escapeHtml(item.title || 'Untitled goal step')}</h2><p>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}</p><span class="status-chip ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'Not reported')}</span>${item.blockedBy ? `<p class="card-alert">${escapeHtml(item.blockedBy)}</p>` : ''}${renderEvidenceLinks(item.evidence)}</div></article>`).join('') || '<div class="view-empty"><i class="fa-solid fa-bullseye" aria-hidden="true"></i><h2>No goal plan yet</h2><p>Create a goal to start the shared heartbeat and generate coordinated work.</p></div>'}</div>`
-      : '<div class="project-empty"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><h2>No operations project</h2><p>The previous project has been removed. Start a clean project to create goals, files, and coordinated work.</p><button class="primary-button view-new-project" type="button"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> Start new project</button></div>';
-    document.getElementById('view-goals').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Coordination objective</span><h1>Goals</h1><p>The active company objective and its observable delivery plan.</p></div>${projectActions}</header>${goalBody}`;
-
-    document.getElementById('view-workflows').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Execution system</span><h1>Workflows</h1><p>Recorded company workloads and their latest run state.</p></div><span class="view-count">${workflows.length} workflow${workflows.length === 1 ? '' : 's'}</span></header>
-      <div class="workflow-list">${workflows.map((workflow) => `<article class="workflow-row"><span class="workflow-icon"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i></span><div><h2>${escapeHtml(workflow.title || 'Untitled workflow')}</h2><p>${escapeHtml(workflow.agentName || 'Unassigned')} · Updated ${escapeHtml(formatDateTime(workflow.updatedAt))}</p>${renderEvidenceLinks(workflow.evidence)}</div><span class="status-chip ${escapeHtml(workflow.status || '')}">${escapeHtml(workflow.status || 'Not reported')}</span></article>`).join('') || '<div class="view-empty"><i class="fa-solid fa-arrows-spin" aria-hidden="true"></i><h2>No workflows recorded</h2><p>A new goal and heartbeat will create role-based work here.</p></div>'}</div>`;
-
-    document.getElementById('view-artifacts').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Durable outputs</span><h1>Artifacts</h1><p>Files recorded in the active operations project.</p></div><span class="view-count">${artifacts.length} artifact${artifacts.length === 1 ? '' : 's'}</span></header>
-      <div class="artifact-grid">${artifacts.map((artifact) => { const url = artifact.previewUrl || artifact.url || artifact.downloadUrl; const label = artifact.name || artifact.label || 'Artifact'; return `<article class="artifact-card"><i class="fa-regular fa-file-lines" aria-hidden="true"></i><div><h2>${escapeHtml(label)}</h2><p>${escapeHtml(artifact.detail || artifact.mimeType || 'Recorded output')}</p></div><div class="artifact-actions">${url ? `<a class="secondary-button" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : '<span class="resource-unavailable">No preview URL</span>'}${artifact.deletable === true && capabilityEnabled('artifactDeletion') ? `<button class="delete-resource-button" type="button" data-delete-artifact="${escapeHtml(artifact.id)}" data-artifact-name="${escapeHtml(label)}" aria-label="Delete ${escapeHtml(label)}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>` : ''}</div></article>`; }).join('') || '<div class="view-empty"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><h2>No artifacts recorded</h2><p>Verified outputs will appear here as agents complete work.</p></div>'}</div>`;
-
-    document.getElementById('view-approvals').innerHTML = `<header class="view-heading"><div><span class="eyebrow">Human checkpoints</span><h1>Approvals</h1><p>Pending run decisions that need an operator.</p></div><span class="view-count">${approvals.length} pending</span></header>
-      <div class="approval-list">${approvals.map((approval) => `<article class="approval-card"><span class="approval-glyph"><i class="fa-regular fa-square-check" aria-hidden="true"></i></span><div><h2>${escapeHtml(approval.title || 'Approval required')}</h2><p>${escapeHtml(approval.agentName || 'Agent')} · ${escapeHtml(approval.task || 'Task not reported')}</p></div><div class="approval-actions"><button class="approve-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="approve">Approve</button><button class="reject-button" type="button" data-approval="${escapeHtml(approval.id)}" data-decision="reject">Reject</button></div></article>`).join('') || '<div class="view-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><h2>No pending approvals</h2><p>The fleet can continue without an operator decision.</p></div>'}</div>`;
-  }
-
-  function setView(viewName, updateHash = true) {
-    const allowed = ['goals', 'agents', 'workflows', 'artifacts', 'approvals', 'messages'];
-    const nextView = allowed.includes(viewName) ? viewName : 'agents';
-    state.activeView = nextView;
-    document.querySelectorAll('[data-view-panel]').forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== nextView; });
-    document.querySelectorAll('#primaryNav [data-view]').forEach((link) => {
-      const active = link.dataset.view === nextView;
-      link.classList.toggle('active', active);
-      if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
-    });
-    document.getElementById('fleet').setAttribute('aria-label', `${nextView[0].toUpperCase()}${nextView.slice(1)} view`);
-    if (updateHash && globalScope.history?.replaceState) globalScope.history.replaceState(null, '', `#${nextView}`);
-    if (globalScope.matchMedia?.('(max-width: 900px)').matches) openPanel(null);
-  }
-
-  function formatEventTime(timestamp) {
-    if (!timestamp) return '—';
-    const date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? text(timestamp) : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  }
-
-  function renderActivity(events, loading = false, error = null) {
-    const panel = document.getElementById('panel-activity');
-    if (!panel) return;
-    if (loading) { panel.innerHTML = '<div class="honest-state"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h3>Loading activity</h3><p>Reading this agent’s recorded timeline.</p></div>'; return; }
-    if (error) { panel.innerHTML = `<div class="honest-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h3>Activity unavailable</h3><p>${escapeHtml(error)}</p></div>`; return; }
-    if (!events.length) { panel.innerHTML = '<div class="honest-state"><i class="fa-regular fa-clock" aria-hidden="true"></i><h3>No recorded activity</h3><p>The API returned an empty timeline for this agent.</p></div>'; return; }
-    panel.innerHTML = `<p class="timeline-date">Latest recorded activity</p><ol class="timeline">${events.map((event) => `<li class="timeline-event ${escapeHtml(event.status || '')}"><time datetime="${escapeHtml(event.timestamp || '')}">${escapeHtml(formatEventTime(event.timestamp))}</time><h3>${escapeHtml(event.title || event.type || 'Event')}</h3><p>${escapeHtml(event.detail || 'No event detail reported.')}</p>${event.evidence ? `<pre class="event-output">${escapeHtml(typeof event.evidence === 'string' ? event.evidence : JSON.stringify(event.evidence, null, 2))}</pre>` : ''}</li>`).join('')}</ol>`;
-  }
-
-  const tabMeta = {
-    files: { icon: 'fa-regular fa-folder-open', title: 'No files recorded', description: 'This agent has not recorded a workspace file or artifact yet.' },
-    editor: { icon: 'fa-solid fa-code', title: 'No editable text recorded', description: 'Text and source artifacts will open here when the agent saves them.' },
-    terminal: { icon: 'fa-solid fa-terminal', title: 'No run log recorded', description: 'Queued, running, tool, and completion events will appear here.' },
-    browser: { icon: 'fa-regular fa-window-maximize', title: 'No preview recorded', description: 'HTML, sandbox, and public preview URLs will open here when available.' },
-    artifacts: { icon: 'fa-solid fa-box-archive', title: 'No artifacts reported', description: 'Completed outputs will appear here when the API records them.' },
-    messages: { icon: 'fa-regular fa-comments', title: 'No coordination messages', description: 'Run updates and agent handoffs will appear here when recorded.' },
-  };
-
-  function normalizeWorkspace(payload) {
+  function normalizeWorkspace(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
     return {
       agentId: source.agentId || null,
       generatedAt: source.generatedAt || null,
-      activity: Array.isArray(source.activity) ? source.activity : Array.isArray(source.timeline) ? source.timeline : [],
-      files: Array.isArray(source.files) ? source.files : [],
-      editor: Array.isArray(source.editor) ? source.editor : [],
-      terminal: Array.isArray(source.terminal) ? source.terminal : [],
-      browser: Array.isArray(source.browser) ? source.browser : [],
-      artifacts: Array.isArray(source.artifacts) ? source.artifacts : [],
-      messages: Array.isArray(source.messages) ? source.messages : [],
+      activity: asArray(source.activity || source.timeline),
+      files: asArray(source.files),
+      editor: asArray(source.editor),
+      terminal: asArray(source.terminal),
+      browser: asArray(source.browser),
+      artifacts: asArray(source.artifacts),
+      messages: asArray(source.messages),
+      whiteboard: source.whiteboard && typeof source.whiteboard === 'object' ? source.whiteboard : {},
+      controls: source.controls && typeof source.controls === 'object' ? source.controls : {},
     };
   }
 
-  function resourceArray(agent, tab) {
-    const recorded = state.workspaces.get(agent.id);
-    if (recorded && Array.isArray(recorded[tab])) return recorded[tab];
-    const workspace = agent.workspace && typeof agent.workspace === 'object' ? agent.workspace : {};
-    const value = agent[tab] || workspace[tab];
-    return Array.isArray(value) ? value : [];
+  function allAgents(overview = state.overview) {
+    if (!overview) return [];
+    return [...overview.groups.needsInput, ...overview.groups.working, ...overview.groups.idle];
+  }
+  function selectedAgent() { return allAgents().find((agent) => agent.id === state.selectedAgentId) || null; }
+  function capability(name) { return state.overview?.capabilities?.[name]; }
+  function capabilityEnabled(name) { const value = capability(name); return value === true || value?.enabled === true; }
+  function endpointFromTemplate(template, key, value) { return String(template || '').replace(`{${key}}`, encodeURIComponent(value)); }
+
+  function buildAgentWorkspaceUrl(agent = {}) {
+    const workspace = `agent-${slug(agent.id || agent.name)}`;
+    const params = new URLSearchParams({ workspace, workspaceLabel: `${text(agent.name, 'Agent')} desk`, embedded: '1' });
+    return `/web-chat/?${params.toString()}`;
   }
 
-  function renderWorkspaceLoading(panel, tab) {
-    const error = state.workspaceErrors.get(state.selectedAgent?.id);
-    if (error) {
-      panel.innerHTML = `<div class="honest-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h3>${escapeHtml(tabMeta[tab].title)}</h3><p>${escapeHtml(error)}</p></div>`;
-      return true;
-    }
-    if (!state.demo && !state.workspaces.has(state.selectedAgent?.id)) {
-      panel.innerHTML = '<div class="honest-state"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h3>Loading recorded workspace</h3><p>Reading files, run logs, previews, artifacts, and messages.</p></div>';
-      return true;
-    }
-    return false;
-  }
-
-  function renderEditorPanel(panel, items) {
-    if (!items.length) return false;
-    const item = items[0];
-    panel.innerHTML = `<div class="editor-toolbar"><span><i class="fa-regular fa-file-code" aria-hidden="true"></i>${escapeHtml(item.path || item.name || 'Recorded source')}</span><span>${escapeHtml(item.language || 'text')}</span></div><pre class="editor-buffer"><code>${escapeHtml(item.content || '')}</code></pre>`;
-    return true;
-  }
-
-  function renderTerminalPanel(panel, items) {
-    if (!items.length) return false;
-    panel.innerHTML = `<div class="terminal-toolbar"><span><i class="fa-solid fa-terminal" aria-hidden="true"></i> Recorded run log</span><span>${items.length} events</span></div><pre class="terminal-buffer">${items.map((item) => `${formatEventTime(item.timestamp)}  ${String(item.status || 'recorded').toUpperCase().padEnd(10)} ${item.command || 'event'}\n${item.output || ''}`).map(escapeHtml).join('\n\n')}</pre>`;
-    return true;
-  }
-
-  function renderBrowserPanel(panel, items) {
-    if (!items.length) return false;
-    const item = items[0];
-    let sameOrigin = false;
-    try { sameOrigin = new URL(item.url, globalScope.location.href).origin === globalScope.location.origin; } catch (_error) { sameOrigin = false; }
-    panel.innerHTML = `<div class="browser-toolbar"><span><i class="fa-regular fa-window-maximize" aria-hidden="true"></i>${escapeHtml(item.name || 'Recorded preview')}</span><a class="secondary-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">Open preview <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>${sameOrigin ? `<iframe class="browser-frame" src="${escapeHtml(item.url)}" title="${escapeHtml(item.name || 'Agent preview')}" sandbox="allow-scripts allow-forms allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>` : '<div class="browser-external"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><p>This preview opens in a separate tab because it is outside the KimiBuilt origin.</p></div>'}${items.length > 1 ? `<div class="browser-links">${items.slice(1).map((preview) => `<a href="${escapeHtml(preview.url)}" target="_blank" rel="noreferrer">${escapeHtml(preview.name || preview.url)}</a>`).join('')}</div>` : ''}`;
-    return true;
-  }
-
-  function safeMessageUrl(value) {
-    const url = String(value || '').trim();
-    if (/^\/(?!\/)[^\s\\]*$/.test(url)) return url;
+  async function request(path, options = {}) {
+    const abortController = typeof globalScope.AbortController === 'function' ? new globalScope.AbortController() : null;
+    const timeout = globalScope.setTimeout(() => abortController?.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const parsed = new URL(url);
-      return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : null;
-    } catch (_error) { return null; }
+      const response = await globalScope.fetch(`${API_ROOT}${path}`, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(options.headers || {}) },
+        ...options,
+        ...(abortController ? { signal: abortController.signal } : {}),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = new Error(body?.error?.message || body?.message || `${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.code = body?.error?.code || null;
+        throw error;
+      }
+      return body;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('The operations request timed out. The last recorded state is still shown.');
+      throw error;
+    } finally { globalScope.clearTimeout(timeout); }
   }
 
-  function renderMessageText(value = '') {
-    const source = String(value);
-    // Escape all text. Only a small, validated link subset becomes markup.
-    const pattern = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/(?!\/)[^\s)]+)\)|https?:\/\/[^\s<>"'`]+/g;
-    let html = ''; let cursor = 0;
-    for (const match of source.matchAll(pattern)) {
-      html += escapeHtml(source.slice(cursor, match.index));
-      const raw = match[2] || match[0].replace(/[.,;:!?)\]}]+$/, '');
-      const url = safeMessageUrl(raw);
-      html += url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(match[1] || raw)}</a>${match[2] ? '' : escapeHtml(match[0].slice(raw.length))}` : escapeHtml(match[0]);
-      cursor = match.index + match[0].length;
-    }
-    return html + escapeHtml(source.slice(cursor));
+  function showToast(message, isError = false) {
+    const region = globalScope.document.getElementById('toastRegion');
+    const toast = globalScope.document.createElement('div');
+    toast.className = `toast${isError ? ' error' : ''}`;
+    toast.textContent = message;
+    region.append(toast);
+    globalScope.setTimeout(() => toast.remove(), 4200);
   }
 
-  function renderMessageList(items, compact = false) {
-    return `<ol class="message-list agent-updates">${items.map((item) => {
-      const message = item.message || item.detail || 'Recorded update';
-      const body = `<p class="message-body">${renderMessageText(message)}</p>`;
-      return `<li><div class="message-heading"><strong>${escapeHtml(item.from || 'Agent')}</strong><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatDateTime(item.timestamp))}</time></div>${item.task ? `<p class="message-task">${escapeHtml(item.task)}</p>` : ''}${compact && message.length > 500 ? `<details><summary>${escapeHtml(message.slice(0, 180))}… Read full update</summary>${body}</details>` : body}${renderEvidenceLinks(item.links || [])}${item.attachments?.length ? `<div class="message-attachments"><span>Files</span>${renderEvidenceLinks(item.attachments)}</div>` : ''}</li>`;
-    }).join('')}</ol>`;
+  function latestSignal(agent) {
+    const workspace = state.workspaces.get(agent.id);
+    const terminal = workspace?.terminal?.at(-1);
+    const message = workspace?.messages?.at(-1);
+    return text(terminal?.command || message?.message || agent.currentAction, 'Standing by');
   }
 
-  function renderMessagesPanel(panel, items) {
-    if (!items.length) return false;
-    panel.innerHTML = renderMessageList(items);
-    return true;
+  function renderCommandBar() {
+    const project = state.overview.project;
+    globalScope.document.getElementById('missionTitle').textContent = text(project.goal || project.name, 'No active mission');
+    const sync = globalScope.document.getElementById('syncState');
+    sync.className = 'sync-state';
+    sync.innerHTML = `<span class="pulse-dot"></span><span>${state.refreshing ? 'Syncing' : `Live · ${formatTime(state.lastSyncAt)}`}</span>`;
   }
 
-  function renderResourcePanel(tab, agent) {
-    const panel = document.getElementById(`panel-${tab}`);
-    if (renderWorkspaceLoading(panel, tab)) return;
-    const items = resourceArray(agent, tab);
-    if (tab === 'editor' && renderEditorPanel(panel, items)) return;
-    if (tab === 'terminal' && renderTerminalPanel(panel, items)) return;
-    if (tab === 'browser' && renderBrowserPanel(panel, items)) return;
-    if (tab === 'messages' && renderMessagesPanel(panel, items)) return;
-    if (items.length) {
-      panel.innerHTML = `<ul class="resource-list">${items.map((item) => { const url = item.url || item.previewUrl || item.downloadUrl; const label = item.name || item.title || item.path || item.message || item; const canDelete = ['files', 'artifacts'].includes(tab) && item.deletable === true && capabilityEnabled('artifactDeletion'); return `<li><i class="${tabMeta[tab].icon}" aria-hidden="true"></i><span>${escapeHtml(label)}</span><small>${escapeHtml(item.detail || item.status || item.size || '')}</small>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(label)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}${canDelete ? `<button class="delete-resource-button" type="button" data-delete-artifact="${escapeHtml(item.id)}" data-artifact-name="${escapeHtml(label)}" aria-label="Delete ${escapeHtml(label)}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>` : ''}</li>`; }).join('')}</ul>`;
+  function renderProjectPicker() {
+    const select = globalScope.document.getElementById('projectSelect');
+    const projects = state.overview.projects;
+    if (!projects.length) {
+      select.innerHTML = '<option value="">No project rooms</option>';
+      select.disabled = true;
       return;
     }
-    const meta = tabMeta[tab];
-    panel.innerHTML = `<div class="honest-state"><i class="${meta.icon}" aria-hidden="true"></i><h3>${meta.title}</h3><p>${meta.description}</p></div>`;
+    select.innerHTML = projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.active || project.id === state.overview.project.id ? ' selected' : ''}>${escapeHtml(project.name || 'Untitled project')}</option>`).join('');
+    select.disabled = !capabilityEnabled('projects');
   }
 
-  function renderInspector() {
-    const inspector = document.getElementById('inspector');
-    const agent = state.selectedAgent;
-    inspector.setAttribute('aria-hidden', agent ? 'false' : 'true');
-    document.getElementById('inspectorEmpty').hidden = Boolean(agent);
-    document.getElementById('inspectorContent').hidden = !agent;
-    if (!agent) return;
-    document.getElementById('inspectorTitle').textContent = `${agent.name} · ${agent.role}`;
-    document.getElementById('inspectorTask').textContent = agent.task;
-    const panels = document.getElementById('workspacePanels');
-    panels.innerHTML = TABS.map((tab) => `<section class="tab-panel" id="panel-${tab}" role="tabpanel" aria-labelledby="tab-${tab}"${tab === state.activeTab ? '' : ' hidden'}></section>`).join('');
-    const workspaceError = state.workspaceErrors.get(agent.id);
-    renderActivity(
-      state.activity.get(agent.id) || [],
-      !state.activity.has(agent.id) && !workspaceError,
-      workspaceError || null,
-    );
-    TABS.filter((tab) => tab !== 'activity').forEach((tab) => renderResourcePanel(tab, agent));
-    document.querySelectorAll('[role="tab"]').forEach((tab) => { const active = tab.dataset.tab === state.activeTab; tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1; });
+  function renderHeartbeat() {
+    const heartbeat = state.overview.heartbeat;
+    const card = globalScope.document.getElementById('heartbeatCard');
+    const unhealthy = String(heartbeat.status || '').toLowerCase().includes('fail') || String(heartbeat.status || '').toLowerCase().includes('degrad');
+    card.className = `heartbeat-card${unhealthy ? ' unhealthy' : ''}`;
+    card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${unhealthy ? 'Heartbeat needs attention' : 'Heartbeat online'}</strong><small>${escapeHtml(formatAge(heartbeat.ageSeconds))}${heartbeat.reason ? ` · ${escapeHtml(heartbeat.reason)}` : ''}</small></div>`;
+  }
+
+  function renderCrew() {
+    const agents = allAgents();
+    globalScope.document.getElementById('crewCount').textContent = agents.length;
+    const list = globalScope.document.getElementById('crewList');
+    if (!agents.length) {
+      list.innerHTML = '<div class="empty-compact">No agents are assigned to this room yet.</div>';
+      return;
+    }
+    list.innerHTML = agents.map((agent) => `<button class="crew-card${agent.id === state.selectedAgentId ? ' selected' : ''}" type="button" data-agent-id="${escapeHtml(agent.id)}" aria-pressed="${agent.id === state.selectedAgentId}"><span class="crew-card-top"><span class="mini-avatar">${escapeHtml(initials(agent.name))}</span><span class="crew-card-name"><strong>${escapeHtml(agent.name)}</strong><small>${escapeHtml(agent.role)}</small></span><span class="status-light ${agent.statusClass}" aria-label="${escapeHtml(agent.statusClass)}"></span></span><span class="crew-card-task">${escapeHtml(agent.task)}</span><span class="crew-card-signal">&gt; ${escapeHtml(latestSignal(agent))}</span></button>`).join('');
+  }
+
+  function renderFloor() {
+    const agents = allAgents();
+    const floor = globalScope.document.getElementById('opsFloor');
+    if (!agents.length) {
+      floor.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><h3>The floor is quiet</h3><p>Create a mission to dispatch agents into visible workstations.</p></div>';
+      return;
+    }
+    floor.innerHTML = agents.map((agent) => `<button class="agent-station ${agent.statusClass}${agent.id === state.selectedAgentId ? ' selected' : ''}" type="button" data-agent-id="${escapeHtml(agent.id)}" aria-pressed="${agent.id === state.selectedAgentId}"><span class="station-badge" aria-hidden="true"></span><span class="floor-avatar">${escapeHtml(initials(agent.name))}</span><span class="station-copy"><strong>${escapeHtml(agent.name)}</strong><span>${escapeHtml(agent.task)}</span><code>&gt; ${escapeHtml(latestSignal(agent))}</code></span></button>`).join('');
+  }
+
+  function renderTerminal(agent, workspace) {
+    const panel = globalScope.document.getElementById('panel-console');
+    const error = state.workspaceErrors.get(agent.id);
+    if (error) {
+      panel.innerHTML = `<div class="error-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h3>Run log unavailable</h3><p>${escapeHtml(error)}</p></div>`;
+      return;
+    }
+    if (!workspace) {
+      panel.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h3>Attaching to the workstation</h3><p>Reading the latest recorded run events.</p></div>';
+      return;
+    }
+    const items = workspace.terminal;
+    const approval = agent.approval;
+    const approvalHtml = approval ? `<div class="terminal-approval"><span>INPUT REQUIRED · ${escapeHtml(approval.title || 'Approval required')}</span><button class="primary-button" type="button" data-approval-id="${escapeHtml(approval.id)}">Approve and continue</button></div>` : '';
+    const inputCapability = capability('operatorInput');
+    const canReceiveInput = (state.demo || capabilityEnabled('operatorInput'))
+      && agent.canReceiveInput !== false
+      && workspace.controls?.canReceiveInput !== false
+      && !approval;
+    const inputEndpoint = state.demo || inputCapability?.endpointTemplate;
+    const inputNote = approval
+      ? 'Resolve the approval above before steering this run.'
+      : canReceiveInput && inputEndpoint
+        ? 'Your instruction is recorded in this agent’s session and wakes the same workload.'
+        : 'This runtime has not advertised operator input for this agent.';
+    const composer = `<form class="operator-console" data-agent-input-form data-agent-id="${escapeHtml(agent.id)}"><label for="operator-input-${escapeHtml(slug(agent.id))}">Message ${escapeHtml(agent.name)}<textarea id="operator-input-${escapeHtml(slug(agent.id))}" name="message" rows="2" maxlength="4000" required placeholder="Continue this run with…"${canReceiveInput && inputEndpoint ? '' : ' disabled'}></textarea></label><button class="primary-button" type="submit"${canReceiveInput && inputEndpoint ? '' : ' disabled'}><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Send to run</button><p class="operator-console-note">${escapeHtml(inputNote)}</p></form>`;
+    if (!items.length) {
+      panel.innerHTML = `${approvalHtml}<div class="empty-panel"><i class="fa-solid fa-terminal" aria-hidden="true"></i><h3>No terminal events recorded</h3><p>The agent desk is live, but this runtime has not published command events yet.</p></div>${composer}`;
+      return;
+    }
+    const lines = items.map((item) => `<span class="timestamp">[${escapeHtml(formatTime(item.timestamp))}]</span> <span class="command">${escapeHtml(item.command || item.status || 'event')}</span>\n${escapeHtml(item.output || '')}`).join('\n\n');
+    panel.innerHTML = `${approvalHtml}<div class="terminal-toolbar"><span>crew/${escapeHtml(slug(agent.id))}</span><span>${items.length} recorded events · auto-following</span></div><pre class="terminal-buffer">${lines}\n\n<span class="timestamp">[${escapeHtml(formatTime(state.lastSyncAt))}]</span> watching for the next heartbeat<span class="terminal-cursor" aria-hidden="true"></span></pre>${composer}`;
+    panel.querySelector('.terminal-buffer')?.scrollTo?.({ top: panel.querySelector('.terminal-buffer').scrollHeight });
+  }
+
+  function renderDesk(agent) {
+    const panel = globalScope.document.getElementById('panel-desk');
+    if (state.activePanel !== 'desk') {
+      panel.innerHTML = '<div class="desk-empty"><i class="fa-regular fa-message" aria-hidden="true"></i><h3>Web Chat desk is parked</h3><p>Open this tab to start the agent’s isolated Web Chat workspace with the full chat, file, tool, voice, and artifact interface.</p></div>';
+      return;
+    }
+    const url = buildAgentWorkspaceUrl(agent);
+    const current = panel.querySelector('iframe')?.getAttribute('src');
+    if (current === url) return;
+    panel.innerHTML = `<div class="desk-toolbar"><span>${escapeHtml(agent.name)} · isolated Web Chat workspace</span><a class="text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open full screen <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div><iframe class="agent-desk-frame" src="${escapeHtml(url)}" title="${escapeHtml(agent.name)} Web Chat desk" allow="microphone; clipboard-read; clipboard-write" referrerpolicy="same-origin"></iframe>`;
+  }
+
+  function renderScreen(agent, workspace) {
+    const panel = globalScope.document.getElementById('panel-screen');
+    if (state.activePanel !== 'screen') {
+      panel.innerHTML = '<div class="empty-panel"><i class="fa-regular fa-window-maximize" aria-hidden="true"></i><h3>Visual feed is parked</h3><p>Open this tab to load the agent’s latest recorded browser preview without keeping hidden pages running.</p></div>';
+      return;
+    }
+    const preview = workspace?.browser?.find((item) => safeUrl(item.url));
+    if (!preview) {
+      panel.innerHTML = '<div class="empty-panel"><i class="fa-regular fa-window-maximize" aria-hidden="true"></i><h3>No visual feed recorded</h3><p>Browser previews and screenshots will appear here when the agent publishes them. The UI does not pretend a computer-vision feed exists when none was recorded.</p></div>';
+      return;
+    }
+    const url = safeUrl(preview.url);
+    let sameOrigin = false;
+    try { sameOrigin = new URL(url, globalScope.location.href).origin === globalScope.location.origin; } catch (_error) { sameOrigin = false; }
+    panel.innerHTML = `<div class="screen-toolbar"><span>${escapeHtml(preview.name || 'Agent screen')}</span><a class="text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open feed <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>${sameOrigin ? `<iframe class="agent-screen-frame" src="${escapeHtml(url)}" title="${escapeHtml(agent.name)} recorded preview" sandbox="allow-scripts allow-forms allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>` : '<div class="empty-panel"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h3>External visual feed</h3><p>This preview opens separately because it is outside the KimiBuilt origin.</p></div>'}`;
+  }
+
+  function renderFiles(workspace) {
+    const panel = globalScope.document.getElementById('panel-files');
+    const resources = [...asArray(workspace?.files), ...asArray(workspace?.artifacts)].filter((item, index, list) => list.findIndex((candidate) => (candidate.id || candidate.name) === (item.id || item.name)) === index);
+    if (!resources.length) {
+      panel.innerHTML = '<div class="empty-panel"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><h3>No files on this desk yet</h3><p>Recorded source, evidence, and finished artifacts will land here automatically.</p></div>';
+      return;
+    }
+    panel.innerHTML = `<div class="files-grid">${resources.map((item) => { const url = safeUrl(item.url || item.previewUrl || item.downloadUrl); const content = `<i class="fa-regular fa-file-code" aria-hidden="true"></i><strong>${escapeHtml(item.name || item.path || item.title || 'Artifact')}</strong><small>${escapeHtml(item.detail || item.status || item.language || 'Recorded file')}</small>`; return url ? `<a class="file-card" href="${escapeHtml(url)}" target="_blank" rel="noopener">${content}</a>` : `<div class="file-card">${content}</div>`; }).join('')}</div>`;
+  }
+
+  function renderSelectedAgent() {
+    const agent = selectedAgent();
+    const panels = PANELS.map((name) => globalScope.document.getElementById(`panel-${name}`));
+    panels.forEach((panel) => { panel.hidden = panel.id !== `panel-${state.activePanel}`; });
+    globalScope.document.querySelectorAll('#workroomTabs [role="tab"]').forEach((tab) => {
+      const active = tab.dataset.panel === state.activePanel;
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    const focus = globalScope.document.getElementById('focusDeskButton');
+    if (!agent) {
+      globalScope.document.getElementById('selectedAvatar').textContent = '?';
+      globalScope.document.getElementById('selectedAgentRole').textContent = 'No workstation selected';
+      globalScope.document.getElementById('selectedAgentName').textContent = 'The crew floor is empty';
+      globalScope.document.getElementById('selectedAgentTask').textContent = 'Create a mission to begin.';
+      globalScope.document.getElementById('selectedAgentState').textContent = 'Offline';
+      focus.disabled = true;
+      panels.forEach((panel) => { panel.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><h3>Waiting for a player</h3><p>Select an agent workstation when the crew arrives.</p></div>'; });
+      return;
+    }
+    const status = globalScope.document.getElementById('selectedAgentState');
+    status.className = `agent-state-pill ${agent.statusClass}`;
+    status.textContent = agent.statusClass === 'waiting' ? 'Waiting on you' : agent.statusClass;
+    globalScope.document.getElementById('selectedAvatar').textContent = initials(agent.name);
+    globalScope.document.getElementById('selectedAgentRole').textContent = `${agent.role} · ${agent.model}`;
+    globalScope.document.getElementById('selectedAgentName').textContent = agent.name;
+    globalScope.document.getElementById('selectedAgentTask').textContent = agent.task;
+    focus.disabled = false;
+    const workspace = state.workspaces.get(agent.id);
+    renderTerminal(agent, workspace);
+    renderDesk(agent);
+    renderScreen(agent, workspace);
+    renderFiles(workspace);
+  }
+
+  function boardBucket(item) {
+    if (['now', 'waiting', 'done'].includes(item.boardColumn)) return item.boardColumn;
+    const status = agentStatusClass(item.status);
+    if (status === 'waiting' || String(item.status).toLowerCase() === 'blocked') return 'waiting';
+    if (String(item.status).toLowerCase() === 'completed') return 'done';
+    return 'now';
+  }
+
+  function renderBoard() {
+    const project = state.overview.project;
+    const progress = Number(project.progress);
+    const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
+    globalScope.document.getElementById('missionProgress').textContent = `${safeProgress}%`;
+    globalScope.document.getElementById('missionProgressBar').style.width = `${safeProgress}%`;
+    globalScope.document.getElementById('missionGoal').textContent = text(project.goal || project.name, 'No active mission');
+    globalScope.document.getElementById('missionStatus').textContent = project.id ? `Room status: ${text(project.status, 'idle')}. The board refreshes with the agent heartbeat.` : 'Create a project and mission to start the crew.';
+
+    const definitions = [{ key: 'now', label: 'Now' }, { key: 'waiting', label: 'Waiting' }, { key: 'done', label: 'Done' }];
+    const board = state.overview.whiteboard;
+    const items = [
+      ...state.overview.goalItems,
+      ...board.notes.map((note) => ({
+        ...note,
+        title: note.content || note.title || 'Shared note',
+        agentName: note.author || note.agentName || 'Operator',
+        boardColumn: ['now', 'waiting', 'done'].includes(note.column) ? note.column : 'now',
+        manual: true,
+      })),
+    ];
+    globalScope.document.getElementById('boardColumns').innerHTML = definitions.map(({ key, label }) => {
+      const notes = items.filter((item) => boardBucket(item) === key);
+      return `<section class="board-column ${key}"><header><span>${label}</span><span>${notes.length}</span></header>${notes.length ? notes.map((item) => `<div class="board-note${item.manual ? ' manual' : ''}">${escapeHtml(item.title || item.name || 'Untitled step')}<small>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}${item.blockedBy ? ` · ${escapeHtml(item.blockedBy)}` : ''}</small></div>`).join('') : '<div class="empty-compact">No notes here.</div>'}</section>`;
+    }).join('');
+    let path = globalScope.document.querySelector('.whiteboard-path');
+    if (!path) {
+      path = globalScope.document.createElement('p');
+      path.className = 'whiteboard-path';
+      globalScope.document.getElementById('boardColumns').after(path);
+    }
+    path.hidden = !board.path;
+    path.textContent = board.path ? `Shared file: ${board.path}` : '';
+
+    const artifacts = state.overview.artifacts;
+    globalScope.document.getElementById('artifactCount').textContent = artifacts.length;
+    globalScope.document.getElementById('artifactList').innerHTML = artifacts.length ? artifacts.slice(0, 8).map((item) => { const url = safeUrl(item.previewUrl || item.downloadUrl || item.url); const tag = url ? 'a' : 'div'; const href = url ? ` href="${escapeHtml(url)}" target="_blank" rel="noopener"` : ''; return `<${tag} class="artifact-item"${href}><span class="artifact-icon"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></span><span><strong>${escapeHtml(item.name || item.filename || 'Artifact')}</strong><small>${escapeHtml(item.detail || item.mimeType || 'Recorded output')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></${tag}>`; }).join('') : '<div class="empty-compact">Finished work will appear below the board.</div>';
+
+    const messages = state.overview.messages;
+    globalScope.document.getElementById('handoffList').innerHTML = messages.length ? messages.slice(0, 6).map((item) => `<article class="handoff-item"><div class="handoff-meta"><span>${escapeHtml(item.from || 'Agent')}</span><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatTime(item.timestamp))}</time></div><p>${escapeHtml(item.message || item.detail || 'Recorded update')}</p></article>`).join('') : '<div class="empty-compact">No crew handoffs recorded yet.</div>';
+  }
+
+  function renderAll() {
+    renderCommandBar(); renderProjectPicker(); renderHeartbeat(); renderCrew(); renderFloor(); renderSelectedAgent(); renderBoard();
+    globalScope.document.getElementById('loadingState').hidden = true;
+    globalScope.document.getElementById('stageContent').hidden = false;
+    setupDialogs();
+  }
+
+  function renderLoadError(error) {
+    const loading = globalScope.document.getElementById('loadingState');
+    loading.hidden = false;
+    loading.innerHTML = `<div class="error-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h1>Could not open the workroom</h1><p>${escapeHtml(error.message)}</p><button class="primary-button" id="retryButton" type="button"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Retry connection</button></div>`;
+    globalScope.document.getElementById('retryButton').addEventListener('click', () => refresh(true));
   }
 
   async function loadWorkspace(agent) {
     if (state.demo) {
-      const workspace = normalizeWorkspace({
-        agentId: agent.id,
-        activity: agent.id === 'mira' ? demoTimeline : [],
-        files: agent.files || [],
-        artifacts: agent.artifacts || [],
-        editor: agent.files?.length ? [{ ...agent.files[0], content: '// Preview source recorded by the agent.\n', language: 'text' }] : [],
-        terminal: (agent.id === 'mira' ? demoTimeline : []).map((event) => ({ command: event.type, output: event.title, status: event.status, timestamp: event.timestamp })),
-        browser: (agent.artifacts || []).filter((artifact) => artifact.previewUrl || artifact.url).map((artifact) => ({ name: artifact.name, detail: artifact.detail, url: artifact.previewUrl || artifact.url })),
-        messages: (agent.id === 'mira' ? demoTimeline : []).map((event) => ({ from: agent.name, message: event.title, timestamp: event.timestamp })),
-      });
+      const workspace = normalizeWorkspace(demoWorkspaces[agent.id] || { agentId: agent.id, terminal: [], messages: [], browser: [], files: [], artifacts: [] });
       state.workspaces.set(agent.id, workspace);
-      state.activity.set(agent.id, workspace.activity);
-      renderInspector();
-      return;
-    }
-    renderActivity([], true);
-    try {
-      const response = normalizeWorkspace(await request(`/agents/${encodeURIComponent(agent.id)}/workspace`));
       state.workspaceErrors.delete(agent.id);
-      state.workspaces.set(agent.id, response);
-      state.activity.set(agent.id, response.activity);
-      if (state.selectedAgent?.id === agent.id) renderInspector();
-    } catch (error) {
-      state.workspaceErrors.set(agent.id, error.status === 404 ? 'No recorded workspace exists for this agent.' : error.message);
-      if (state.selectedAgent?.id === agent.id) renderInspector();
+      return workspace;
     }
-  }
-
-  function selectAgent(agentId, openDrawer = true) {
-    const agent = allAgents().find((candidate) => candidate.id === agentId);
-    if (!agent) return;
-    state.selectedAgent = agent;
-    state.activeTab = 'activity';
-    renderGroups(); renderInspector();
-    if (openDrawer && globalScope.matchMedia?.('(max-width: 900px)').matches) openPanel('inspector');
-    loadWorkspace(agent);
-  }
-
-  function renderGoal() {
-    const project = state.overview.project;
-    if (!project?.id) {
-      document.getElementById('goalSummary').innerHTML = '<h2>No active project</h2><p>Start a project to create a shared goal and coordination heartbeat.</p>';
-      document.getElementById('goalItems').replaceChildren();
-      return;
-    }
-    const progress = Number(project.progress);
-    document.getElementById('goalSummary').innerHTML = `<h2>${escapeHtml(project.name || project.title || 'Active goal')}</h2><p>${escapeHtml(project.status || 'Goal state not reported')}</p><div class="goal-meta"><span>Goal progress</span><strong>${Number.isFinite(progress) ? `${progress}%` : 'Not reported'}</strong><span>${escapeHtml(project.target || '')}</span></div><div class="goal-progress"><span style="width:${Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0}%"></span></div>`;
-    document.getElementById('goalItems').innerHTML = state.overview.goalItems.map((item) => `<li class="${String(item.status).toLowerCase().includes('progress') ? 'active' : ''}"><span class="goal-item-title">${escapeHtml(item.title || item.name || 'Untitled step')}</span><p class="goal-item-meta">${escapeHtml(item.assignee || item.agent || 'Unassigned')}<span class="goal-item-status ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'Status not reported')}</span></p></li>`).join('');
-  }
-
-  function renderReady() {
-    renderHeader(); renderGroups(); renderGoal(); renderOverviewViews();
-    document.getElementById('loadState').hidden = true;
-    document.getElementById('fleetContent').hidden = false;
-    setView(state.activeView, false);
-    const initial = state.overview.selectedAgentId && allAgents().find((agent) => agent.id === state.overview.selectedAgentId);
-    if (initial) selectAgent(initial.id, false); else renderInspector();
-    setupMutationDialogs();
-  }
-
-  function showLoadError(error) {
-    const load = document.getElementById('loadState');
-    load.className = 'load-state error';
-    load.innerHTML = `<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h1>Agent operations unavailable</h1><p>${escapeHtml(error.message || 'The overview API could not be reached.')}</p><button class="primary-button retry-button" type="button" id="retryLoad"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Retry live connection</button>`;
-    document.getElementById('retryLoad').addEventListener('click', loadOverview);
-  }
-
-  async function loadOverview() {
-    const load = document.getElementById('loadState');
-    load.hidden = false; load.className = 'load-state';
-    load.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><h1>Connecting to agent operations</h1><p>Loading fleet, heartbeat, and goal state…</p>';
-    document.getElementById('fleetContent').hidden = true;
     try {
-      state.overview = normalizeOverview(state.demo ? demoOverview : await request('/overview'));
-      renderReady();
-    } catch (error) { showLoadError(error); }
+      const workspace = normalizeWorkspace(await request(`/agents/${encodeURIComponent(agent.id)}/workspace`));
+      state.workspaces.set(agent.id, workspace);
+      state.workspaceErrors.delete(agent.id);
+      return workspace;
+    } catch (error) {
+      state.workspaceErrors.set(agent.id, error.message);
+      return null;
+    }
   }
 
-  async function resolveApproval(approvalId, decision, button) {
+  async function refreshWorkstations() {
+    const agents = allAgents();
+    const selected = selectedAgent();
+    const ordered = [selected, ...agents.filter((agent) => agent.id !== selected?.id && agent.statusClass !== 'idle')].filter(Boolean).slice(0, 4);
+    await Promise.allSettled(ordered.map(loadWorkspace));
+  }
+
+  function nextRefreshDelay() {
+    return allAgents().some((agent) => agent.statusClass !== 'idle') ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS;
+  }
+
+  function scheduleRefresh() {
+    globalScope.clearTimeout(state.refreshTimer);
+    state.refreshTimer = globalScope.setTimeout(() => refresh(false), nextRefreshDelay());
+  }
+
+  async function refresh(manual = false) {
+    if (state.refreshing) return;
+    if (!manual && globalScope.document?.hidden) { scheduleRefresh(); return; }
+    state.refreshing = true;
+    if (state.hasLoaded) renderCommandBar();
+    try {
+      const overview = normalizeOverview(state.demo ? demoOverview : await request('/overview'));
+      state.overview = overview;
+      const agents = allAgents(overview);
+      if (!agents.some((agent) => agent.id === state.selectedAgentId)) state.selectedAgentId = overview.selectedAgentId || agents[0]?.id || null;
+      await refreshWorkstations();
+      state.lastSyncAt = new Date();
+      state.hasLoaded = true;
+      renderAll();
+      if (manual) showToast('Workroom synchronized.');
+    } catch (error) {
+      if (!state.hasLoaded) renderLoadError(error);
+      else {
+        const sync = globalScope.document.getElementById('syncState');
+        sync.className = 'sync-state error';
+        sync.innerHTML = `<span class="pulse-dot"></span><span>Sync failed</span>`;
+        showToast(`Live sync paused: ${error.message}`, true);
+      }
+    } finally { state.refreshing = false; scheduleRefresh(); }
+  }
+
+  function selectAgent(agentId) {
+    if (!allAgents().some((agent) => agent.id === agentId)) return;
+    state.selectedAgentId = agentId;
+    state.activePanel = 'console';
+    renderCrew(); renderFloor(); renderSelectedAgent();
+    const agent = selectedAgent();
+    if (agent) loadWorkspace(agent).then(() => { renderCrew(); renderFloor(); renderSelectedAgent(); });
+  }
+
+  function setPanel(panelName, focus = false) {
+    if (!PANELS.includes(panelName)) return;
+    state.activePanel = panelName;
+    renderSelectedAgent();
+    if (focus) globalScope.document.querySelector(`[data-panel="${panelName}"]`)?.focus();
+  }
+
+  async function resolveApproval(approvalId, button) {
     button.disabled = true;
     try {
-      if (state.demo) await new Promise((resolve) => globalScope.setTimeout(resolve, 250));
-      else await request(`/approvals/${encodeURIComponent(approvalId)}/resolve`, { method: 'POST', body: JSON.stringify({ decision }) });
-      const agent = allAgents().find((candidate) => candidate.approval?.id === approvalId);
-      if (agent) { agent.approval = null; agent.status = decision === 'approve' ? 'running' : 'idle'; }
-      state.overview.approvals = state.overview.approvals.filter((approval) => approval.id !== approvalId);
-      renderGroups(); renderOverviewViews();
-      showToast(`${decision === 'approve' ? 'Approved' : 'Rejected'} successfully.`);
+      if (!state.demo) await request(`/approvals/${encodeURIComponent(approvalId)}/resolve`, { method: 'POST', body: JSON.stringify({ decision: 'approve' }) });
+      showToast(state.demo ? 'Preview approval accepted locally.' : 'Approved. The agent can continue on its next heartbeat.');
+      await refresh(true);
+    } catch (error) { button.disabled = false; showToast(`Approval failed: ${error.message}`, true); }
+  }
+
+  async function sendAgentInstruction(agentId, form) {
+    const input = form.querySelector('[name="message"]');
+    const button = form.querySelector('button[type="submit"]');
+    const message = input?.value.trim();
+    if (!message) { input?.reportValidity(); return; }
+    button.disabled = true;
+    input.disabled = true;
+    try {
+      if (state.demo) {
+        const workspace = state.workspaces.get(agentId) || normalizeWorkspace({ agentId });
+        workspace.terminal.push({ timestamp: new Date().toISOString(), status: 'queued', command: 'operator.continue', output: message });
+        workspace.messages.push({ from: 'Operator', message, timestamp: new Date().toISOString() });
+        state.workspaces.set(agentId, workspace);
+      } else {
+        const template = capability('operatorInput')?.endpointTemplate;
+        if (!template) throw new Error('Operator input is unavailable in this runtime.');
+        await request(endpointFromTemplate(template, 'agentId', agentId), { method: 'POST', body: JSON.stringify({ message }) });
+      }
+      input.value = '';
+      showToast('Instruction recorded and queued on the existing agent run.');
+      if (state.demo) renderSelectedAgent();
+      else await refresh(false);
     } catch (error) {
-      const message = decision === 'reject' && error.status === 501 ? 'Reject is not supported by this backend. No approval state was changed.' : `Could not ${decision}: ${error.message}`;
-      showToast(message, true); button.disabled = false;
+      button.disabled = false;
+      input.disabled = false;
+      showToast(`Could not steer agent: ${error.message}`, true);
     }
   }
 
-  function setTab(tabName, focus = false) {
-    if (!TABS.includes(tabName)) return;
-    state.activeTab = tabName;
-    document.querySelectorAll('[role="tab"]').forEach((tab) => { const active = tab.dataset.tab === tabName; tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1; if (active && focus) tab.focus(); });
-    document.querySelectorAll('.tab-panel').forEach((panel) => { panel.hidden = panel.id !== `panel-${tabName}`; });
+  async function createBoardNote() {
+    const dialog = globalScope.document.getElementById('boardNoteDialog');
+    const input = globalScope.document.getElementById('boardNoteInput');
+    const column = globalScope.document.getElementById('boardNoteColumn').value;
+    const wakeCrew = globalScope.document.getElementById('wakeCrewInput').checked;
+    const content = input.value.trim();
+    if (!content) { input.reportValidity(); return; }
+    const button = globalScope.document.getElementById('createBoardNoteSubmit');
+    button.disabled = true;
+    try {
+      if (state.demo) {
+        state.overview.whiteboard.notes.push({ id: `demo-note-${Date.now()}`, column, content, author: 'Operator', createdAt: new Date().toISOString() });
+      } else {
+        const endpoint = capability('whiteboard')?.endpoint;
+        if (!endpoint) throw new Error('Shared-board notes are unavailable in this runtime.');
+        await request(endpoint, { method: 'POST', body: JSON.stringify({ column, content, wakeCrew, targetAgentId: state.selectedAgentId || undefined }) });
+      }
+      dialog.close();
+      dialog.querySelector('form').reset();
+      globalScope.document.getElementById('wakeCrewInput').checked = true;
+      showToast(wakeCrew ? 'Shared note saved and the crew was nudged.' : 'Shared note saved.');
+      if (state.demo) { renderBoard(); setupDialogs(); }
+      else await refresh(false);
+    } catch (error) {
+      button.disabled = false;
+      showToast(`Could not save note: ${error.message}`, true);
+    }
   }
 
-  function openPanel(which) {
-    const nav = document.getElementById('primaryNav'); const inspector = document.getElementById('inspector'); const backdrop = document.getElementById('drawerBackdrop');
-    nav.classList.toggle('open', which === 'nav'); inspector.classList.toggle('open', which === 'inspector'); backdrop.hidden = !which;
-    document.getElementById('navToggle').setAttribute('aria-expanded', String(which === 'nav'));
-  }
-
-  function openProjectDialog() {
-    const dialog = document.getElementById('projectDialog');
-    dialog.showModal();
-    document.getElementById('projectNameInput').focus();
-  }
-
-  function openDeleteProjectDialog() {
-    const project = state.overview?.project;
-    if (!project?.id) return;
-    document.getElementById('deleteProjectMessage').textContent = `Delete ${project.name || 'this project'} and every recorded file in it? Run history remains available for audit.`;
-    document.getElementById('deleteProjectDialog').showModal();
-  }
-
-  function openDeleteArtifactDialog(artifactId, artifactName) {
-    if (!artifactId) return;
-    state.pendingArtifact = { id: artifactId, name: artifactName || 'this file' };
-    document.getElementById('deleteArtifactMessage').textContent = `Delete ${state.pendingArtifact.name} from ${state.overview?.project?.name || 'this project'}?`;
-    document.getElementById('deleteArtifactDialog').showModal();
-  }
-
-  function setupProjectDialog() {
-    const dialog = document.getElementById('projectDialog');
-    const projects = capability('projects');
-    const endpoint = projects?.collectionEndpoint;
-    const submit = document.getElementById('createProjectSubmit');
-    submit.disabled = !capabilityEnabled('projects') || (!endpoint && !state.demo);
-    document.getElementById('projectCapabilityNote').textContent = submit.disabled
-      ? 'Project creation is unavailable because the backend did not advertise a project endpoint.'
-      : 'The new project becomes active. Add an objective now, or create a goal later.';
-    submit.onclick = async (event) => {
-      event.preventDefault();
-      const input = document.getElementById('projectNameInput');
-      const name = input.value.trim();
-      if (!name) { input.reportValidity(); return; }
-      submit.disabled = true;
-      try {
-        if (!state.demo) await request(endpoint, { method: 'POST', body: JSON.stringify({ name, companyGoal: document.getElementById('projectGoalInput').value.trim() }) });
-        dialog.close(); dialog.querySelector('form').reset();
-        showToast(state.demo ? 'Preview project created locally.' : 'Project created and selected.');
-        if (!state.demo) await loadOverview(); else submit.disabled = false;
-        setView('goals');
-      } catch (error) { submit.disabled = false; showToast(`Could not create project: ${error.message}`, true); }
-    };
-  }
-
-  function setupDeleteProjectDialog() {
-    const dialog = document.getElementById('deleteProjectDialog');
-    const submit = document.getElementById('deleteProjectSubmit');
-    const projects = capability('projects');
-    const template = projects?.deleteEndpointTemplate;
-    submit.disabled = !state.overview?.project?.id || !capabilityEnabled('projects') || (!template && !state.demo);
-    submit.onclick = async (event) => {
-      event.preventDefault();
-      const project = state.overview?.project;
-      if (!project?.id || submit.disabled) return;
-      submit.disabled = true;
-      try {
-        if (!state.demo) await request(endpointFromTemplate(template, 'projectId', project.id), { method: 'DELETE' });
-        dialog.close();
-        state.selectedAgent = null; state.workspaces.clear(); state.workspaceErrors.clear(); state.activity.clear();
-        showToast(state.demo ? 'Preview project removed locally.' : `${project.name || 'Project'} and its files were deleted.`);
-        if (!state.demo) await loadOverview(); else submit.disabled = false;
-        setView('goals');
-      } catch (error) { submit.disabled = false; showToast(`Could not delete project: ${error.message}`, true); }
-    };
-  }
-
-  function setupDeleteArtifactDialog() {
-    const dialog = document.getElementById('deleteArtifactDialog');
-    const submit = document.getElementById('deleteArtifactSubmit');
-    const deletion = capability('artifactDeletion');
-    const template = deletion?.endpointTemplate;
-    submit.disabled = !capabilityEnabled('artifactDeletion') || (!template && !state.demo);
-    submit.onclick = async (event) => {
-      event.preventDefault();
-      const artifact = state.pendingArtifact;
-      if (!artifact?.id || submit.disabled) return;
-      submit.disabled = true;
-      try {
-        if (!state.demo) await request(endpointFromTemplate(template, 'artifactId', artifact.id), { method: 'DELETE' });
-        dialog.close(); state.pendingArtifact = null; state.workspaces.clear();
-        showToast(state.demo ? 'Preview file removed locally.' : `${artifact.name} was permanently deleted.`);
-        if (!state.demo) await loadOverview(); else submit.disabled = false;
-      } catch (error) { submit.disabled = false; showToast(`Could not delete file: ${error.message}`, true); }
-    };
-  }
-
-  function setupMutationDialogs() {
-    setupGoalDialog();
-    setupProjectDialog();
-    setupDeleteProjectDialog();
-    setupDeleteArtifactDialog();
-  }
-
-  function setupGoalDialog() {
-    const dialog = document.getElementById('goalDialog');
-    const creation = capability('goalCreation');
-    const endpoint = typeof creation === 'object' ? creation.endpoint : null;
-    const enabled = creation === true || creation?.enabled === true;
-    const submit = document.getElementById('createGoalSubmit');
-    const note = document.getElementById('goalCapabilityNote');
-    const hasProject = Boolean(state.overview?.project?.id);
-    submit.disabled = !hasProject || !enabled || (!endpoint && !state.demo);
-    note.textContent = !hasProject ? 'Create a project first. Goals and coordination heartbeats always belong to a project.' : !enabled ? 'Goal creation is unavailable: this backend did not advertise the goal-creation capability.' : !endpoint && !state.demo ? 'Goal creation is advertised, but no creation endpoint was provided by the backend capability.' : 'This goal will be sent to the configured operations goal endpoint.';
-    const newGoalButton = document.getElementById('newGoalButton');
-    newGoalButton.disabled = !hasProject;
-    newGoalButton.onclick = () => { if (hasProject) dialog.showModal(); else openProjectDialog(); };
-    submit.onclick = async (event) => {
-      if (submit.disabled) { event.preventDefault(); return; }
-      const title = document.getElementById('goalTitleInput').value.trim();
-      if (!title) { event.preventDefault(); document.getElementById('goalTitleInput').reportValidity(); return; }
-      event.preventDefault(); submit.disabled = true;
-      try {
-        if (!state.demo) await request(endpoint, { method: 'POST', body: JSON.stringify({ title, successCriteria: document.getElementById('goalCriteriaInput').value.trim() }) });
-        dialog.close();
-        dialog.querySelector('form').reset();
-        showToast(state.demo ? 'Preview goal captured locally; no live operation was created.' : 'Goal created and coordination heartbeat started.');
-        if (!state.demo) {
-          await loadOverview();
-        } else {
-          submit.disabled = false;
-        }
-        setView('goals');
-      } catch (error) { submit.disabled = false; showToast(`Could not create goal: ${error.message}`, true); }
-    };
+  function setupDialogs() {
+    const project = state.overview.project;
+    const goalCapability = capability('goalCreation');
+    const goalSubmit = globalScope.document.getElementById('createGoalSubmit');
+    const goalEnabled = Boolean(project.id) && capabilityEnabled('goalCreation') && (state.demo || goalCapability?.endpoint);
+    goalSubmit.disabled = !goalEnabled;
+    globalScope.document.getElementById('newGoalButton').disabled = !project.id;
+    globalScope.document.getElementById('goalCapabilityNote').textContent = !project.id ? 'Create a project room first.' : goalEnabled ? 'The mission is sent to the real operations heartbeat.' : 'This runtime has not advertised mission creation.';
+    globalScope.document.getElementById('projectCapabilityNote').textContent = capabilityEnabled('projects') ? 'The room becomes active immediately. Add a mission now or dispatch one later.' : 'Project creation is unavailable in this runtime.';
+    globalScope.document.getElementById('createProjectSubmit').disabled = !capabilityEnabled('projects') && !state.demo;
+    const boardEnabled = Boolean(project.id) && (state.demo || (capabilityEnabled('whiteboard') && capability('whiteboard')?.endpoint));
+    globalScope.document.getElementById('newBoardNoteButton').disabled = !boardEnabled;
+    globalScope.document.getElementById('createBoardNoteSubmit').disabled = !boardEnabled;
+    globalScope.document.getElementById('boardCapabilityNote').textContent = !project.id
+      ? 'Create a project room first.'
+      : boardEnabled
+        ? 'The note is stored in the project session and appears on every agent desk.'
+        : 'This runtime has not advertised durable shared-board notes.';
   }
 
   function bindEvents() {
-    document.getElementById('projectSelect').addEventListener('change', async (event) => {
-      const projectId = event.target.value;
-      const template = capability('projects')?.activateEndpointTemplate;
-      if (!projectId || !template || state.demo) return;
-      event.target.disabled = true;
-      try {
-        await request(endpointFromTemplate(template, 'projectId', projectId), { method: 'POST' });
-        state.selectedAgent = null; state.workspaces.clear(); state.workspaceErrors.clear(); state.activity.clear();
-        await loadOverview();
-        showToast('Active project changed.');
-      } catch (error) { event.target.disabled = false; showToast(`Could not switch projects: ${error.message}`, true); }
+    globalScope.document.getElementById('refreshButton').addEventListener('click', () => refresh(true));
+    globalScope.document.getElementById('newGoalButton').addEventListener('click', () => globalScope.document.getElementById('goalDialog').showModal());
+    globalScope.document.getElementById('newProjectButton').addEventListener('click', () => globalScope.document.getElementById('projectDialog').showModal());
+    globalScope.document.getElementById('newBoardNoteButton').addEventListener('click', () => {
+      const dialog = globalScope.document.getElementById('boardNoteDialog');
+      dialog.showModal();
+      globalScope.document.getElementById('boardNoteInput').focus();
     });
-    document.getElementById('agentSearch').addEventListener('input', (event) => { state.query = event.target.value; if (state.activeView !== 'agents') setView('agents'); renderGroups(); });
-    document.getElementById('primaryNav').addEventListener('click', (event) => {
-      const link = event.target.closest('[data-view]');
-      if (!link) return;
+    globalScope.document.getElementById('crewList').addEventListener('click', (event) => { const card = event.target.closest('[data-agent-id]'); if (card) selectAgent(card.dataset.agentId); });
+    globalScope.document.getElementById('opsFloor').addEventListener('click', (event) => { const station = event.target.closest('[data-agent-id]'); if (station) selectAgent(station.dataset.agentId); });
+    globalScope.document.getElementById('workroomTabs').addEventListener('click', (event) => { const tab = event.target.closest('[data-panel]'); if (tab) setPanel(tab.dataset.panel); });
+    globalScope.document.getElementById('workroomTabs').addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
-      setView(link.dataset.view);
+      const current = PANELS.indexOf(state.activePanel);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? PANELS.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + PANELS.length) % PANELS.length;
+      setPanel(PANELS[next], true);
     });
-    document.getElementById('fleetContent').addEventListener('click', (event) => {
-      const projectButton = event.target.closest('.view-new-project');
-      if (projectButton) { openProjectDialog(); return; }
-      const deleteProjectButton = event.target.closest('.view-delete-project');
-      if (deleteProjectButton) { openDeleteProjectDialog(); return; }
-      const deleteArtifactButton = event.target.closest('[data-delete-artifact]');
-      if (deleteArtifactButton) { openDeleteArtifactDialog(deleteArtifactButton.dataset.deleteArtifact, deleteArtifactButton.dataset.artifactName); return; }
-      const goalButton = event.target.closest('.view-new-goal');
-      if (goalButton) { document.getElementById('goalDialog').showModal(); return; }
-      const approvalButton = event.target.closest('[data-approval]');
-      if (approvalButton) resolveApproval(approvalButton.dataset.approval, approvalButton.dataset.decision, approvalButton);
+    globalScope.document.getElementById('workstationPanels').addEventListener('click', (event) => { const button = event.target.closest('[data-approval-id]'); if (button) resolveApproval(button.dataset.approvalId, button); });
+    globalScope.document.getElementById('workstationPanels').addEventListener('submit', (event) => {
+      const form = event.target.closest('[data-agent-input-form]');
+      if (!form) return;
+      event.preventDefault();
+      sendAgentInstruction(form.dataset.agentId, form);
     });
-    document.getElementById('agentGroups').addEventListener('click', (event) => {
-      const approvalButton = event.target.closest('[data-approval]');
-      if (approvalButton) { event.stopPropagation(); resolveApproval(approvalButton.dataset.approval, approvalButton.dataset.decision, approvalButton); return; }
-      const header = event.target.closest('.group-header');
-      if (header) { const group = header.closest('.agent-group'); group.classList.toggle('collapsed'); header.setAttribute('aria-expanded', String(!group.classList.contains('collapsed'))); return; }
-      const row = event.target.closest('.agent-row'); if (row) selectAgent(row.dataset.agentId);
+    globalScope.document.getElementById('focusDeskButton').addEventListener('click', () => setPanel('desk'));
+    globalScope.document.getElementById('projectSelect').addEventListener('change', async (event) => {
+      const template = capability('projects')?.activateEndpointTemplate;
+      if (!event.target.value || !template || state.demo) return;
+      event.target.disabled = true;
+      try { await request(endpointFromTemplate(template, 'projectId', event.target.value), { method: 'POST' }); state.workspaces.clear(); state.selectedAgentId = null; await refresh(true); } catch (error) { event.target.disabled = false; showToast(`Could not switch rooms: ${error.message}`, true); }
     });
-    document.getElementById('agentGroups').addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.agent-row')) { event.preventDefault(); selectAgent(event.target.dataset.agentId); } });
-    document.getElementById('workspaceTabs').addEventListener('click', (event) => { const tab = event.target.closest('[role="tab"]'); if (tab) setTab(tab.dataset.tab); });
-    document.getElementById('workspaceTabs').addEventListener('keydown', (event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const current = TABS.indexOf(state.activeTab); const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length; setTab(TABS[next], true); });
-    document.getElementById('workspacePanels').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-delete-artifact]');
-      if (button) openDeleteArtifactDialog(button.dataset.deleteArtifact, button.dataset.artifactName);
+    globalScope.document.getElementById('createGoalSubmit').addEventListener('click', async (event) => {
+      event.preventDefault();
+      const titleInput = globalScope.document.getElementById('goalTitleInput');
+      const title = titleInput.value.trim();
+      if (!title) { titleInput.reportValidity(); return; }
+      const button = event.currentTarget; button.disabled = true;
+      try {
+        if (!state.demo) await request(capability('goalCreation').endpoint, { method: 'POST', body: JSON.stringify({ title, successCriteria: globalScope.document.getElementById('goalCriteriaInput').value.trim() }) });
+        globalScope.document.getElementById('goalDialog').close();
+        globalScope.document.getElementById('goalDialog').querySelector('form').reset();
+        showToast('Mission dispatched to the crew.');
+        await refresh(false);
+      } catch (error) { button.disabled = false; showToast(`Could not start mission: ${error.message}`, true); }
     });
-    document.getElementById('takeOverButton').addEventListener('click', () => { const note = document.getElementById('takeoverNote'); const takeOver = capability('takeOver'); note.hidden = false; note.textContent = takeOver ? 'Takeover is advertised, but this release exposes no mutation endpoint. Agent execution continues unchanged.' : 'Takeover is unavailable for this backend. The agent keeps working; no execution state was changed.'; });
-    document.getElementById('navToggle').addEventListener('click', () => openPanel(document.getElementById('primaryNav').classList.contains('open') ? null : 'nav'));
-    document.getElementById('closeInspector').addEventListener('click', () => openPanel(null));
-    document.getElementById('drawerBackdrop').addEventListener('click', () => openPanel(null));
-    document.getElementById('goalToggle').addEventListener('click', () => { const strip = document.getElementById('goalStrip'); strip.classList.toggle('open'); document.getElementById('goalToggle').setAttribute('aria-expanded', String(strip.classList.contains('open'))); });
+    globalScope.document.getElementById('createProjectSubmit').addEventListener('click', async (event) => {
+      event.preventDefault();
+      const nameInput = globalScope.document.getElementById('projectNameInput');
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.reportValidity(); return; }
+      const button = event.currentTarget; button.disabled = true;
+      try {
+        if (!state.demo) await request(capability('projects').collectionEndpoint || '/projects', { method: 'POST', body: JSON.stringify({ name, companyGoal: globalScope.document.getElementById('projectGoalInput').value.trim() }) });
+        globalScope.document.getElementById('projectDialog').close();
+        globalScope.document.getElementById('projectDialog').querySelector('form').reset();
+        state.selectedAgentId = null; state.workspaces.clear();
+        showToast('Project room opened.');
+        await refresh(false);
+      } catch (error) { button.disabled = false; showToast(`Could not open room: ${error.message}`, true); }
+    });
+    globalScope.document.getElementById('createBoardNoteSubmit').addEventListener('click', async (event) => {
+      event.preventDefault();
+      await createBoardNote();
+    });
+    globalScope.document.addEventListener('visibilitychange', () => { if (!globalScope.document.hidden) refresh(false); });
   }
 
   function init() {
     state.demo = new URLSearchParams(globalScope.location.search).get('demo') === '1';
-    const initialView = globalScope.location.hash.replace('#', '');
-    if (['goals', 'agents', 'workflows', 'artifacts', 'approvals', 'messages'].includes(initialView)) state.activeView = initialView;
-    document.getElementById('previewBanner').hidden = !state.demo;
-    bindEvents(); loadOverview();
+    bindEvents();
+    refresh(false);
   }
 
-  const publicApi = { normalizeOverview, normalizeWorkspace, matchesAgent, normalizeAgent, escapeHtml, safeMessageUrl, renderMessageText, renderMessageList, demoOverview };
+  const publicApi = { normalizeOverview, normalizeWorkspace, normalizeAgent, agentStatusClass, buildAgentWorkspaceUrl, safeUrl, escapeHtml, demoOverview };
   if (typeof module !== 'undefined' && module.exports) module.exports = publicApi;
   if (globalScope.document) {
     if (globalScope.document.readyState === 'loading') globalScope.document.addEventListener('DOMContentLoaded', init);

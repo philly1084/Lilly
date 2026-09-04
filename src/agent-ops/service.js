@@ -197,6 +197,42 @@ function normalizeStoredArtifact(artifact = {}, { includeContent = false } = {})
   };
 }
 
+function normalizeWhiteboardNote(message = {}) {
+  const source = asObject(message);
+  const metadata = asObject(source.metadata);
+  if (metadata.kind !== 'agent-whiteboard-note') return null;
+  const column = ['now', 'waiting', 'done'].includes(cleanText(metadata.column, 20))
+    ? cleanText(metadata.column, 20)
+    : 'now';
+  const content = cleanText(source.content || source.message, 1200)
+    .replace(/^\[Shared whiteboard note[^\]]*\]\s*/i, '')
+    .trim();
+  if (!content) return null;
+  return {
+    id: cleanText(source.id, 240) || `whiteboard-${crypto.createHash('sha256').update(`${source.timestamp || ''}:${content}`).digest('hex').slice(0, 16)}`,
+    column,
+    content,
+    author: cleanText(metadata.actor || metadata.author, 160) || 'Operator',
+    targetAgentId: cleanText(metadata.targetAgentId, 160) || null,
+    createdAt: source.timestamp || source.createdAt || null,
+  };
+}
+
+function findSharedWhiteboardPath(workloads = []) {
+  for (const workload of workloads) {
+    const metadata = asObject(workload?.metadata);
+    const agentCompany = asObject(metadata.agentCompany);
+    const longAgent = asObject(metadata.longAgent);
+    const sharedWhiteboard = asObject(agentCompany.sharedWhiteboard);
+    const candidate = cleanText(
+      sharedWhiteboard.path || longAgent.sharedWhiteboardFile,
+      1000,
+    );
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
 function normalizeUsage(run = {}) {
   const usage = asObject(run.usage);
   const input = Number(
@@ -246,6 +282,7 @@ class AgentOpsService {
     agentCompanyService = null,
     workloadService = null,
     agentRunService = null,
+    sessionStore = null,
     artifactStore = null,
     artifactService = null,
     now = () => new Date(),
@@ -253,6 +290,7 @@ class AgentOpsService {
     this.agentCompanyService = agentCompanyService;
     this.workloadService = workloadService;
     this.agentRunService = agentRunService;
+    this.sessionStore = sessionStore;
     this.artifactStore = artifactStore;
     this.artifactService = artifactService;
     this.now = now;
@@ -297,6 +335,14 @@ class AgentOpsService {
     const artifacts = sessionId && typeof this.artifactStore?.listBySession === 'function'
       ? asArray(await this.artifactStore.listBySession(sessionId))
       : [];
+    let sessionMessages = [];
+    if (sessionId && typeof this.sessionStore?.getRecentMessages === 'function') {
+      try {
+        sessionMessages = asArray(await this.sessionStore.getRecentMessages(sessionId, 120));
+      } catch (error) {
+        console.warn('[AgentOps] Session message read failed:', error.message);
+      }
+    }
 
     return {
       companyStatus: asObject(companyStatus),
@@ -304,6 +350,7 @@ class AgentOpsService {
       workloadRuns,
       canonicalRuns,
       artifacts,
+      sessionMessages,
       workloadAvailable,
     };
   }
@@ -435,6 +482,8 @@ class AgentOpsService {
       status,
       runId: canonicalRun?.id || run?.id || null,
       workloadId: workload?.id || null,
+      sessionId: cleanText(workload?.sessionId, 160) || null,
+      canReceiveInput: Boolean(workload?.id && workload?.sessionId),
       ...(run?.metadata?.output?.remoteExecution ? { remoteExecution: run.metadata.output.remoteExecution } : {}),
       needsApproval: Boolean(pendingApproval),
       approval: pendingApproval ? {
@@ -635,6 +684,19 @@ class AgentOpsService {
     };
   }
 
+  buildWhiteboard(workloads = [], sessionMessages = []) {
+    const notes = asArray(sessionMessages)
+      .map(normalizeWhiteboardNote)
+      .filter(Boolean)
+      .sort((left, right) => timestampValue(left.createdAt) - timestampValue(right.createdAt))
+      .slice(-60);
+    return {
+      path: findSharedWhiteboardPath(workloads),
+      sections: ['Claims checked', 'Decisions made', 'Files/artifacts changed', 'Deployment/DNS state', 'Blockers', 'Next agent task'],
+      notes,
+    };
+  }
+
   async buildSnapshot() {
     const sources = await this.loadSources();
     const config = asObject(sources.companyStatus.config);
@@ -696,6 +758,7 @@ class AgentOpsService {
           artifactCount: project.id === activeProject?.id ? projectArtifacts.length : null,
         })),
         workflows,
+        whiteboard: this.buildWhiteboard(companyWorkloads, sources.sessionMessages),
         messages: buildAgentMessages(companyWorkloads, indexes.companyWorkloadRuns),
         artifacts: projectArtifacts,
         approvals: groups.needsInput
@@ -728,6 +791,13 @@ class AgentOpsService {
             endpointTemplate: '/agents/{agentId}/workspace',
             panels: ['activity', 'files', 'editor', 'terminal', 'browser', 'artifacts', 'messages'],
           },
+          operatorInput: typeof this.workloadService?.runWorkloadNow === 'function'
+            && typeof this.sessionStore?.appendMessages === 'function'
+            ? { enabled: true, endpointTemplate: '/agents/{agentId}/input' }
+            : { enabled: false },
+          whiteboard: typeof this.sessionStore?.appendMessages === 'function'
+            ? { enabled: true, endpoint: '/whiteboard/notes' }
+            : { enabled: false },
           stream: false,
         },
       },
@@ -1217,7 +1287,24 @@ class AgentOpsService {
       command: event.type,
       output: [event.title, event.detail].filter(Boolean).join(' — '),
     }));
-    const messages = buildAgentMessages(roleWorkloads, workloadRuns);
+    const agentMessages = buildAgentMessages(roleWorkloads, workloadRuns);
+    const operatorMessages = asArray(snapshot.context.sessionMessages)
+      .filter((message) => {
+        const metadata = asObject(message?.metadata);
+        return metadata.kind === 'agent-operator-input'
+          && cleanText(metadata.targetAgentId, 160) === normalizedId;
+      })
+      .map((message) => ({
+        id: cleanText(message.id, 240) || null,
+        from: cleanText(message?.metadata?.actor, 160) || 'Operator',
+        task: 'Operator instruction',
+        timestamp: message.timestamp || message.createdAt || null,
+        message: cleanText(message.content, 4000).replace(/^\[Operator instruction[^\]]*\]\s*/i, '').trim(),
+        links: [],
+        attachments: [],
+      }));
+    const messages = [...agentMessages, ...operatorMessages]
+      .sort((left, right) => timestampValue(left.timestamp) - timestampValue(right.timestamp));
     const allArtifacts = [...artifacts, ...recordedOutputs];
     const publicLinks = [...new Map(messages.flatMap((message) => message.links).map((link) => [link.url, {
       id: link.url, name: link.label, detail: 'Link reported by agent', url: link.url,
@@ -1248,6 +1335,160 @@ class AgentOpsService {
       browser,
       artifacts: allArtifacts,
       messages,
+      whiteboard: this.buildWhiteboard(roleWorkloads, snapshot.context.sessionMessages),
+      controls: {
+        canReceiveInput: Boolean(roleWorkloads.length > 0
+          && typeof this.workloadService?.runWorkloadNow === 'function'
+          && typeof this.sessionStore?.appendMessages === 'function'),
+      },
+    };
+  }
+
+  async sendAgentInput(agentId = '', input = {}, actor = '') {
+    const normalizedId = cleanText(agentId, 160);
+    const instruction = cleanText(input.message || input.instruction, 4000);
+    if (!instruction) {
+      throw createAgentOpsError('Agent instruction is required.', 400, 'agent_input_required');
+    }
+    if (typeof this.workloadService?.runWorkloadNow !== 'function'
+      || typeof this.sessionStore?.appendMessages !== 'function') {
+      throw createAgentOpsError('Agent input is unavailable in this runtime.', 503, 'agent_input_unavailable');
+    }
+
+    const snapshot = await this.buildSnapshot();
+    const agent = snapshot.context.agents.find((candidate) => candidate.id === normalizedId);
+    if (!agent) {
+      throw createAgentOpsError('Agent not found.', 404, 'agent_not_found');
+    }
+    const roleWorkloads = snapshot.context.companyWorkloads.filter((workload) => (
+      cleanText(getCompanyMetadata(workload).roleId, 160) === normalizedId
+    ));
+    const workload = pickLatest(roleWorkloads);
+    if (!workload?.id || !workload?.sessionId) {
+      throw createAgentOpsError('This agent has no resumable workload session.', 409, 'agent_workload_unavailable');
+    }
+    const workloadRuns = snapshot.context.indexes.companyWorkloadRuns
+      .filter((run) => run.workloadId === workload.id);
+    const workloadRunIds = new Set(workloadRuns.map((run) => run.id));
+    const pendingApproval = snapshot.context.indexes.companyCanonicalRuns
+      .filter((run) => workloadRunIds.has(getCanonicalWorkloadRunId(run)) || getCanonicalWorkloadId(run) === workload.id)
+      .map((run) => this.getPendingApproval(run))
+      .find(Boolean);
+    if (pendingApproval) {
+      throw createAgentOpsError(
+        'Resolve the pending approval before sending a continuation instruction.',
+        409,
+        'agent_input_requires_approval',
+      );
+    }
+
+    const acceptedAt = this.now().toISOString();
+    const normalizedActor = cleanText(actor, 160) || 'admin';
+    const messageId = crypto.randomUUID();
+    await this.sessionStore.appendMessages(workload.sessionId, [{
+      id: messageId,
+      role: 'user',
+      content: `[Operator instruction for ${agent.name}]\n${instruction}`,
+      timestamp: acceptedAt,
+      metadata: {
+        source: 'agent-ops',
+        kind: 'agent-operator-input',
+        actor: normalizedActor,
+        targetAgentId: normalizedId,
+        targetWorkloadId: workload.id,
+      },
+    }]);
+
+    if (workload.enabled === false && typeof this.workloadService.resumeAdminWorkload === 'function') {
+      await this.workloadService.resumeAdminWorkload(workload.id);
+    }
+    const whiteboardPath = findSharedWhiteboardPath([workload]);
+    const run = await this.workloadService.runWorkloadNow(workload.id, workload.ownerId, {
+      reason: 'agent-ops-input',
+      prompt: [
+        workload.prompt,
+        '',
+        '[Operator continuation]',
+        `Operator: ${normalizedActor}`,
+        `Instruction: ${instruction}`,
+        whiteboardPath ? `Read and update the shared whiteboard at ${whiteboardPath} before final handoff.` : null,
+        'Continue the existing owned work. Reuse its files, remote job cursor, evidence, and verified state; do not start a duplicate project.',
+      ].filter(Boolean).join('\n'),
+      idempotencyKey: `agent-ops-input:${messageId}`,
+    });
+    if (!run?.id) {
+      throw createAgentOpsError('The instruction was recorded, but no workload run was queued.', 502, 'agent_input_queue_failed');
+    }
+    return {
+      accepted: true,
+      acceptedAt,
+      messageId,
+      agentId: normalizedId,
+      workloadId: workload.id,
+      sessionId: workload.sessionId,
+      runId: run.id,
+      status: run.status || 'queued',
+    };
+  }
+
+  async createWhiteboardNote(input = {}, actor = '') {
+    const content = cleanText(input.content || input.note, 1200);
+    const column = cleanText(input.column, 20).toLowerCase() || 'now';
+    if (!content) {
+      throw createAgentOpsError('Whiteboard note content is required.', 400, 'agent_whiteboard_note_required');
+    }
+    if (!['now', 'waiting', 'done'].includes(column)) {
+      throw createAgentOpsError('Whiteboard column must be now, waiting, or done.', 400, 'agent_whiteboard_column_invalid');
+    }
+    if (typeof this.sessionStore?.appendMessages !== 'function') {
+      throw createAgentOpsError('Shared whiteboard persistence is unavailable.', 503, 'agent_whiteboard_unavailable');
+    }
+    const snapshot = await this.buildSnapshot();
+    const sessionId = cleanText(snapshot.context.config.sessionId, 160);
+    if (!sessionId || !snapshot.public.project?.id) {
+      throw createAgentOpsError('Create or activate a project before adding a whiteboard note.', 409, 'agent_whiteboard_project_required');
+    }
+    const createdAt = this.now().toISOString();
+    const id = crypto.randomUUID();
+    const normalizedActor = cleanText(actor, 160) || 'admin';
+    const targetAgentId = cleanText(input.targetAgentId, 160) || null;
+    await this.sessionStore.appendMessages(sessionId, [{
+      id,
+      role: 'user',
+      content: `[Shared whiteboard note | ${column}]\n${content}`,
+      timestamp: createdAt,
+      metadata: {
+        source: 'agent-ops',
+        kind: 'agent-whiteboard-note',
+        column,
+        actor: normalizedActor,
+        targetAgentId,
+      },
+    }]);
+
+    let heartbeat = null;
+    let heartbeatWarning = null;
+    if (input.wakeCrew !== false && typeof this.agentCompanyService?.tick === 'function') {
+      try {
+        const status = await this.agentCompanyService.tick({
+          force: true,
+          reason: 'shared-whiteboard-refresh',
+        });
+        heartbeat = status?.state?.heartbeat || null;
+      } catch (error) {
+        heartbeatWarning = cleanText(error?.message, 300) || 'The note was saved, but the crew heartbeat could not be nudged.';
+      }
+    }
+    return {
+      note: normalizeWhiteboardNote({
+        id,
+        content: `[Shared whiteboard note | ${column}]\n${content}`,
+        timestamp: createdAt,
+        metadata: { kind: 'agent-whiteboard-note', column, actor: normalizedActor, targetAgentId },
+      }),
+      sessionId,
+      heartbeat,
+      heartbeatWarning,
     };
   }
 

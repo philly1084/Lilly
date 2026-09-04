@@ -51,8 +51,10 @@ function buildFixture() {
   const workloads = [
     {
       id: 'work-research',
+      ownerId: 'system',
       sessionId: 'agent-company-alpha',
       title: 'Research Agent: Research agent systems',
+      prompt: 'Original research prompt.',
       enabled: true,
       createdAt: '2026-08-30T12:00:00.000Z',
       updatedAt: '2026-08-30T12:58:00.000Z',
@@ -64,13 +66,16 @@ function buildFixture() {
           planItemId: 'plan-research',
           roleId: 'research',
           roleName: 'Research Agent',
+          sharedWhiteboard: { path: '.kimibuilt/agent-company/2026-W35-whiteboard.md' },
         },
       },
     },
     {
       id: 'work-builder',
+      ownerId: 'system',
       sessionId: 'agent-company-alpha',
       title: 'Builder Agent: Build command center',
+      prompt: 'Original builder prompt.',
       enabled: true,
       createdAt: '2026-08-30T12:10:00.000Z',
       updatedAt: '2026-08-30T12:59:00.000Z',
@@ -197,6 +202,13 @@ function buildService() {
   const getSessionSummaries = jest.fn(async () => ({
     'agent-company-alpha': { queued: 0, running: 0 },
   }));
+  const sessionMessages = [];
+  const appendMessages = jest.fn(async (_sessionId, messages) => {
+    sessionMessages.push(...messages);
+    return { id: 'agent-company-alpha' };
+  });
+  const runWorkloadNow = jest.fn(async () => ({ id: 'operator-run-1', status: 'queued' }));
+  const resumeAdminWorkload = jest.fn(async (id) => fixture.workloads.find((workload) => workload.id === id));
   const artifactStore = {
     listBySession: jest.fn(async () => [storedArtifact]),
     get: jest.fn(async (id) => (id === storedArtifact.id ? storedArtifact : null)),
@@ -215,8 +227,14 @@ function buildService() {
       listAdminWorkloads: jest.fn(async () => fixture.workloads),
       listAdminRuns: jest.fn(async () => fixture.workloadRuns),
       getSessionSummaries,
+      runWorkloadNow,
+      resumeAdminWorkload,
     },
     agentRunService,
+    sessionStore: {
+      getRecentMessages: jest.fn(async () => sessionMessages),
+      appendMessages,
+    },
     artifactStore,
     artifactService: { deleteArtifact, deleteArtifactsForSession },
     now: () => new Date('2026-08-30T13:00:00.000Z'),
@@ -232,6 +250,10 @@ function buildService() {
     deleteArtifact,
     deleteArtifactsForSession,
     getSessionSummaries,
+    sessionMessages,
+    appendMessages,
+    runWorkloadNow,
+    resumeAdminWorkload,
   };
 }
 
@@ -388,6 +410,69 @@ describe('AgentOpsService', () => {
       expect.objectContaining({ id: 'artifact-research' }),
     ]));
     expect(workspace.messages.length).toBeGreaterThan(0);
+  });
+
+  test('records operator input in the owned session and queues the same agent workload', async () => {
+    const { service, appendMessages, runWorkloadNow } = buildService();
+
+    const result = await service.sendAgentInput('research', {
+      message: 'Use the current evidence and finish the next verification step.',
+    }, 'admin');
+
+    expect(result).toMatchObject({
+      accepted: true,
+      agentId: 'research',
+      workloadId: 'work-research',
+      sessionId: 'agent-company-alpha',
+      runId: 'operator-run-1',
+      status: 'queued',
+    });
+    expect(appendMessages).toHaveBeenCalledWith('agent-company-alpha', [expect.objectContaining({
+      role: 'user',
+      content: expect.stringContaining('finish the next verification step'),
+      metadata: expect.objectContaining({
+        kind: 'agent-operator-input',
+        targetAgentId: 'research',
+        targetWorkloadId: 'work-research',
+      }),
+    })]);
+    expect(runWorkloadNow).toHaveBeenCalledWith('work-research', 'system', expect.objectContaining({
+      reason: 'agent-ops-input',
+      prompt: expect.stringContaining('.kimibuilt/agent-company/2026-W35-whiteboard.md'),
+      idempotencyKey: expect.stringMatching(/^agent-ops-input:/),
+    }));
+  });
+
+  test('requires the explicit approval path before accepting a continuation instruction', async () => {
+    const { service, appendMessages, runWorkloadNow } = buildService();
+
+    await expect(service.sendAgentInput('builder', { message: 'Continue deployment.' }, 'admin'))
+      .rejects.toMatchObject({ code: 'agent_input_requires_approval', statusCode: 409 });
+    expect(appendMessages).not.toHaveBeenCalled();
+    expect(runWorkloadNow).not.toHaveBeenCalled();
+  });
+
+  test('persists shared whiteboard notes and wakes the dedicated whiteboard heartbeat', async () => {
+    const { service, appendMessages, tick } = buildService();
+
+    const result = await service.createWhiteboardNote({
+      column: 'waiting',
+      content: 'Need public browser proof before promotion.',
+      targetAgentId: 'builder',
+      wakeCrew: true,
+    }, 'admin');
+
+    expect(result.note).toMatchObject({
+      column: 'waiting',
+      content: 'Need public browser proof before promotion.',
+      author: 'admin',
+      targetAgentId: 'builder',
+    });
+    expect(appendMessages).toHaveBeenCalledWith('agent-company-alpha', [expect.objectContaining({
+      role: 'user',
+      metadata: expect.objectContaining({ kind: 'agent-whiteboard-note', column: 'waiting' }),
+    })]);
+    expect(tick).toHaveBeenCalledWith({ force: true, reason: 'shared-whiteboard-refresh' });
   });
 
   test('surfaces a website handoff in overview and Messages without opening its HTML artifact', async () => {

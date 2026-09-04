@@ -94,6 +94,7 @@ app.set('trust proxy', 1);
 app.locals.dashboardController = new DashboardController(null);
 app.locals.asyncLabService = asyncLabService;
 app.locals.agentRunService = agentRunService;
+app.locals.sessionStore = sessionStore;
 setDashboardController(app.locals.dashboardController);
 
 let startupState = {
