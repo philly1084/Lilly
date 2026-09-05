@@ -1404,6 +1404,7 @@ class GameStudioService {
       case 'list-game-productions': return { productions: await this.productions.list(ownerId) };
       case 'inspect-game-production': return this.productions.get(params.productionId, ownerId);
       case 'start-game-production': return this.productions.control(params.productionId, 'start', params, ownerId);
+      case 'save-game-design': return this.productions.control(params.productionId, 'save', params, ownerId);
       case 'resume-game-production': return this.productions.control(params.productionId, 'resume', params, ownerId);
       case 'stop-game-production': return this.productions.control(params.productionId, 'stop', params, ownerId);
       case 'list-templates': return { schema: 'LillyProjectTemplateRegistry/v1', engineVersion: ENGINE_VERSION, templates: PROJECT_TEMPLATES };

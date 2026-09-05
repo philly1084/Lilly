@@ -4,7 +4,7 @@ const { ToolBase } = require('../../ToolBase');
 
 const ACTIONS = [
   'production-capabilities', 'design-game', 'list-game-productions', 'inspect-game-production',
-  'start-game-production', 'resume-game-production', 'stop-game-production',
+  'save-game-design', 'start-game-production', 'resume-game-production', 'stop-game-production',
   'list-templates',
   'create-project',
   'list-projects',
@@ -45,7 +45,7 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '3.4.0',
+      version: '3.4.1',
       description: 'Create complete multi-genre browser games as versioned Lilly projects. Author linked prefab instances and variants, shared gameplay data assets, component controllers, typed capability-sandboxed modules, deterministic tests, scenes, Blueprints, assets, animation, and terrain; select versioned development or release build profiles; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {

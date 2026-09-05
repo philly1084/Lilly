@@ -104,6 +104,11 @@ class GameProductionService {
   async launch(value, planning = false) {
     if (this.jobs.has(value.id)) throw error('PRODUCTION_BUSY', 'This game build is already running.');
     const lease = await this.lease(value.id);
+    // A design save may have won the lease after control read this revision.
+    try {
+      const latest = await this.read(value.id, value.ownerId);
+      if (!latest || latest.revision !== value.revision) throw error('REVISION_CONFLICT', 'The game design changed. Refresh before continuing.');
+    } catch (e) { await lease.close(); throw e; }
     this.leases.set(value.id, lease);
     value.status = planning ? 'planning' : 'building';
     delete value.error;
@@ -153,12 +158,27 @@ class GameProductionService {
   async control(id, action, input, owner) {
     const current = await this.get(id, owner);
     if (!current) return null;
+    if (action === 'save') {
+      const lease = await this.lease(id);
+      this.leases.set(id, lease);
+      try {
+        const latest = await this.read(id, owner);
+        if (!latest) return null;
+        if (latest.status !== 'review' || latest.projectId) throw invalid('Only a game design awaiting review can be saved. Edit the generated project after building starts.');
+        if (input.revision !== latest.revision) throw error('REVISION_CONFLICT', 'The game design changed. Refresh before continuing.');
+        const plan = validatePlan(input.plan);
+        const team = routing({ models: { ...latest.models, ...input.models }, taskModels: input.taskModels ?? latest.taskModels, concurrency: input.concurrency ?? latest.concurrency });
+        Object.assign(latest, team, { plan });
+        await this.save(latest, 'Game design and model team saved. Ready to build when you are.');
+        return this.view(latest);
+      } finally { await lease.close(); this.leases.delete(id); }
+    }
     const value = await this.read(id, owner);
     if (action === 'stop') {
       await fs.writeFile(path.join(this.directory(id), 'stop'), 'stop');
       return { ...current, status: active(current.status) ? 'stopping' : current.status };
     }
-    if (!['start', 'resume'].includes(action)) throw invalid('Use start, resume or stop.');
+    if (!['start', 'resume'].includes(action)) throw invalid('Use save, start, resume or stop.');
     if (active(current.status)) throw error('PRODUCTION_BUSY', 'This game build is already running.');
     if (current.status === 'ready') return current;
     if (input.revision !== current.revision) throw error('REVISION_CONFLICT', 'The game design changed. Refresh before continuing.');

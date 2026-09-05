@@ -66,5 +66,5 @@ export const productionApi = {
   list: () => request<{ productions: GameProduction[] }>('/api/game-studio/productions'),
   get: (id: string) => request<GameProduction>(`/api/game-studio/productions/${encodeURIComponent(id)}`),
   create: (input: { brief: string; models: Record<string, string>; concurrency: number }) => request<GameProduction>('/api/game-studio/productions', { method: 'POST', body: JSON.stringify(input) }),
-  control: (id: string, action: 'start' | 'resume' | 'stop', input: Record<string, unknown>) => request<GameProduction>(`/api/game-studio/productions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(input) }),
+  control: (id: string, action: 'save' | 'start' | 'resume' | 'stop', input: Record<string, unknown>) => request<GameProduction>(`/api/game-studio/productions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(input) }),
 };

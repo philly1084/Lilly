@@ -21,6 +21,43 @@ async function start(input = {}) {
   return draft;
 }
 
+test('reviewed designs and team choices persist without launching workers or creating projects', async () => {
+  const draft = await studio.productions.create({ brief: 'Save a design for later', plan }, 'owner');
+  const edited = { ...plan, name: 'Saved woodland game', winCondition: 'Reach the beacon with every seed.' };
+  const saved = await studio.executeToolAction('save-game-design', { productionId: draft.id, revision: draft.revision, plan: edited, models: { asset: 'future-asset-model' }, concurrency: 4 }, { userId: 'owner' });
+  expect(saved.status).toBe('review');
+  expect(saved.revision).toBe(draft.revision + 1);
+  expect(saved.projectId).toBeNull();
+  expect(studio.complete).not.toHaveBeenCalled();
+  expect(studio.productions.jobs.size).toBe(0);
+  const reopened = await studio.productions.get(draft.id, 'owner');
+  expect(reopened.plan.name).toBe(edited.name);
+  expect(reopened.plan.winCondition).toBe(edited.winCondition);
+  expect(reopened.models.asset).toBe('future-asset-model');
+  expect(reopened.concurrency).toBe(4);
+  expect(await studio.listProjects('owner')).toHaveLength(0);
+  expect(await studio.productions.get(draft.id, 'another-owner')).toBeNull();
+});
+
+test('stale saves and a start racing a saved revision cannot overwrite reviewed work', async () => {
+  const draft = await studio.productions.create({ brief: 'Concurrent review', plan }, 'owner');
+  const stale = await studio.productions.read(draft.id, 'owner');
+  await studio.productions.control(draft.id, 'save', { revision: draft.revision, plan: { ...plan, name: 'Latest design' } }, 'owner');
+  await expect(studio.productions.control(draft.id, 'save', { revision: draft.revision, plan }, 'owner')).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  await expect(studio.productions.launch(stale)).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  expect((await studio.productions.get(draft.id, 'owner')).plan.name).toBe('Latest design');
+  expect(studio.complete).not.toHaveBeenCalled();
+  await expect(fs.stat(path.join(studio.productions.directory(draft.id), 'lease'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+test('invalid design saves leave the previous plan and revision intact and release ownership', async () => {
+  const draft = await studio.productions.create({ brief: 'Validate before save', plan }, 'owner');
+  await expect(studio.productions.control(draft.id, 'save', { revision: draft.revision, plan: { ...plan, coreLoop: [] } }, 'owner')).rejects.toMatchObject({ code: 'GAME_PLAN_INVALID' });
+  expect(await studio.productions.get(draft.id, 'owner')).toEqual(draft);
+  const saved = await studio.productions.control(draft.id, 'save', { revision: draft.revision, plan }, 'owner');
+  expect(saved.status).toBe('review');
+});
+
 test('brief -> reviewed design -> independent models -> saved game, executable mechanics and immutable player', async () => {
   const draft = await studio.productions.create({ brief: 'Make a treasure hunt', models: { director: 'future-director', asset: 'future-model-builder', gameplay: 'codex-worker' }, concurrency: 3 }, 'owner');
   const designed = await finished(draft.id);
