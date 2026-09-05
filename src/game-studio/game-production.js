@@ -301,6 +301,7 @@ class GameProductionService {
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
+      await this.studio.writeJsonAtomic(path.join(this.directory(value.id), 'scene-response.json'), { model: entry.model, attempt: attempt + 1, at: now(), response: String(response).slice(0, 256000) });
       try {
         const { commands } = parseLenientJson(String(response)) || {};
         validateSceneCommands(this.studio, project, commands, value.plan);
@@ -311,7 +312,7 @@ class GameProductionService {
       } catch (e) {
         if (attempt) throw e;
         feedback = `\nThe previous scene failed validation: ${String(e.message).slice(0, 2000)}. Return corrected complete commands. Previous response: ${String(response).slice(0, 24000)}`;
-        await this.save(value, 'Scene builder is repairing validation errors.', entry.id);
+        await this.save(value, `Scene builder is repairing validation errors: ${String(e.message).slice(0, 700)}`, entry.id);
       }
     }
   }

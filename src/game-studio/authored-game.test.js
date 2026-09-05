@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { GameStudioService } = require('./service');
 const { validatePlan, routing } = require('./game-plan');
+const { validateSceneCommands } = require('./scene-author');
 const { plan, response, scene, gameplay } = require('./test-fixtures/authored-game');
 jest.setTimeout(60000);
 let root, studio;
@@ -20,6 +21,32 @@ async function build(input = {}) {
   await studio.productions.jobs.get(draft.id);
   return studio.productions.get(draft.id, 'owner');
 }
+
+test('scene validation distinguishes missing commands, excessive counts and unsupported operations', () => {
+  expect(() => validateSceneCommands(null, null, undefined, plan)).toThrow('commands array');
+  expect(() => validateSceneCommands(null, null, Array(101).fill({ operation: 'entity.create' }), plan)).toThrow('101 commands');
+  expect(() => validateSceneCommands(null, null, [{ op: 'entity.create' }], plan)).toThrow('operation, not op or action');
+  expect(() => validateSceneCommands(null, null, [{ operation: 'scene.create' }, { operation: 'mesh.create' }], plan)).toThrow('Scene command 2 uses unsupported operation "mesh.create"');
+});
+
+test('scene repair receives precise diagnostics and retains the generated scene response', async () => {
+  let sceneCalls = 0;
+  studio.complete.mockImplementation(async prompt => {
+    if (prompt.startsWith("You are Lilly's original scene builder")) {
+      sceneCalls++;
+      if (sceneCalls === 1) return JSON.stringify({ commands: [{ operation: 'mesh.create' }] });
+      expect(prompt).toContain('Scene command 1 uses unsupported operation "mesh.create"');
+      expect(prompt).toContain("payload:{runtimeProfile:'module-driven',mobileMode:'author-play'}");
+    }
+    return response(prompt);
+  });
+  const result = await build({ models: { level: 'scene-specialist' } });
+  expect(result.status).toBe('ready');
+  expect(result.events.some(event => event.message.includes('unsupported operation "mesh.create"'))).toBe(true);
+  const retained = JSON.parse(await fs.readFile(path.join(studio.productions.directory(result.id), 'scene-response.json'), 'utf8'));
+  expect(retained).toMatchObject({ model: 'scene-specialist', attempt: 2 });
+  expect(JSON.parse(retained.response).commands).toEqual(scene().commands);
+});
 
 test('blank project becomes an original game with its own world, rules, targeted GLB and four passing specs', async () => {
   const create = jest.spyOn(studio, 'createProject');
