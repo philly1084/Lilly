@@ -44,7 +44,9 @@ describe('ConversationRunService', () => {
         executeConversationRuntime.mockResolvedValue({ handledPersistence: true, response: {
             id: 'response', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Inspected environment.' }] }], metadata: { toolEvents: [] },
         } });
-        const sessionStore = { get: jest.fn(), update: jest.fn(), getOwned: jest.fn(), appendMessages: jest.fn() };
+        const sessionStore = { get: jest.fn(), update: jest.fn(), getOwned: jest.fn(), appendMessages: jest.fn(),
+            listMessages: jest.fn(async () => [{ content: 'Use the existing published app.', metadata: { kind: 'agent-whiteboard-note' } }]),
+        };
         const service = new ConversationRunService({ app: { locals: {} }, sessionStore, memoryService: {} });
         await service.runChatTurn({ sessionId: 'shared', ownerId: 'owner', message: 'Inspect workspace', model: 'gpt-5.6-luna', reasoningEffort: 'high',
             session: { id: 'shared', previousResponseId: 'old-response', metadata: { remoteCliAgent: { cwd: '/opt/stale' } } },
@@ -52,6 +54,7 @@ describe('ConversationRunService', () => {
         });
         expect(runner.listRemoteAgentTargets).toHaveBeenCalled();
         expect(buildInstructionsWithArtifacts.mock.calls.at(-1)[1]).toContain('k3s-secondary: default cwd /opt/kimibuilt');
+        expect(buildInstructionsWithArtifacts.mock.calls.at(-1)[1]).toContain('Use the existing published app.');
         const request = executeConversationRuntime.mock.calls.at(-1)[1];
         expect(request).toMatchObject({ previousResponseId: null, loadRecentMessages: false, loadContextMessages: false, toolContext: { reasoningEffort: 'high' } });
         expect(request.session.metadata.remoteCliAgent).toBeUndefined();

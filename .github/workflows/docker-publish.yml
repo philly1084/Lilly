@@ -61,6 +61,9 @@ jobs:
           npm test -- --runInBand --coverage=false --runTestsByPath \
             src/agent-ops/execution-contract.test.js \
             src/agent-ops/messages.test.js \
+            src/agent-ops/collaboration-context.test.js \
+            src/conversation-run-service.test.js \
+            frontend/agent-ops/js/agent-ops.test.js \
             src/remote-cli/workspace-contract.test.js \
             src/workloads/long-agent-mode.test.js \
             src/workloads/service.test.js \

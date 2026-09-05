@@ -3,6 +3,7 @@
 const { ensureRuntimeToolManager } = require('./runtime-tool-manager');
 const { executeConversationRuntime } = require('./runtime-execution');
 const { buildCompanyExecutionGuide, createCompanySessionView } = require('./agent-ops/execution-contract');
+const { loadCollaborationContext } = require('./agent-ops/collaboration-context');
 const {
     buildInstructionsWithArtifacts,
     buildArtifactCompletionMessage,
@@ -195,6 +196,13 @@ class ConversationRunService {
             }
         }
         const sessionIsolation = isSessionIsolationEnabled(metadata, resolvedSession);
+        const collaborationContext = await loadCollaborationContext({
+            sessionStore: this.sessionStore,
+            workloadService: this.app?.locals?.agentWorkloadService,
+            sessionId,
+            ownerId,
+            metadata,
+        });
         const managedAppsSummary = this.app?.locals?.managedAppService?.buildPromptSummary
             ? await this.app.locals.managedAppService.buildPromptSummary({
                 ownerId,
@@ -215,6 +223,7 @@ class ConversationRunService {
                     targets: companyTargets, targetDiscoveryError,
                 }) : '',
                 metadata.agentCompanyRun === true ? metadata.companyRunContext || '' : '',
+                collaborationContext,
             ].filter(Boolean).join('\n\n'),
             [],
         );

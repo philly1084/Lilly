@@ -587,7 +587,7 @@ describe('AgentOpsService', () => {
     });
     expect(appendMessages).toHaveBeenCalledWith('agent-company-alpha', [expect.objectContaining({
       role: 'user',
-      metadata: expect.objectContaining({ kind: 'agent-whiteboard-note', column: 'waiting' }),
+      metadata: expect.objectContaining({ kind: 'agent-whiteboard-note', column: 'waiting', companyGoalHash: 'goal-alpha' }),
     })]);
     expect(tick).toHaveBeenCalledWith({ force: true, reason: 'shared-whiteboard-refresh' });
   });

@@ -373,6 +373,17 @@ a { color: inherit; }
 .workstation-panels { min-height: 0; flex: 1; }
 .workstation-panel { height: 100%; min-height: 240px; overflow: auto; background: #070c13; }
 .terminal-panel { padding: 0; }
+.crew-conversation { padding: 16px; color: #e7eef6; background: #0b121c; }
+.crew-message { padding: 14px 0; overflow-wrap: anywhere; }
+.crew-message + .crew-message { border-top: 1px solid #334459; }
+.crew-message header { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.crew-message header span, .crew-message time { color: #afc0d2; font-size: 11px; }
+.crew-message p { margin: 10px 0; white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+.crew-message-links { display: flex; flex-wrap: wrap; gap: 12px; }
+.crew-message-links a { color: #91e7ff; text-decoration: underline; }
+.crew-run-details { color: #c5d2de; background: #0b121c; }
+.crew-run-details summary { padding: 14px 16px; cursor: pointer; }
+.crew-run-details summary:focus-visible, .crew-message-links a:focus-visible { outline: 2px solid #91e7ff; outline-offset: 3px; }
 .terminal-approval {
   display: flex;
   align-items: center;

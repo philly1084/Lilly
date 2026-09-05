@@ -77,6 +77,7 @@
     activePanel: 'console',
     workspaces: new Map(),
     workspaceErrors: new Map(),
+    messageDrafts: new Map(),
     refreshTimer: null,
     refreshing: false,
     hasLoaded: false,
@@ -295,6 +296,11 @@
 
   function renderTerminal(agent, workspace) {
     const panel = globalScope.document.getElementById('panel-console');
+    const oldInput = panel.querySelector('[name="message"]');
+    const restoreFocus = oldInput === globalScope.document.activeElement
+      && oldInput?.closest('form')?.dataset.agentId === agent.id;
+    const selection = restoreFocus ? [oldInput.selectionStart, oldInput.selectionEnd] : null;
+    const draftKey = `${state.overview.project.id}:${agent.id}`;
     const error = state.workspaceErrors.get(agent.id);
     if (error) {
       panel.innerHTML = `<div class="error-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><h3>Run log unavailable</h3><p>${escapeHtml(error)}</p></div>`;
@@ -319,13 +325,22 @@
         ? 'Your instruction is recorded in this agent’s session and wakes the same workload.'
         : 'This runtime has not advertised operator input for this agent.';
     const composer = `<form class="operator-console" data-agent-input-form data-agent-id="${escapeHtml(agent.id)}"><label for="operator-input-${escapeHtml(slug(agent.id))}">Message ${escapeHtml(agent.name)}<textarea id="operator-input-${escapeHtml(slug(agent.id))}" name="message" rows="2" maxlength="4000" required placeholder="Continue this run with…"${canReceiveInput && inputEndpoint ? '' : ' disabled'}></textarea></label><button class="primary-button" type="submit"${canReceiveInput && inputEndpoint ? '' : ' disabled'}><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Send to run</button><p class="operator-console-note">${escapeHtml(inputNote)}</p></form>`;
-    if (!items.length) {
-      panel.innerHTML = `${approvalHtml}<div class="empty-panel"><i class="fa-solid fa-terminal" aria-hidden="true"></i><h3>No terminal events recorded</h3><p>The agent desk is live, but this runtime has not published command events yet.</p></div>${composer}`;
-      return;
-    }
+    const conversation = workspace.messages.length ? workspace.messages.map((item) => {
+      const links = [...asArray(item.links), ...asArray(item.attachments)]
+        .filter((link) => safeUrl(link.url))
+        .map((link) => `<a href="${escapeHtml(safeUrl(link.url))}" target="_blank" rel="noopener">${escapeHtml(link.label || 'Open result')}</a>`).join('');
+      return `<article class="crew-message"><header><strong>${escapeHtml(item.from || agent.name)}</strong><span>${escapeHtml(item.status || item.task || '')}</span><time>${escapeHtml(formatTime(item.timestamp))}</time></header><p>${escapeHtml(item.message || '')}</p>${links ? `<div class="crew-message-links">${links}</div>` : ''}</article>`;
+    }).join('') : '<div class="empty-compact">Message this teammate to continue the mission. Replies and linked results will appear here.</div>';
     const lines = items.map((item) => `<span class="timestamp">[${escapeHtml(formatTime(item.timestamp))}]</span> <span class="command">${escapeHtml(item.command || item.status || 'event')}</span>\n${escapeHtml(item.output || '')}`).join('\n\n');
-    panel.innerHTML = `${approvalHtml}<div class="terminal-toolbar"><span>crew/${escapeHtml(slug(agent.id))}</span><span>${items.length} recorded events · auto-following</span></div><pre class="terminal-buffer">${lines}\n\n<span class="timestamp">[${escapeHtml(formatTime(state.lastSyncAt))}]</span> watching for the next heartbeat<span class="terminal-cursor" aria-hidden="true"></span></pre>${composer}`;
-    panel.querySelector('.terminal-buffer')?.scrollTo?.({ top: panel.querySelector('.terminal-buffer').scrollHeight });
+    const logsOpen = panel.querySelector('.crew-run-details')?.open === true;
+    panel.innerHTML = `${approvalHtml}<section class="crew-conversation" aria-label="Conversation with ${escapeHtml(agent.name)}">${conversation}</section>${composer}<details class="crew-run-details"${logsOpen ? ' open' : ''}><summary>Run details · ${items.length} recorded events</summary><pre class="terminal-buffer">${lines || 'No run events recorded yet.'}</pre></details>`;
+    const newInput = panel.querySelector('[name="message"]');
+    newInput.value = state.messageDrafts.get(draftKey) || '';
+    newInput.addEventListener('input', () => state.messageDrafts.set(draftKey, newInput.value));
+    if (restoreFocus && !newInput.disabled) {
+      newInput.focus({ preventScroll: true });
+      newInput.setSelectionRange(...selection);
+    }
   }
 
   function renderDesk(agent) {
@@ -570,6 +585,7 @@
         await request(endpointFromTemplate(template, 'agentId', agentId), { method: 'POST', body: JSON.stringify({ message }) });
       }
       input.value = '';
+      state.messageDrafts.delete(`${state.overview.project.id}:${agentId}`);
       showToast('Instruction recorded and queued on the existing agent run.');
       if (state.demo) renderSelectedAgent();
       else await refresh(false);

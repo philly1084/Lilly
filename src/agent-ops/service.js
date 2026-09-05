@@ -1452,6 +1452,7 @@ class AgentOpsService {
         actor: normalizedActor,
         targetAgentId: normalizedId,
         targetWorkloadId: workload.id,
+        companyGoalHash: getCompanyMetadata(workload).companyGoalHash || null,
       },
     }]);
 
@@ -1582,6 +1583,7 @@ class AgentOpsService {
       metadata: {
         source: 'agent-ops',
         kind: 'agent-whiteboard-note',
+        companyGoalHash: snapshot.context.state?.companyGoalHash || snapshot.context.config.companyGoalHash || null,
         column,
         actor: normalizedActor,
         targetAgentId,

@@ -168,8 +168,36 @@ describe('Agent Workroom interactions', () => {
     });
     dom.window.eval(script);
     dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
-    return { dom, overview };
+    return { dom, overview, workspaces };
   }
+
+  test('shows real replies and safe result links in the conversation while preserving a draft through sync', async () => {
+    const { dom, workspaces } = createWorkroom();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    workspaces.builder.messages = [{ from: 'Mira', message: 'Verified <script>bad()</script>', status: 'completed',
+      links: [{ label: 'Open app', url: 'https://example.test/app' }, { label: 'Unsafe', url: 'javascript:bad()' }],
+      attachments: [{ label: 'Source', url: '/api/artifacts/source/download' }],
+    }];
+    dom.window.document.querySelector('[data-agent-id="builder"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const panel = dom.window.document.getElementById('panel-console');
+    expect(panel.querySelector('.crew-message').textContent).toContain('Verified <script>bad()</script>');
+    expect(panel.querySelector('.crew-message script')).toBeNull();
+    expect(panel.querySelectorAll('.crew-message a')).toHaveLength(2);
+    expect(panel.querySelector('.crew-run-details').open).toBe(false);
+    const input = panel.querySelector('textarea');
+    input.value = 'Keep the existing app and review it.';
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    input.focus();
+    input.setSelectionRange(5, 8);
+    dom.window.document.getElementById('refreshButton').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const refreshed = panel.querySelector('textarea');
+    expect(refreshed.value).toBe('Keep the existing app and review it.');
+    expect(dom.window.document.activeElement).toBe(refreshed);
+    expect([refreshed.selectionStart, refreshed.selectionEnd]).toEqual([5, 8]);
+    dom.window.close();
+  });
 
   test('renders a live game floor, terminal, whiteboard, handoff, and artifact shelf', async () => {
     const { dom } = createWorkroom();

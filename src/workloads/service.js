@@ -1075,6 +1075,7 @@ class AgentWorkloadService {
                         workloadRun: true,
                         agentCompanyRun: workload.metadata?.agentCompany?.enabled === true,
                         companyGoalHash: workload.metadata?.agentCompany?.companyGoalHash || null,
+                        companyRoleId: workload.metadata?.agentCompany?.roleId || null,
                         companyRemoteExecution: workload.metadata?.companyRemoteExecution || null,
                         companyRunContext: workload.metadata?.agentCompany?.enabled === true ? message : null,
                         subAgentDepth,
