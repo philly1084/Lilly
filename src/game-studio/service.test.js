@@ -63,7 +63,7 @@ describe('GameStudioService', () => {
     expect(build).toMatchObject({ status: 'success', engineVersion: '0.7.0', buildProfileId: 'release' });
     const html = await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'index.html'), 'utf8');
     const manifest = JSON.parse(await fs.readFile(path.join(service.buildRoot, build.workspaceId, 'build-manifest.json'), 'utf8'));
-    expect(html).toContain('Lilly module-driven runtime');
+    expect(html).toContain('Made with Lilly');
     expect(html).not.toContain('Lilly generated expedition');
     expect(manifest).toMatchObject({ engineVersion: '0.7.0', buildProfileId: 'release', moduleCount: 1, systemCount: 1, mechanicTestCount: 1 });
   }, 20_000);

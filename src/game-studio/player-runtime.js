@@ -859,7 +859,7 @@ function updateObjective() {
     const authoredObjective = sceneData?.entities
       .flatMap((entity) => entity.components || [])
       .find((entry) => entry.type === 'UIAnchor' && entry.enabled !== false && String(entry.data?.text || '').trim());
-    objective.textContent = String(authoredObjective?.data?.text || 'Module-driven game running. Author behavior with components, Blueprints, and typed systems.');
+    objective.textContent = String(authoredObjective?.data?.text || 'Explore the scene. Use the controls below to move or restart.');
     setStatus('Playing');
     return;
   }
@@ -1556,7 +1556,7 @@ async function start() {
     moduleHost = await createModuleHost(moduleBundle);
     if (moduleHost) {
       await moduleHost.emit('start', { delta: 0, input: moduleInputSnapshot(), world: moduleWorldSnapshot() });
-      setStatus(`${moduleHost.systems.length} systems ready`, 'success');
+      setStatus('Ready', 'success');
     }
     restoreSave();
     loading.hidden = true;

@@ -9,11 +9,11 @@ export function AiPanel() {
   return <aside className="ai-panel level-director-panel">
     <header>
       <div className="ai-mark"><Icon name="spark"/></div>
-      <div><span className="panel-kicker">Project-aware creator</span><strong>Lilly AI Game Director</strong></div>
+      <div><span className="panel-kicker">Build games, worlds and assets</span><strong>Lilly AI Game Director</strong></div>
       <button type="button" className="icon-button" onClick={() => setAiOpen(false)} aria-label="Close AI Director"><Icon name="close"/></button>
     </header>
     <div className="ai-context">
-      <span><i className="status-dot"/>Reading the saved project and level topology</span>
+      <span><i className="status-dot"/>Current editor project · whole-game builds create a new project</span>
       <code>{current?.project.name} · r{current?.project.revision}</code>
       <div>
         <small>{design?.metrics.roomCount || 0} rooms</small>
@@ -23,6 +23,6 @@ export function AiPanel() {
       </div>
     </div>
     <LevelCreatorBody/>
-    <footer><Icon name="lock" size={13}/><span>Preview first, then apply. Lilly checks model geometry and project changes before saving a new revision.</span></footer>
+    <footer><Icon name="lock" size={13}/><span>Review your game design or asset preview. Lilly validates generated work before saving it.</span></footer>
   </aside>;
 }

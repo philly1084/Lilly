@@ -82,7 +82,10 @@ export default function App() {
   const [layout, setLayout] = useState(loadLayout);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  useEffect(() => { initialize(); }, [initialize]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('create') === 'game') useStudioStore.getState().setAiOpen(true);
+    initialize();
+  }, [initialize]);
   useEffect(() => { localStorage.setItem('lilly-game-studio:layout', JSON.stringify(layout)); }, [layout]);
   useEffect(() => {
     if (!current?.project.id) return;

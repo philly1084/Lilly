@@ -94,7 +94,7 @@ Usage:
   lilly-game design-game --brief TEXT [--plan game-plan.json] [--models models.json] [--workers 2]
   lilly-game productions
   lilly-game production --run ID
-  lilly-game production-start --run ID --revision N [--plan game-plan.json] [--models models.json]
+  lilly-game production-start --run ID --revision N [--plan game-plan.json] [--models models.json] [--task-models task-models.json]
   lilly-game production-resume --run ID --revision N [--models models.json]
   lilly-game production-stop --run ID
   lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset|environment] [--model ID]
@@ -163,6 +163,7 @@ async function executeCommand(client, command, options) {
       ...(command === 'design-game' ? { brief: required(options, 'brief', command) } : action === 'stop' ? {} : { revision: integer(options, 'revision', command) }),
       ...(options.plan ? { plan: JSON.parse(await fs.readFile(String(options.plan), 'utf8')) } : {}),
       ...(options.models ? { models: JSON.parse(await fs.readFile(String(options.models), 'utf8')) } : {}),
+      ...(options['task-models'] ? { taskModels: JSON.parse(await fs.readFile(String(options['task-models']), 'utf8')) } : {}),
       ...(options.model ? { model: String(options.model) } : {}),
       ...(options.workers ? { concurrency: integer(options, 'workers', command) } : {}),
     } });

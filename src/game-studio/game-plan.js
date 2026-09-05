@@ -9,6 +9,7 @@ const CAPABILITIES = {
   roles: ROLES,
   maxConcurrency: 4,
   maxAssets: 6,
+  foundations: ['authored', 'expedition'],
   stages: [
     { id: 'level', after: [] },
     { id: 'art', after: ['level'], parallel: true },
@@ -17,6 +18,7 @@ const CAPABILITIES = {
     { id: 'verify', after: ['gameplay'], requires: ['compiled modules', 'passing mechanic tests', 'passing playtest', 'immutable build'] },
   ],
   tools: [
+    { id: 'scene', output: 'LillyCommand/v1[]', writes: 'original scenes, entities, camera, player and controls from a blank project' },
     { id: 'level', output: 'LillyLevelRecipe/v1', writes: 'scene topology and core objective' },
     { id: 'environment', output: 'LillyEnvironmentRecipe/v1', writes: 'terrain, atmosphere and reusable scenery GLBs' },
     { id: 'asset', output: 'LillyModelRecipe/v1', writes: 'editable model source and GLB' },
@@ -44,10 +46,14 @@ function validatePlan(input) {
     const id = string(asset.id, 'Asset id', 48);
     if (!/^[a-z][a-z0-9-]*$/.test(id) || ids.has(id)) throw invalid('Asset ids must be unique lowercase slugs.');
     ids.add(id);
-    return { id, name: string(asset.name, 'Asset name', 100), prompt: string(asset.prompt, 'Asset prompt'), placement: ['landmark', 'pickup', 'player'].includes(asset.placement) ? asset.placement : 'landmark' };
+    const targetEntityId = asset.targetEntityId ? string(asset.targetEntityId, 'Asset target entity', 100) : null;
+    return { id, name: string(asset.name, 'Asset name', 100), prompt: string(asset.prompt, 'Asset prompt'), placement: ['landmark', 'pickup', 'player'].includes(asset.placement) ? asset.placement : 'landmark', ...(targetEntityId ? { targetEntityId } : {}) };
   });
+  const foundation = input.foundation || 'expedition';
+  if (!CAPABILITIES.foundations.includes(foundation)) throw invalid('Choose authored or expedition as the game foundation.');
   return {
     schema: PLAN_SCHEMA,
+    foundation,
     name: string(input.name, 'Game name', 100),
     fantasy: string(input.fantasy, 'Player fantasy'),
     artDirection: string(input.artDirection, 'Art direction'),
@@ -57,8 +63,9 @@ function validatePlan(input) {
     controls: list(input.controls, 'Controls'),
     acceptance: list(input.acceptance, 'Playtest checklist'),
     deferred: Array.isArray(input.deferred) ? input.deferred.slice(0, 12).map(entry => string(entry, 'Deferred feature', 500)) : [],
-    levelPrompt: string(input.levelPrompt, 'Level brief'),
-    environmentPrompt: string(input.environmentPrompt, 'Environment brief'),
+    levelPrompt: string(input.levelPrompt || input.scenePrompt, 'Level brief'),
+    ...(foundation === 'authored' ? { scenePrompt: string(input.scenePrompt || input.levelPrompt, 'Original scene brief') } : {}),
+    environmentPrompt: input.environmentPrompt === null ? null : string(input.environmentPrompt, 'Environment brief'),
     gameplayPrompt: string(input.gameplayPrompt, 'Original gameplay brief'),
     assets,
   };
@@ -72,10 +79,17 @@ function routing(input = {}) {
   }
   const concurrency = Number(input.concurrency ?? 2);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > CAPABILITIES.maxConcurrency) throw invalid('Choose 1–4 parallel workers.');
-  return { models, concurrency };
+  const taskModels = {};
+  if (input.taskModels !== undefined && (!input.taskModels || typeof input.taskModels !== 'object' || Array.isArray(input.taskModels))) throw invalid('Task models must map task ids to connected model ids.');
+  for (const [id, model] of Object.entries(input.taskModels || {})) {
+    if (!/^(level|environment|gameplay|asset-[a-z][a-z0-9-]{0,47})$/.test(id) || typeof model !== 'string' || model.length > 160) throw invalid('Task models must name level, environment, gameplay or a planned asset task.');
+    taskModels[id] = model;
+  }
+  if (Object.keys(taskModels).length > 9) throw invalid('There can be at most nine task model overrides.');
+  return { models, taskModels, concurrency };
 }
 function designPrompt(brief) {
-  return `You are Lilly's game director. Design a complete, small, playable browser game from this brief. Return JSON only using ${PLAN_SCHEMA}. Build a coherent player fantasy, core loop, win/loss/restart, controls, art bible, level brief, environment brief, and one original gameplay mechanic with deterministic tests. The level tool provides connected third-person rooms, pickups, checkpoints, hazards, simple guardian combat and an exit. Other mechanics are authored in capability-sandboxed TypeScript. Stay within actual capabilities: ${JSON.stringify(CAPABILITIES)}. Explicitly put unsupported requested features in deferred, never pretend they are implemented. Keep the game achievable in one playable level. Environment is outdoor scenery around the level. Choose 1–4 distinct original hero props; model workers run independently with the same art direction. No model/provider names in the plan. Required shape: {schema,name,fantasy,artDirection,coreLoop:[string],winCondition,loseCondition,controls:[string],acceptance:[specific human playtest steps],deferred:[string],levelPrompt,environmentPrompt,gameplayPrompt,assets:[{id:lowercase-slug,name,prompt,placement:landmark|pickup|player}]}. Describe proportions in meters, Y-up and consistent colors. Keep individual prompts under 2000 characters. User brief: ${JSON.stringify(brief)}`;
+  return `You are Lilly's game director. Design a complete playable browser game from this brief, preserving the requested genre and core experience. Return JSON only using ${PLAN_SCHEMA}. Build a coherent player fantasy, core loop, win/loss/restart, controls, art bible and gameplay systems with deterministic tests. Choose foundation authored for original games: a scene builder starts from an EMPTY project, creates the actual camera, player, world geometry and input map; a gameplay programmer implements the full rules, HUD, win/loss/reset and progression in capability-sandboxed TypeScript. Supply scenePrompt with concrete spatial layout, stable entity ids/tags, camera and controller requirements. Do not convert racing, puzzle, exploration or other ideas into a collect-and-exit game. Choose foundation expedition only when the requested game fits connected third-person rooms, pickups, checkpoints, hazards, guardian combat and an exit; levelPrompt controls its validated room generator. environmentPrompt is optional outdoor scenery around the world; set null for indoor/abstract games. Stay within actual capabilities: ${JSON.stringify(CAPABILITIES)}. Explicitly put unsupported requested features in deferred, never pretend they are implemented. Choose up to six independent model jobs with shared art direction; assets may use targetEntityId to replace a specific scene placeholder mesh, which scenePrompt must name. No model/provider names in the plan. Required shape: {schema,foundation:authored|expedition,name,fantasy,artDirection,coreLoop:[string],winCondition,loseCondition,controls:[string],acceptance:[specific human playtest steps],deferred:[string],levelPrompt,scenePrompt,environmentPrompt:string|null,gameplayPrompt,assets:[{id:lowercase-slug,name,prompt,placement:landmark|pickup|player,targetEntityId?:string}]}. Describe proportions in meters, Y-up and consistent colors. Keep individual prompts under 2000 characters. User brief: ${JSON.stringify(brief)}`;
 }
 
 module.exports = { PLAN_SCHEMA, CAPABILITIES, validatePlan, routing, designPrompt, invalid };

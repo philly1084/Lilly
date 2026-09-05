@@ -46,7 +46,7 @@ function buildIndexHtml(project) {
   const encounterCount = Number(levelDesign?.metrics?.encounterCount || 0);
   const enemyCount = Number(levelDesign?.metrics?.enemyCount || 0);
   const hasAttackAction = (project.inputMap || []).some((binding) => binding.action === 'Attack' || binding.action === 'Fire');
-  const objectiveLabel = escapeHtml(authoredObjective?.data?.text || (runtimeProfile === 'expedition' ? 'Reach the first objective.' : 'Module-driven game ready.'));
+  const objectiveLabel = escapeHtml(authoredObjective?.data?.text || (runtimeProfile === 'expedition' ? 'Reach the first objective.' : 'Explore the scene. Use the controls below to move or restart.'));
   const controlLabel = runtimeProfile === 'expedition' ? 'WASD move · Space attack · R reset' : `WASD move${hasAttackAction ? ' · Space action' : ''} · R reset`;
   return `<!doctype html>
 <html lang="en">
@@ -77,9 +77,9 @@ function buildIndexHtml(project) {
   <div class="hud">
     <div class="hud-row">
       <div class="panel">
-        <div class="eyebrow">${runtimeProfile === 'expedition' ? 'Lilly generated expedition' : 'Lilly module-driven runtime'}</div>
+        <div class="eyebrow">${runtimeProfile === 'expedition' ? 'Lilly generated expedition' : 'Made with Lilly'}</div>
         <div class="level-name" id="level-name">${levelLabel}</div>
-        <div class="score-line">${runtimeProfile === 'expedition' ? `<div class="score"><span id="score-value">0</span> / <span id="score-total">${pickupCount}</span></div><div class="health">Shield <strong id="health-value">3</strong></div>${encounterCount ? `<div class="combat">Guardians <strong id="enemy-value">${enemyCount}</strong></div>` : '<span id="enemy-value" hidden>0</span>'}` : '<div class="runtime-profile">Components + Blueprints + typed systems</div><span id="score-value" hidden>0</span><span id="score-total" hidden>0</span><span id="health-value" hidden>0</span><span id="enemy-value" hidden>0</span>'}</div>
+        <div class="score-line">${runtimeProfile === 'expedition' ? `<div class="score"><span id="score-value">0</span> / <span id="score-total">${pickupCount}</span></div><div class="health">Shield <strong id="health-value">3</strong></div>${encounterCount ? `<div class="combat">Guardians <strong id="enemy-value">${enemyCount}</strong></div>` : '<span id="enemy-value" hidden>0</span>'}` : '<span id="score-value" hidden>0</span><span id="score-total" hidden>0</span><span id="health-value" hidden>0</span><span id="enemy-value" hidden>0</span>'}</div>
         <div class="objective" id="objective">${objectiveLabel}</div>
       </div>
       <div class="status" id="status-pill" data-state="playing">Playing${debugOverlay ? ` · ${escapeHtml(buildProfile?.name || 'Development')}` : ''}</div>

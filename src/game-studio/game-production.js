@@ -8,6 +8,7 @@ const { applyCommandBatch } = require('../../packages/lilly-engine/dist/core/src
 const { compileModuleBundle, assertModuleBundleValid, LILLY_RUNTIME_TYPE_DECLARATIONS } = require('../../packages/lilly-engine/dist/modules/src');
 const { runMechanicTests } = require('./module-runner');
 const { CAPABILITIES, validatePlan, routing, designPrompt, invalid } = require('./game-plan');
+const { sceneAuthorPrompt, validateSceneCommands, validatePlayableScene } = require('./scene-author');
 
 const now = () => new Date().toISOString();
 const error = (code, message, statusCode = 409) => Object.assign(new Error(message), { code, statusCode });
@@ -150,7 +151,7 @@ class GameProductionService {
     if (active(current.status)) throw error('PRODUCTION_BUSY', 'This game build is already running.');
     if (current.status === 'ready') return current;
     if (input.revision !== current.revision) throw error('REVISION_CONFLICT', 'The game design changed. Refresh before continuing.');
-    Object.assign(value, routing({ models: { ...value.models, ...input.models }, concurrency: input.concurrency ?? value.concurrency }));
+    Object.assign(value, routing({ models: { ...value.models, ...input.models }, taskModels: input.taskModels ?? value.taskModels, concurrency: input.concurrency ?? value.concurrency }));
     if (input.plan) {
       if (value.projectId) throw invalid('The design is locked once building starts. Continue editing the generated project instead.');
       value.plan = validatePlan(input.plan);
@@ -168,7 +169,7 @@ class GameProductionService {
   async worker(value, entry, lease, operation) {
     if (entry.status === 'done') return;
     await this.check(value, lease);
-    entry.status = 'running'; entry.attempts += 1; entry.model = value.models[entry.role] || null; delete entry.error;
+    entry.status = 'running'; entry.attempts += 1; entry.model = (value.taskModels?.[entry.id] ?? value.models[entry.role]) || null; delete entry.error;
     await this.save(value, `${entry.name} started.`, entry.id);
     try {
       await operation();
@@ -191,7 +192,7 @@ class GameProductionService {
     let correction = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        entry.output = await this.studio.createAiRun(value.projectId, { mode, prompt: this.brief(value, prompt + correction), model: value.models[entry.role] || null, requireAi: true, baseRevision: project.project.revision, ...extra }, value.ownerId);
+        entry.output = await this.studio.createAiRun(value.projectId, { mode, prompt: this.brief(value, prompt + correction), model: entry.model, requireAi: true, baseRevision: project.project.revision, ...extra }, value.ownerId);
         break;
       } catch (e) {
         // Environment already has its own bounded correction pass; transport failures need manual retry.
@@ -236,24 +237,33 @@ class GameProductionService {
     const { project } = await this.project(value);
     const guide = await fs.readFile(path.join(__dirname, '../../docs/game-studio/agent-programming-architecture.md'), 'utf8');
     const runtime = LILLY_RUNTIME_TYPE_DECLARATIONS;
-    const instruction = `Author the original gameplay feature for ${value.plan.name}: ${value.plan.gameplayPrompt}. Shared design: ${JSON.stringify(value.plan)}. Return JSON only {commands:[...]}. Use ONLY file.upsert and input.replace. All files must be under modules/game/; include a .module.json manifest, at least one .system.ts and a .spec.json with actual capability-action or state assertions, testing success AND reset/cooldown/failure. No prose-only feature. Keep existing input actions and bindings when extending them. Do not change the existing level's core win/loss. JSON file contents are strings. file.upsert shape: {operation:'file.upsert',target:{},payload:{file:{path:'modules/game/game.module.json',content:'...'}}}. input.replace shape: {operation:'input.replace',target:{},payload:{inputMap:...}}. Current input and scene: ${JSON.stringify({ inputMap: project.inputMap, scene: project.scenes.find(s => s.id === project.entryScene) })}. Exact programming guide:\n${guide}\nExact runtime API:\n${runtime}`;
+    const rules = value.plan.foundation === 'authored'
+      ? 'Implement the complete core loop, win/loss, reset, progression and HUD described in the plan. There are NO preset objectives or hidden expedition rules. Native controllers handle movement; your systems own game rules. Include THREE distinct executable tests for win, loss and restart and display controls in a HUD hint. Return coverage:{win:testId,loss:testId,reset:testId} alongside commands, linking these three tests to the implemented rules.'
+      : 'Preserve the existing expedition win/loss while adding the planned original mechanics.';
+    const instruction = `Author the original gameplay feature for ${value.plan.name}: ${value.plan.gameplayPrompt}. ${rules} Shared design: ${JSON.stringify(value.plan)}. Return JSON only {commands:[...]}. Use ONLY file.upsert and input.replace. All files must be under modules/game/; include a .module.json manifest, at least one .system.ts and .spec.json files with actual capability-action or state assertions, testing success AND reset/cooldown/failure. You may compose multiple systems, mechanics, prefabs, materials and animation controllers in this module. No prose-only feature. Keep existing input actions and bindings when extending them. JSON file contents are strings. file.upsert shape: {operation:'file.upsert',target:{},payload:{file:{path:'modules/game/game.module.json',content:'...'}}}. input.replace shape: {operation:'input.replace',target:{},payload:{inputMap:...}}. Current input, assets and scene: ${JSON.stringify({ inputMap: project.inputMap, assets: project.assets.map(a => ({ id: a.id, name: a.name })), scene: project.scenes.find(s => s.id === project.entryScene) })}. Exact programming guide:\n${guide}\nExact runtime API:\n${runtime}`;
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await this.studio.complete(instruction + feedback, { model: value.models.gameplay || null, reasoningEffort: 'high' });
+      const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
       try {
         const parsed = parseLenientJson(String(response));
         const commands = parsed?.commands;
         if (!Array.isArray(commands) || !commands.length || commands.length > 20) throw invalid('Gameplay must return 1–20 source/input commands.');
         for (const command of commands) {
           if (!['file.upsert', 'input.replace'].includes(command.operation)) throw invalid('Gameplay may only author source files and input maps.');
-          if (command.operation === 'file.upsert' && !/^modules\/game\/[a-z0-9-]+\.(module\.json|system\.ts|spec\.json|mechanic\.json)$/.test(command.payload?.file?.path || '')) throw invalid('Gameplay files must use the modules/game/ contract.');
+          if (command.operation === 'file.upsert' && !/^modules\/game\/[a-z0-9-]+\.(module\.json|system\.ts|spec\.json|mechanic\.json|prefab\.json|material\.json|animation\.json|asset\.json|terrain\.json)$/.test(command.payload?.file?.path || '')) throw invalid('Gameplay files must use the modules/game/ contract.');
         }
         const normalized = this.studio.normalizeCommands(project, commands, project.revision);
         const candidate = applyCommandBatch(project, normalized, project.revision).project;
+        if (value.plan.foundation === 'authored') validatePlayableScene(candidate, value.plan);
         const bundle = compileModuleBundle(candidate.files);
         assertModuleBundleValid(bundle);
         const ownTests = bundle.tests.filter(test => test.sourcePath.startsWith('modules/game/'));
         if (!bundle.systems.some(system => system.path.startsWith('modules/game/')) || !ownTests.length || ownTests.some(test => !test.assertions?.length)) throw invalid('Include an executable system and meaningful mechanic tests.');
+        if (value.plan.foundation === 'authored') {
+          const ids = ['win', 'loss', 'reset'].map(key => parsed.coverage?.[key]);
+          if (new Set(ids).size !== 3 || ids.some(id => !ownTests.some(test => test.id === id))) throw invalid('Map coverage.win, coverage.loss and coverage.reset to three distinct executable test ids from your game module.');
+          entry.coverage = parsed.coverage;
+        }
         const actions = new Set(candidate.inputMap.map(binding => binding.action));
         for (const test of ownTests) for (const step of test.steps || []) {
           for (const action of [...Object.keys(step.input?.buttons || {}), ...Object.keys(step.input?.axes || {})]) {
@@ -274,22 +284,43 @@ class GameProductionService {
       }
     }
   }
+  async authorScene(value, entry) {
+    if (entry.output) return;
+    const { project } = await this.project(value);
+    const instruction = sceneAuthorPrompt(value.plan, project);
+    let feedback = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
+      try {
+        const { commands } = parseLenientJson(String(response)) || {};
+        validateSceneCommands(this.studio, project, commands, value.plan);
+        entry.output = await this.studio.createAiRun(value.projectId, { mode: 'edit', baseRevision: project.revision, commands }, value.ownerId);
+        entry.proposalId = entry.output.id;
+        await this.save(value, 'Original scene and controls validated.', entry.id);
+        return;
+      } catch (e) {
+        if (attempt) throw e;
+        feedback = `\nThe previous scene failed validation: ${String(e.message).slice(0, 2000)}. Return corrected complete commands. Previous response: ${String(response).slice(0, 24000)}`;
+        await this.save(value, 'Scene builder is repairing validation errors.', entry.id);
+      }
+    }
+  }
   async execute(value, lease) {
-    if (!value.tasks.length) value.tasks = [task('level', 'level', 'Level and objectives'), task('environment', 'environment', 'Scenery and terrain'), ...value.plan.assets.map(asset => task(`asset-${asset.id}`, 'asset', asset.name)), task('assembly', 'director', 'Scene assembly'), task('gameplay', 'gameplay', 'Original gameplay and tests'), task('verify', 'director', 'Playtest and build')];
+    if (!value.tasks.length) value.tasks = [task('level', 'level', value.plan.foundation === 'authored' ? 'Original world and controls' : 'Level and objectives'), ...(value.plan.environmentPrompt ? [task('environment', 'environment', 'Scenery and terrain')] : []), ...value.plan.assets.map(asset => task(`asset-${asset.id}`, 'asset', asset.name)), task('assembly', 'director', 'Scene assembly'), task('gameplay', 'gameplay', 'Original gameplay and tests'), task('verify', 'director', 'Playtest and build')];
     if (!value.projectId) {
       await this.check(value, lease);
       // Reconcile a crash just after project creation using a production-specific slug.
       const slug = `game-${value.id}`;
       const existing = (await this.studio.listProjects(value.ownerId)).find(project => project.slug === slug);
-      // The expedition scaffold supplies camera, health, objectives and touch input.
-      // Its generated topology is replaced, leaving no unrelated explorer floor or mechanics.
-      const created = existing ? await this.studio.getProject(existing.id, value.ownerId) : await this.studio.createProject({ name: value.plan.name, slug, template: 'expedition' }, value.ownerId);
+      // Authored games start empty; expedition designs retain their native objective scaffold.
+      const created = existing ? await this.studio.getProject(existing.id, value.ownerId) : await this.studio.createProject({ name: value.plan.name, slug, template: value.plan.foundation === 'authored' ? 'blank' : 'expedition' }, value.ownerId);
       value.projectId = created.project.id; value.expectedRevision = created.project.revision;
       await this.save(value, 'New editable game project created.');
     }
     const level = value.tasks.find(t => t.id === 'level');
     await this.worker(value, level, lease, async () => {
-      await this.generate(value, level, 'level', value.plan.levelPrompt);
+      if (value.plan.foundation === 'authored') await this.authorScene(value, level);
+      else await this.generate(value, level, 'level', value.plan.levelPrompt);
       await this.integrate(value, level, lease);
     });
     const art = value.tasks.filter(t => ['asset', 'environment'].includes(t.role));
@@ -338,7 +369,8 @@ class GameProductionService {
         const assetRecord = project.assets.find(a => a.id === source.assetId);
         const modelEntity = assetRecord && scene.entities.find(e => e.components.some(c => c.type === 'MeshRenderer' && c.data.assetId === assetRecord.id));
         if (!modelEntity) throw invalid(`The saved model ${asset.name} could not be located for assembly.`);
-        const targets = scene.entities.filter(e => e.id !== modelEntity.id && (asset.placement === 'player' ? e.tags.includes('player') : asset.placement === 'pickup' ? e.tags.includes('pickup') : false));
+        const targets = scene.entities.filter(e => e.id !== modelEntity.id && (asset.targetEntityId ? e.id === asset.targetEntityId : asset.placement === 'player' ? e.tags.includes('player') : asset.placement === 'pickup' ? e.tags.includes('pickup') : false));
+        if (asset.targetEntityId && !targets.length) throw invalid(`The planned target ${asset.targetEntityId} for ${asset.name} no longer exists.`);
         if (targets.length) {
           for (const target of targets) {
             const mesh = target.components.find(c => c.type === 'MeshRenderer');

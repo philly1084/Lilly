@@ -70,6 +70,7 @@ class GameStudioTool extends ToolBase {
           plan: { type: 'object', description: 'Optional agent-authored LillyGamePlan/v1; obtain the supported capabilities before designing. Locked once building starts.' },
           models: { type: 'object', properties: Object.fromEntries(['director', 'level', 'environment', 'asset', 'gameplay'].map(role => [role, { type: 'string', maxLength: 160 }])), additionalProperties: false },
           concurrency: { type: 'integer', minimum: 1, maximum: 4 },
+          taskModels: { type: 'object', description: 'Optional individual worker model overrides keyed level, environment, gameplay or asset-<planned-asset-id>. Values are connected model IDs; an empty string explicitly uses the configured default.', maxProperties: 9, additionalProperties: { type: 'string', maxLength: 160 } },
           name: { type: 'string', maxLength: 100 },
           slug: { type: 'string', maxLength: 60 },
           template: { type: 'string', enum: ['blank', 'third-person-explorer', 'top-down-action', 'expedition'] },
