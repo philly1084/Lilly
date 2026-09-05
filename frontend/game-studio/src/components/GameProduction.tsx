@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { productionApi } from '../api';
 import { useStudioStore } from '../store';
 import type { StudioBuild } from '../types';
+import { GamePlanEditor, readGamePlan } from './GamePlanEditor';
 
 export type GamePlan = { schema: 'LillyGamePlan/v1'; foundation?: 'authored' | 'expedition'; name: string; fantasy: string; artDirection: string; coreLoop: string[]; winCondition: string; loseCondition: string; controls: string[]; acceptance: string[]; deferred: string[]; levelPrompt: string; scenePrompt?: string; environmentPrompt: string | null; gameplayPrompt: string; assets: Array<{ id: string; name: string; prompt: string; placement: string; targetEntityId?: string }> };
 export type GameProduction = {
@@ -68,7 +69,8 @@ export function GameProductionCreator({ model, models }: { model: string; models
     finally { setPending(false); }
   };
   const selectedModels = Object.fromEntries(ROLES.map(role => [role, assignments[role] ?? model]));
-  const plan = production?.plan;
+  const draft = readGamePlan(planText);
+  const plan = production?.status === 'review' ? draft : production?.plan;
   return <div className="level-creator game-production">
     <div className="creator-intro"><div><span className="panel-kicker">Design → build together → play</span><strong>Build a whole game</strong></div></div>
     {!production && <p className="creator-help">Start with an idea. Review the design, then let model workers create the level, scenery, 3D assets and original gameplay in a new editable project.</p>}
@@ -95,7 +97,7 @@ export function GameProductionCreator({ model, models }: { model: string; models
     {!production && <button type="button" className="creator-generate" disabled={pending || !brief.trim()} onClick={() => perform(() => productionApi.create({ brief, models: selectedModels, concurrency }))}>{pending ? 'Starting designer…' : 'Design my game'}</button>}
     {production && <>
       <p className="production-status" role="status">{production.status === 'ready' ? 'Playable build ready' : production.status === 'review' ? 'Design ready for review' : production.status === 'planning' ? 'Designing your game…' : production.status === 'building' ? 'Building your game…' : production.status === 'stopping' ? 'Stopping after active model calls settle…' : production.status === 'interrupted' ? 'Build interrupted — saved work is available' : production.status === 'stopped' ? 'Build stopped — saved work is available' : 'Build needs attention'}</p>
-      {production.status === 'review' && <button type="button" className="creator-generate" disabled={pending} onClick={() => perform(() => productionApi.control(production.id, 'start', { revision: production.revision, plan: JSON.parse(planText), models: selectedModels, taskModels: taskAssignments, concurrency }))}>Build this game</button>}
+      {production.status === 'review' && <button type="button" className="creator-generate" disabled={pending || !draft} onClick={() => perform(() => productionApi.control(production.id, 'start', { revision: production.revision, plan: draft, models: selectedModels, taskModels: taskAssignments, concurrency }))}>Build this game</button>}
       {['failed', 'stopped', 'interrupted'].includes(production.status) && production.error?.code !== 'REVISION_CONFLICT' && <button type="button" className="creator-generate" disabled={pending} onClick={() => perform(() => productionApi.control(production.id, 'resume', { revision: production.revision, models: selectedModels, taskModels: taskAssignments, concurrency }))}>Retry unfinished work</button>}
       {running(production) && <button type="button" disabled={pending || production.status === 'stopping'} onClick={() => perform(() => productionApi.control(production.id, 'stop', {}))}>Stop build</button>}
       {production.error && <p className="creator-error" role="alert">{production.error.message}</p>}
@@ -108,8 +110,9 @@ export function GameProductionCreator({ model, models }: { model: string; models
         <p><strong>Win:</strong> {plan.winCondition}</p><p><strong>Restart:</strong> {plan.loseCondition}</p>
         <details><summary>Art, controls and planned assets</summary><p>{plan.artDirection}</p><ul>{plan.controls.map((item, i) => <li key={i}>{item}</li>)}</ul><ul>{plan.assets.map(asset => <li key={asset.id}>{asset.name} · {asset.placement}</li>)}</ul><p>{plan.gameplayPrompt}</p></details>
         {plan.deferred.length > 0 && <details><summary>Outside this build’s scope</summary><ul>{plan.deferred.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
-        {production.status === 'review' && <details><summary>Edit the game design</summary><label className="creator-prompt">Game design JSON<textarea rows={12} value={planText} onChange={event => setPlanText(event.target.value)} spellCheck={false}/></label></details>}
+        {production.status === 'review' && <GamePlanEditor plan={plan} disabled={pending} onChange={value => setPlanText(JSON.stringify(value, null, 2))}/>}
       </section></details>}
+      {production.status === 'review' && <details open={!draft}><summary>Advanced game design JSON</summary><label className="creator-prompt">Game design JSON<textarea rows={12} disabled={pending} value={planText} onChange={event => setPlanText(event.target.value)} spellCheck={false}/></label>{!draft && <p className="creator-error" role="alert">The design must be a complete Lilly game plan. Correct the JSON to restore the editor and enable building.</p>}</details>}
       {plan && production.status === 'ready' && <details><summary>Your playtest checklist</summary><ul>{plan.acceptance.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
       {production.events.length > 0 && <details><summary>Build activity · {production.events.length} updates</summary><ol className="production-events">{production.events.slice(-40).map(event => <li key={event.sequence}><time>{new Date(event.at).toLocaleTimeString()}</time> {event.message}</li>)}</ol></details>}
       {!running(production) && <button type="button" disabled={pending} onClick={() => { setProduction(null); setAssignments({}); setTaskAssignments({}); setError(''); }}>New game idea</button>}

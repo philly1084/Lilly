@@ -303,3 +303,6 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 .game-production button:focus-visible,.game-production summary:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
 .game-production textarea{max-width:100%;box-sizing:border-box}
 .full-state.production-start{display:block;overflow:auto;padding:30px 16px;box-sizing:border-box}.production-start>main{max-width:640px;margin:0 auto}.production-start .game-production{padding:16px 0}.production-start .creator-download{background:transparent;color:#a5f3fc;border:0;cursor:pointer}
+.production-design-fields{min-width:0;margin:10px 0;padding:10px;border:1px solid #315062;border-radius:7px;display:grid;gap:10px}
+.production-design-fields legend{color:#e1edf4;font-size:11px}
+.production-design-fields details>label,.production-design-fields details>div{margin-top:10px}
