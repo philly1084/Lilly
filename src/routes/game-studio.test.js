@@ -46,6 +46,18 @@ describe('Game Studio API', () => {
     expect(updated.body.commandBatch.schema).toBe('LillyCommandBatch/v1');
   });
 
+  test('returns actionable creator errors before the production error handler masks them', async () => {
+    const productionApp = express();
+    productionApp.use(express.json());
+    productionApp.locals.gameStudioService = { isEnabled: () => true, createAiRun: async () => { throw Object.assign(new Error('Scatter radius must be between 0.1 and 1.5'), { code: 'ENVIRONMENT_RECIPE_INVALID', statusCode: 422 }); } };
+    productionApp.use('/api/game-studio', gameStudioRouter);
+    const fallback = jest.fn((_error, _req, res, _next) => res.status(500).json({ error: 'masked internal error' }));
+    productionApp.use(fallback);
+    const response = await request(productionApp).post('/api/game-studio/projects/proof/ai-runs').send({ mode: 'environment', prompt: 'Forest' }).expect(422);
+    expect(response.body.error).toEqual({ type: 'game_studio_error', code: 'ENVIRONMENT_RECIPE_INVALID', message: 'Scatter radius must be between 0.1 and 1.5' });
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
   test('Codex-authored model recipes preview, apply once, and reject stale proposals through the API', async () => {
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'Codex model', template: 'blank' }).expect(201);
     const id = created.body.project.id;

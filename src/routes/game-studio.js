@@ -454,4 +454,11 @@ router.post('/projects/:id/rollback', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// These domain errors contain deliberate user guidance, not internal exception details.
+router.use((error, _req, res, next) => {
+  const publicCodes = new Set(['ENVIRONMENT_RECIPE_INVALID', 'MODEL_RECIPE_INVALID', 'AI_GENERATION_FAILED', 'AI_UNAVAILABLE', 'INVALID_MODEL_PROMPT', 'REVISION_CONFLICT']);
+  if (!publicCodes.has(error.code)) return next(error);
+  return res.status(error.statusCode || 422).json({ error: { type: 'game_studio_error', code: error.code, message: error.message, ...(error.currentRevision !== undefined ? { currentRevision: error.currentRevision } : {}) } });
+});
+
 module.exports = router;

@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { compileEnvironmentRecipe, terrainHeight, sceneryContext, TAG } = require('./environment-creator');
+const { compileEnvironmentRecipe, terrainHeight, sceneryContext, environmentPrompt, TAG } = require('./environment-creator');
 const { GameStudioService } = require('./service');
 const { sampleTerrainHeight, sampleSceneGroundHeight } = require('../../packages/lilly-engine/dist/gameplay/src');
 
@@ -49,6 +49,7 @@ test('deterministic real geometry with shared mesh data, clear spawn and correct
 });
 
 test('rejects unknown models, oversized scenes and malformed recipes with actionable errors', () => {
+  expect(environmentPrompt('Forest', {})).toContain('radii are normalized numbers from 0.1 to 1.5');
   expect(() => compileEnvironmentRecipe({ ...recipe, scatter: [{ modelId: 'missing', count: 3 }] })).toThrow('unknown model');
   expect(() => compileEnvironmentRecipe({ ...recipe, terrain: { ...recipe.terrain, size: [500, 64] } })).toThrow('Terrain size');
   expect(() => compileEnvironmentRecipe({ ...recipe, models: [] })).toThrow('uniquely named');
