@@ -4,6 +4,26 @@ const path = require('path');
 const vm = require('vm');
 const ts = require('typescript');
 
+test('orthographic player cameras preserve scale with depth and retain the board on portrait resize', () => {
+  const THREE = require('three');
+  const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const names = new Set(['createPlayerCamera', 'updatePlayerCameraProjection', 'responsiveCameraFov']);
+  const code = source.statements.filter(node => ts.isFunctionDeclaration(node) && names.has(node.name?.text)).map(node => node.getText(source)).join('\n');
+  const context = vm.createContext({ THREE, data: { projection: 'orthographic', orthographicHeight: 12, near: 0, far: 200 } });
+  vm.runInContext(code + '\nvar lens = createPlayerCamera(data, 1.5);', context);
+  const camera = context.lens;
+  expect(camera.isOrthographicCamera).toBe(true);
+  expect(camera.near).toBe(0);
+  expect(camera.right - camera.left).toBe(18);
+  expect(new THREE.Vector3(4, 0, -10).project(camera).x).toBeCloseTo(new THREE.Vector3(4, 0, -50).project(camera).x);
+  vm.runInContext("updatePlayerCameraProjection(lens, data, 390 / 844, 'module-driven')", context);
+  expect(camera.right - camera.left).toBeCloseTo(16);
+  expect(camera.top - camera.bottom).toBeGreaterThan(12);
+  vm.runInContext("updatePlayerCameraProjection(lens, data, 1.5, 'module-driven')", context);
+  expect(camera.top - camera.bottom).toBe(12);
+  expect(camera.right - camera.left).toBe(18);
+});
+
 test('round trigger entry occurs at actual contact instead of consuming entry at a bounding-box corner', () => {
   const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const names = new Set(['collisionPairKey', 'collisionPayload', 'scanCollisionTransitions', 'colliderFootprintsOverlap']);

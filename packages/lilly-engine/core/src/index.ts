@@ -474,7 +474,18 @@ export const COMPONENT_DEFINITIONS: Record<LillyComponentType, { defaults: Recor
     defaults: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
     validate: (value) => validateTransform(value),
   },
-  Camera: { defaults: { projection: 'perspective', fov: 60, near: 0.1, far: 1000, primary: false }, validate: numericRangeValidator('fov', 1, 179) },
+  Camera: {
+    defaults: { projection: 'perspective', fov: 60, orthographicHeight: 20, near: 0.1, far: 1000, primary: false },
+    validate: (value) => {
+      const issues = numericRangeValidator('fov', 1, 179)(value);
+      if (value.projection !== undefined && !['perspective', 'orthographic'].includes(String(value.projection))) issues.push('projection must be perspective or orthographic');
+      if (value.orthographicHeight !== undefined) issues.push(...numericRangeValidator('orthographicHeight', 0.01, 100000)(value));
+      const near = Number(value.near ?? 0.1), far = Number(value.far ?? 1000);
+      if (!Number.isFinite(near) || near < 0 || !Number.isFinite(far) || far <= near) issues.push('Camera clipping needs finite 0 <= near < far');
+      if (value.projection !== 'orthographic' && near === 0) issues.push('Perspective camera near clipping must be greater than zero');
+      return issues;
+    },
+  },
   CharacterController: {
     defaults: { moveAction: 'Move', speed: 6, rotateToMovement: true, collisionRadius: 0.44 },
     validate: (value) => {

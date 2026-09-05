@@ -344,12 +344,7 @@ function makeObject(entity) {
       : new THREE.DirectionalLight(color, intensity);
     object.castShadow = light.data.castShadow !== false;
   } else if (cameraComponent) {
-    object = new THREE.PerspectiveCamera(
-      Number(cameraComponent.data.fov || 58),
-      innerWidth / innerHeight,
-      Number(cameraComponent.data.near || 0.1),
-      Number(cameraComponent.data.far || 1000),
-    );
+    object = createPlayerCamera(cameraComponent.data, innerWidth / innerHeight);
   }
   const transform = component(entity, 'Transform')?.data || {};
   object.position.copy(vector(transform.position));
@@ -1130,6 +1125,29 @@ function simulateExpedition(delta) {
   evaluateGoal();
 }
 
+function createPlayerCamera(data, aspect) {
+  const near = Number(data.near ?? 0.1), far = Number(data.far ?? 1000);
+  if (data.projection === 'orthographic') {
+    const halfHeight = Number(data.orthographicHeight || 20) / 2;
+    return new THREE.OrthographicCamera(-halfHeight * aspect, halfHeight * aspect, halfHeight, -halfHeight, near, far);
+  }
+  return new THREE.PerspectiveCamera(Number(data.fov || 58), aspect, near, far);
+}
+
+function updatePlayerCameraProjection(camera, data, aspect, profile) {
+  if (camera.isOrthographicCamera) {
+    const halfHeight = Number(data?.orthographicHeight || 20) / 2 * Math.max(1, (4 / 3) / Math.max(0.1, aspect));
+    camera.left = -halfHeight * aspect;
+    camera.right = halfHeight * aspect;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
+  } else if (camera.isPerspectiveCamera) {
+    camera.aspect = aspect;
+    if (profile !== 'expedition') camera.fov = responsiveCameraFov(data?.fov || 58, aspect);
+  }
+  camera.updateProjectionMatrix();
+}
+
 function initializePlayerCamera() {
   const authoredFollow = cameraComponentData?.followTargetTag === 'player' || cameraComponentData?.followTargetId === playerEntityData?.id;
   // Fixed authored cameras already have their scene transform, including rotation.
@@ -1391,11 +1409,7 @@ function resize() {
   const pixelRatioCap = buildQuality() === 'performance' ? 1 : buildQuality() === 'balanced' ? 1.5 : 2;
   renderer.setPixelRatio(Math.min(pixelRatioCap, devicePixelRatio || 1));
   renderer.setSize(innerWidth, innerHeight, false);
-  if (camera.isPerspectiveCamera) {
-    camera.aspect = innerWidth / innerHeight;
-    if (runtimeProfile !== 'expedition') camera.fov = responsiveCameraFov(cameraComponentData?.fov || 58, camera.aspect);
-    camera.updateProjectionMatrix();
-  }
+  updatePlayerCameraProjection(camera, cameraComponentData, innerWidth / innerHeight, runtimeProfile);
 }
 
 function showRuntimeError(error) {

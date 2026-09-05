@@ -1,4 +1,5 @@
 const {
+  COMPONENT_DEFINITIONS,
   COMMAND_SCHEMA,
   ENTITY_SCHEMA,
   PROJECT_SCHEMA,
@@ -25,6 +26,16 @@ const {
   validateProject,
   validateTerrainDefinition,
 } = require('../../dist/core/src');
+
+test('camera projection and clipping reject invalid lenses while keeping legacy perspective defaults', () => {
+  const camera = COMPONENT_DEFINITIONS.Camera;
+  expect(camera.validate({ ...camera.defaults, projection: 'orthographic', orthographicHeight: 24, near: 0 })).toEqual([]);
+  expect(camera.validate({ fov: 60 })).toEqual([]);
+  expect(camera.validate({ ...camera.defaults, projection: 'fish-eye' })).toContain('projection must be perspective or orthographic');
+  expect(camera.validate({ ...camera.defaults, orthographicHeight: 0 })).not.toEqual([]);
+  expect(camera.validate({ ...camera.defaults, near: 20, far: 10 })).not.toEqual([]);
+  expect(camera.validate({ ...camera.defaults, near: 0 })).toContain('Perspective camera near clipping must be greater than zero');
+});
 
 function command(project, operation, target, payload = {}) {
   return {

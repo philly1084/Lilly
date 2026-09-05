@@ -22,6 +22,16 @@ async function build(input = {}) {
   return studio.productions.get(draft.id, 'owner');
 }
 
+test('scene author rejects degree-like camera rotations with an actionable radians correction', async () => {
+  const created = await studio.createProject({ name: 'Camera validation', template: 'blank' }, 'owner');
+  const commands = scene().commands;
+  const camera = commands.find(command => command.payload?.entity?.id === 'camera').payload.entity;
+  camera.components.find(component => component.type === 'Transform').data.rotation.x = -48.8;
+  expect(() => validateSceneCommands(studio, created.project, commands, plan)).toThrow('normalized radians');
+  camera.components.find(component => component.type === 'Transform').data.rotation.x = -48.8 * Math.PI / 180;
+  expect(() => validateSceneCommands(studio, created.project, commands, plan)).not.toThrow();
+});
+
 test('start returns only after the running status is durable for immediate polling', async () => {
   const originalSave = studio.writeJsonAtomic.bind(studio);
   studio.writeJsonAtomic = async (file, value) => {

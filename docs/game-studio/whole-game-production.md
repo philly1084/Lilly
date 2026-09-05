@@ -6,6 +6,8 @@ There are two foundations. **Authored** starts with an empty project: agents cre
 
 ## Design and build
 
+Scene `Transform.rotation` uses XYZ radians; model-recipe part rotations use degrees. A fixed camera retains its scene position and rotation and looks along local -Z. Camera `projection` accepts `perspective` or `orthographic`; `fov` is degrees, while `orthographicHeight` is the full vertical span in meters (default 20). Portrait players expand the vertical view to retain horizontal framing. Set `followTargetTag: "player"` or a matching `followTargetId` explicitly for a following camera. The scene author rejects camera angles outside normalized -2*pi..2*pi with a correction request.
+
 The director produces `LillyGamePlan/v1`: player fantasy, art direction, core loop, win/loss, controls, acceptance checklist, deferred features, level/environment/gameplay briefs and up to six asset jobs. Review and edit the design before selecting **Build this game**. Deferred requests remain visible. The original brief and reviewed plan are durable; the plan is also saved in the game at `design/game-plan.json`.
 
 Invalid director output receives one correction attempt before review. Scene and gameplay corrections name the rejected shape, operation or file path. Their latest generated responses are retained in the production directory, bounded to 256,000 characters, for diagnosis. Invalid commands are never applied. During building, active workers and the primary controls appear before the collapsed game design; the design opens for review.
