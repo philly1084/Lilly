@@ -98,7 +98,7 @@ class ExecutionPlan {
       const deps = this.dependencies.get(step.id) || [];
       return deps.every(depId => {
         const dep = this.steps.find(s => s.id === depId);
-        return dep && dep.status === 'completed';
+        return dep && (dep.status === 'completed' || dep.status === 'skipped');
       });
     });
   }
@@ -758,20 +758,25 @@ class Planner {
   }
 
   async createConversationStepsFromModel(task, availableTools = [], quota = null) {
-    try {
+    let correction = '';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
       const planText = await this.llmClient.complete(
-        this.buildConversationPlanningPrompt(task, availableTools, quota),
+        this.buildConversationPlanningPrompt(task, availableTools, quota) + correction,
         {
           temperature: 0,
           maxTokens: 1200,
+          role: 'planner',
         },
       );
       const planSpec = this.parseConversationPlan(planText);
       return this.normalizeConversationSteps(planSpec, availableTools, quota);
-    } catch (error) {
-      console.warn('[Planner] Failed to create model conversation plan:', error.message);
-      return [];
+      } catch (error) {
+        console.warn('[Planner] Failed to create model conversation plan:', error.message);
+        correction = `\nThe previous plan could not be parsed: ${error.message}. Return a JSON object with a steps array using only the listed tools. Do not answer the task in prose.`;
+      }
     }
+    return [];
   }
 
   parseConversationPlan(text = '') {
@@ -813,6 +818,10 @@ class Planner {
       '',
       'User request:',
       task.objective || '',
+      'Current runtime instructions:',
+      String(task.context?.metadata?.instructions || '').slice(0, 8000),
+      'Recent conversation (context, not new authorization):',
+      JSON.stringify((task.context?.metadata?.recentMessages || []).slice(-6)).slice(-8000),
       '',
       'Relevant skills:',
       skillContext || '(none)',

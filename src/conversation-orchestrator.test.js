@@ -6,6 +6,7 @@ jest.mock('./routes/admin/settings.controller', () => ({
 }));
 
 const settingsController = require('./routes/admin/settings.controller');
+const { createEvidenceAttestation } = require('./agent-evidence');
 const config = require('./config');
 const { remoteRunnerService } = require('./remote-runner/service');
 const {
@@ -357,6 +358,7 @@ describe('HarnessRunState', () => {
         harness.recordEvidence({
             type: 'deployment-applied',
             summary: 'kubectl apply completed successfully.',
+            verified: true,
             tool: 'remote-command',
             stateChanged: true,
         });
@@ -384,6 +386,7 @@ describe('HarnessRunState', () => {
         harness.recordEvidence({
             type: 'public-verification',
             summary: 'Public HTTPS check returned HTTP 200.',
+            verified: true,
             tool: 'remote-command',
             confidence: 'high',
         });
@@ -451,8 +454,9 @@ describe('HarnessRunState', () => {
         });
 
         harness.recordEvidence({
-            type: 'research-search',
-            summary: 'Research search returned verified candidate sources.',
+            type: 'research-fetch',
+            summary: 'Source contents were fetched.',
+            verified: true,
             tool: 'web-search',
         });
         expect(harness.getUnmetCriteria().map((entry) => entry.text)).toEqual([
@@ -463,13 +467,14 @@ describe('HarnessRunState', () => {
         harness.recordEvidence({
             type: 'document-generated',
             summary: 'A document or HTML page workflow produced an artifact.',
+            verified: true,
             tool: 'document-workflow',
             stateChanged: true,
         });
-        expect(harness.getUnmetCriteria()).toHaveLength(0);
+        expect(harness.getUnmetCriteria().map((entry) => entry.text)).toEqual(['Validate and review the result']);
     });
 
-    test('artifact evidence satisfies generic implementation milestones', () => {
+    test('artifact creation alone cannot satisfy implementation and validation', () => {
         const harness = new HarnessRunState({
             objective: 'Make a quick sandboxed game and verify it.',
             executionProfile: 'default',
@@ -486,7 +491,7 @@ describe('HarnessRunState', () => {
             stateChanged: true,
         });
 
-        expect(harness.getUnmetCriteria()).toHaveLength(0);
+        expect(harness.getUnmetCriteria()).toHaveLength(2);
     });
 
     test('restores completion state from a resumeable control-state snapshot', () => {
@@ -499,6 +504,7 @@ describe('HarnessRunState', () => {
         original.recordEvidence({
             type: 'deployment-applied',
             summary: 'Deployment command completed.',
+            verified: true,
             tool: 'remote-command',
             stateChanged: true,
         });
@@ -3803,6 +3809,7 @@ describe('ConversationOrchestrator', () => {
                 toolId: 'remote-command',
                 data: {
                     stdout: 'host-a\nup 10 days\nFilesystem      Size  Used Avail Use% Mounted on',
+                    exitCode: 0,
                     stderr: '',
                     host: '10.0.0.5:22',
                 },
@@ -8196,7 +8203,7 @@ describe('ConversationOrchestrator', () => {
         expect(result.trace.executionTrace.map((entry) => entry.name)).toContain('Round review 1');
         expect(result.trace.executionTrace.find((entry) => entry.name === 'Round review 1')).toEqual(expect.objectContaining({
             details: expect.objectContaining({
-                decision: 'synthesize',
+                decision: 'continue',
             }),
         }));
     });
@@ -8628,6 +8635,7 @@ describe('ConversationOrchestrator', () => {
                         artifact: {
                             path: 'output/ai-news.html',
                         },
+                        evidenceAttestations: [createEvidenceAttestation({ kind: 'artifact_render', subject: 'output/ai-news.html', verdict: 'pass' })],
                         artifacts: [{
                             path: 'output/ai-news.html',
                             kind: 'html',

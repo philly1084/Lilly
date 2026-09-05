@@ -15,6 +15,7 @@ function normalizeText(value = '') {
 }
 
 function normalizeExitCode(value) {
+  if (value === null || value === undefined || value === '') return null;
   const exitCode = Number(value);
   return Number.isInteger(exitCode) ? exitCode : null;
 }
@@ -77,7 +78,8 @@ function attestGitResult(input = {}) {
 function attestArtifactRender(input = {}) {
   const rendered = input.rendered === true;
   const inspected = input.inspected === true || Boolean(normalizeText(input.inspectionDigest));
-  const verdict = rendered && inspected ? 'pass' : (input.failed === true ? 'fail' : 'unknown');
+  const verdict = rendered && inspected && input.complete !== false && input.placeholder !== true
+    ? 'pass' : (input.failed === true || input.placeholder === true || input.complete === false ? 'fail' : 'unknown');
   return createReceipt('artifact_render', normalizeText(input.subject || input.artifactId) || 'Artifact render', verdict, input, {
     artifactId: normalizeText(input.artifactId) || null,
     format: normalizeText(input.format) || null,

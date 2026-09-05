@@ -176,8 +176,13 @@ class Executor {
         this.transitionTaskStatus(task, TaskStatus.COMPLETED);
         result.success = true;
       } else {
+        const unverified = verification.results?.some((entry) => entry.details?.status === 'unverified');
+        if (unverified) {
+          result.completionStatus = 'unverified';
+          result.nextActions = verification.results.map((entry) => entry.details?.nextAction).filter(Boolean);
+        }
         // Check if we can retry the entire task
-        if (task.canRetry && task.canRetry()) {
+        if (!unverified && task.canRetry && task.canRetry()) {
           if (task.incrementAttempt) {
             task.incrementAttempt();
           }

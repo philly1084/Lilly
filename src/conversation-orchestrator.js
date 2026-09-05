@@ -1,4 +1,6 @@
 const fs = require('fs');
+const { attestedCompletionEvidence, matchesCompletionEvidence } = require('./orchestration/completion-evidence');
+const { collectRuntimeEvidence } = require('./orchestration/runtime-evidence');
 const { createCompanySessionView } = require('./agent-ops/execution-contract');
 const { normalizeRemoteWorkspace, normalizeInheritedRemoteWorkspace, resolveTargetDefaultWorkspace } = require('./remote-cli/workspace-contract');
 const path = require('path');
@@ -117,7 +119,7 @@ const {
     applyRewritePolicyOverlay,
     isOrchestrationRewriteEnabled,
 } = require('./orchestration/tool-policy');
-const { buildAgencyProfile: buildRewriteAgencyProfile, inferTaskIntent } = require('./orchestration/intent-classifier');
+const { buildAgencyProfile: buildRewriteAgencyProfile, resolveTaskIntent } = require('./orchestration/intent-classifier');
 const { buildDeterministicRoute } = require('./orchestration/plan-router');
 const { validatePlan } = require('./orchestration/plan-validator');
 const {
@@ -7329,7 +7331,7 @@ function doesToolEventChangeState(event = {}) {
 }
 
 function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {}) {
-    if (!event || event?.result?.success === false) {
+    if (!event || event?.result?.success !== true) {
         return [];
     }
 
@@ -7340,7 +7342,6 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
     const action = String(args.action || '').trim().toLowerCase();
     const data = event?.result?.data || {};
     const output = [
-        command,
         data.stdout || '',
         data.stderr || '',
         data.body || '',
@@ -7360,14 +7361,18 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
         round,
         stateChanged,
         confidence: 'medium',
+        target: data.artifact?.id || data.artifactId || args.path || args.url || data.publicUrl || null,
+        verified: false,
     };
-    const evidence = [];
+    const evidence = attestedCompletionEvidence(event.result, base);
     const push = (type, summary, extra = {}) => {
         evidence.push({
             ...base,
             type,
             summary,
             ...extra,
+            // Legacy textual reports remain observations, not completion proof.
+            verified: extra.verified === true,
         });
     };
 
@@ -7440,11 +7445,11 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
             push('k8s-inspection', 'Kubernetes or remote cluster inspection returned a successful result.');
         }
         if (/\b(hostname|uptime|uname|df\s+-h|free\s+-m|date)\b/i.test(command) && evidence.length === 0) {
-            push('remote-inspection', 'Remote server baseline or health inspection returned a successful result.');
+            push('remote-inspection', 'Remote server baseline or health inspection returned a successful result.', { verified: data.exitCode === 0 });
         }
-        if (/\b(successfully rolled out|rollout status|deployment\s+.+\s+successfully)\b/i.test(output)) {
-            push('rollout', 'Rollout status confirmed a successful deployment.', { confidence: 'high' });
-            push('deployment-verified', 'Deployment verification evidence was captured from rollout status.', { confidence: 'high' });
+        if (data.exitCode === 0 && /\bsuccessfully rolled out\b/i.test(String(data.stdout || ''))) {
+            push('rollout', 'Rollout status confirmed a successful deployment.', { confidence: 'high', verified: true });
+            push('deployment-verified', 'Deployment verification evidence was captured from rollout status.', { confidence: 'high', verified: true, verificationMethod: 'deployment' });
         }
         if (/\b(running|ready|available)\b/i.test(output) && /\b(pod|pods|deployment|deployments)\b/i.test(output)) {
             push('pod-readiness', 'Pod or deployment readiness was observed in verified remote output.');
@@ -7458,10 +7463,10 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
             push('deployment-verified', 'Deployment verification evidence was captured from public reachability.', { confidence: 'high' });
         }
         if (stateChanged && /\b(kubectl\s+apply|helm\s+upgrade|rollout\s+restart|docker\s+compose\s+up|systemctl\s+restart)\b/i.test(command)) {
-            push('deployment-applied', 'A remote deployment or service-changing command completed successfully.', { confidence: 'high' });
+            push('deployment-applied', 'A remote deployment or service-changing command completed successfully.', { confidence: 'high', verified: data.exitCode === 0 });
         }
         if (stateChanged && /\b(npm\s+run\s+build|docker\s+(compose\s+)?build|successfully built|build completed)\b/i.test(output)) {
-            push('build-complete', 'A remote build command completed successfully.');
+            push('build-complete', 'A remote build command completed successfully.', { verified: data.exitCode === 0 });
         }
         return evidence;
     }
@@ -7487,13 +7492,18 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
         push('research-search', 'Research search returned verified candidate sources.');
     }
     if (toolId === 'web-fetch' || toolId === 'web-scrape') {
-        push('research-fetch', 'A source page was fetched or scraped successfully.');
+        push('research-fetch', 'A source page was fetched or scraped successfully.', {
+            verified: Boolean(data.content || data.text || data.body) && Number(data.statusCode || data.status || 200) < 400,
+            verificationMethod: 'source',
+        });
     }
     if (toolId === DOCUMENT_WORKFLOW_TOOL_ID || toolId === DEEP_RESEARCH_PRESENTATION_TOOL_ID) {
-        push('document-generated', 'A document or presentation workflow produced an artifact.', { confidence: 'high', stateChanged: true });
+        push('document-generated', 'A document or presentation workflow produced an artifact.', { confidence: 'high', stateChanged: true,
+            verified: Boolean(data.artifact?.id || data.artifact?.path || data.artifacts?.some((entry) => entry.id || entry.path)) });
     }
     if (Array.isArray(data.artifacts) || data.artifact || data.downloadUrl || data.markdownImage) {
-        push('artifact-created', 'A runtime artifact was created by a tool result.', { confidence: 'high', stateChanged: true });
+        push('artifact-created', 'A runtime artifact was created by a tool result.', { confidence: 'high', stateChanged: true,
+            verified: Boolean(data.artifact?.id || data.artifact?.path || data.artifacts?.some((entry) => entry.id || entry.path)) });
     }
 
     return evidence;
@@ -7911,6 +7921,10 @@ function normalizeHarnessCriterion(value = '', index = 0, source = 'objective') 
         required: raw.required !== false,
         status,
         evidenceIds: Array.isArray(raw.evidenceIds) ? raw.evidenceIds.filter(Boolean) : [],
+        target: raw.target || null,
+        expectedState: raw.expectedState || null,
+        verificationMethod: raw.verificationMethod || null,
+        evidenceTypes: Array.isArray(raw.evidenceTypes) ? raw.evidenceTypes : [],
     };
 }
 
@@ -7929,6 +7943,10 @@ function normalizeHarnessEvidence(value = {}, index = 0) {
         summary,
         type: String(value.type || 'verified-result').trim() || 'verified-result',
         tool: value.tool || null,
+        target: value.target || null,
+        expectedState: value.expectedState || null,
+        verificationMethod: value.verificationMethod || null,
+        verified: value.verified === true,
         criterionIds: Array.isArray(value.criterionIds) ? value.criterionIds.filter(Boolean) : [],
         confidence: ['low', 'medium', 'high'].includes(String(value.confidence || '').trim())
             ? String(value.confidence).trim()
@@ -7940,47 +7958,7 @@ function normalizeHarnessEvidence(value = {}, index = 0) {
 }
 
 function evidenceMatchesHarnessCriterion(evidence = {}, criterion = {}) {
-    const type = String(evidence.type || '').trim().toLowerCase();
-    const summary = String(evidence.summary || '').trim().toLowerCase();
-    const text = String(criterion.text || '').trim().toLowerCase();
-    const haystack = `${type} ${summary}`;
-
-    if (!text) {
-        return false;
-    }
-
-    if (text.includes('inspection')) {
-        return /\b(remote-inspection|k8s-inspection|pod-readiness|service-ingress|public-verification|research-search|research-fetch)\b/.test(haystack);
-    }
-    if (text.includes('inspect') || text.includes('current state')) {
-        return /\b(remote-inspection|k8s-inspection|pod-readiness|service-ingress|public-verification|research-search|research-fetch|verified-result)\b/.test(haystack);
-    }
-    if (text.includes('deployment applied') || (text.includes('deploy') && !text.includes('verified'))) {
-        return /\b(deployment-applied|managed-app-deploy|k3s-deploy|rollout)\b/.test(haystack);
-    }
-    if (text.includes('verified') || text.includes('verification')) {
-        return /\b(deployment-verified|public-verification|rollout|pod-readiness|service-ingress)\b/.test(haystack);
-    }
-    if (text.includes('repository implementation') || text.includes('implement')) {
-        return /\b(repository-implemented|managed-app-authoring|code-change|document-generated|artifact-created)\b/.test(haystack);
-    }
-    if (text.includes('workspace built') || text.includes('build')) {
-        return /\b(build-complete|managed-app-build|remote-workspace-build)\b/.test(haystack);
-    }
-    if (text.includes('research')) {
-        return /\b(research-search|research-fetch|document-generated)\b/.test(haystack);
-    }
-    if (text.includes('produce') || text.includes('deliverable') || text.includes('deliver requested')) {
-        return /\b(document-generated|artifact-created|managed-app-authoring|code-change)\b/.test(haystack);
-    }
-    if (text.includes('validate') || text.includes('review the result')) {
-        return /\b(document-generated|artifact-created|build-complete|public-verification|deployment-verified|research-fetch)\b/.test(haystack);
-    }
-    if (text.includes('document') || text.includes('artifact')) {
-        return /\b(document-generated|artifact-created)\b/.test(haystack);
-    }
-
-    return text.split(/\s+/).filter((word) => word.length >= 5).some((word) => haystack.includes(word));
+    return matchesCompletionEvidence(evidence, criterion);
 }
 
 function buildInitialHarnessCriteria({
@@ -8135,6 +8113,12 @@ class HarnessRunState {
         this.evidence = Array.isArray(completion?.evidence)
             ? completion.evidence.map((entry, index) => normalizeHarnessEvidence(entry, index)).filter(Boolean)
             : [];
+        // Recompute restored completion; older snapshots may contain keyword-only matches.
+        for (const criterion of this.criteria) {
+            const matches = this.evidence.filter((entry) => matchesCompletionEvidence(entry, criterion));
+            criterion.status = matches.length ? 'satisfied' : 'pending';
+            criterion.evidenceIds = matches.map((entry) => entry.id);
+        }
         this.finishConfidence = ['low', 'medium', 'high'].includes(String(completion?.finishConfidence || '').trim())
             ? String(completion.finishConfidence).trim()
             : 'low';
@@ -8243,10 +8227,7 @@ class HarnessRunState {
         }
 
         const matchedCriteria = this.criteria.filter((criterion) => evidenceMatchesHarnessCriterion(normalized, criterion));
-        normalized.criterionIds = Array.from(new Set([
-            ...normalized.criterionIds,
-            ...matchedCriteria.map((criterion) => criterion.id),
-        ]));
+        normalized.criterionIds = matchedCriteria.map((criterion) => criterion.id);
         this.evidence.push(normalized);
 
         for (const criterionId of normalized.criterionIds) {
@@ -10012,12 +9993,25 @@ class ConversationOrchestrator extends EventEmitter {
                 session,
             })
             : null;
-        const rewriteIntent = inferTaskIntent({
+        const rewriteIntent = await resolveTaskIntent({
             objective,
             instructions: effectiveInstructions,
             executionProfile: resolvedProfile,
             classification: requestClassification,
+        }, {
+            recentMessages: resolvedRecentMessages,
+            classify: isOrchestrationRewriteEnabled()
+                ? (prompt) => this.completeText(prompt, {
+                    ...resolveRoleExecutionOptions({ role: 'planner', model }),
+                    temperature: 0, maxTokens: 350,
+                })
+                : null,
         });
+        if (rewriteIntent.source === 'context-classification') {
+            effectiveInstructions += `\nContextual request interpretation (preserve the user's explicit constraints): ${JSON.stringify({
+                objective: rewriteIntent.resolvedObjective, target: rewriteIntent.target, constraints: rewriteIntent.constraints,
+            })}`;
+        }
         const agencyProfile = isOrchestrationRewriteEnabled()
             ? buildRewriteAgencyProfile({
                 intent: rewriteIntent,
@@ -14167,6 +14161,10 @@ class ConversationOrchestrator extends EventEmitter {
                     startedAt: toolStartedAt,
                     endedAt: toolEndedAt,
                 });
+                normalizedResult.evidenceAttestations = [
+                    ...(normalizedResult.evidenceAttestations || []),
+                    ...collectRuntimeEvidence(step.tool, step.params || {}, normalizedResult),
+                ];
                 const toolEvent = {
                     toolCall,
                     result: normalizedResult,
@@ -15387,6 +15385,7 @@ class ConversationOrchestrator extends EventEmitter {
                 objective,
                 assistantText,
                 toolEvents,
+                completion: controlStatePatch?.harness?.completion || null,
                 metadata: scopedMemoryMetadata,
             });
         }

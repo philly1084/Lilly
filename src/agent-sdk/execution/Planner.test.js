@@ -1,4 +1,14 @@
-const { Planner } = require('./Planner');
+const { Planner, ExecutionPlan } = require('./Planner');
+
+test('explicitly skipped optional steps release dependents but failed steps do not', () => {
+  const plan = new ExecutionPlan('recovery');
+  const first = plan.addStep({ type: 'tool-call', optional: true });
+  const retry = plan.addStep({ type: 'tool-call' }, [first]);
+  plan.markStepFailed(first, new Error('temporary failure'));
+  expect(plan.getReadySteps()).toEqual([]);
+  plan.skipStep(first, 'continue to planned recovery');
+  expect(plan.getReadySteps().map((step) => step.id)).toEqual([retry]);
+});
 
 describe('Planner', () => {
   test('conversation synthesis prompt includes the skill context placeholder', () => {
@@ -57,6 +67,15 @@ describe('Planner', () => {
         },
       ],
     });
+  });
+
+  test('repairs malformed planning output once with explicit schema feedback', async () => {
+    const client = { complete: jest.fn().mockResolvedValueOnce('I will do it.').mockResolvedValueOnce('{"steps":[{"type":"tool-call","tool":"file-read","params":{"path":"report.md"}}]}') };
+    const planner = new Planner(null, client);
+    const steps = await planner.createConversationStepsFromModel({ objective: 'Read report.md' }, ['file-read']);
+    expect(steps[0].tool).toBe('file-read');
+    expect(client.complete.mock.calls[1][0]).toContain('previous plan could not be parsed');
+    expect(client.complete.mock.calls[0][1].role).toBe('planner');
   });
 
   test('normalizes and constrains conversation plans by quota and follow-through checkpoints', () => {

@@ -1,4 +1,6 @@
 'use strict';
+jest.mock('./suggestion-trials', () => ({ evaluateSuggestion: jest.fn(async () => null) }));
+const { candidateHash } = require('../agent-evals/task-trials');
 
 const {
   normalizeDailyAlignmentConfig,
@@ -110,6 +112,10 @@ describe('daily feedback alignment loop', () => {
         meta: { count: 2 },
       }),
       applyUpdate,
+      evaluateSuggestion: async (suggestion) => ({
+        baseline: { version: 'TaskTrials/v1', trials: 3, corpusHash: 'same', results: [0, 1, 2].map((trial) => ({ caseId: 'edit', trial, passed: false })), metrics: { verifiedCompletion: 0, falseCompletion: 1, unnecessaryQuestions: 0, repeatedFailures: 0 } },
+        candidate: { version: 'TaskTrials/v1', trials: 3, corpusHash: 'same', candidateHash: candidateHash(suggestion.input.actions), results: [0, 1, 2].map((trial) => ({ caseId: 'edit', trial, passed: true })), metrics: { verifiedCompletion: 1, falseCompletion: 0, unnecessaryQuestions: 0, repeatedFailures: 0 } },
+      }),
       now: new Date('2026-06-21T12:00:00.000Z'),
       reason: 'test',
     });
