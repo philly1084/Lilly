@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Edges, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, PerspectiveCamera, TransformControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkinnedScene } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { GameplaySimulation, scheduleGameplaySteps, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
+import { GameplaySimulation, scheduleGameplaySteps, sampleSceneGroundHeight, type GameplayState } from '../../../../packages/lilly-engine/gameplay/src';
 import { studioApi } from '../api';
 import { useWorkspacePreviewAccess } from '../preview-access';
 import type { LillyAnimationControllerDefinition, LillyAssetMetadataDefinition, LillyComponent, LillyEntity, LillyMaterialDefinition, LillyProject, LillyScene, LillyTerrainDefinition, Vec3 } from '../types';
@@ -342,10 +342,11 @@ function PlayCameraRig({ runtimeObjects, playerId }: { runtimeObjects: RuntimeOb
   return null;
 }
 
-function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touchAttack, onState }: {
+function GameplayBridge({ project, scene, world, resources, runtimeObjects, touchKeys, touchAttack, onState }: {
   project: LillyProject;
   scene: LillyScene;
   world: CollisionWorld;
+  resources: WorldResources;
   runtimeObjects: RuntimeObjects;
   touchKeys: Set<string>;
   touchAttack: boolean;
@@ -371,7 +372,7 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
       const object = runtimeObjects.current.get(enemy.id);
       if (!object) return;
       object.visible = enemy.health > 0;
-      object.position.set(enemy.position.x, enemy.position.y, enemy.position.z);
+      object.position.set(enemy.position.x, enemy.position.y + (sampleSceneGroundHeight(scene, resources.terrains, enemy.position.x, enemy.position.z) ?? 0), enemy.position.z);
       object.userData.phase = enemy.phase;
     });
     Object.entries(state.gates).forEach(([id, closed]) => {
@@ -445,6 +446,10 @@ function GameplayBridge({ project, scene, world, runtimeObjects, touchKeys, touc
         if (canStand(world, playerObject.position.x, nextZ, state.gates)) playerObject.position.z = nextZ;
         playerObject.rotation.y = Math.atan2(direction.x, direction.z);
       }
+      const baseY = Number((component(playerEntity, 'Transform')?.data.position as Vec3)?.y || 0);
+      const ground = sampleSceneGroundHeight(scene, resources.terrains, playerObject.position.x, playerObject.position.z);
+      if (ground !== null || playerObject.userData.terrainGrounded) playerObject.position.y = baseY + (ground ?? 0);
+      playerObject.userData.terrainGrounded = ground !== null;
       state = simulation.step(fixedStep, {
         playerPosition: { x: playerObject.position.x, y: playerObject.position.y, z: playerObject.position.z },
         attackPressed: attackQueued.current,
@@ -483,12 +488,13 @@ function EditorScene({ project, scene, resources, snap, lighting, touchKeys, tou
   const cameraDistance = Math.max(14, Math.min(58, world.span * 0.9));
   return <>
     <color attach="background" args={[lighting === 'unlit' ? '#0d1117' : scene.environment.background || '#081018']}/>
+    {lighting === 'scene' && playState !== 'editing' && scene.environment.fog && <fog attach="fog" args={[scene.environment.fog.color, scene.environment.fog.near, scene.environment.fog.far]}/>}
     {lighting === 'studio' && <><hemisphereLight args={['#d8ecff', '#111923', 1.3]}/><directionalLight position={[8, 12, 6]} intensity={2.2} castShadow/></>}
     {lighting === 'unlit' && <ambientLight intensity={2}/>}
     {lighting === 'scene' && <hemisphereLight args={['#d8ecff', '#17202b', Number(scene.environment.ambientIntensity || 0.5)]}/>}
     <PerspectiveCamera makeDefault position={[world.center.x + cameraDistance * 0.72, cameraDistance * 0.58, world.center.z + cameraDistance]} fov={52}/>
     {scene.entities.map((entity) => <EntityMesh key={entity.id} entity={entity} project={project} resources={resources} runtimeObjects={runtimeObjects} snap={snap}/>) }
-    <GameplayBridge project={project} scene={scene} world={world} runtimeObjects={runtimeObjects} touchKeys={touchKeys} touchAttack={touchAttack} onState={onGameplayState}/>
+    <GameplayBridge project={project} scene={scene} world={world} resources={resources} runtimeObjects={runtimeObjects} touchKeys={touchKeys} touchAttack={touchAttack} onState={onGameplayState}/>
     <Grid position={[world.center.x, 0.01, world.center.z]} args={[Math.max(40, world.span * 1.5), Math.max(40, world.span * 1.5)]} cellSize={0.5} cellThickness={0.5} cellColor="#23394a" sectionSize={5} sectionThickness={1} sectionColor="#3b6078" fadeDistance={Math.max(55, world.span * 1.3)} fadeStrength={1.5}/>
     <OrbitControls makeDefault enabled={playState === 'editing'} target={[world.center.x, 0.8, world.center.z]} minDistance={2} maxDistance={Math.max(70, world.span * 2)} maxPolarAngle={Math.PI * 0.49}/>
     {playerEntity && <PlayCameraRig runtimeObjects={runtimeObjects} playerId={playerEntity.id}/>}

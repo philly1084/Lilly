@@ -27,6 +27,7 @@ const ACTIONS = [
   'set-active-build-profile',
   'generate-level',
   'generate-model',
+  'generate-environment',
   'apply-ai-run',
   'apply-commands',
   'edit-blueprint',
@@ -42,7 +43,7 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '3.3.0',
+      version: '3.4.0',
       description: 'Create complete multi-genre browser games as versioned Lilly projects. Author linked prefab instances and variants, shared gameplay data assets, component controllers, typed capability-sandboxed modules, deterministic tests, scenes, Blueprints, assets, animation, and terrain; select versioned development or release build profiles; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
@@ -122,8 +123,8 @@ class GameStudioTool extends ToolBase {
           prompt: { type: 'string' },
           model: { type: 'string', maxLength: 200, description: 'Connected gateway model ID, for example gpt-6-astra when available.' },
           assetId: { type: 'string', description: 'Optional generated model to refine. Its saved recipe becomes model context. Applying the proposal creates a new GLB and updates its scene instances while preserving the old asset.' },
-          runId: { type: 'string', description: 'Saved proposal ID returned by generate-model or generate-level. Apply through apply-ai-run to enforce its original revision.' },
-          recipe: { type: 'object', description: 'Optional LillyModelRecipe/v1 data authored by Codex or another agent. name plus 1–64 named parts; shape box/sphere/cylinder/cone/torus/icosahedron/mesh, position/rotation/scale triples, #RRGGBB color, roughness/metalness 0–1. mesh additionally uses flat xyz vertices and triangle indices. Y-up meters, XYZ degree rotations. Compiles to a previewable GLB; apply-ai-run saves the asset, source, and scene entity.' },
+          runId: { type: 'string', description: 'Saved proposal ID returned by generate-model, generate-environment or generate-level. Apply through apply-ai-run to enforce its original revision.' },
+          recipe: { type: 'object', description: 'For generate-environment: LillyEnvironmentRecipe/v1 with name, seed, terrain {size:[16–96,16–96],height:0–12,color,hills:[{center:[-1..1,-1..1],radius:0.1–1.5,height:0–1}]}, sky {color,ambient:0.2–2,sunColor,sunIntensity:0–5,fog:{color,near,far}}, models:[{id,recipe:LillyModelRecipe/v1}], scatter:[{modelId,count:1–40,center,radius,scale:[min,max]}], placements:[{modelId,point:[x,z],yaw,scale}]. At most 6 models and 96 scenery objects. See docs/game-studio/environment-creator.md. For generate-model: optional LillyModelRecipe/v1 data authored by Codex or another agent. name plus 1–64 named parts; shape box/sphere/cylinder/cone/torus/icosahedron/mesh, position/rotation/scale triples, #RRGGBB color, roughness/metalness 0–1. mesh additionally uses flat xyz vertices and triangle indices. Y-up meters, XYZ degree rotations. Compiles to a previewable GLB; apply-ai-run saves the asset, source, and scene entity.' },
           seed: { type: 'string', maxLength: 120 },
           difficulty: { type: 'integer', minimum: 1, maximum: 5 },
           publicHost: { type: 'string' },

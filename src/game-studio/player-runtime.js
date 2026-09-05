@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { GAMEPLAY_MAX_FRAME_DELTA_SECONDS, GameplaySimulation, scheduleGameplaySteps } from './gameplay.js';
+import { GAMEPLAY_MAX_FRAME_DELTA_SECONDS, GameplaySimulation, scheduleGameplaySteps, sampleSceneGroundHeight } from './gameplay.js';
 
 const canvas = document.querySelector('#game-canvas');
 const loading = document.querySelector('#loading');
@@ -1008,6 +1008,17 @@ function movePlayer(deltaX, deltaZ) {
   const nextZ = player.position.z + deltaZ;
   if (onWalkableGround(player.position.x, nextZ) && !hitsObstacle(player.position.x, nextZ)) player.position.z = nextZ;
   else playerVelocity.z = 0;
+  groundPlayer();
+}
+
+function groundHeight(x, z) {
+  return sampleSceneGroundHeight(project.scenes.find(entry => entry.id === project.entryScene), moduleBundle?.terrains || [], x, z);
+}
+
+function groundPlayer() {
+  const ground = groundHeight(player.position.x, player.position.z);
+  if (ground !== null || player.userData.terrainGrounded) player.position.y = Number(component(playerEntityData, 'Transform')?.data.position?.y || 0) + (ground ?? 0);
+  player.userData.terrainGrounded = ground !== null;
 }
 
 function pressed(code) {
@@ -1107,6 +1118,7 @@ function simulateModuleDriven(delta) {
   if (onWalkableGround(player.position.x, nextZ) && !hitsObstacle(player.position.x, nextZ, previousRadius)) player.position.z = nextZ;
   else playerVelocity.z = 0;
   if (controller.data.rotateToMovement !== false && input.lengthSq() > 0) player.rotation.y = Math.atan2(input.x, input.z);
+  groundPlayer();
 }
 
 function simulate(delta) {
@@ -1142,7 +1154,7 @@ function animateWorld(elapsed, delta) {
     const pulse = object.userData.phase === 'windup' ? 1.16 + Math.sin(elapsed * 20) * 0.08 : 1;
     object.scale.copy(object.userData.baseScale).multiplyScalar(pulse);
     const enemy = gameplayState.enemies.find((entry) => entry.id === enemyId);
-    if (enemy) object.position.y = enemy.position.y + Math.sin(elapsed * 3 + enemyId.length) * 0.08;
+    if (enemy) object.position.y = enemy.position.y + (groundHeight(enemy.position.x, enemy.position.z) ?? 0) + Math.sin(elapsed * 3 + enemyId.length) * 0.08;
   });
   gateObjects.forEach((object, gateId) => {
     if (!object.visible) return;

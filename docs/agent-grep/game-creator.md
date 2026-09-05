@@ -2,7 +2,7 @@
 
 GREP_HANDLES: AGENT_DOC GAME_CREATOR CODEX_MODEL_RECIPE GLB_CREATOR
 
-The editor's Create panel has Game, 3D asset, and Edit scene modes. Models are loaded from `/api/models`; select a model actually offered by the connected gateway. `gpt-6-astra` was verified in the primary gateway on 2026-09-05. Availability can change.
+The editor's Create panel has Game, 3D asset, Scenery, and Edit scene modes. Models are loaded from `/api/models`; select a model actually offered by the connected gateway. `gpt-6-astra` was verified in the primary gateway on 2026-09-05. Availability can change.
 
 ## Codex and external agents
 
@@ -30,3 +30,5 @@ Generated assets support static stylized geometry and PBR colors. Texturing, scu
 ## Verification
 
 Run `asset-creator.test.js`, `creator-workflow.test.js`, service/API/CLI tests, frontend TypeScript checking, and the Vite production build. Preview a generated GLB in the editor, apply it, verify authenticated byte read-back and saved source, then play and build the project. Keep actual live model proof separate from fixtures that replay captured responses.
+
+Scenery uses mode `environment` or tool action `generate-environment`. See `docs/game-studio/environment-creator.md` for native terrain, atmosphere, reusable props and the recipe contract.

@@ -90,7 +90,7 @@ Usage:
   lilly-game validate-file --file PROJECT.json
   lilly-game compile --project ID --revision N
   lilly-game test --project ID
-  lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset] [--model ID]
+  lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset|environment] [--model ID]
   lilly-game ai --project ID --base-revision N --mode asset --recipe model.json
   lilly-game ai --project ID --base-revision N --mode asset --asset ASSET_ID --prompt TEXT [--model ID]
   lilly-game ai-apply --project ID --run ID
@@ -188,7 +188,7 @@ async function executeCommand(client, command, options) {
       body: {
         baseRevision: integer(options, 'base-revision', command),
         prompt: options.recipe ? String(options.prompt || 'Authored model recipe') : required(options, 'prompt', command),
-        mode: ['level', 'asset'].includes(options.mode) ? options.mode : 'edit',
+        mode: ['level', 'asset', 'environment'].includes(options.mode) ? options.mode : 'edit',
         ...(options.recipe ? { recipe: JSON.parse(await fs.readFile(String(options.recipe), 'utf8')) } : {}),
         ...(options.model ? { model: String(options.model), requireAi: true } : {}),
         ...(options.asset ? { assetId: String(options.asset) } : {}),

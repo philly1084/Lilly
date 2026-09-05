@@ -71,7 +71,7 @@ type StudioState = {
   addComponent(entityId: string, component: LillyComponent): Promise<void>;
   undo(): Promise<void>;
   redo(): Promise<void>;
-  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit' | 'asset'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean; assetId?: string }): Promise<void>;
+  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit' | 'asset' | 'environment'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean; assetId?: string }): Promise<void>;
   rejectAi(): void;
   applyAi(): Promise<void>;
   saveSourceFiles(files: Array<{ path: string; content: string; enabled?: boolean }>): Promise<boolean>;

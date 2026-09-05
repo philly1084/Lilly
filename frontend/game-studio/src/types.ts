@@ -94,13 +94,14 @@ export type AiRun = {
   projectId: string;
   baseRevision: number;
   prompt: string;
-  mode?: 'level' | 'edit' | 'asset';
+  mode?: 'level' | 'edit' | 'asset' | 'environment';
   refinement?: { assetId: string; name: string; instances: number };
   generation?: { source: 'ai' | 'preset' | 'commands' | 'recipe'; requestedModel?: string | null; warning?: string | null };
   status: 'proposed' | 'applied' | 'rejected';
   commands: LillyCommand[];
   affected: Array<{ operation: string; sceneId: string | null; entityId: string | null; graphId: string | null; recipeId?: string | null }>;
   preview: {
+    environment?: { name: string; models: number; instances: number; omitted: number; triangles: number; size: number[]; sizeBytes: number; sky: { color: string; ambient: number; sunColor: string; sunIntensity: number } };
     asset?: { name: string; parts: number; triangles: number; size: number[]; sizeBytes: number; format: string };
     revision: number;
     validation: { projectIssues: ValidationIssue[]; blueprintIssues: ValidationIssue[] };

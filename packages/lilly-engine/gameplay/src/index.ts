@@ -1,5 +1,43 @@
 export type Vec3 = { x: number; y: number; z: number };
 
+type HeightTerrain = { id: string; size: { x: number; y: number }; resolution: number; heights: number[]; heightScale: number; walkable?: boolean };
+
+/** Samples the same two triangles per cell as the rendered PlaneGeometry. */
+export function sampleTerrainHeight(terrain: HeightTerrain, transform: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, x: number, z: number): number | null {
+  const position = transform.position || { x: 0, y: 0, z: 0 };
+  const rotation = transform.rotation || { x: 0, y: 0, z: 0 };
+  const scale = transform.scale || { x: 1, y: 1, z: 1 };
+  if (rotation.x || rotation.z || !scale.x || !scale.z || terrain.resolution < 2) return null;
+  const angle = rotation.y * Math.PI / 180;
+  const dx = x - position.x, dz = z - position.z;
+  const localX = (Math.cos(angle) * dx - Math.sin(angle) * dz) / scale.x;
+  const localZ = (Math.sin(angle) * dx + Math.cos(angle) * dz) / scale.z;
+  const n = terrain.resolution;
+  const u = (localX / terrain.size.x + 0.5) * (n - 1);
+  const v = (localZ / terrain.size.y + 0.5) * (n - 1);
+  if (u < 0 || v < 0 || u > n - 1 || v > n - 1) return null;
+  const col = Math.min(n - 2, Math.floor(u)), row = Math.min(n - 2, Math.floor(v));
+  const tx = u - col, tz = v - row;
+  const [a, b, c, d] = [row * n + col, row * n + col + 1, (row + 1) * n + col, (row + 1) * n + col + 1].map(i => terrain.heights[i] * terrain.heightScale);
+  const height = tx + tz <= 1 ? a + tx * (b - a) + tz * (c - a) : d + (1 - tx) * (c - d) + (1 - tz) * (b - d);
+  return Number.isFinite(height) ? position.y + height * scale.y : null;
+}
+
+export function sampleSceneGroundHeight(scene: LillyScene, terrains: HeightTerrain[], x: number, z: number): number | null {
+  let height: number | null = null;
+  for (const entity of scene.entities) {
+    if (!entity.enabled) continue;
+    const surface = entity.components.find(c => c.type === 'Terrain' && c.enabled !== false);
+    if (!surface || surface.data.walkable === false) continue;
+    const terrain = terrains.find(t => t.id === surface.data.terrainId);
+    if (!terrain || terrain.walkable === false) continue;
+    const transform = entity.components.find(c => c.type === 'Transform' && c.enabled !== false)?.data || {};
+    const sampled = sampleTerrainHeight(terrain, transform, x, z);
+    if (sampled !== null) height = Math.max(height ?? 0, sampled);
+  }
+  return height;
+}
+
 type LillyComponent<T extends Record<string, unknown> = Record<string, unknown>> = {
   type: string;
   enabled?: boolean;

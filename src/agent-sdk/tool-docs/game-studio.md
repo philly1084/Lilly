@@ -2,6 +2,8 @@
 
 Refinement: `generate-model` with `assetId` uses a saved generated model recipe as context. Preview the proposal, then `apply-ai-run` updates its scene instances to a new GLB while keeping the previous asset. Entity transforms and material overrides are retained; source prefab definitions remain unchanged. Missing source is an explicit error.
 
+Environment creation: `generate-environment` accepts a prompt and connected model or an authored `LillyEnvironmentRecipe/v1`. It previews real scenery GLBs and native terrain, then `apply-ai-run` saves the models and replaces prior Lilly scenery with undo support. Read `docs/game-studio/environment-creator.md` for the recipe contract and limits.
+
 3D creation: `generate-model` accepts `projectId`, `baseRevision`, `prompt`, and optional connected `model` (such as `gpt-6-astra`). Codex can instead supply an authored `LillyModelRecipe/v1` in `recipe` without a nested model request. The recipe compiles named primitive or custom triangle-mesh parts to a real GLB preview. Use `apply-ai-run` with `projectId` and returned `runId` to save the GLB, editable source and scene object after review; the original revision must still match. Then run playtest and build. This path creates static stylized geometry, not rigged or sculpted characters. See `docs/agent-grep/game-creator.md` for CLI and recipe details.
 
 Use this tool for durable browser-game projects owned by Lilly Game Studio. Keep disposable sketches and one-off prototypes on `code-sandbox`.

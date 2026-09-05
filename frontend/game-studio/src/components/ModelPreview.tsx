@@ -13,11 +13,11 @@ function Model({ url }: { url: string }) {
   const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   return <Bounds fit clip observe margin={1.3}><primitive object={model}/></Bounds>;
 }
-export function ModelPreview({ url }: { url: string }) {
+export function ModelPreview({ url, sky }: { url: string; sky?: { color: string; ambient: number; sunColor: string; sunIntensity: number } }) {
   return <div className="model-preview" aria-label="Interactive 3D model preview. Drag to rotate, scroll to zoom.">
-    <PreviewBoundary key={url}><Canvas camera={{ position: [4, 3, 5], fov: 40 }} dpr={[1, 1.5]}>
-      <color attach="background" args={['#121c2a']}/><ambientLight intensity={1.8}/>
-      <directionalLight position={[4, 8, 5]} intensity={3}/><directionalLight position={[-4, 2, -3]} intensity={1.2}/>
+    <PreviewBoundary key={url}><Canvas camera={{ position: sky ? [80, 65, 100] : [4, 3, 5], fov: 40 }} dpr={[1, 1.5]}>
+      <color attach="background" args={[sky?.color || '#121c2a']}/><ambientLight intensity={sky?.ambient ?? 1.8}/>
+      <directionalLight position={[4, 8, 5]} color={sky?.sunColor || '#ffffff'} intensity={sky?.sunIntensity ?? 3}/>{!sky && <directionalLight position={[-4, 2, -3]} intensity={1.2}/>}
       <Suspense fallback={null}><Model url={url}/></Suspense><OrbitControls makeDefault/>
     </Canvas></PreviewBoundary>
   </div>;

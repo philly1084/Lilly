@@ -3,6 +3,7 @@ import { useStudioStore } from '../store';
 import { Icon } from './Icon';
 import { studioApi } from '../api';
 import { ModelPreview } from './ModelPreview';
+import { EnvironmentCreator } from './EnvironmentCreator';
 
 const QUICK_IDEAS = [
   {
@@ -33,7 +34,7 @@ function pretty(value = '') {
 
 export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
   const { current, aiRun, aiStatus, aiAssetId, refineAsset, proposeAi, applyAi, rejectAi, consoleItems } = useStudioStore();
-  const [mode, setMode] = useState<'level' | 'asset' | 'edit'>(aiAssetId ? 'asset' : 'level');
+  const [mode, setMode] = useState<'level' | 'asset' | 'edit' | 'environment'>(aiAssetId ? 'asset' : 'level');
   const [model, setModel] = useState('');
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([]);
   const [modelError, setModelError] = useState('');
@@ -57,7 +58,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
   const error = [...consoleItems].reverse().find((entry) => entry.level === 'error')?.message;
   return <div className="creator-workflow">
     <div className="creator-mode" role="group" aria-label="What would you like to create?">
-      {(['level', 'asset', 'edit'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); refineAsset(null); rejectAi(); setPrompt(value === 'asset' ? 'A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.' : 'Improve the lighting and atmosphere of this scene.'); }}>{value === 'level' ? 'Game' : value === 'asset' ? '3D asset' : 'Edit scene'}</button>)}
+      {(['level', 'asset', 'environment', 'edit'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); refineAsset(null); rejectAi(); setPrompt(value === 'asset' ? 'A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.' : 'Improve the lighting and atmosphere of this scene.'); }}>{value === 'level' ? 'Game' : value === 'asset' ? '3D asset' : value === 'environment' ? 'Scenery' : 'Edit scene'}</button>)}
     </div>
     <label className="creator-model">AI model
       <select value={model} disabled={busy} onChange={(event) => { setModel(event.target.value); rejectAi(); }}>
@@ -66,7 +67,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
       </select>
     </label>
     {modelError && <div className="creator-error" role="status"><span>{modelError}</span><button type="button" onClick={loadModels}>Retry model list</button></div>}
-    {mode === 'level' ? <GameLevelBody compact={compact} model={model}/> : <div className="level-creator">
+    {mode === 'level' ? <GameLevelBody compact={compact} model={model}/> : mode === 'environment' ? <EnvironmentCreator compact={compact} model={model}/> : <div className="level-creator">
       <div className="creator-intro"><div><span className="panel-kicker">{mode === 'asset' ? 'Real geometry · downloadable GLB' : 'Project-aware changes'}</span><strong>{mode === 'asset' ? sourceAsset ? `Refine ${sourceAsset.name}` : 'Describe your 3D asset' : 'What should change?'}</strong></div></div>
       {mode === 'asset' && editableAssets.length > 0 && <label className="creator-model">Create or refine<select value={aiAssetId || ''} disabled={busy} onChange={(event) => { refineAsset(event.target.value || null, false); setPrompt(''); }}><option value="">New 3D asset</option>{editableAssets.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.metadata?.createdRevision ? ` · saved r${entry.metadata.createdRevision}` : entry.metadata?.refinedFrom ? ' · previous refinement' : ' · original'}</option>)}</select></label>}
       <p className="creator-help">{mode === 'asset' ? 'Create stylized props and models with materials. Rotate the preview, then add it to your game. Editable model source is saved with every asset.' : 'Ask for lighting, scene objects, or gameplay changes. Review the proposal before applying it.'}</p>

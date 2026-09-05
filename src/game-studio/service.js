@@ -41,6 +41,7 @@ const {
 const { PLAYER_RUNTIME_HASH, writeImmutableBuild } = require('./player-bundle');
 const { runMechanicTests } = require('./module-runner');
 const { compileModelRecipe, modelRecipePrompt } = require('./asset-creator');
+const { sceneryContext, compileEnvironmentRecipe, environmentCommands, environmentPrompt } = require('./environment-creator');
 
 const INDEX_SCHEMA = 'LillyGameStudioIndex/v1';
 const AI_RUN_SCHEMA = 'LillyAiRun/v1';
@@ -1097,6 +1098,7 @@ class GameStudioService {
   }
 
   async createAiRun(projectId, input = {}, ownerId = '') {
+    if (input.mode === 'environment') return this.createEnvironmentRun(projectId, input, ownerId);
     if (input.mode === 'asset') return this.createModelRun(projectId, input, ownerId);
     const { metadata, index } = await this.getMetadata(projectId, ownerId);
     if (!metadata) return null;
@@ -1245,10 +1247,66 @@ class GameStudioService {
     });
   }
 
+  async createEnvironmentRun(projectId, input, ownerId) {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    const project = result.project;
+    const baseRevision = Number(input.baseRevision ?? project.revision);
+    if (baseRevision !== project.revision) throw Object.assign(new Error('Refresh the project before creating scenery.'), { statusCode: 409, code: 'REVISION_CONFLICT', currentRevision: project.revision });
+    const prompt = String(input.prompt || (input.recipe ? 'Authored environment recipe' : '')).trim();
+    if (!prompt || prompt.length > 4000) throw Object.assign(new Error('Describe your environment in 1–4000 characters.'), { statusCode: 400 });
+    const context = sceneryContext(project);
+    const directory = `world/lilly-scenery-${crypto.createHash('sha256').update(project.entryScene).digest('hex').slice(0, 8)}`;
+    const previous = project.files.find(file => file.path === `${directory}/scenery-recipe.json`);
+    let recipe = input.recipe;
+    if (!recipe) {
+      if (!this.complete) throw Object.assign(new Error('Connect an AI model to create scenery.'), { statusCode: 503, code: 'AI_UNAVAILABLE' });
+      try { recipe = parseLenientJson(String(await this.complete(environmentPrompt(prompt, context, previous ? parseLenientJson(previous.content) : null), { model: input.model || null, reasoningEffort: 'high' }))); }
+      catch (_error) { throw Object.assign(new Error('The AI model could not create scenery. Retry or select another model.'), { statusCode: 502, code: 'AI_GENERATION_FAILED' }); }
+    }
+    let compiled;
+    let corrected = false;
+    try { compiled = compileEnvironmentRecipe(recipe, context); }
+    catch (error) {
+      if (input.recipe || error.statusCode !== 422) throw error;
+      // Give the author one bounded chance to repair invalid data; never substitute a preset.
+      const correction = `${environmentPrompt(prompt, context, recipe)}\nThe proposal failed validation: ${error.message}. Correct the invalid values while preserving this design and return the complete environment JSON. Hill height is a normalized fraction 0–1 of terrain.height, NOT meters. Validate all bounds before responding.`;
+      let response;
+      try { response = await this.complete(correction, { model: input.model || null, reasoningEffort: 'high' }); }
+      catch (_error) { throw Object.assign(new Error('The AI could not correct the scenery recipe. Retry or select another model.'), { statusCode: 502, code: 'AI_GENERATION_FAILED' }); }
+      compiled = compileEnvironmentRecipe(parseLenientJson(String(response)), context);
+      corrected = true;
+    }
+    const assetIds = Object.fromEntries(compiled.models.map(model => [model.id, randomUUID()]));
+    const candidate = structuredClone(project);
+    candidate.assets.push(...compiled.models.map(model => this.sceneryAsset(model, assetIds[model.id], baseRevision + 1, { source: input.recipe ? 'recipe' : 'ai', requestedModel: input.model || null })));
+    const commands = this.normalizeCommands(candidate, environmentCommands(project, compiled, context, assetIds), baseRevision);
+    const preview = applyCommandBatch(candidate, commands, baseRevision);
+    assertModuleBundleValid(compileModuleBundle(preview.project.files));
+    const run = {
+      schema: AI_RUN_SCHEMA, id: randomUUID(), projectId, ownerId, baseRevision, prompt, mode: 'environment', status: 'proposed',
+      generation: { source: input.recipe ? 'recipe' : 'ai', requestedModel: input.recipe ? null : input.model || null, corrected },
+      environmentRecipe: compiled.recipe, sceneryContext: context, assetIds, commands, affected: [],
+      preview: { revision: baseRevision + 1, validation: { projectIssues: validateProject(preview.project), blueprintIssues: [] }, environment: compiled.summary }, createdAt: now(),
+    };
+    return this.withProjectLock(projectId, async () => {
+      const { metadata, index } = await this.getMetadata(projectId, ownerId);
+      if (!metadata) return null;
+      index.aiRuns.unshift(run);
+      await this.writeIndex(index);
+      await this.emit(projectId, 'ai-run.proposed', { id: run.id, baseRevision, mode: 'environment' });
+      return run;
+    });
+  }
+
+  sceneryAsset(model, id, revision, generation) {
+    return { id, name: model.recipe.name, type: 'model/gltf-binary', uri: `assets/${id}.glb`, metadata: { ...model.summary, kind: 'model', sha256: crypto.createHash('sha256').update(model.buffer).digest('hex'), upAxis: 'Y', unitsPerMeter: 1, sourcePath: `models/${id}.model.json`, createdRevision: revision, generatedBy: generation } };
+  }
+
   async readModelPreview(projectId, runId, ownerId) {
     const { metadata, index } = await this.getMetadata(projectId, ownerId);
-    const run = metadata && index.aiRuns.find((entry) => entry.id === runId && entry.projectId === projectId && entry.ownerId === ownerId && entry.mode === 'asset');
-    return run ? compileModelRecipe(run.assetRecipe) : null;
+    const run = metadata && index.aiRuns.find((entry) => entry.id === runId && entry.projectId === projectId && entry.ownerId === ownerId && ['asset', 'environment'].includes(entry.mode));
+    return run ? run.mode === 'environment' ? compileEnvironmentRecipe(run.environmentRecipe, run.sceneryContext) : compileModelRecipe(run.assetRecipe) : null;
   }
 
   async applyAiRun(projectId, runId, ownerId) {
@@ -1263,6 +1321,15 @@ class GameStudioService {
       let commands = run.commands;
       let compiled;
       let asset;
+      const generatedAssets = [];
+      if (run.mode === 'environment') {
+        const environment = compileEnvironmentRecipe(run.environmentRecipe, run.sceneryContext);
+        for (const model of environment.models) {
+          const generated = this.sceneryAsset(model, run.assetIds[model.id], project.revision + 1, run.generation);
+          project.assets.push(generated);
+          generatedAssets.push({ asset: generated, buffer: model.buffer });
+        }
+      }
       if (run.mode === 'asset') {
         compiled = compileModelRecipe(run.assetRecipe);
         const id = randomUUID();
@@ -1292,10 +1359,12 @@ class GameStudioService {
       commands = this.normalizeCommands(project, commands, project.revision);
       const applied = applyCommandBatch(project, commands, project.revision);
       // Undo changes the scene, while keeping generated assets and their editable source reusable.
-      const inverses = asset ? applied.inverses.filter((command) => !(command.operation === 'file.delete' && command.target.path === asset.metadata.sourcePath)) : applied.inverses;
-      if (asset) {
+      if (asset) generatedAssets.push({ asset, buffer: compiled.buffer });
+      const retainedSources = new Set(generatedAssets.map(entry => entry.asset.metadata.sourcePath));
+      const inverses = applied.inverses.filter(command => !(command.operation === 'file.delete' && retainedSources.has(command.target.path)));
+      for (const generated of generatedAssets) {
         await fs.mkdir(path.join(this.projectDirectory(projectId), 'assets'), { recursive: true });
-        await fs.writeFile(path.join(this.projectDirectory(projectId), asset.uri), compiled.buffer, { flag: 'wx' });
+        await fs.writeFile(path.join(this.projectDirectory(projectId), generated.asset.uri), generated.buffer, { flag: 'wx' });
       }
       await this.persistSnapshot(applied.project, { ownerId, source: `ai-run:${run.id}`, commands, inverses, metadata });
       Object.assign(metadata, { revision: applied.project.revision, updatedAt: now() });
@@ -1340,6 +1409,7 @@ class GameStudioService {
       case 'set-active-build-profile': return this.setActiveBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'generate-level': return this.createAiRun(params.projectId, { ...params, mode: 'level' }, ownerId);
       case 'generate-model': return this.createAiRun(params.projectId, { ...params, mode: 'asset' }, ownerId);
+      case 'generate-environment': return this.createAiRun(params.projectId, { ...params, mode: 'environment' }, ownerId);
       case 'apply-ai-run': return this.applyAiRun(params.projectId, params.runId, ownerId);
       case 'apply-commands': return this.applyCommands(params.projectId, params, ownerId);
       case 'edit-blueprint': {

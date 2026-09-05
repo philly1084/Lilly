@@ -267,7 +267,7 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 @media(max-width:420px){.proposal-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.creator-ideas{margin-right:-10px}.mobile-creator{max-height:60vh}.ai-context{margin:8px}.ai-panel>header{height:54px}.ai-panel>footer{font-size:7px}.play-hud{max-width:calc(100% - 20px)}}
 /* Shared desktop/mobile creator. Keep secondary controls inside the existing panel. */
 .creator-workflow { min-width: 0; overflow: auto; }
-.creator-mode { display: flex; gap: 4px; margin: 12px; }
+.creator-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 12px; }
 .creator-mode button { flex: 1; padding: 9px 5px; background: #152033; color: #d4deec; border: 1px solid #41516b; border-radius: 7px; }
 .creator-mode button[aria-pressed="true"] { background: #30436b; color: #fff; border-color: #90b4ff; }
 .creator-model { display: grid; gap: 6px; margin: 12px; color: #d4deec; font-size: 12px; }

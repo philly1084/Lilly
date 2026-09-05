@@ -11,6 +11,12 @@ function response(payload, status = 200) {
 }
 
 describe('Lilly Game CLI', () => {
+  test('forwards scenery creation to the selected AI model', async () => {
+    let body;
+    const exitCode = await runCli(['ai', '--project', 'world', '--base-revision', '2', '--mode', 'environment', '--model', 'gpt-6-astra', '--prompt', 'A snowy grove'], {}, { stdout: stream(), stderr: stream() }, async (_url, options) => { body = JSON.parse(options.body); return response({ id: 'environment-run' }); });
+    expect(exitCode).toBe(0);
+    expect(body).toMatchObject({ mode: 'environment', model: 'gpt-6-astra', prompt: 'A snowy grove', baseRevision: 2, requireAi: true });
+  });
   test('passes the selected model for 3D generation and applies the saved proposal ID', async () => {
     const calls = [];
     const fetch = async (url, options) => { calls.push({ url, options }); return response({ id: 'run-1' }); };

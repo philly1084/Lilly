@@ -21,7 +21,7 @@
         "dev:game-studio": "vite --config frontend/game-studio/vite.config.ts",
         "smoke:game-studio": "node bin/lilly-game-studio-smoke.js",
         "game": "node bin/lilly-game.js",
-        "test:game-studio": "npm run build:lilly-engine && jest --runInBand --runTestsByPath packages/lilly-engine/core/src/index.test.js packages/lilly-engine/blueprints/src/index.test.js packages/lilly-engine/gameplay/src/index.test.js packages/lilly-engine/modules/src/index.test.js src/game-studio/cli-client.test.js src/game-studio/service.test.js src/routes/game-studio.test.js src/orchestration/agent-roles.test.js src/routes/canvas.test.js src/tool-execution-profiles.test.js",
+        "test:game-studio": "npm run build:lilly-engine && jest --runInBand --runTestsByPath packages/lilly-engine/core/src/index.test.js packages/lilly-engine/blueprints/src/index.test.js packages/lilly-engine/gameplay/src/index.test.js packages/lilly-engine/modules/src/index.test.js src/game-studio/cli-client.test.js src/game-studio/environment-creator.test.js src/game-studio/asset-creator.test.js src/game-studio/creator-workflow.test.js src/game-studio/service.test.js src/routes/game-studio.test.js src/orchestration/agent-roles.test.js src/routes/canvas.test.js src/tool-execution-profiles.test.js",
         "ingress": "node bin/kimibuilt-ingress.js",
         "runner": "node bin/kimibuilt-runner.js",
         "dev": "nodemon src/server.js",
