@@ -70,6 +70,46 @@ test('bounded parallel authors start together while scene writes remain sequenti
   expect(new Set(revisions).size).toBe(revisions.length);
 });
 
+test('director repairs an oversized game brief once before presenting a reviewable plan', async () => {
+  studio.complete.mockResolvedValueOnce(JSON.stringify({ ...plan, gameplayPrompt: 'x'.repeat(2001) })).mockResolvedValueOnce(JSON.stringify(plan));
+  const draft = await studio.productions.create({ brief: 'Keep the original puzzle', models: { director: 'future-director' } }, 'owner');
+  const result = await finished(draft.id);
+  expect(result.status).toBe('review');
+  expect(result.plan.gameplayPrompt).toBe(plan.gameplayPrompt);
+  expect(result.events.some(event => event.message.includes('correcting the game design'))).toBe(true);
+  expect(studio.complete).toHaveBeenCalledTimes(2);
+  expect(studio.complete.mock.calls[1][0]).toContain('Original gameplay brief needs');
+  expect(studio.complete.mock.calls[1][1].model).toBe('future-director');
+  expect(await studio.listProjects('owner')).toHaveLength(0);
+});
+
+test('invalid director output stops after one correction and remains resumable', async () => {
+  studio.complete.mockResolvedValue('not valid JSON');
+  const draft = await studio.productions.create({ brief: 'A puzzle' }, 'owner');
+  const result = await finished(draft.id);
+  expect(result.status).toBe('failed');
+  expect(result.plan).toBeNull();
+  expect(studio.complete).toHaveBeenCalledTimes(2);
+  studio.complete.mockResolvedValue(JSON.stringify(plan));
+  await studio.productions.control(draft.id, 'resume', { revision: result.revision }, 'owner');
+  expect((await finished(draft.id)).status).toBe('review');
+});
+
+test('director transport failures and cancellation do not launch correction requests', async () => {
+  studio.complete.mockRejectedValueOnce(new Error('provider offline'));
+  const failed = await studio.productions.create({ brief: 'A puzzle' }, 'owner');
+  expect((await finished(failed.id)).status).toBe('failed');
+  expect(studio.complete).toHaveBeenCalledTimes(1);
+  let release;
+  studio.complete.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  const stopped = await studio.productions.create({ brief: 'Another puzzle' }, 'owner');
+  while (!release) await new Promise(resolve => setImmediate(resolve));
+  await studio.productions.control(stopped.id, 'stop', {}, 'owner');
+  release('invalid JSON');
+  expect((await finished(stopped.id)).status).toBe('stopped');
+  expect(studio.complete).toHaveBeenCalledTimes(2);
+});
+
 test('failure retains completed outputs, new service resumes without regenerating successful assets', async () => {
   let failedOnce = false;
   studio.complete.mockImplementation(async prompt => {

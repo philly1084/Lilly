@@ -111,9 +111,19 @@ class GameProductionService {
         delete value.error;
         await this.save(value, planning ? 'Design stream started.' : 'Build streams started.');
         if (planning) {
-          const response = await this.studio.complete(designPrompt(value.brief), { model: value.models.director || null, reasoningEffort: 'high' });
-          await this.check(value, lease);
-          value.plan = validatePlan(parseLenientJson(String(response)));
+          let correction = '';
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const response = await this.studio.complete(designPrompt(value.brief) + correction, { model: value.models.director || null, reasoningEffort: 'high' });
+            await this.check(value, lease);
+            try {
+              value.plan = validatePlan(parseLenientJson(String(response)));
+              break;
+            } catch (e) {
+              if (attempt) throw e;
+              correction = `\nRepair the previous JSON design while preserving the user's game. Validation failed: ${String(e.message).slice(0, 1000)}. Every individual scene, level, environment, gameplay and asset prompt must be at most 2000 characters. Return the complete corrected plan, JSON only. Previous response (possibly shortened): ${String(response).slice(0, 32000)}`;
+              await this.save(value, 'Director is correcting the game design to fit the supported format.');
+            }
+          }
           value.status = 'review';
           await this.save(value, 'Review the game design and model assignments before building.');
         } else await this.execute(value, lease);
