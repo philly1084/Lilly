@@ -1354,6 +1354,11 @@ function setupTouchControls() {
   });
 }
 
+function responsiveCameraFov(baseFov, aspect) {
+  const radians = Math.max(1, Math.min(150, Number(baseFov) || 58)) * Math.PI / 180;
+  return Math.min(170, 2 * Math.atan(Math.tan(radians / 2) * Math.max(1, (4 / 3) / Math.max(0.1, aspect))) * 180 / Math.PI);
+}
+
 function resize() {
   if (!renderer || !camera) return;
   const pixelRatioCap = buildQuality() === 'performance' ? 1 : buildQuality() === 'balanced' ? 1.5 : 2;
@@ -1361,6 +1366,7 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   if (camera.isPerspectiveCamera) {
     camera.aspect = innerWidth / innerHeight;
+    if (runtimeProfile !== 'expedition') camera.fov = responsiveCameraFov(cameraComponentData?.fov || 58, camera.aspect);
     camera.updateProjectionMatrix();
   }
 }
