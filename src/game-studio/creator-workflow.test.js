@@ -53,3 +53,48 @@ test('never overwrites concurrent edits or invents a fallback asset', async () =
   await expect(service.createAiRun(id, { mode: 'asset', prompt: 'A ship' }, 'owner')).rejects.toMatchObject({ code: 'AI_GENERATION_FAILED' });
   await expect(service.createAiRun(id, { mode: 'level', requireAi: true, prompt: 'A dungeon' }, 'owner')).rejects.toMatchObject({ code: 'AI_GENERATION_FAILED' });
 });
+
+test('refines an existing asset from saved source, updates instances, and undoes without losing either GLB or recipe', async () => {
+  const created = await service.createProject({ name: 'Refinement', template: 'third-person-explorer' }, 'owner');
+  const id = created.project.id;
+  const firstRun = await service.createAiRun(id, { mode: 'asset', recipe }, 'owner');
+  const first = await service.applyAiRun(id, firstRun.id, 'owner');
+  const originalAsset = first.project.assets[0];
+  const originalBytes = (await service.readAssetContent(id, originalAsset.id, 'owner')).content;
+  const entity = first.project.scenes[0].entities.find((entry) => entry.components.some((component) => component.data.assetId === originalAsset.id));
+  const changedRecipe = { ...recipe, parts: recipe.parts.map((part) => ({ ...part, color: '#eebb22' })) };
+  service.complete.mockResolvedValue(JSON.stringify(changedRecipe));
+  const nextRun = await service.createAiRun(id, { mode: 'asset', assetId: originalAsset.id, prompt: 'Make it yellow', model: 'connected-astra' }, 'owner');
+  expect(service.complete).toHaveBeenLastCalledWith(expect.stringContaining('Existing recipe:'), { model: 'connected-astra', reasoningEffort: 'high' });
+  expect(service.complete.mock.calls.at(-1)[0]).toContain('Cockpit');
+  expect(nextRun.refinement).toMatchObject({ assetId: originalAsset.id, instances: 1 });
+  expect((await service.getProject(id, 'owner')).project.revision).toBe(2);
+  const second = await service.applyAiRun(id, nextRun.id, 'owner');
+  const refinedAsset = second.project.assets[1];
+  expect(refinedAsset.metadata.refinedFrom).toBe(originalAsset.id);
+  expect(second.project.scenes[0].entities).toHaveLength(first.project.scenes[0].entities.length);
+  const revisedEntity = second.project.scenes[0].entities.find((entry) => entry.id === entity.id);
+  expect(revisedEntity.components.find((component) => component.type === 'MeshRenderer').data.assetId).toBe(refinedAsset.id);
+  expect(revisedEntity.components.find((component) => component.type === 'Transform')).toEqual(entity.components.find((component) => component.type === 'Transform'));
+  expect((await service.readAssetContent(id, originalAsset.id, 'owner')).content.equals(originalBytes)).toBe(true);
+  expect((await service.readAssetContent(id, refinedAsset.id, 'owner')).content.equals(originalBytes)).toBe(false);
+  const undone = await service.applyCommands(id, { baseRevision: 3, commands: second.commandBatch.inverses }, 'owner');
+  expect(undone.project.scenes[0].entities.find((entry) => entry.id === entity.id).components.find((component) => component.type === 'MeshRenderer').data.assetId).toBe(originalAsset.id);
+  expect(undone.project.assets).toHaveLength(2);
+  expect(undone.project.files.some((file) => file.path === refinedAsset.metadata.sourcePath)).toBe(true);
+  const redone = await service.applyCommands(id, { baseRevision: 4, commands: second.commandBatch.commands }, 'owner');
+  expect(redone.project.scenes[0].entities.find((entry) => entry.id === entity.id).components.find((component) => component.type === 'MeshRenderer').data.assetId).toBe(refinedAsset.id);
+  expect((await service.runPlaytest(id, {}, 'owner')).status).toBe('passed');
+});
+
+test('refinement cannot read another project asset or silently replace a model with missing source', async () => {
+  const first = await service.createProject({ name: 'Source', template: 'blank' }, 'owner');
+  const second = await service.createProject({ name: 'Other', template: 'blank' }, 'owner');
+  const run = await service.createAiRun(first.project.id, { mode: 'asset', recipe }, 'owner');
+  const applied = await service.applyAiRun(first.project.id, run.id, 'owner');
+  const asset = applied.project.assets[0];
+  await expect(service.createAiRun(second.project.id, { mode: 'asset', assetId: asset.id, prompt: 'Change it' }, 'owner')).rejects.toMatchObject({ code: 'ASSET_NOT_FOUND' });
+  await service.deleteSourceFiles(first.project.id, { baseRevision: 2, paths: [asset.metadata.sourcePath] }, 'owner');
+  await expect(service.createAiRun(first.project.id, { mode: 'asset', assetId: asset.id, prompt: 'Change it' }, 'owner')).rejects.toMatchObject({ code: 'MODEL_SOURCE_UNAVAILABLE' });
+  expect(service.complete).not.toHaveBeenCalled();
+});

@@ -17,6 +17,8 @@ node bin/lilly-game.js build --project PROJECT_ID --revision 2
 
 Codex can also author a recipe itself and send `--mode asset --recipe model.json`. This uses no nested AI request. The `game-studio` tool exposes `generate-model` (prompt plus optional model, or recipe) and `apply-ai-run` (projectId, runId).
 
+To refine a saved model, choose **Refine** in its library card or select it under **Create or refine**. Describe the change, inspect the preview, then choose **Use refined model**. The saved recipe provides context. A new immutable GLB replaces this model's scene references while preserving entity positions and component overrides. The old asset and both editable recipes remain available; Undo restores the scene references. This affects scene instances, not uninstantiated source prefabs. API/tool callers pass `assetId` with mode `asset`; CLI callers use `--asset ASSET_ID`. Imported GLBs without a Lilly recipe must be revised in their original modelling tool.
+
 ## Model contract
 
 `LillyModelRecipe/v1`: name and 1–64 named parts. Each part has shape (`box`, `sphere`, `cylinder`, `cone`, `torus`, `icosahedron`, or `mesh`), position/rotation/scale arrays, hex color, roughness and metalness. Units are meters, Y is up, rotation is XYZ degrees. Primitive dimensions are one meter, centered at origin. Custom `mesh` parts have flat xyz `vertices` and counterclockwise triangle `indices`. Maximum 4,000 vertices/8,000 triangles per custom part; 50,000 triangles overall. The compiler grounds and centers the model pivot and deduplicates materials.

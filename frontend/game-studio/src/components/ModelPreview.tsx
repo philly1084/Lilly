@@ -1,4 +1,4 @@
-import { Component, Suspense, type ReactNode } from 'react';
+import { Component, Suspense, useMemo, type ReactNode } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { Bounds, OrbitControls } from '@react-three/drei';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -10,7 +10,8 @@ class PreviewBoundary extends Component<{ children: ReactNode }, { failed: boole
 }
 function Model({ url }: { url: string }) {
   const gltf = useLoader(GLTFLoader, url);
-  return <Bounds fit clip observe margin={1.3}><primitive object={gltf.scene}/></Bounds>;
+  const model = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
+  return <Bounds fit clip observe margin={1.3}><primitive object={model}/></Bounds>;
 }
 export function ModelPreview({ url }: { url: string }) {
   return <div className="model-preview" aria-label="Interactive 3D model preview. Drag to rotate, scroll to zoom.">

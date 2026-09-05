@@ -37,6 +37,8 @@ type StudioState = {
   previewStatus: 'idle' | 'preparing' | 'ready' | 'error';
   bottomTab: BottomTab;
   aiOpen: boolean;
+  aiAssetId: string | null;
+  refineAsset(assetId: string | null, openPanel?: boolean): void;
   aiRun: AiRun | null;
   aiStatus: 'idle' | 'thinking' | 'ready' | 'applying' | 'error';
   saveStatus: 'saved' | 'saving' | 'conflict' | 'error';
@@ -69,7 +71,7 @@ type StudioState = {
   addComponent(entityId: string, component: LillyComponent): Promise<void>;
   undo(): Promise<void>;
   redo(): Promise<void>;
-  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit' | 'asset'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean }): Promise<void>;
+  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit' | 'asset'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean; assetId?: string }): Promise<void>;
   rejectAi(): void;
   applyAi(): Promise<void>;
   saveSourceFiles(files: Array<{ path: string; content: string; enabled?: boolean }>): Promise<boolean>;
@@ -127,6 +129,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   previewStatus: 'idle',
   bottomTab: 'content',
   aiOpen: false,
+  aiAssetId: null,
+  refineAsset: (assetId, openPanel = true) => {
+    if (['thinking', 'applying'].includes(get().aiStatus)) return;
+    set({ aiAssetId: assetId, ...(assetId && openPanel ? { aiOpen: true } : {}), aiRun: null, aiStatus: 'idle' });
+  },
   aiRun: null,
   aiStatus: 'idle',
   saveStatus: 'saved',
@@ -221,7 +228,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   async openProject(id) {
-    set({ status: 'loading', error: '', aiRun: null, aiStatus: 'idle' });
+    set({ status: 'loading', error: '', aiRun: null, aiStatus: 'idle', aiAssetId: null });
     try {
       const current = await studioApi.getProject(id);
       localStorage.setItem('lilly-game-studio:project', id);
@@ -344,7 +351,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
       const result = await studioApi.applyAiRun(run.projectId, run.id);
       if (get().current?.project.id !== run.projectId) return;
       const model = result.project.scenes.flatMap((scene) => scene.entities).find((entity) => entity.tags.includes('ai-created') && !get().current?.project.scenes.flatMap((scene) => scene.entities).some((old) => old.id === entity.id));
-      set({ current: result, aiRun: null, aiStatus: 'idle', saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle', undoStack: result.commandBatch ? [...get().undoStack, { forward: result.commandBatch.commands, inverse: result.commandBatch.inverses }] : get().undoStack, redoStack: [], ...(model ? { selectedEntityId: model.id } : {}) });
+      const refined = run.refinement ? result.project.assets.find((asset) => !get().current?.project.assets.some((old) => old.id === asset.id)) : null;
+      set({ current: result, aiRun: null, aiStatus: 'idle', saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle', undoStack: result.commandBatch?.inverses.length ? [...get().undoStack, { forward: result.commandBatch.commands, inverse: result.commandBatch.inverses }] : get().undoStack, redoStack: [], ...(model ? { selectedEntityId: model.id } : {}), ...(refined ? { aiAssetId: refined.id } : {}) });
       get().log('success', `${run.mode === 'asset' ? '3D model and editable source' : 'AI design'} saved at revision ${result.project.revision}`);
     } catch (error) {
       set({ aiStatus: 'error' });

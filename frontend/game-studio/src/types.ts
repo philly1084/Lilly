@@ -95,6 +95,7 @@ export type AiRun = {
   baseRevision: number;
   prompt: string;
   mode?: 'level' | 'edit' | 'asset';
+  refinement?: { assetId: string; name: string; instances: number };
   generation?: { source: 'ai' | 'preset' | 'commands' | 'recipe'; requestedModel?: string | null; warning?: string | null };
   status: 'proposed' | 'applied' | 'rejected';
   commands: LillyCommand[];

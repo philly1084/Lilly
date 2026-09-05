@@ -35,6 +35,7 @@ function ContentBrowser() {
   const saveSourceFiles = useStudioStore((state) => state.saveSourceFiles);
   const setBottomTab = useStudioStore((state) => state.setBottomTab);
   const dispatch = useStudioStore((state) => state.dispatch);
+  const refineAsset = useStudioStore((state) => state.refineAsset);
   const scene = currentScene(current);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
@@ -50,7 +51,7 @@ function ContentBrowser() {
     } } }]);
   };
   const items = useMemo<ContentItem[]>(() => [
-    ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: String(asset.metadata?.kind || asset.type), kind: 'asset', category: asset.type.startsWith('audio/') ? 'audio' : asset.type.startsWith('model/') ? 'models' : 'textures' })),
+    ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: String(asset.metadata?.kind || asset.type) + (asset.metadata?.createdRevision ? ` · r${asset.metadata.createdRevision}` : ''), kind: 'asset', category: asset.type.startsWith('audio/') ? 'audio' : asset.type.startsWith('model/') ? 'models' : 'textures' })),
     ...(scene?.entities.filter((entity) => ['pickup', 'player', 'enemy', 'checkpoint'].some((tag) => entity.tags.includes(tag))).map((entity) => ({
       id: entity.id,
       name: entity.name,
@@ -117,6 +118,7 @@ function ContentBrowser() {
             <strong>{item.name}</strong><small>{item.type}</small>
           </button>
           {item.kind === 'asset' && item.category === 'models' && current && <div className="asset-card-actions model-library-actions">
+            {Boolean(current.project.assets.find((asset) => asset.id === item.id)?.metadata?.sourcePath) && <button type="button" onClick={() => refineAsset(item.id)} aria-label={`Refine ${item.name}`}>Refine</button>}
             <button type="button" onClick={() => placeModel(item)} aria-label={`Place ${item.name} in scene`}>Place</button>
             <a href={studioApi.assetContentUrl(current.project.id, item.id)} download={item.name} aria-label={`Download ${item.name}`}>Download</a>
           </div>}

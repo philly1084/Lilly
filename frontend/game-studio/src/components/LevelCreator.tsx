@@ -32,8 +32,8 @@ function pretty(value = '') {
 }
 
 export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
-  const { current, aiRun, aiStatus, proposeAi, applyAi, rejectAi, consoleItems } = useStudioStore();
-  const [mode, setMode] = useState<'level' | 'asset' | 'edit'>('level');
+  const { current, aiRun, aiStatus, aiAssetId, refineAsset, proposeAi, applyAi, rejectAi, consoleItems } = useStudioStore();
+  const [mode, setMode] = useState<'level' | 'asset' | 'edit'>(aiAssetId ? 'asset' : 'level');
   const [model, setModel] = useState('');
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([]);
   const [modelError, setModelError] = useState('');
@@ -46,13 +46,18 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
     }).catch(() => setModelError('Model list unavailable. Retry to choose Codex or Astra from your connected models.'));
   };
   useEffect(loadModels, []);
+  useEffect(() => {
+    if (aiAssetId) { setMode('asset'); setPrompt(''); }
+  }, [aiAssetId]);
+  const sourceAsset = current?.project.assets.find((entry) => entry.id === aiAssetId);
+  const editableAssets = current?.project.assets.filter((entry) => entry.metadata?.sourcePath && current.project.files.some((file) => file.path === entry.metadata?.sourcePath)) || [];
   const busy = aiStatus === 'thinking' || aiStatus === 'applying';
   const proposal = aiRun?.mode === mode ? aiRun : null;
   const asset = proposal?.preview.asset;
   const error = [...consoleItems].reverse().find((entry) => entry.level === 'error')?.message;
   return <div className="creator-workflow">
     <div className="creator-mode" role="group" aria-label="What would you like to create?">
-      {(['level', 'asset', 'edit'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); rejectAi(); setPrompt(value === 'asset' ? 'A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.' : 'Improve the lighting and atmosphere of this scene.'); }}>{value === 'level' ? 'Game' : value === 'asset' ? '3D asset' : 'Edit scene'}</button>)}
+      {(['level', 'asset', 'edit'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); refineAsset(null); rejectAi(); setPrompt(value === 'asset' ? 'A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.' : 'Improve the lighting and atmosphere of this scene.'); }}>{value === 'level' ? 'Game' : value === 'asset' ? '3D asset' : 'Edit scene'}</button>)}
     </div>
     <label className="creator-model">AI model
       <select value={model} disabled={busy} onChange={(event) => { setModel(event.target.value); rejectAi(); }}>
@@ -62,18 +67,20 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
     </label>
     {modelError && <div className="creator-error" role="status"><span>{modelError}</span><button type="button" onClick={loadModels}>Retry model list</button></div>}
     {mode === 'level' ? <GameLevelBody compact={compact} model={model}/> : <div className="level-creator">
-      <div className="creator-intro"><div><span className="panel-kicker">{mode === 'asset' ? 'Real geometry · downloadable GLB' : 'Project-aware changes'}</span><strong>{mode === 'asset' ? 'Describe your 3D asset' : 'What should change?'}</strong></div></div>
+      <div className="creator-intro"><div><span className="panel-kicker">{mode === 'asset' ? 'Real geometry · downloadable GLB' : 'Project-aware changes'}</span><strong>{mode === 'asset' ? sourceAsset ? `Refine ${sourceAsset.name}` : 'Describe your 3D asset' : 'What should change?'}</strong></div></div>
+      {mode === 'asset' && editableAssets.length > 0 && <label className="creator-model">Create or refine<select value={aiAssetId || ''} disabled={busy} onChange={(event) => { refineAsset(event.target.value || null, false); setPrompt(''); }}><option value="">New 3D asset</option>{editableAssets.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.metadata?.createdRevision ? ` · saved r${entry.metadata.createdRevision}` : entry.metadata?.refinedFrom ? ' · previous refinement' : ' · original'}</option>)}</select></label>}
       <p className="creator-help">{mode === 'asset' ? 'Create stylized props and models with materials. Rotate the preview, then add it to your game. Editable model source is saved with every asset.' : 'Ask for lighting, scene objects, or gameplay changes. Review the proposal before applying it.'}</p>
-      <label className="creator-prompt">{mode === 'asset' ? 'Shape, style, colors and details' : 'Your change'}<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={4000} rows={compact ? 3 : 4} disabled={busy}/></label>
-      {mode === 'asset' && <div className="creator-ideas" aria-label="3D asset idea starters">{['A mossy stone arch with carved steps and golden crystal accents', 'A low-poly red spaceship with swept wings, twin engines and a blue cockpit', 'A stylized treasure chest with curved lid, gold bands and a chunky lock'].map((idea, i) => <button type="button" key={idea} disabled={busy} onClick={() => setPrompt(idea)}>{['Stone arch', 'Spaceship', 'Treasure chest'][i]}</button>)}</div>}
-      <button type="button" className="creator-generate" disabled={busy || !prompt.trim()} onClick={() => proposeAi(prompt, { mode, model, requireAi: true })}>{busy ? 'Creating…' : mode === 'asset' ? 'Generate 3D asset' : 'Propose changes'}</button>
+      <label className="creator-prompt">{sourceAsset && mode === 'asset' ? 'What should change?' : mode === 'asset' ? 'Shape, style, colors and details' : 'Your change'}<textarea value={prompt} placeholder={sourceAsset ? 'Give the robot longer arms and yellow armor. Keep its eye and backpack.' : ''} onChange={(event) => setPrompt(event.target.value)} maxLength={4000} rows={compact ? 3 : 4} disabled={busy}/></label>
+      {mode === 'asset' && !sourceAsset && <div className="creator-ideas" aria-label="3D asset idea starters">{['A mossy stone arch with carved steps and golden crystal accents', 'A low-poly red spaceship with swept wings, twin engines and a blue cockpit', 'A stylized treasure chest with curved lid, gold bands and a chunky lock'].map((idea, i) => <button type="button" key={idea} disabled={busy} onClick={() => setPrompt(idea)}>{['Stone arch', 'Spaceship', 'Treasure chest'][i]}</button>)}</div>}
+      <button type="button" className="creator-generate" disabled={busy || !prompt.trim()} onClick={() => proposeAi(prompt, { mode, model, requireAi: true, ...(mode === 'asset' && sourceAsset ? { assetId: sourceAsset.id } : {}) })}>{busy ? 'Creating…' : mode === 'asset' ? sourceAsset ? 'Preview refinement' : 'Generate 3D asset' : 'Propose changes'}</button>
       {aiStatus === 'error' && <div className="creator-error" role="alert">{error || 'Creation failed. Please retry.'}</div>}
       {proposal && <section className="level-proposal" aria-label={mode === 'asset' ? 'Generated model proposal' : 'Scene change proposal'}>
         <div className="proposal-heading"><strong>{asset?.name || 'Review scene changes'}</strong></div>
         {asset && <><ModelPreview url={studioApi.modelPreviewUrl(proposal.projectId, proposal.id)}/><div className="proposal-metrics"><span><strong>{asset.parts}</strong> parts</span><span><strong>{asset.triangles.toLocaleString()}</strong> triangles</span></div><p className="creator-help">{asset.size.map((n) => n.toFixed(1)).join(' × ')} m · {Math.ceil(asset.sizeBytes / 1024)} KB · GLB</p><a className="creator-download" href={studioApi.modelPreviewUrl(proposal.projectId, proposal.id)} download={`${asset.name}.glb`}>Download GLB</a></>}
         <p className="creator-help">Requested model: {proposal.generation?.requestedModel || 'configured default'}. {proposal.generation?.warning}</p>
+        {proposal.refinement && <p className="creator-help">Updates {proposal.refinement.instances} scene instance{proposal.refinement.instances === 1 ? '' : 's'} of {proposal.refinement.name}. The previous GLB stays in your library. Undo restores the scene.</p>}
         {mode === 'edit' && <details open><summary>{proposal.commands.length} proposed changes</summary><pre>{JSON.stringify(proposal.commands, null, 2)}</pre></details>}
-        <div className="proposal-actions"><button type="button" onClick={rejectAi} disabled={busy}>Discard</button><button type="button" className="primary-small" onClick={applyAi} disabled={busy || proposal.baseRevision !== current?.project.revision}>{aiStatus === 'applying' ? 'Saving…' : mode === 'asset' ? 'Add to scene' : 'Apply changes'}</button></div>
+        <div className="proposal-actions"><button type="button" onClick={rejectAi} disabled={busy}>Discard</button><button type="button" className="primary-small" onClick={applyAi} disabled={busy || proposal.baseRevision !== current?.project.revision}>{aiStatus === 'applying' ? 'Saving…' : proposal.refinement ? 'Use refined model' : mode === 'asset' ? 'Add to scene' : 'Apply changes'}</button></div>
         {proposal.baseRevision !== current?.project.revision && <p role="status">Your project changed. Generate a fresh proposal before applying.</p>}
       </section>}
       {mode === 'asset' && <p className="creator-help">Best for stylized static assets. For sculpted or rigged characters, import a GLB from your modelling tool.</p>}

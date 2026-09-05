@@ -276,6 +276,7 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 .model-preview { height: 220px; width: 100%; border: 1px solid #41516b; border-radius: 8px; overflow: hidden; touch-action: none; }
 .creator-download { display: inline-block; color: #b5d2ff; padding: 8px 0; text-decoration: underline; }
 .model-library-actions a { color: #b5d2ff; font-size: 10px; padding: 6px; text-decoration: underline; }
+.model-library-actions { flex-wrap: wrap; }
 .creator-workflow pre { max-height: 180px; overflow: auto; font-size: 11px; }
 .creator-workflow button:focus-visible, .creator-workflow select:focus-visible, .creator-workflow a:focus-visible { outline: 2px solid #c8deff; outline-offset: 2px; }
 

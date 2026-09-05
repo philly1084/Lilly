@@ -1209,15 +1209,29 @@ class GameStudioService {
     if (baseRevision !== result.project.revision) throw Object.assign(new Error('The project changed. Refresh before generating a model.'), { statusCode: 409, code: 'REVISION_CONFLICT', currentRevision: result.project.revision });
     const prompt = String(input.prompt || (input.recipe ? 'Authored model recipe' : '')).trim();
     if (!prompt || prompt.length > 4000) throw Object.assign(new Error('Describe your model in 1–4000 characters.'), { statusCode: 400, code: 'INVALID_MODEL_PROMPT' });
+    const sourceAsset = input.assetId ? result.project.assets.find((asset) => asset.id === input.assetId) : null;
+    if (input.assetId && !sourceAsset) throw Object.assign(new Error('The model to refine was not found in this project.'), { statusCode: 404, code: 'ASSET_NOT_FOUND' });
+    let sourceRecipe = null;
+    if (sourceAsset) {
+      const file = result.project.files.find((entry) => entry.path === sourceAsset.metadata?.sourcePath);
+      if (!file) throw Object.assign(new Error('This model has no editable Lilly recipe. Import a revised GLB from its modelling tool instead.'), { statusCode: 422, code: 'MODEL_SOURCE_UNAVAILABLE' });
+      sourceRecipe = compileModelRecipe(parseLenientJson(file.content)).recipe;
+    }
     if (!input.recipe && !this.complete) throw Object.assign(new Error('Connect an AI model to create 3D assets.'), { statusCode: 503, code: 'AI_UNAVAILABLE' });
     let response;
-    try { if (!input.recipe) response = await this.complete(modelRecipePrompt(prompt), { model: input.model || null, reasoningEffort: 'high' }); }
+    try {
+      if (!input.recipe) {
+        const instruction = modelRecipePrompt(prompt) + (sourceRecipe ? `\nRefine this existing asset. Preserve its identity, named parts, dimensions and details except where the user's change requires otherwise. Return the complete revised recipe. Existing recipe: ${JSON.stringify(sourceRecipe)}` : '');
+        response = await this.complete(instruction, { model: input.model || null, reasoningEffort: 'high' });
+      }
+    }
     catch (_error) { throw Object.assign(new Error('The AI model could not be reached. Retry or select another model.'), { statusCode: 502, code: 'AI_GENERATION_FAILED' }); }
     const compiled = compileModelRecipe(input.recipe || parseLenientJson(String(response || '')));
     const run = {
       schema: AI_RUN_SCHEMA, id: randomUUID(), projectId, ownerId, baseRevision, prompt, mode: 'asset', status: 'proposed',
       generation: { source: input.recipe ? 'recipe' : 'ai', requestedModel: input.recipe ? null : input.model || null },
       assetRecipe: compiled.recipe, commands: [], affected: [],
+      ...(sourceAsset ? { refinement: { assetId: sourceAsset.id, name: sourceAsset.name, instances: result.project.scenes.reduce((count, scene) => count + scene.entities.filter((entity) => entity.components.some((component) => component.type === 'MeshRenderer' && component.data.assetId === sourceAsset.id)).length, 0) } } : {}),
       preview: { revision: baseRevision + 1, validation: { projectIssues: [], blueprintIssues: [] }, asset: compiled.summary }, createdAt: now(),
     };
     // Re-read the index after the slow model call so other saved runs are retained.
@@ -1253,6 +1267,8 @@ class GameStudioService {
         compiled = compileModelRecipe(run.assetRecipe);
         const id = randomUUID();
         asset = { id, name: compiled.recipe.name, type: 'model/gltf-binary', uri: `assets/${id}.glb`, metadata: { kind: 'model', sizeBytes: compiled.buffer.length, sha256: crypto.createHash('sha256').update(compiled.buffer).digest('hex'), upAxis: 'Y', unitsPerMeter: 1, generatedBy: run.generation, sourcePath: `models/${id}.model.json`, ...compiled.summary } };
+        asset.metadata.createdRevision = project.revision + 1;
+        if (run.refinement) asset.metadata.refinedFrom = run.refinement.assetId;
         project.assets.push(asset);
         const scene = getScene(project);
         const player = scene.entities.find((entity) => entity.tags.includes('player'));
@@ -1264,19 +1280,29 @@ class GameStudioService {
             { type: 'MeshRenderer', enabled: true, data: { geometry: 'box', assetId: id, castShadow: true, receiveShadow: true } },
           ] } } },
         ];
+        if (run.refinement) {
+          // New immutable bytes; update only scene references, retaining transforms and component overrides.
+          commands = commands.slice(0, 1);
+          for (const targetScene of project.scenes) for (const entity of targetScene.entities) {
+            const mesh = entity.components.find((component) => component.type === 'MeshRenderer' && component.data.assetId === run.refinement.assetId);
+            if (mesh) commands.push({ operation: 'component.set', target: { sceneId: targetScene.id, entityId: entity.id, componentType: 'MeshRenderer' }, payload: { data: { ...mesh.data, assetId: id }, enabled: mesh.enabled } });
+          }
+        }
       }
       commands = this.normalizeCommands(project, commands, project.revision);
       const applied = applyCommandBatch(project, commands, project.revision);
+      // Undo changes the scene, while keeping generated assets and their editable source reusable.
+      const inverses = asset ? applied.inverses.filter((command) => !(command.operation === 'file.delete' && command.target.path === asset.metadata.sourcePath)) : applied.inverses;
       if (asset) {
         await fs.mkdir(path.join(this.projectDirectory(projectId), 'assets'), { recursive: true });
         await fs.writeFile(path.join(this.projectDirectory(projectId), asset.uri), compiled.buffer, { flag: 'wx' });
       }
-      await this.persistSnapshot(applied.project, { ownerId, source: `ai-run:${run.id}`, commands, inverses: applied.inverses, metadata });
+      await this.persistSnapshot(applied.project, { ownerId, source: `ai-run:${run.id}`, commands, inverses, metadata });
       Object.assign(metadata, { revision: applied.project.revision, updatedAt: now() });
       Object.assign(run, { status: 'applied', appliedRevision: applied.project.revision, appliedAt: now(), ...(asset ? { assetId: asset.id } : {}) });
       await this.writeIndex(index);
       await this.emit(projectId, 'project.updated', { revision: applied.project.revision, source: `ai-run:${run.id}` });
-      return { ...this.describeProject(metadata, applied.project, index), commandBatch: { schema: 'LillyCommandBatch/v1', baseRevision: run.baseRevision, revision: applied.project.revision, commands, inverses: applied.inverses } };
+      return { ...this.describeProject(metadata, applied.project, index), commandBatch: { schema: 'LillyCommandBatch/v1', baseRevision: run.baseRevision, revision: applied.project.revision, commands, inverses } };
     });
   }
 

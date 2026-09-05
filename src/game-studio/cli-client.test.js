@@ -17,8 +17,10 @@ describe('Lilly Game CLI', () => {
     const output = { stdout: stream(), stderr: stream() };
     expect(await runCli(['ai', '--project', 'game-1', '--base-revision', '3', '--mode', 'asset', '--model', 'gpt-6-astra', '--prompt', 'A spaceship'], {}, output, fetch)).toBe(0);
     expect(JSON.parse(calls[0].options.body)).toMatchObject({ mode: 'asset', model: 'gpt-6-astra', baseRevision: 3, requireAi: true });
+    expect(await runCli(['ai', '--project', 'game-1', '--base-revision', '4', '--mode', 'asset', '--asset', 'asset-1', '--prompt', 'Make the armor yellow'], {}, output, fetch)).toBe(0);
+    expect(JSON.parse(calls[1].options.body)).toMatchObject({ mode: 'asset', assetId: 'asset-1', baseRevision: 4 });
     expect(await runCli(['ai-apply', '--project', 'game-1', '--run', 'run-1'], {}, output, fetch)).toBe(0);
-    expect(calls[1].url).toContain('/projects/game-1/ai-runs/run-1/apply');
+    expect(calls[2].url).toContain('/projects/game-1/ai-runs/run-1/apply');
   });
   test('parses flags without swallowing following options', () => {
     expect(parseArgs(['create', '--name', 'Signal Field', '--template=third-person-explorer', '--compact'])).toEqual({

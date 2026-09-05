@@ -92,6 +92,7 @@ Usage:
   lilly-game test --project ID
   lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset] [--model ID]
   lilly-game ai --project ID --base-revision N --mode asset --recipe model.json
+  lilly-game ai --project ID --base-revision N --mode asset --asset ASSET_ID --prompt TEXT [--model ID]
   lilly-game ai-apply --project ID --run ID
   lilly-game apply --project ID --base-revision N --commands commands.json
   lilly-game data-list --project ID
@@ -190,6 +191,7 @@ async function executeCommand(client, command, options) {
         mode: ['level', 'asset'].includes(options.mode) ? options.mode : 'edit',
         ...(options.recipe ? { recipe: JSON.parse(await fs.readFile(String(options.recipe), 'utf8')) } : {}),
         ...(options.model ? { model: String(options.model), requireAi: true } : {}),
+        ...(options.asset ? { assetId: String(options.asset) } : {}),
         ...(options.seed ? { seed: options.seed } : {}),
       },
     });

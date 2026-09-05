@@ -121,6 +121,7 @@ class GameStudioTool extends ToolBase {
           graph: { type: 'object' },
           prompt: { type: 'string' },
           model: { type: 'string', maxLength: 200, description: 'Connected gateway model ID, for example gpt-6-astra when available.' },
+          assetId: { type: 'string', description: 'Optional generated model to refine. Its saved recipe becomes model context. Applying the proposal creates a new GLB and updates its scene instances while preserving the old asset.' },
           runId: { type: 'string', description: 'Saved proposal ID returned by generate-model or generate-level. Apply through apply-ai-run to enforce its original revision.' },
           recipe: { type: 'object', description: 'Optional LillyModelRecipe/v1 data authored by Codex or another agent. name plus 1–64 named parts; shape box/sphere/cylinder/cone/torus/icosahedron/mesh, position/rotation/scale triples, #RRGGBB color, roughness/metalness 0–1. mesh additionally uses flat xyz vertices and triangle indices. Y-up meters, XYZ degree rotations. Compiles to a previewable GLB; apply-ai-run saves the asset, source, and scene entity.' },
           seed: { type: 'string', maxLength: 120 },
