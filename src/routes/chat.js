@@ -5,6 +5,11 @@ const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const {
+    createResponsesToolCallMapper,
+    isResponsesToolCallEvent,
+    mapResponsesToolCallEvent,
+} = require('../responses-tool-call-compat');
+const {
     executeConversationRuntime,
     inferExecutionProfile,
     resolveConversationExecutorFlag,
@@ -856,11 +861,6 @@ async function updateSessionProjectMemory(sessionId, updates = {}, ownerId = nul
             ...(activeProject ? { activeProject } : {}),
         },
     });
-}
-
-function isResponseToolOutputItem(item = {}) {
-    const type = String(item?.type || '').trim();
-    return type === 'function_call' || type === 'custom_tool_call';
 }
 
 async function maybePersistSaveableDocumentResponse({
@@ -2470,6 +2470,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             const response = execution.response;
 
             let fullText = '';
+            const responsesToolCallMapper = createResponsesToolCallMapper();
 
             for await (const event of response) {
                 if (event.type === 'response.output_text.delta') {
@@ -2485,12 +2486,24 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     })}\n\n`);
                 }
 
-                if ((event.type === 'response.output_item.added' || event.type === 'response.output_item.done')
-                    && isResponseToolOutputItem(event.item)) {
-                    res.write(`data: ${JSON.stringify({
-                        type: event.type,
-                        item: event.item,
-                    })}\n\n`);
+                if (isResponsesToolCallEvent(event)) {
+                    const mapped = mapResponsesToolCallEvent(event, responsesToolCallMapper);
+                    if (mapped?.toolCall) {
+                        res.write('data: ' + JSON.stringify({
+                            type: 'chat.completion.tool_calls.delta',
+                            tool_calls: [mapped.toolCall],
+                            tool_call_stage: mapped.stage,
+                        }) + '\n\n');
+                    }
+                }
+
+                if (event.type === 'response.tool_result' && event.result) {
+                    res.write('data: ' + JSON.stringify({
+                        type: 'tool_result',
+                        result: event.result,
+                        tool_result: event.result,
+                        raw: event,
+                    }) + '\n\n');
                 }
 
                 if (event.type === 'response.completed') {

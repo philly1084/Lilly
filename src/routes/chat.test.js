@@ -1822,6 +1822,96 @@ describe('/api/chat route', () => {
         ]));
     });
 
+    test('forwards Responses tool arguments and results through /api/chat SSE', async () => {
+        ensureRuntimeToolManager.mockResolvedValue({
+            getTool: jest.fn(),
+        });
+        resolveSshRequestContext.mockReturnValue({
+            effectivePrompt: 'Use the calculator.',
+        });
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: (async function* streamWithTools() {
+                yield {
+                    type: 'response.output_item.added',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_chat',
+                        call_id: 'call_chat',
+                        name: 'add_numbers',
+                    },
+                };
+                yield {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: 'fc_chat',
+                    output_index: 0,
+                    delta: '{"a":17,"b":25}',
+                };
+                yield {
+                    type: 'response.function_call_arguments.done',
+                    item_id: 'fc_chat',
+                    output_index: 0,
+                    arguments: '{"a":17,"b":25}',
+                };
+                yield {
+                    type: 'response.output_item.done',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_chat',
+                        call_id: 'call_chat',
+                        name: 'add_numbers',
+                        arguments: '{"a":17,"b":25}',
+                    },
+                };
+                yield {
+                    type: 'response.tool_result',
+                    result: {
+                        type: 'function_call_output',
+                        call_id: 'call_chat',
+                        output: '42',
+                    },
+                };
+                yield {
+                    type: 'response.completed',
+                    response: {
+                        id: 'resp-chat-tools',
+                        model: 'gpt-6-astra',
+                        output_text: '42',
+                        output: [{
+                            type: 'message',
+                            role: 'assistant',
+                            content: [{ type: 'text', text: '42' }],
+                        }],
+                        metadata: { toolEvents: [] },
+                    },
+                };
+            }()),
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Use the calculator.',
+                stream: true,
+                model: 'gpt-6-astra',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.text).toContain('"type":"chat.completion.tool_calls.delta"');
+        expect(response.text).toContain('"id":"call_chat"');
+        expect(response.text).toContain('"name":"add_numbers"');
+        expect(response.text).toContain('"arguments":"{\\"a\\":17,\\"b\\":25}"');
+        expect(response.text).toContain('"type":"tool_result"');
+        expect(response.text).toContain('"output":"42"');
+        expect(response.text).not.toContain('"type":"response.output_item.done"');
+        expect(response.text).toContain('data: [DONE]');
+    });
+
     test('streams progress updates for long-running chat work through /api/chat', async () => {
         ensureRuntimeToolManager.mockResolvedValue({
             getTool: jest.fn(),

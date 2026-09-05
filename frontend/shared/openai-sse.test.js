@@ -6,6 +6,7 @@ const {
   filterChatModels,
   filterCodexBackedModels,
   isChatModel,
+  normalizeReasoningEffort,
   normalizeGatewayEventPayload,
   resolvePreferredChatModel,
   selectPreferredCodexModel,
@@ -14,6 +15,11 @@ const {
 } = require('./openai-sse');
 
 describe('openai-sse helpers', () => {
+  test('retains max and ultra reasoning effort values from current model metadata', () => {
+    expect(normalizeReasoningEffort('max')).toBe('max');
+    expect(normalizeReasoningEffort('ultra')).toBe('ultra');
+  });
+
   test('splits SSE frames on double newlines', () => {
     const { frames, remainder } = splitSSEFrames('data: {"a":1}\n\ndata: {"b":2}\n\npartial');
 
@@ -90,6 +96,40 @@ describe('openai-sse helpers', () => {
     });
     expect(events.map((event) => event.type)).toEqual(['usage', 'tool_result']);
     expect(events[1].result).toEqual(expect.objectContaining({ call_id: 'call_astra', output: '42' }));
+  });
+
+  test('does not duplicate interleaved native argument completion payloads', () => {
+    const state = { nextIndex: 0, byItemId: new Map(), byCallId: new Map() };
+    const payloads = [
+      { type: 'response.output_item.added', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'one' } },
+      { type: 'response.output_item.added', item: { type: 'function_call', id: 'fc_2', call_id: 'call_2', name: 'two' } },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_1', output_index: 0, delta: '{"a":' },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_2', output_index: 1, delta: '{"b":' },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_1', output_index: 0, delta: '1}' },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_2', output_index: 1, delta: '2}' },
+      { type: 'response.function_call_arguments.done', item_id: 'fc_1', arguments: '{"a":1}' },
+      { type: 'response.function_call_arguments.done', item_id: 'fc_2', arguments: '{"b":2}' },
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'one', arguments: '{"a":1}' } },
+      { type: 'response.output_item.done', item: { type: 'function_call', id: 'fc_2', call_id: 'call_2', name: 'two', arguments: '{"b":2}' } },
+    ];
+    const events = payloads
+      .flatMap((payload) => normalizeGatewayEventPayload(payload, { responsesToolCallState: state }))
+      .filter((event) => event.type === 'tool_calls');
+    const argumentsByCall = new Map();
+    for (const event of events) {
+      for (const toolCall of event.toolCalls) {
+        argumentsByCall.set(
+          toolCall.id,
+          (argumentsByCall.get(toolCall.id) || '') + toolCall.function.arguments,
+        );
+      }
+    }
+
+    expect(argumentsByCall).toEqual(new Map([
+      ['call_1', '{"a":1}'],
+      ['call_2', '{"b":2}'],
+    ]));
+    expect(events.filter((event) => event.stage === 'done')).toHaveLength(2);
   });
 
   test('preserves artifact arrays from nested response metadata', () => {

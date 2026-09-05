@@ -7001,20 +7001,9 @@ async function* normalizeStreamResponse(stream, metadata = {}) {
 
         if (chunk.type === 'response.function_call_arguments.delta'
             || chunk.type === 'response.function_call_arguments.done') {
-            const isDone = chunk.type.endsWith('.done');
-            yield {
-                type: 'chat.completion.tool_calls.delta',
-                tool_calls: [{
-                    index: Number.isInteger(Number(chunk.output_index)) ? Number(chunk.output_index) : 0,
-                    id: chunk.call_id || chunk.item?.call_id || chunk.item?.id,
-                    type: 'function',
-                    function: {
-                        name: chunk.name || chunk.item?.name || chunk.item?.function?.name || '',
-                        arguments: isDone ? (chunk.arguments || chunk.delta || '') : (chunk.delta || ''),
-                    },
-                    stage: isDone ? 'done' : 'delta',
-                }],
-            };
+            // Keep Responses argument events native until a caller explicitly
+            // crosses into Chat Completions compatibility.
+            yield chunk;
         }
 
         if (chunk.type === 'response.reasoning_summary_text.done'

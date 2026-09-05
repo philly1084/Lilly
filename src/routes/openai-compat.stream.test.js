@@ -246,8 +246,8 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(response.text).toContain('"delta":{"reasoning":"Checking the request. "}');
         expect(response.text).toContain('"type":"response.reasoning_summary_text.delta"');
         expect(response.text).toContain('"summary":"Checking the request. "');
-        expect(response.text).toContain('"delta":{"tool_calls":[{"index":0,"id":"call_compat_1","type":"function","function":{"name":"web_search","arguments":"{}"}}]}');
-        expect(response.text).toContain('"type":"response.output_item.added"');
+        expect(response.text).toContain('"delta":{"tool_calls":[{"index":0,"id":"call_compat_1","type":"function","function":{"name":"web_search","arguments":""}}]}');
+        expect(response.text).not.toContain('"type":"response.output_item.added"');
         expect(response.text).toContain('"name":"web_search"');
         expect(response.text).toContain('"delta":{"content":"Answer"}');
         expect(response.text).toContain('"usage":{"prompt_tokens":21,"completion_tokens":13,"total_tokens":34}');
@@ -320,6 +320,140 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(executeConversationRuntime).not.toHaveBeenCalled();
         expect(response.body.choices[0].message.content).toContain('Fishing Windows');
         expect(response.body.tool_events[0].toolCall.function.arguments).toContain('includeMusicBed');
+    });
+
+    test('maps interleaved Responses tool arguments once for Chat consumers', async () => {
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: (async function* streamEvents() {
+                yield {
+                    type: 'response.output_item.added',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_add',
+                        call_id: 'call_add',
+                        name: 'add_numbers',
+                    },
+                };
+                yield {
+                    type: 'response.output_item.added',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_weather',
+                        call_id: 'call_weather',
+                        name: 'lookup_weather',
+                    },
+                };
+                yield {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: 'fc_add',
+                    output_index: 0,
+                    delta: '{"a":',
+                };
+                yield {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: 'fc_weather',
+                    output_index: 1,
+                    delta: '{"city":',
+                };
+                yield {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: 'fc_add',
+                    output_index: 0,
+                    delta: '17,"b":25}',
+                };
+                yield {
+                    type: 'response.function_call_arguments.delta',
+                    item_id: 'fc_weather',
+                    output_index: 1,
+                    delta: '"Halifax"}',
+                };
+                yield {
+                    type: 'response.function_call_arguments.done',
+                    item_id: 'fc_add',
+                    output_index: 0,
+                    arguments: '{"a":17,"b":25}',
+                };
+                yield {
+                    type: 'response.function_call_arguments.done',
+                    item_id: 'fc_weather',
+                    output_index: 1,
+                    arguments: '{"city":"Halifax"}',
+                };
+                yield {
+                    type: 'response.output_item.done',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_add',
+                        call_id: 'call_add',
+                        name: 'add_numbers',
+                        arguments: '{"a":17,"b":25}',
+                    },
+                };
+                yield {
+                    type: 'response.output_item.done',
+                    item: {
+                        type: 'function_call',
+                        id: 'fc_weather',
+                        call_id: 'call_weather',
+                        name: 'lookup_weather',
+                        arguments: '{"city":"Halifax"}',
+                    },
+                };
+                yield {
+                    type: 'response.completed',
+                    response: {
+                        id: 'resp-interleaved-tool-calls',
+                        model: 'gpt-6-astra',
+                        output_text: 'Tools complete.',
+                        output: [{
+                            type: 'message',
+                            role: 'assistant',
+                            content: [{ type: 'output_text', text: 'Tools complete.' }],
+                        }],
+                        metadata: { toolEvents: [] },
+                    },
+                };
+            }()),
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                model: 'gpt-6-astra',
+                messages: [{ role: 'user', content: 'Call both tools.' }],
+                stream: true,
+                session_id: 'web-chat-stream-1',
+            });
+
+        const payloads = response.text
+            .split('\n\n')
+            .map((frame) => frame.replace(/^data:\s*/, ''))
+            .filter((payload) => payload.startsWith('{'))
+            .map((payload) => JSON.parse(payload));
+        const toolCalls = payloads
+            .flatMap((payload) => payload.choices?.[0]?.delta?.tool_calls || []);
+        const argumentsById = new Map();
+        for (const toolCall of toolCalls) {
+            argumentsById.set(
+                toolCall.id,
+                (argumentsById.get(toolCall.id) || '') + toolCall.function.arguments,
+            );
+        }
+
+        expect(response.status).toBe(200);
+        expect(payloads.some((payload) => payload.type === 'response.output_item.done')).toBe(false);
+        expect(toolCalls.map((toolCall) => toolCall.id)).toEqual(expect.arrayContaining(['call_add', 'call_weather']));
+        expect(toolCalls.find((toolCall) => toolCall.id === 'call_add').function.name).toBe('add_numbers');
+        expect(toolCalls.find((toolCall) => toolCall.id === 'call_weather').function.name).toBe('lookup_weather');
+        expect(argumentsById.get('call_add')).toBe('{"a":17,"b":25}');
+        expect(argumentsById.get('call_weather')).toBe('{"city":"Halifax"}');
+        expect(payloads.filter((payload) => payload.tool_call_stage === 'done')).toHaveLength(2);
+        expect(response.text).toContain('data: [DONE]');
     });
 
     test('forwards orchestration progress events before final stream completion', async () => {

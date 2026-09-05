@@ -96,6 +96,107 @@
     return ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(normalized) ? normalized : '';
   }
 
+  function createResponsesToolCallState() {
+    return {
+      nextIndex: 0,
+      byItemId: new Map(),
+      byCallId: new Map(),
+    };
+  }
+
+  function mapResponsesToolCallPayload(payload = {}, state = createResponsesToolCallState()) {
+    const type = String(payload.type || '').trim();
+    const item = payload.item && typeof payload.item === 'object' ? payload.item : {};
+    const isArgumentEvent = type === 'response.function_call_arguments.delta'
+      || type === 'response.function_call_arguments.done';
+    const isItemEvent = (type === 'response.output_item.added' || type === 'response.output_item.done')
+      && isFunctionCallItem(item);
+    if (!isArgumentEvent && !isItemEvent) {
+      return null;
+    }
+
+    const itemId = String(payload.item_id || item.id || payload.call_id || item.call_id || '').trim();
+    const callId = String(payload.call_id || item.call_id || '').trim();
+    let entry = (itemId && state.byItemId.get(itemId)) || (callId && state.byCallId.get(callId));
+    if (!entry) {
+      const outputIndex = Number(payload.output_index ?? item.output_index);
+      entry = {
+        itemId: itemId || null,
+        callId: callId || null,
+        name: String(payload.name || item.name || item.function?.name || '').trim(),
+        index: Number.isInteger(outputIndex) && outputIndex >= 0 ? outputIndex : state.nextIndex,
+        argumentsText: '',
+        emittedArguments: '',
+        started: false,
+      };
+      state.nextIndex = Math.max(state.nextIndex, entry.index + 1);
+    }
+    if (itemId) {
+      entry.itemId = itemId;
+      state.byItemId.set(itemId, entry);
+    }
+    if (callId) {
+      entry.callId = callId;
+      state.byCallId.set(callId, entry);
+    }
+    entry.name = String(payload.name || item.name || item.function?.name || entry.name || '').trim();
+    const outputIndex = Number(payload.output_index ?? item.output_index);
+    if (Number.isInteger(outputIndex) && outputIndex >= 0) {
+      entry.index = outputIndex;
+      state.nextIndex = Math.max(state.nextIndex, outputIndex + 1);
+    }
+
+    const itemArguments = item.arguments ?? item.function?.arguments;
+    if (isItemEvent && itemArguments !== undefined && itemArguments !== null) {
+      const normalized = typeof itemArguments === 'string' ? itemArguments : JSON.stringify(itemArguments);
+      if (!entry.argumentsText || normalized.startsWith(entry.argumentsText)) {
+        entry.argumentsText = normalized;
+      }
+    }
+    if (type === 'response.function_call_arguments.delta') {
+      entry.argumentsText += String(payload.delta || '');
+    }
+    if (type === 'response.function_call_arguments.done') {
+      const normalized = String(payload.arguments ?? payload.delta ?? '');
+      if (!entry.argumentsText || normalized.startsWith(entry.argumentsText)) {
+        entry.argumentsText = normalized;
+      }
+    }
+
+    const argumentsDelta = !entry.emittedArguments
+      ? entry.argumentsText
+      : (entry.argumentsText.startsWith(entry.emittedArguments)
+        ? entry.argumentsText.slice(entry.emittedArguments.length)
+        : '');
+    if (!entry.callId || !entry.name) {
+      return null;
+    }
+    if (type === 'response.output_item.added' && entry.started) {
+      return null;
+    }
+    if (type === 'response.output_item.done' && !argumentsDelta && entry.emittedArguments) {
+      return null;
+    }
+    if (type === 'response.output_item.added') {
+      entry.started = true;
+    }
+    entry.emittedArguments += argumentsDelta;
+    return {
+      stage: type === 'response.function_call_arguments.delta'
+        ? 'delta'
+        : (type === 'response.output_item.added' ? 'started' : 'done'),
+      toolCalls: [{
+        index: entry.index,
+        id: entry.callId,
+        type: 'function',
+        function: {
+          name: entry.name,
+          arguments: argumentsDelta,
+        },
+      }],
+    };
+  }
+
   function getModelCapabilities(model = {}) {
     return [
       ...parseModelCapabilityEntries(model?.capabilities),
@@ -1041,19 +1142,14 @@
 
     if (payload.type === 'response.function_call_arguments.delta'
       || payload.type === 'response.function_call_arguments.done') {
-      const isDone = payload.type.endsWith('.done');
+      const mapped = mapResponsesToolCallPayload(payload, options.responsesToolCallState);
+      if (!mapped) {
+        return events;
+      }
       events.push({
         type: 'tool_calls',
-        toolCalls: normalizeToolCallsWithIndexes([{
-          index: Number.isInteger(Number(payload.output_index)) ? Number(payload.output_index) : 0,
-          id: payload.call_id || payload.item?.call_id || payload.item?.id,
-          type: 'function',
-          function: {
-            name: payload.name || payload.item?.name || payload.item?.function?.name || '',
-            arguments: isDone ? (payload.arguments || payload.delta || '') : (payload.delta || ''),
-          },
-        }]),
-        stage: isDone ? 'done' : 'delta',
+        toolCalls: mapped.toolCalls,
+        stage: mapped.stage,
         raw: payload,
         ...metadata,
       });
@@ -1061,10 +1157,14 @@
     }
 
     if ((payload.type === 'response.output_item.added' || payload.type === 'response.output_item.done') && isFunctionCallItem(payload.item)) {
+      const mapped = mapResponsesToolCallPayload(payload, options.responsesToolCallState);
+      if (!mapped) {
+        return events;
+      }
       events.push({
         type: 'tool_calls',
-        toolCalls: normalizeToolCallsWithIndexes([payload.item]),
-        stage: payload.type.endsWith('.done') ? 'done' : 'started',
+        toolCalls: mapped.toolCalls,
+        stage: mapped.stage,
         raw: payload,
         ...metadata,
       });
@@ -1331,6 +1431,7 @@
     let buffer = '';
     let sawDone = false;
     let streamedText = '';
+    const responsesToolCallState = createResponsesToolCallState();
 
     try {
       while (true) {
@@ -1371,7 +1472,10 @@
             continue;
           }
 
-          const events = normalizeGatewayEventPayload(payload, { allowFinalText: false });
+          const events = normalizeGatewayEventPayload(payload, {
+            allowFinalText: false,
+            responsesToolCallState,
+          });
           const missingFinalText = getMissingFinalText(streamedText, extractFinalAssistantText(payload));
           if (missingFinalText) {
             streamedText += missingFinalText;
@@ -1413,7 +1517,10 @@
         if (payloadText) {
           try {
             const payload = JSON.parse(payloadText);
-            const events = normalizeGatewayEventPayload(payload, { allowFinalText: false });
+            const events = normalizeGatewayEventPayload(payload, {
+              allowFinalText: false,
+              responsesToolCallState,
+            });
             const missingFinalText = getMissingFinalText(streamedText, extractFinalAssistantText(payload));
             if (missingFinalText) {
               streamedText += missingFinalText;
