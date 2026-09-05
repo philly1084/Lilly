@@ -252,6 +252,10 @@ class GameProductionService {
       : 'Preserve the existing expedition win/loss while adding the planned original mechanics.';
     const instruction = `Author the original gameplay feature for ${value.plan.name}: ${value.plan.gameplayPrompt}. ${rules} Shared design: ${JSON.stringify(value.plan)}. Return JSON only {commands:[...]}. Use ONLY file.upsert and input.replace. All files must be under modules/game/; include a .module.json manifest, at least one .system.ts and .spec.json files with actual capability-action or state assertions, testing success AND reset/cooldown/failure. You may compose multiple systems, mechanics, prefabs, materials and animation controllers in this module. No prose-only feature. Keep existing input actions and bindings when extending them. JSON file contents are strings. file.upsert shape: {operation:'file.upsert',target:{},payload:{file:{path:'modules/game/game.module.json',content:'...'}}}. input.replace shape: {operation:'input.replace',target:{},payload:{inputMap:...}}. Current input, assets and scene: ${JSON.stringify({ inputMap: project.inputMap, assets: project.assets.map(a => ({ id: a.id, name: a.name })), scene: project.scenes.find(s => s.id === project.entryScene) })}. Exact programming guide:\n${guide}\nExact runtime API:\n${runtime}`;
     let feedback = '';
+    if (entry.validationError || entry.attempts > 1) {
+      const previous = await fs.readFile(path.join(this.directory(value.id), 'gameplay-response.json'), 'utf8').then(JSON.parse).catch(() => null);
+      if (previous) feedback = `\nContinue the saved draft and fix its validation error: ${entry.validationError || 'Review against the exact runtime API and executable tests before returning corrected commands.'}. Sandbox global names such as top, window, document and parent are reserved even for local variables; use descriptive names such as upperY. Previous response: ${String(previous.response || '').slice(0, 24000)}`;
+    }
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
       await this.studio.writeJsonAtomic(path.join(this.directory(value.id), 'gameplay-response.json'), { model: entry.model, attempt: attempt + 1, at: now(), response: String(response).slice(0, 256000) });
@@ -288,11 +292,13 @@ class GameProductionService {
         entry.output = await this.studio.createAiRun(value.projectId, { mode: 'edit', baseRevision: project.revision, commands }, value.ownerId);
         entry.proposalId = entry.output.id;
         entry.testResults = { passed: tests.passed, failed: tests.failed, sourceHash: tests.sourceHash };
+        delete entry.validationError;
         await this.save(value, 'Gameplay compiled and deterministic tests passed.', entry.id);
         return;
       } catch (e) {
+        entry.validationError = String(e.message).slice(0, 4000);
         if (attempt === 1) throw e;
-        feedback = `\nYour last output failed validation: ${String(e.message).slice(0, 4000)}. Correct it and return the complete commands. Previous response: ${String(response).slice(0, 18000)}`;
+        feedback = `\nYour last output failed validation: ${String(e.message).slice(0, 4000)}. Correct it and return the complete commands. Previous response: ${String(response).slice(0, 24000)}`;
         await this.save(value, `Gameplay worker is repairing validation errors: ${String(e.message).slice(0, 700)}`, entry.id);
       }
     }

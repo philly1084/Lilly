@@ -248,6 +248,7 @@ function compileSystem(file: LillySourceFile, moduleId: string): { compiled: Com
   const sourceFile = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const importRanges: Array<{ start: number; end: number }> = [];
   let defaultExportCount = 0;
+  let hasSystemDefinition = false;
 
   const inspect = (node: ts.Node) => {
     if (ts.isImportDeclaration(node)) {
@@ -272,6 +273,7 @@ function compileSystem(file: LillySourceFile, moduleId: string): { compiled: Com
     if (ts.isExportAssignment(node)) {
       if (node.isExportEquals) diagnostics.push(diagnostic('EXPORT_NOT_ALLOWED', 'Use export default defineSystem(...)', file.path, 'error', sourcePosition(sourceFile, node)));
       else defaultExportCount += 1;
+      if (!node.isExportEquals && ts.isCallExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'defineSystem') hasSystemDefinition = true;
     } else if (ts.canHaveModifiers(node)) {
       const modifiers = ts.getModifiers(node) || [];
       if (modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
@@ -304,7 +306,7 @@ function compileSystem(file: LillySourceFile, moduleId: string): { compiled: Com
   };
   inspect(sourceFile);
   if (defaultExportCount !== 1) diagnostics.push(diagnostic('DEFAULT_SYSTEM_EXPORT_REQUIRED', 'A system file must export default defineSystem({...}) exactly once', file.path));
-  if (!/\bdefineSystem\s*\(/.test(file.content)) diagnostics.push(diagnostic('DEFINE_SYSTEM_REQUIRED', 'A system file must register its lifecycle through defineSystem', file.path));
+  if (!hasSystemDefinition) diagnostics.push(diagnostic('DEFINE_SYSTEM_REQUIRED', 'A system file must register its lifecycle through export default defineSystem({...})', file.path));
   if (diagnostics.some((entry) => entry.severity === 'error')) return { compiled: null, diagnostics };
 
   let transformed = file.content;

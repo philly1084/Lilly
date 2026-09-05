@@ -67,6 +67,26 @@ test('gameplay repair identifies the rejected file and retains its final generat
   expect(JSON.parse(retained.response).commands).toEqual(gameplay().commands);
 });
 
+test('resuming failed gameplay carries the saved draft and error into the next worker', async () => {
+  studio.complete.mockImplementation(async prompt => prompt.startsWith('Author the original gameplay feature')
+    ? JSON.stringify({ commands: [{ operation: 'file.upsert', target: {}, payload: { file: { path: 'modules/game/helpers.ts', content: 'saved-draft-marker' } } }] }) : response(prompt));
+  const failed = await build();
+  expect(failed.status).toBe('failed');
+  studio.complete.mockImplementation(async prompt => {
+    if (prompt.startsWith('Author the original gameplay feature')) {
+      expect(prompt).toContain('Continue the saved draft');
+      expect(prompt).toContain('Unsupported gameplay file');
+      expect(prompt).toContain('saved-draft-marker');
+    }
+    return response(prompt);
+  });
+  await studio.productions.control(failed.id, 'resume', { revision: failed.revision }, 'owner');
+  await studio.productions.jobs.get(failed.id);
+  const result = await studio.productions.get(failed.id, 'owner');
+  expect(result.status).toBe('ready');
+  expect(result.tasks.find(task => task.id === 'gameplay').validationError).toBeUndefined();
+});
+
 test('gameplay cannot override a validated source path through the command target', async () => {
   let calls = 0;
   studio.complete.mockImplementation(async prompt => {

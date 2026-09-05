@@ -100,6 +100,14 @@ export default defineSystem({
 }
 
 describe('Lilly agent-authored module architecture', () => {
+  test('accepts typed system definitions and rejects a fake definition in a comment', () => {
+    const files = dashModuleFiles();
+    const system = files.find(file => file.path.endsWith('.system.ts'));
+    system.content = system.content.replace('defineSystem({', 'defineSystem<{ cooldown: number }>({');
+    expect(compileModuleBundle(files).diagnostics.filter(entry => entry.severity === 'error')).toEqual([]);
+    system.content = system.content.replace('defineSystem<{ cooldown: number }>({', '({') + '\n// defineSystem({})';
+    expect(compileModuleBundle(files).diagnostics.some(entry => entry.code === 'DEFINE_SYSTEM_REQUIRED')).toBe(true);
+  });
   test('compiles reusable materials, asset metadata, animation controllers, terrain, and prefab variants', () => {
     const heights = [0, 0.1, 0, 0.1, 0.4, 0.1, 0, 0.1, 0];
     const files = [
