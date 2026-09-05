@@ -90,7 +90,9 @@ Usage:
   lilly-game validate-file --file PROJECT.json
   lilly-game compile --project ID --revision N
   lilly-game test --project ID
-  lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level]
+  lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset] [--model ID]
+  lilly-game ai --project ID --base-revision N --mode asset --recipe model.json
+  lilly-game ai-apply --project ID --run ID
   lilly-game apply --project ID --base-revision N --commands commands.json
   lilly-game data-list --project ID
   lilly-game data-set --project ID --base-revision N --file data-asset.json
@@ -184,11 +186,16 @@ async function executeCommand(client, command, options) {
       method: 'POST',
       body: {
         baseRevision: integer(options, 'base-revision', command),
-        prompt: required(options, 'prompt', command),
-        mode: options.mode === 'level' ? 'level' : 'edit',
+        prompt: options.recipe ? String(options.prompt || 'Authored model recipe') : required(options, 'prompt', command),
+        mode: ['level', 'asset'].includes(options.mode) ? options.mode : 'edit',
+        ...(options.recipe ? { recipe: JSON.parse(await fs.readFile(String(options.recipe), 'utf8')) } : {}),
+        ...(options.model ? { model: String(options.model), requireAi: true } : {}),
         ...(options.seed ? { seed: options.seed } : {}),
       },
     });
+  }
+  if (command === 'ai-apply') {
+    return client.request(`/api/game-studio/projects/${encodeURIComponent(required(options, 'project', command))}/ai-runs/${encodeURIComponent(required(options, 'run', command))}/apply`, { method: 'POST', body: {} });
   }
   if (command === 'apply') {
     const projectId = required(options, 'project', command);

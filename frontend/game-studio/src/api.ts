@@ -30,6 +30,9 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const studioApi = {
+  listModels: () => request<{ data: Array<{ id: string; name?: string }> }>('/api/models'),
+  modelPreviewUrl: (projectId: string, runId: string) => `/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs/${encodeURIComponent(runId)}/model.glb`,
+  applyAiRun: (projectId: string, runId: string) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs/${encodeURIComponent(runId)}/apply`, { method: 'POST', body: '{}' }),
   listProjects: () => request<{ projects: StudioMetadata[]; count: number }>('/api/game-studio/projects'),
   createProject: (input: { name: string; slug?: string; prompt?: string; seed?: string; template?: LillyProjectTemplateId; project?: unknown; importBundle?: unknown }) => request<StudioProjectResponse>('/api/game-studio/projects', { method: 'POST', body: JSON.stringify(input) }),
   getProject: (projectId: string) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}`),
@@ -50,7 +53,7 @@ export const studioApi = {
     return request<{ asset: LillyProjectAsset; project: LillyProject }>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/assets?${query}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: input.file });
   },
   assetContentUrl: (projectId: string, assetId: string, revision?: number) => `/api/game-studio/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content${revision ? `?revision=${revision}` : ''}`,
-  proposeAi: (projectId: string, baseRevision: number, prompt: string, options: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number } = {}) => request<AiRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs`, { method: 'POST', body: JSON.stringify({ baseRevision, prompt, ...options }) }),
+  proposeAi: (projectId: string, baseRevision: number, prompt: string, options: { mode?: 'level' | 'edit' | 'asset'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean } = {}) => request<AiRun>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/ai-runs`, { method: 'POST', body: JSON.stringify({ baseRevision, prompt, ...options }) }),
   playtest: (projectId: string) => request<Playtest>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/playtests`, { method: 'POST', body: '{}' }),
   editorPreview: (projectId: string, projectRevision: number, buildProfileId = 'development') => request<EditorPreview>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/editor-preview`, { method: 'POST', body: JSON.stringify({ projectRevision, buildProfileId }) }),
   build: (projectId: string, projectRevision: number, buildProfileId?: string) => request<StudioBuild>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: JSON.stringify({ projectRevision, buildProfileId }) }),

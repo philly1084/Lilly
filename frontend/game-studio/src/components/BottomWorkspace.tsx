@@ -5,6 +5,7 @@ import type { BottomTab, LillyBuildProfile, LillyDataAsset, StudioBuild } from '
 import { currentScene, useStudioStore } from '../store';
 import { BlueprintEditor } from './BlueprintEditor';
 import { Icon } from './Icon';
+import { studioApi } from '../api';
 
 const tabs: Array<{ id: BottomTab; label: string; icon: Parameters<typeof Icon>[0]['name'] }> = [
   { id: 'content', label: 'Content Browser', icon: 'content' },
@@ -33,10 +34,21 @@ function ContentBrowser() {
   const instantiatePrefab = useStudioStore((state) => state.instantiatePrefab);
   const saveSourceFiles = useStudioStore((state) => state.saveSourceFiles);
   const setBottomTab = useStudioStore((state) => state.setBottomTab);
+  const dispatch = useStudioStore((state) => state.dispatch);
   const scene = currentScene(current);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [prefabVariants, setPrefabVariants] = useState<Record<string, string>>({});
+  const placeModel = async (item: ContentItem) => {
+    if (!current || !scene) return;
+    await dispatch([{ operation: 'entity.create', target: { sceneId: scene.id }, payload: { entity: {
+      schema: 'LillyEntity/v1', id: `model-${crypto.randomUUID()}`, name: item.name, parentId: null, enabled: true, tags: ['model'],
+      components: [
+        { type: 'Transform', enabled: true, data: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+        { type: 'MeshRenderer', enabled: true, data: { geometry: 'box', assetId: item.id, castShadow: true, receiveShadow: true } },
+      ],
+    } } }]);
+  };
   const items = useMemo<ContentItem[]>(() => [
     ...(current?.project.assets || []).map((asset) => ({ id: asset.id, name: asset.name, type: String(asset.metadata?.kind || asset.type), kind: 'asset', category: asset.type.startsWith('audio/') ? 'audio' : asset.type.startsWith('model/') ? 'models' : 'textures' })),
     ...(scene?.entities.filter((entity) => ['pickup', 'player', 'enemy', 'checkpoint'].some((tag) => entity.tags.includes(tag))).map((entity) => ({
@@ -104,6 +116,10 @@ function ContentBrowser() {
             <div className={`asset-thumb kind-${item.kind}`}><Icon name={item.kind === 'blueprint' ? 'blueprint' : item.kind === 'prefab' || item.kind === 'terrain' ? 'cube' : item.kind === 'animation' ? 'play' : 'content'} size={24}/></div>
             <strong>{item.name}</strong><small>{item.type}</small>
           </button>
+          {item.kind === 'asset' && item.category === 'models' && current && <div className="asset-card-actions model-library-actions">
+            <button type="button" onClick={() => placeModel(item)} aria-label={`Place ${item.name} in scene`}>Place</button>
+            <a href={studioApi.assetContentUrl(current.project.id, item.id)} download={item.name} aria-label={`Download ${item.name}`}>Download</a>
+          </div>}
           {item.sourcePath && item.kind === 'prefab' && <div className="asset-card-actions">
             <select aria-label={`${item.name} variant`} value={prefabVariants[item.sourcePath] || ''} onChange={(event) => setPrefabVariants((currentVariants) => ({ ...currentVariants, [item.sourcePath!]: event.target.value }))}>
               <option value="">Default</option>

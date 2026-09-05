@@ -310,7 +310,7 @@ function EntityMesh({ entity, project, resources, runtimeObjects, snap }: { enti
     userData={{ entityId: entity.id, phase: 'idle', checkpointActive: false }}
   >
     {terrain && terrainResource && <TerrainSurface project={project} definition={terrainResource} resources={resources} selected={selected} data={terrain.data}/>}
-    {mesh?.data.assetId && <AssetModel project={project} entity={entity} resources={resources} selected={selected}/>}
+    {Boolean(mesh?.data.assetId) && <AssetModel project={project} entity={entity} resources={resources} selected={selected}/>}
     {mesh && !mesh.data.assetId && <mesh castShadow={mesh.data.castShadow !== false} receiveShadow={mesh.data.receiveShadow !== false}>
       <Geometry kind={String(mesh.data.geometry || 'box')}/>
       {primitiveMaterial && <primitive object={primitiveMaterial} attach="material"/>}
@@ -594,10 +594,10 @@ export function Viewport() {
       ? `${cleared}/${encounters} encounters secured · ${enemies} guardians remain`
       : `Collect ${design?.metrics.pickupCount || 0} cores, then reach the exit`;
   return <main className={`viewport-panel mode-${playState}`}>
-    <div className="viewport-toolbar">
+    {playState === 'editing' && <div className="viewport-toolbar">
       <div className="viewport-mode"><button type="button" className={playState === 'editing' ? 'active' : ''}>Perspective</button><button type="button" className={playState !== 'editing' ? 'active' : ''}>Game</button></div>
       <div className="viewport-tools"><label>Lighting<select value={lighting} onChange={(event) => setLighting(event.target.value)}><option value="scene">Scene</option><option value="studio">Studio</option><option value="unlit">Unlit</option></select></label><button type="button" className={snap ? 'active' : ''} onClick={() => setSnap((value) => !value)}>Snap <kbd>0.5</kbd></button></div>
-    </div>
+    </div>}
     {playState === 'editing' ? <>
       {!rendererReady && <div className="viewport-loading"><span className="spinner-small"/><span>Starting WebGL2 renderer…</span></div>}
       <ViewportErrorBoundary>
@@ -606,7 +606,7 @@ export function Viewport() {
         </Canvas>
       </ViewportErrorBoundary>
     </> : previewStatus === 'ready' && editorPreview ? <ExactPlayPreview previewUrl={editorPreview.previewUrl} projectId={current.project.id} playState={playState} stepToken={stepToken}/> : <div className={`viewport-loading preview-${previewStatus}`}><span className="spinner-small"/><span>{previewStatus === 'error' ? 'Exact Play preview blocked — open Console for diagnostics' : 'Compiling modules and preparing exact Play preview…'}</span></div>}
-    {playState !== 'editing' && <div className="play-hud"><div><span>Exact Play · sandboxed modules</span><strong>{previewStatus === 'preparing' ? 'Compiling project and mechanic specs' : playState === 'playing' ? 'Simulation running' : 'Paused — step to advance'}</strong></div><div className="play-objective"><small>{recipe?.name || 'Project objective'}</small><span>{objectiveText}</span></div></div>}
+    {playState !== 'editing' && previewStatus !== 'ready' && <div className="play-hud"><div><span>Preparing game preview</span><strong>{previewStatus === 'error' ? 'Preview could not start' : 'Checking project and gameplay'}</strong></div><div className="play-objective"><small>{recipe?.name || 'Project objective'}</small><span>{objectiveText}</span></div></div>}
     {false && playState === 'playing' && <>
       <div className="editor-touch-controls" aria-label="Touch movement controls">
         {[

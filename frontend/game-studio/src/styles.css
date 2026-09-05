@@ -265,3 +265,18 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 }
 
 @media(max-width:420px){.proposal-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.creator-ideas{margin-right:-10px}.mobile-creator{max-height:60vh}.ai-context{margin:8px}.ai-panel>header{height:54px}.ai-panel>footer{font-size:7px}.play-hud{max-width:calc(100% - 20px)}}
+/* Shared desktop/mobile creator. Keep secondary controls inside the existing panel. */
+.creator-workflow { min-width: 0; overflow: auto; }
+.creator-mode { display: flex; gap: 4px; margin: 12px; }
+.creator-mode button { flex: 1; padding: 9px 5px; background: #152033; color: #d4deec; border: 1px solid #41516b; border-radius: 7px; }
+.creator-mode button[aria-pressed="true"] { background: #30436b; color: #fff; border-color: #90b4ff; }
+.creator-model { display: grid; gap: 6px; margin: 12px; color: #d4deec; font-size: 12px; }
+.creator-model select { width: 100%; min-width: 0; padding: 9px; background: #152033; color: #f1f5fb; border: 1px solid #53617b; border-radius: 7px; }
+.creator-help { color: #b7c6dc; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.model-preview { height: 220px; width: 100%; border: 1px solid #41516b; border-radius: 8px; overflow: hidden; touch-action: none; }
+.creator-download { display: inline-block; color: #b5d2ff; padding: 8px 0; text-decoration: underline; }
+.model-library-actions a { color: #b5d2ff; font-size: 10px; padding: 6px; text-decoration: underline; }
+.creator-workflow pre { max-height: 180px; overflow: auto; font-size: 11px; }
+.creator-workflow button:focus-visible, .creator-workflow select:focus-visible, .creator-workflow a:focus-visible { outline: 2px solid #c8deff; outline-offset: 2px; }
+
+@media(max-width:900px){.mobile-play-bar{top:7px;bottom:auto;left:50px;right:auto;padding:0;background:none;border:0;box-shadow:none}.mobile-play-bar>div{display:none}}

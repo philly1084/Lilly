@@ -23,6 +23,6 @@ export function AiPanel() {
       </div>
     </div>
     <LevelCreatorBody/>
-    <footer><Icon name="lock" size={13}/><span>Every game is previewed as a revision-safe command. Lilly validates the seed, route, encounter grammar, hierarchy, and components before anything is saved.</span></footer>
+    <footer><Icon name="lock" size={13}/><span>Preview first, then apply. Lilly checks model geometry and project changes before saving a new revision.</span></footer>
   </aside>;
 }

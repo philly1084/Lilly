@@ -46,6 +46,22 @@ describe('Game Studio API', () => {
     expect(updated.body.commandBatch.schema).toBe('LillyCommandBatch/v1');
   });
 
+  test('Codex-authored model recipes preview, apply once, and reject stale proposals through the API', async () => {
+    const created = await request(app).post('/api/game-studio/projects').send({ name: 'Codex model', template: 'blank' }).expect(201);
+    const id = created.body.project.id;
+    const recipe = { schema: 'LillyModelRecipe/v1', name: 'Wing', parts: [{ name: 'Wing', shape: 'mesh', vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] }] };
+    const proposed = await request(app).post(`/api/game-studio/projects/${id}/ai-runs`).send({ mode: 'asset', baseRevision: 1, recipe }).expect(201);
+    expect(proposed.body.generation.source).toBe('recipe');
+    const runId = proposed.body.id;
+    await request(app).get(`/api/game-studio/projects/${id}/ai-runs/${runId}/model.glb`).expect(200).expect('Content-Type', /model\/gltf-binary/);
+    await request(app).get(`/api/game-studio/projects/${id}/ai-runs/missing/model.glb`).expect(404);
+    const applied = await request(app).post(`/api/game-studio/projects/${id}/ai-runs/${runId}/apply`).send({}).expect(200);
+    expect(applied.body.project.assets).toHaveLength(1);
+    expect(applied.body.project.revision).toBe(2);
+    await request(app).post(`/api/game-studio/projects/${id}/ai-runs/${runId}/apply`).send({}).expect(200).expect((res) => expect(res.body.project.revision).toBe(2));
+    await request(app).post(`/api/game-studio/projects/${id}/ai-runs`).send({ mode: 'asset', baseRevision: 1, recipe }).expect(409);
+  });
+
   test('returns 409 for stale mutation instead of overwriting', async () => {
     const created = await request(app).post('/api/game-studio/projects').send({ name: 'Conflict' }).expect(201);
     const id = created.body.project.id;

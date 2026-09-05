@@ -37,6 +37,26 @@ function notFound(res, kind = 'Project') {
   return res.status(404).json({ error: { code: `${kind.toUpperCase()}_NOT_FOUND`, message: `${kind} not found` } });
 }
 
+router.get('/projects/:id/ai-runs/:runId/model.glb', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.readModelPreview(req.params.id, req.params.runId, ownerId(req));
+    if (!result) return notFound(res, 'Model');
+    res.set('Content-Type', 'model/gltf-binary').set('Cache-Control', 'private, no-store').send(result.buffer);
+  } catch (error) { next(error); }
+});
+
+router.post('/projects/:id/ai-runs/:runId/apply', async (req, res, next) => {
+  try {
+    const gameStudio = ensureAvailable(req, res);
+    if (!gameStudio) return;
+    const result = await gameStudio.applyAiRun(req.params.id, req.params.runId, ownerId(req));
+    if (!result) return notFound(res, 'Proposal');
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
 router.get('/blueprints/registry', async (req, res, next) => {
   try {
     if (!ensureAvailable(req, res)) return;

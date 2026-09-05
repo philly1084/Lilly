@@ -11,6 +11,15 @@ function response(payload, status = 200) {
 }
 
 describe('Lilly Game CLI', () => {
+  test('passes the selected model for 3D generation and applies the saved proposal ID', async () => {
+    const calls = [];
+    const fetch = async (url, options) => { calls.push({ url, options }); return response({ id: 'run-1' }); };
+    const output = { stdout: stream(), stderr: stream() };
+    expect(await runCli(['ai', '--project', 'game-1', '--base-revision', '3', '--mode', 'asset', '--model', 'gpt-6-astra', '--prompt', 'A spaceship'], {}, output, fetch)).toBe(0);
+    expect(JSON.parse(calls[0].options.body)).toMatchObject({ mode: 'asset', model: 'gpt-6-astra', baseRevision: 3, requireAi: true });
+    expect(await runCli(['ai-apply', '--project', 'game-1', '--run', 'run-1'], {}, output, fetch)).toBe(0);
+    expect(calls[1].url).toContain('/projects/game-1/ai-runs/run-1/apply');
+  });
   test('parses flags without swallowing following options', () => {
     expect(parseArgs(['create', '--name', 'Signal Field', '--template=third-person-explorer', '--compact'])).toEqual({
       _: ['create'],

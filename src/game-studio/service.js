@@ -40,6 +40,7 @@ const {
 } = require('../../packages/lilly-engine/dist/modules/src');
 const { PLAYER_RUNTIME_HASH, writeImmutableBuild } = require('./player-bundle');
 const { runMechanicTests } = require('./module-runner');
+const { compileModelRecipe, modelRecipePrompt } = require('./asset-creator');
 
 const INDEX_SCHEMA = 'LillyGameStudioIndex/v1';
 const AI_RUN_SCHEMA = 'LillyAiRun/v1';
@@ -1096,6 +1097,7 @@ class GameStudioService {
   }
 
   async createAiRun(projectId, input = {}, ownerId = '') {
+    if (input.mode === 'asset') return this.createModelRun(projectId, input, ownerId);
     const { metadata, index } = await this.getMetadata(projectId, ownerId);
     if (!metadata) return null;
     const project = await this.readProjectFile(this.currentPath(projectId));
@@ -1112,12 +1114,15 @@ class GameStudioService {
       previous: previousRecipe,
     }) : null;
     let proposed = Array.isArray(input.commands) ? input.commands : null;
+    let generationSource = proposed ? 'commands' : 'preset';
+    let generationWarning = null;
+    if (!proposed && !this.complete && (input.model || input.requireAi)) throw Object.assign(new Error('AI generation is unavailable. Configure the model connection and retry.'), { statusCode: 503, code: 'AI_UNAVAILABLE' });
     if (!proposed && this.complete && String(input.prompt || '').trim()) {
       try {
         const prompt = mode === 'level'
           ? `You are Lilly's game director. Return JSON only as {"recipe": LillyLevelRecipe/v1}. Keep the stable id ${JSON.stringify(previousRecipe?.id || 'main-level')} and sceneId ${JSON.stringify(scene.id)}. Choose a theme from neon-ruins, verdant-temple, ember-foundry, frost-vault; objective from collect-and-exit, reach-exit, or secure-and-exit; roomCount 3-16; roomSize 6-14; roomSpacing at least roomSize+2 and at most 26; pathWidth 2.4 through roomSize-2; verticality 0-1; difficulty 1-5; pickupCount 1-20; hazardCount 0-30; encounterCount 0-4; enemyCount 0-4. Combat encounters must fit non-spawn/non-goal rooms, enemyCount must be at least encounterCount, and zero encounters require zero enemies. Use this deterministic fallback as a structurally valid starting point: ${JSON.stringify(fallbackRecipe)}. Player request: ${String(input.prompt).slice(0, 2000)}`
           : `Return JSON only with a commands array. Every mutation must be a LillyCommand/v1 operation using one of scene.create, scene.delete, scene.rename, entity.create, entity.delete, entity.rename, entity.reparent, entity.set-enabled, entity.set-locked, component.set, component.remove, scene.set-environment, blueprint.replace, blueprint.delete, file.upsert, file.delete, prefab.instantiate, input.replace, project.set-entry-scene, project.set-settings, level.generate. For original mechanics and world art direction, prefer small versioned .module.json, .mechanic.json, .system.ts, .prefab.json, .spec.json, .material.json, .asset.json, .animation.json, and .terrain.json files through file.upsert rather than hiding behavior or rendering state in scene data. Module manifests may export materials, assets, animations, and terrains alongside systems, mechanics, prefabs, and tests. Project summary: ${JSON.stringify({ id: project.id, revision: project.revision, entryScene: project.entryScene, sceneIds: project.scenes.map((entry) => entry.id), entityCount: scene.entities.length, assetIds: project.assets.map((asset) => asset.id), sourcePaths: project.files.map((file) => file.path), blueprintIds: project.blueprints.map((graph) => graph.id), levelRecipes: project.levelRecipes })}. Request: ${String(input.prompt).slice(0, 2000)}`;
-        const response = await this.complete(prompt);
+        const response = await this.complete(prompt, { model: input.model || null, reasoningEffort: input.reasoningEffort || 'high' });
         const parsed = parseLenientJson(String(response || ''));
         if (mode === 'level' && parsed?.recipe) {
           const candidateRecipe = {
@@ -1137,7 +1142,11 @@ class GameStudioService {
           proposed = parsed?.commands || (Array.isArray(parsed) ? parsed : null);
         }
         if (mode === 'level' && !proposed?.some((command) => command?.operation === 'level.generate')) proposed = null;
+        if (!Array.isArray(proposed) || !proposed.length) throw new Error('The model did not return a valid design. Please retry with a more specific description.');
+        generationSource = 'ai';
       } catch (error) {
+        if (input.model || input.requireAi) throw Object.assign(new Error('AI could not produce a valid design. Retry or select another model.'), { statusCode: 502, code: 'AI_GENERATION_FAILED' });
+        generationWarning = 'AI could not produce a valid design. This proposal uses the built-in preset generator.';
         console.warn(`[GameStudio] AI proposal fallback: ${error.message}`);
       }
     }
@@ -1160,6 +1169,7 @@ class GameStudioService {
       baseRevision,
       prompt: String(input.prompt || ''),
       mode,
+      generation: { source: generationSource, requestedModel: input.model || null, warning: generationWarning || (generationSource === 'preset' ? 'Built-in procedural preset; no AI model authored this proposal.' : null) },
       status: 'proposed',
       commands,
       affected,
@@ -1179,14 +1189,95 @@ class GameStudioService {
       },
       createdAt: now(),
     };
-    index.aiRuns.unshift(run);
-    await this.writeIndex(index);
+    await this.withProjectLock(projectId, async () => {
+      const latestIndex = await this.readIndex();
+      latestIndex.aiRuns.unshift(run);
+      await this.writeIndex(latestIndex);
+    });
     if (this.postgres?.enabled) {
       try { await this.postgres.query('INSERT INTO game_studio_ai_runs (id, project_id, owner_id, base_revision, prompt, status, commands, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)', [run.id, projectId, ownerId, baseRevision, run.prompt, run.status, JSON.stringify(commands), JSON.stringify({ affected })]); }
       catch (error) { console.warn(`[GameStudio] PostgreSQL AI run mirror failed: ${error.message}`); }
     }
     await this.emit(projectId, 'ai-run.proposed', { id: run.id, baseRevision, affected });
     return run;
+  }
+
+  async createModelRun(projectId, input, ownerId) {
+    const result = await this.getProject(projectId, ownerId);
+    if (!result) return null;
+    const baseRevision = Number(input.baseRevision ?? result.project.revision);
+    if (baseRevision !== result.project.revision) throw Object.assign(new Error('The project changed. Refresh before generating a model.'), { statusCode: 409, code: 'REVISION_CONFLICT', currentRevision: result.project.revision });
+    const prompt = String(input.prompt || (input.recipe ? 'Authored model recipe' : '')).trim();
+    if (!prompt || prompt.length > 4000) throw Object.assign(new Error('Describe your model in 1–4000 characters.'), { statusCode: 400, code: 'INVALID_MODEL_PROMPT' });
+    if (!input.recipe && !this.complete) throw Object.assign(new Error('Connect an AI model to create 3D assets.'), { statusCode: 503, code: 'AI_UNAVAILABLE' });
+    let response;
+    try { if (!input.recipe) response = await this.complete(modelRecipePrompt(prompt), { model: input.model || null, reasoningEffort: 'high' }); }
+    catch (_error) { throw Object.assign(new Error('The AI model could not be reached. Retry or select another model.'), { statusCode: 502, code: 'AI_GENERATION_FAILED' }); }
+    const compiled = compileModelRecipe(input.recipe || parseLenientJson(String(response || '')));
+    const run = {
+      schema: AI_RUN_SCHEMA, id: randomUUID(), projectId, ownerId, baseRevision, prompt, mode: 'asset', status: 'proposed',
+      generation: { source: input.recipe ? 'recipe' : 'ai', requestedModel: input.recipe ? null : input.model || null },
+      assetRecipe: compiled.recipe, commands: [], affected: [],
+      preview: { revision: baseRevision + 1, validation: { projectIssues: [], blueprintIssues: [] }, asset: compiled.summary }, createdAt: now(),
+    };
+    // Re-read the index after the slow model call so other saved runs are retained.
+    return this.withProjectLock(projectId, async () => {
+      const { metadata, index } = await this.getMetadata(projectId, ownerId);
+      if (!metadata) return null;
+      index.aiRuns.unshift(run);
+      await this.writeIndex(index);
+      await this.emit(projectId, 'ai-run.proposed', { id: run.id, baseRevision, mode: 'asset' });
+      return run;
+    });
+  }
+
+  async readModelPreview(projectId, runId, ownerId) {
+    const { metadata, index } = await this.getMetadata(projectId, ownerId);
+    const run = metadata && index.aiRuns.find((entry) => entry.id === runId && entry.projectId === projectId && entry.ownerId === ownerId && entry.mode === 'asset');
+    return run ? compileModelRecipe(run.assetRecipe) : null;
+  }
+
+  async applyAiRun(projectId, runId, ownerId) {
+    return this.withProjectLock(projectId, async () => {
+      const { metadata, index } = await this.getMetadata(projectId, ownerId);
+      if (!metadata) return null;
+      const run = index.aiRuns.find((entry) => entry.id === runId && entry.projectId === projectId && entry.ownerId === ownerId);
+      if (!run) return null;
+      const project = await this.readProjectFile(this.currentPath(projectId));
+      if (run.status === 'applied') return this.describeProject(metadata, project, index);
+      if (run.baseRevision !== project.revision) throw Object.assign(new Error('The project changed since this proposal. Generate a fresh proposal to keep your edits.'), { statusCode: 409, code: 'REVISION_CONFLICT', currentRevision: project.revision });
+      let commands = run.commands;
+      let compiled;
+      let asset;
+      if (run.mode === 'asset') {
+        compiled = compileModelRecipe(run.assetRecipe);
+        const id = randomUUID();
+        asset = { id, name: compiled.recipe.name, type: 'model/gltf-binary', uri: `assets/${id}.glb`, metadata: { kind: 'model', sizeBytes: compiled.buffer.length, sha256: crypto.createHash('sha256').update(compiled.buffer).digest('hex'), upAxis: 'Y', unitsPerMeter: 1, generatedBy: run.generation, sourcePath: `models/${id}.model.json`, ...compiled.summary } };
+        project.assets.push(asset);
+        const scene = getScene(project);
+        const player = scene.entities.find((entity) => entity.tags.includes('player'));
+        const position = player?.components.find((entry) => entry.type === 'Transform')?.data.position || { x: 0, y: 0, z: 0 };
+        commands = [
+          { operation: 'file.upsert', target: { path: asset.metadata.sourcePath }, payload: { file: { path: asset.metadata.sourcePath, content: JSON.stringify(compiled.recipe, null, 2) } } },
+          { operation: 'entity.create', target: { sceneId: scene.id }, payload: { entity: { schema: 'LillyEntity/v1', id: `model-${id}`, name: asset.name, parentId: null, enabled: true, tags: ['ai-created', 'model'], components: [
+            { type: 'Transform', enabled: true, data: { position: { x: Number(position.x) + 3, y: 0, z: Number(position.z) }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } },
+            { type: 'MeshRenderer', enabled: true, data: { geometry: 'box', assetId: id, castShadow: true, receiveShadow: true } },
+          ] } } },
+        ];
+      }
+      commands = this.normalizeCommands(project, commands, project.revision);
+      const applied = applyCommandBatch(project, commands, project.revision);
+      if (asset) {
+        await fs.mkdir(path.join(this.projectDirectory(projectId), 'assets'), { recursive: true });
+        await fs.writeFile(path.join(this.projectDirectory(projectId), asset.uri), compiled.buffer, { flag: 'wx' });
+      }
+      await this.persistSnapshot(applied.project, { ownerId, source: `ai-run:${run.id}`, commands, inverses: applied.inverses, metadata });
+      Object.assign(metadata, { revision: applied.project.revision, updatedAt: now() });
+      Object.assign(run, { status: 'applied', appliedRevision: applied.project.revision, appliedAt: now(), ...(asset ? { assetId: asset.id } : {}) });
+      await this.writeIndex(index);
+      await this.emit(projectId, 'project.updated', { revision: applied.project.revision, source: `ai-run:${run.id}` });
+      return { ...this.describeProject(metadata, applied.project, index), commandBatch: { schema: 'LillyCommandBatch/v1', baseRevision: run.baseRevision, revision: applied.project.revision, commands, inverses: applied.inverses } };
+    });
   }
 
   async inspectScene(projectId, sceneId, ownerId) {
@@ -1222,6 +1313,8 @@ class GameStudioService {
       case 'delete-build-profile': return this.deleteBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'set-active-build-profile': return this.setActiveBuildProfile(params.projectId, { ...params, source: 'game-studio-tool' }, ownerId);
       case 'generate-level': return this.createAiRun(params.projectId, { ...params, mode: 'level' }, ownerId);
+      case 'generate-model': return this.createAiRun(params.projectId, { ...params, mode: 'asset' }, ownerId);
+      case 'apply-ai-run': return this.applyAiRun(params.projectId, params.runId, ownerId);
       case 'apply-commands': return this.applyCommands(params.projectId, params, ownerId);
       case 'edit-blueprint': {
         const result = await this.getProject(params.projectId, ownerId);

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStudioStore } from '../store';
 import { Icon } from './Icon';
+import { studioApi } from '../api';
+import { ModelPreview } from './ModelPreview';
 
 const QUICK_IDEAS = [
   {
@@ -30,6 +32,56 @@ function pretty(value = '') {
 }
 
 export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
+  const { current, aiRun, aiStatus, proposeAi, applyAi, rejectAi, consoleItems } = useStudioStore();
+  const [mode, setMode] = useState<'level' | 'asset' | 'edit'>('level');
+  const [model, setModel] = useState('');
+  const [models, setModels] = useState<Array<{ id: string; name?: string }>>([]);
+  const [modelError, setModelError] = useState('');
+  const [prompt, setPrompt] = useState('A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.');
+  const loadModels = () => {
+    setModelError('');
+    studioApi.listModels().then((result) => {
+      setModels(result.data);
+      setModel((selected) => selected || (result.data.some((entry) => entry.id === 'gpt-6-astra') ? 'gpt-6-astra' : ''));
+    }).catch(() => setModelError('Model list unavailable. Retry to choose Codex or Astra from your connected models.'));
+  };
+  useEffect(loadModels, []);
+  const busy = aiStatus === 'thinking' || aiStatus === 'applying';
+  const proposal = aiRun?.mode === mode ? aiRun : null;
+  const asset = proposal?.preview.asset;
+  const error = [...consoleItems].reverse().find((entry) => entry.level === 'error')?.message;
+  return <div className="creator-workflow">
+    <div className="creator-mode" role="group" aria-label="What would you like to create?">
+      {(['level', 'asset', 'edit'] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); rejectAi(); setPrompt(value === 'asset' ? 'A small exploration robot with a rounded teal body, chunky feet, copper joints, a glass-blue eye and a backpack antenna.' : 'Improve the lighting and atmosphere of this scene.'); }}>{value === 'level' ? 'Game' : value === 'asset' ? '3D asset' : 'Edit scene'}</button>)}
+    </div>
+    <label className="creator-model">AI model
+      <select value={model} disabled={busy} onChange={(event) => { setModel(event.target.value); rejectAi(); }}>
+        <option value="">Configured default</option>
+        {models.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || entry.id}</option>)}
+      </select>
+    </label>
+    {modelError && <div className="creator-error" role="status"><span>{modelError}</span><button type="button" onClick={loadModels}>Retry model list</button></div>}
+    {mode === 'level' ? <GameLevelBody compact={compact} model={model}/> : <div className="level-creator">
+      <div className="creator-intro"><div><span className="panel-kicker">{mode === 'asset' ? 'Real geometry · downloadable GLB' : 'Project-aware changes'}</span><strong>{mode === 'asset' ? 'Describe your 3D asset' : 'What should change?'}</strong></div></div>
+      <p className="creator-help">{mode === 'asset' ? 'Create stylized props and models with materials. Rotate the preview, then add it to your game. Editable model source is saved with every asset.' : 'Ask for lighting, scene objects, or gameplay changes. Review the proposal before applying it.'}</p>
+      <label className="creator-prompt">{mode === 'asset' ? 'Shape, style, colors and details' : 'Your change'}<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={4000} rows={compact ? 3 : 4} disabled={busy}/></label>
+      {mode === 'asset' && <div className="creator-ideas" aria-label="3D asset idea starters">{['A mossy stone arch with carved steps and golden crystal accents', 'A low-poly red spaceship with swept wings, twin engines and a blue cockpit', 'A stylized treasure chest with curved lid, gold bands and a chunky lock'].map((idea, i) => <button type="button" key={idea} disabled={busy} onClick={() => setPrompt(idea)}>{['Stone arch', 'Spaceship', 'Treasure chest'][i]}</button>)}</div>}
+      <button type="button" className="creator-generate" disabled={busy || !prompt.trim()} onClick={() => proposeAi(prompt, { mode, model, requireAi: true })}>{busy ? 'Creating…' : mode === 'asset' ? 'Generate 3D asset' : 'Propose changes'}</button>
+      {aiStatus === 'error' && <div className="creator-error" role="alert">{error || 'Creation failed. Please retry.'}</div>}
+      {proposal && <section className="level-proposal" aria-label={mode === 'asset' ? 'Generated model proposal' : 'Scene change proposal'}>
+        <div className="proposal-heading"><strong>{asset?.name || 'Review scene changes'}</strong></div>
+        {asset && <><ModelPreview url={studioApi.modelPreviewUrl(proposal.projectId, proposal.id)}/><div className="proposal-metrics"><span><strong>{asset.parts}</strong> parts</span><span><strong>{asset.triangles.toLocaleString()}</strong> triangles</span></div><p className="creator-help">{asset.size.map((n) => n.toFixed(1)).join(' × ')} m · {Math.ceil(asset.sizeBytes / 1024)} KB · GLB</p><a className="creator-download" href={studioApi.modelPreviewUrl(proposal.projectId, proposal.id)} download={`${asset.name}.glb`}>Download GLB</a></>}
+        <p className="creator-help">Requested model: {proposal.generation?.requestedModel || 'configured default'}. {proposal.generation?.warning}</p>
+        {mode === 'edit' && <details open><summary>{proposal.commands.length} proposed changes</summary><pre>{JSON.stringify(proposal.commands, null, 2)}</pre></details>}
+        <div className="proposal-actions"><button type="button" onClick={rejectAi} disabled={busy}>Discard</button><button type="button" className="primary-small" onClick={applyAi} disabled={busy || proposal.baseRevision !== current?.project.revision}>{aiStatus === 'applying' ? 'Saving…' : mode === 'asset' ? 'Add to scene' : 'Apply changes'}</button></div>
+        {proposal.baseRevision !== current?.project.revision && <p role="status">Your project changed. Generate a fresh proposal before applying.</p>}
+      </section>}
+      {mode === 'asset' && <p className="creator-help">Best for stylized static assets. For sculpted or rigged characters, import a GLB from your modelling tool.</p>}
+    </div>}
+  </div>;
+}
+
+function GameLevelBody({ compact = false, model = '' }: { compact?: boolean; model?: string }) {
   const {
     current,
     aiRun,
@@ -61,7 +113,7 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
 
   const propose = (nextSeed = seed) => {
     if (!prompt.trim()) return;
-    proposeAi(prompt.trim(), { mode: 'level', ...(nextSeed ? { seed: nextSeed } : {}) });
+    proposeAi(prompt.trim(), { mode: 'level', model, requireAi: true, ...(nextSeed ? { seed: nextSeed } : {}) });
   };
 
   return <div className={`level-creator${compact ? ' compact' : ''}`}>
@@ -95,13 +147,14 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
       {isThinking ? <><span className="spinner-small"/>Directing a playable game...</> : <><Icon name="spark"/>Generate game</>}
     </button>
 
-    {aiStatus === 'error' && <div className="creator-error"><strong>That design could not be generated.</strong><span>Try a shorter description or open Console for the validation message.</span></div>}
+    {aiStatus === 'error' && <div className="creator-error" role="alert"><strong>That design could not be generated.</strong><span>{[...useStudioStore.getState().consoleItems].reverse().find((entry) => entry.level === 'error')?.message || 'Try a shorter description or another model.'}</span></div>}
 
     {level && aiRun && <section className="level-proposal" aria-label="Generated level proposal">
       <div className="proposal-heading">
         <div><span className="panel-kicker">Ready to apply</span><strong>{level.name}</strong></div>
         <span className="proposal-theme">{pretty(level.theme)}</span>
       </div>
+      <p className="creator-help">{aiRun.generation?.warning || `Requested model: ${aiRun.generation?.requestedModel || 'configured default'}`}</p>
       <div className="proposal-metrics">
         <span><strong>{level.metrics.roomCount}</strong> rooms</span>
         <span><strong>{level.metrics.encounterCount}</strong> encounters</span>
@@ -115,10 +168,11 @@ export function LevelCreatorBody({ compact = false }: { compact?: boolean }) {
           setSeed(nextSeed);
           propose(nextSeed);
         }} disabled={isThinking}>Try another</button>
-        <button type="button" className="primary-small" onClick={applyAi} disabled={aiStatus === 'applying'}>
+        <button type="button" className="primary-small" onClick={applyAi} disabled={aiStatus === 'applying' || isThinking || aiRun.baseRevision !== current?.project.revision}>
           {aiStatus === 'applying' ? 'Building world...' : 'Use this level'}
         </button>
       </div>
+      {aiRun.baseRevision !== current?.project.revision && <p role="status">Your project changed. Generate a fresh proposal before applying.</p>}
       {!compact && <details className="proposal-details"><summary>Technical command</summary><pre>{JSON.stringify(aiRun.commands, null, 2)}</pre></details>}
       <button type="button" className="proposal-dismiss" onClick={rejectAi}>Discard proposal</button>
     </section>}
@@ -143,7 +197,7 @@ export function MobileCreator() {
   const [open, setOpen] = useState(true);
   if (playState !== 'editing') {
     return <div className="mobile-play-bar">
-      <div><span className="status-dot"/><strong>Playing generated level</strong></div>
+      <div><span className="status-dot"/><strong>Playing your game</strong></div>
       <button type="button" onClick={() => useStudioStore.getState().setPlayState('editing')}>Back to create</button>
     </div>;
   }

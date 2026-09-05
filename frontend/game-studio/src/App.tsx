@@ -51,8 +51,8 @@ function EmptyState() {
     <div className="onboarding-copy">
       <div className="brand-mark large">L</div>
       <span className="panel-kicker">Lilly AI Game Studio</span>
-      <h1>Build the game in parts.</h1>
-      <p>Start with a playable multi-genre game kit, a fully blank architecture, or the preserved procedural expedition. Every kit uses the same components, modules, tests, builds, and AI command contracts.</p>
+      <h1>Turn an idea into a 3D game.</h1>
+      <p>Choose a starting point, then open Create to build a world, generate 3D assets, or ask for changes. Preview your creations, add them to the scene, and press Play.</p>
       <div className="onboarding-template" role="group" aria-label="Project starting point">{templates.map((entry) => <button key={entry.id} type="button" className={template === entry.id ? 'active' : ''} onClick={() => setTemplate(entry.id)}><strong>{entry.name}</strong><span>{entry.description}</span></button>)}</div>
       <label>Game name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       {template === 'expedition' && <label>What should the level feel like?<textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={3} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) create(); }}/></label>}

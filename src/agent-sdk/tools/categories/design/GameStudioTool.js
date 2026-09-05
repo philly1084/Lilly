@@ -26,6 +26,8 @@ const ACTIONS = [
   'delete-build-profile',
   'set-active-build-profile',
   'generate-level',
+  'generate-model',
+  'apply-ai-run',
   'apply-commands',
   'edit-blueprint',
   'run-playtest',
@@ -40,7 +42,7 @@ class GameStudioTool extends ToolBase {
       id: 'game-studio',
       name: 'Lilly Game Studio',
       category: 'design',
-      version: '3.2.0',
+      version: '3.3.0',
       description: 'Create complete multi-genre browser games as versioned Lilly projects. Author linked prefab instances and variants, shared gameplay data assets, component controllers, typed capability-sandboxed modules, deterministic tests, scenes, Blueprints, assets, animation, and terrain; select versioned development or release build profiles; then build immutable players, publish, and roll back.',
       backend: {
         handler: async (params = {}, context = {}) => {
@@ -118,6 +120,9 @@ class GameStudioTool extends ToolBase {
           },
           graph: { type: 'object' },
           prompt: { type: 'string' },
+          model: { type: 'string', maxLength: 200, description: 'Connected gateway model ID, for example gpt-6-astra when available.' },
+          runId: { type: 'string', description: 'Saved proposal ID returned by generate-model or generate-level. Apply through apply-ai-run to enforce its original revision.' },
+          recipe: { type: 'object', description: 'Optional LillyModelRecipe/v1 data authored by Codex or another agent. name plus 1–64 named parts; shape box/sphere/cylinder/cone/torus/icosahedron/mesh, position/rotation/scale triples, #RRGGBB color, roughness/metalness 0–1. mesh additionally uses flat xyz vertices and triangle indices. Y-up meters, XYZ degree rotations. Compiles to a previewable GLB; apply-ai-run saves the asset, source, and scene entity.' },
           seed: { type: 'string', maxLength: 120 },
           difficulty: { type: 'integer', minimum: 1, maximum: 5 },
           publicHost: { type: 'string' },

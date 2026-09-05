@@ -69,7 +69,7 @@ type StudioState = {
   addComponent(entityId: string, component: LillyComponent): Promise<void>;
   undo(): Promise<void>;
   redo(): Promise<void>;
-  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit'; seed?: string; difficulty?: number }): Promise<void>;
+  proposeAi(prompt: string, options?: { mode?: 'level' | 'edit' | 'asset'; seed?: string; difficulty?: number; model?: string; requireAi?: boolean }): Promise<void>;
   rejectAi(): void;
   applyAi(): Promise<void>;
   saveSourceFiles(files: Array<{ path: string; content: string; enabled?: boolean }>): Promise<boolean>;
@@ -221,7 +221,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   },
 
   async openProject(id) {
-    set({ status: 'loading', error: '' });
+    set({ status: 'loading', error: '', aiRun: null, aiStatus: 'idle' });
     try {
       const current = await studioApi.getProject(id);
       localStorage.setItem('lilly-game-studio:project', id);
@@ -327,6 +327,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     set({ aiStatus: 'thinking', aiRun: null });
     try {
       const aiRun = await studioApi.proposeAi(current.project.id, current.project.revision, prompt, options);
+      if (get().current?.project.id !== current.project.id) return;
       set({ aiRun, aiStatus: 'ready' });
       const level = aiRun.preview.level;
       get().log('info', level
@@ -337,15 +338,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   rejectAi: () => set({ aiRun: null, aiStatus: 'idle' }),
   async applyAi() {
     const run = get().aiRun;
-    if (!run) return;
+    if (!run || get().current?.project.id !== run.projectId) return;
     set({ aiStatus: 'applying' });
-    const success = await get().dispatch(run.commands, `ai-run:${run.id}`);
-    set({ aiRun: success ? null : run, aiStatus: success ? 'idle' : 'error' });
-    if (success) {
-      const design = get().current?.project.generatedLevels?.find((level) => level.sceneId === get().current?.project.entryScene);
-      get().log('success', design
-        ? `Generated level ${design.checksum} saved at revision ${get().current?.project.revision}`
-        : `Applied AI command batch to revision ${get().current?.project.revision}`);
+    try {
+      const result = await studioApi.applyAiRun(run.projectId, run.id);
+      if (get().current?.project.id !== run.projectId) return;
+      const model = result.project.scenes.flatMap((scene) => scene.entities).find((entity) => entity.tags.includes('ai-created') && !get().current?.project.scenes.flatMap((scene) => scene.entities).some((old) => old.id === entity.id));
+      set({ current: result, aiRun: null, aiStatus: 'idle', saveStatus: 'saved', playState: 'editing', editorPreview: null, previewStatus: 'idle', undoStack: result.commandBatch ? [...get().undoStack, { forward: result.commandBatch.commands, inverse: result.commandBatch.inverses }] : get().undoStack, redoStack: [], ...(model ? { selectedEntityId: model.id } : {}) });
+      get().log('success', `${run.mode === 'asset' ? '3D model and editable source' : 'AI design'} saved at revision ${result.project.revision}`);
+    } catch (error) {
+      set({ aiStatus: 'error' });
+      get().log('error', error instanceof Error ? error.message : 'Could not apply proposal');
     }
   },
 
