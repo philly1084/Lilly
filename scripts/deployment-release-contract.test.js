@@ -40,3 +40,19 @@ describe('KimiBuilt coordinated deployment contract', () => {
     expect(frontend).toContain('livenessProbe:\n            httpGet:\n              path: /_local/health');
   });
 });
+
+(process.platform === 'win32' ? test.skip : test)('kubeconfig setup exports its file for the current shell, for raw and encoded input', () => {
+  const os = require('os');
+  const { execFileSync } = require('child_process');
+  const workflow = require('js-yaml').load(read('.github/workflows/deploy-k3s.yml'));
+  const script = workflow.jobs['deploy-to-k3s'].steps.find((step) => step.name === 'Setup kubectl and kubeconfig').run;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kubeconfig-contract-'));
+  try {
+    fs.writeFileSync(path.join(root, 'kubectl'), '#!/bin/sh\ntest -n "$KUBECONFIG" && test -s "$KUBECONFIG"\n', { mode: 0o755 });
+    for (const input of ['apiVersion: v1\nkind: Config\n', Buffer.from('apiVersion: v1\nkind: Config\n').toString('base64')]) {
+      const env = { ...process.env, PATH: `${root}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_ENV: path.join(root, 'env'), KUBECONFIG_SECRET: input };
+      delete env.KUBECONFIG;
+      expect(() => execFileSync('bash', ['-c', script], { env, stdio: 'pipe' })).not.toThrow();
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

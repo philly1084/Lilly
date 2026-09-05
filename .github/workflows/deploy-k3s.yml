@@ -60,6 +60,7 @@ jobs:
             printf '%s' "$KUBECONFIG_SECRET" > "$RUNNER_TEMP/kube/config"
           fi
           chmod 600 "$RUNNER_TEMP/kube/config"
+          export KUBECONFIG="$RUNNER_TEMP/kube/config"
           echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
           kubectl config current-context
 
