@@ -8,6 +8,8 @@ There are two foundations. **Authored** starts with an empty project: agents cre
 
 The director produces `LillyGamePlan/v1`: player fantasy, art direction, core loop, win/loss, controls, acceptance checklist, deferred features, level/environment/gameplay briefs and up to six asset jobs. Review and edit the design before selecting **Build this game**. Deferred requests remain visible. The original brief and reviewed plan are durable; the plan is also saved in the game at `design/game-plan.json`.
 
+Invalid director output receives one correction attempt before review. Scene and gameplay corrections name the rejected shape, operation or file path. Their latest generated responses are retained in the production directory, bounded to 256,000 characters, for diagnosis. Invalid commands are never applied. During building, active workers and the primary controls appear before the collapsed game design; the design opens for review.
+
 The model team is selected from the connected model catalog. The director, level builder, scenery builder, model builders and gameplay programmer can use different model IDs. After design, expand **Choose a model for each asset** to assign specialists to individual models. No provider or generation name is required by the production protocol. Choose one to four parallel workers; the default is two. This controls concurrent art authors, not CPU threads or simultaneous scene writers. It may increase provider usage.
 
 Execution dependencies are deliberately explicit:

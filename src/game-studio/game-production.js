@@ -254,13 +254,16 @@ class GameProductionService {
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
+      await this.studio.writeJsonAtomic(path.join(this.directory(value.id), 'gameplay-response.json'), { model: entry.model, attempt: attempt + 1, at: now(), response: String(response).slice(0, 256000) });
       try {
         const parsed = parseLenientJson(String(response));
         const commands = parsed?.commands;
-        if (!Array.isArray(commands) || !commands.length || commands.length > 20) throw invalid('Gameplay must return 1–20 source/input commands.');
+        if (!Array.isArray(commands)) throw invalid('Return a JSON object with commands:[{operation,target,payload}] and coverage:{win,loss,reset}. JSON file contents must be escaped strings.');
+        if (!commands.length || commands.length > 20) throw invalid(`Gameplay returned ${commands.length} commands; use 1–20 source/input commands.`);
         for (const command of commands) {
-          if (!['file.upsert', 'input.replace'].includes(command.operation)) throw invalid('Gameplay may only author source files and input maps.');
-          if (command.operation === 'file.upsert' && !/^modules\/game\/[a-z0-9-]+\.(module\.json|system\.ts|spec\.json|mechanic\.json|prefab\.json|material\.json|animation\.json|asset\.json|terrain\.json)$/.test(command.payload?.file?.path || '')) throw invalid('Gameplay files must use the modules/game/ contract.');
+          if (!['file.upsert', 'input.replace'].includes(command?.operation)) throw invalid(`Unsupported gameplay operation ${JSON.stringify(String(command?.operation || '(missing)').slice(0, 100))}; use operation: file.upsert or input.replace.`);
+          if (command.operation === 'file.upsert' && !/^modules\/game\/[a-z0-9-]+\.(module\.json|system\.ts|spec\.json|mechanic\.json|prefab\.json|material\.json|animation\.json|asset\.json|terrain\.json)$/.test(command.payload?.file?.path || '')) throw invalid(`Unsupported gameplay file ${JSON.stringify(String(command.payload?.file?.path || '(missing)').slice(0, 200))}. Use modules/game/<lowercase-slug>.system.ts for code, .module.json for manifests, .spec.json for tests, or .mechanic/.prefab/.material/.animation/.asset/.terrain.json for data.`);
+          if (command.operation === 'file.upsert' && command.target?.path !== undefined && command.target.path !== command.payload.file.path) throw invalid(`File target ${JSON.stringify(String(command.target.path).slice(0, 200))} differs from payload.file.path. Use target:{} and put the destination only in payload.file.path under modules/game/.`);
         }
         const normalized = this.studio.normalizeCommands(project, commands, project.revision);
         const candidate = applyCommandBatch(project, normalized, project.revision).project;
@@ -290,7 +293,7 @@ class GameProductionService {
       } catch (e) {
         if (attempt === 1) throw e;
         feedback = `\nYour last output failed validation: ${String(e.message).slice(0, 4000)}. Correct it and return the complete commands. Previous response: ${String(response).slice(0, 18000)}`;
-        await this.save(value, 'Gameplay worker is repairing validation errors.', entry.id);
+        await this.save(value, `Gameplay worker is repairing validation errors: ${String(e.message).slice(0, 700)}`, entry.id);
       }
     }
   }

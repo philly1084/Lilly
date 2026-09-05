@@ -48,6 +48,40 @@ test('scene repair receives precise diagnostics and retains the generated scene 
   expect(JSON.parse(retained.response).commands).toEqual(scene().commands);
 });
 
+test('gameplay repair identifies the rejected file and retains its final generated source', async () => {
+  let gameplayCalls = 0;
+  studio.complete.mockImplementation(async prompt => {
+    if (prompt.startsWith('Author the original gameplay feature')) {
+      gameplayCalls++;
+      if (gameplayCalls === 1) return JSON.stringify({ commands: [{ operation: 'file.upsert', target: {}, payload: { file: { path: 'modules/game/helpers.ts', content: 'export const x = 1;' } } }] });
+      expect(prompt).toContain('Unsupported gameplay file "modules/game/helpers.ts"');
+      expect(prompt).toContain('.system.ts for code');
+    }
+    return response(prompt);
+  });
+  const result = await build();
+  expect(result.status).toBe('ready');
+  expect(result.events.some(event => event.message.includes('Unsupported gameplay file'))).toBe(true);
+  const retained = JSON.parse(await fs.readFile(path.join(studio.productions.directory(result.id), 'gameplay-response.json'), 'utf8'));
+  expect(retained.attempt).toBe(2);
+  expect(JSON.parse(retained.response).commands).toEqual(gameplay().commands);
+});
+
+test('gameplay cannot override a validated source path through the command target', async () => {
+  let calls = 0;
+  studio.complete.mockImplementation(async prompt => {
+    if (prompt.startsWith('Author the original gameplay feature')) {
+      if (++calls === 1) return JSON.stringify({ commands: [{ operation: 'file.upsert', target: { path: 'design/game-plan.json' }, payload: { file: { path: 'modules/game/game.module.json', content: '{}' } } }] });
+      expect(prompt).toContain('File target "design/game-plan.json" differs from payload.file.path');
+    }
+    return response(prompt);
+  });
+  const result = await build();
+  expect(result.status).toBe('ready');
+  const project = (await studio.getProject(result.projectId, 'owner')).project;
+  expect(JSON.parse(project.files.find(file => file.path === 'design/game-plan.json').content)).toMatchObject({ name: plan.name, schema: plan.schema });
+});
+
 test('blank project becomes an original game with its own world, rules, targeted GLB and four passing specs', async () => {
   const create = jest.spyOn(studio, 'createProject');
   const result = await build({ models: { level: 'world-model', asset: 'default-artist' }, taskModels: { 'asset-beacon': 'specialist-artist', gameplay: 'rules-model' } });

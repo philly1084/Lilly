@@ -71,7 +71,7 @@ export function GameProductionCreator({ model, models }: { model: string; models
   const plan = production?.plan;
   return <div className="level-creator game-production">
     <div className="creator-intro"><div><span className="panel-kicker">Design → build together → play</span><strong>Build a whole game</strong></div></div>
-    <p className="creator-help">Start with an idea. Review the design, then let model workers create the level, scenery, 3D assets and original gameplay in a new editable project.</p>
+    {!production && <p className="creator-help">Start with an idea. Review the design, then let model workers create the level, scenery, 3D assets and original gameplay in a new editable project.</p>}
     {productions.length > 0 && <label className="creator-model">Saved game builds<select value={production?.id || ''} disabled={pending} onChange={event => {
       if (!event.target.value) { setProduction(null); setAssignments({}); setTaskAssignments({}); return; }
       perform(async () => { const value = await productionApi.get(event.target.value); setAssignments(value.models); setTaskAssignments(value.taskModels || {}); setConcurrency(value.concurrency); return value; });
@@ -92,22 +92,22 @@ export function GameProductionCreator({ model, models }: { model: string; models
     {!production && <button type="button" className="creator-generate" disabled={pending || !brief.trim()} onClick={() => perform(() => productionApi.create({ brief, models: selectedModels, concurrency }))}>{pending ? 'Starting designer…' : 'Design my game'}</button>}
     {production && <>
       <p className="production-status" role="status">{production.status === 'ready' ? 'Playable build ready' : production.status === 'review' ? 'Design ready for review' : production.status === 'planning' ? 'Designing your game…' : production.status === 'building' ? 'Building your game…' : production.status === 'stopping' ? 'Stopping after active model calls settle…' : production.status === 'interrupted' ? 'Build interrupted — saved work is available' : production.status === 'stopped' ? 'Build stopped — saved work is available' : 'Build needs attention'}</p>
-      {plan && <section className="production-plan" aria-label="Game design">
-        <h3>{plan.name}</h3><p>{plan.fantasy}</p><p className="creator-help">{plan.foundation === 'authored' ? 'Original world and game rules, built from an empty project.' : 'Expedition foundation with custom scenery and gameplay.'}</p>
-        <ol>{plan.coreLoop.map((item, i) => <li key={i}>{item}</li>)}</ol>
-        <p><strong>Win:</strong> {plan.winCondition}</p><p><strong>Restart:</strong> {plan.loseCondition}</p>
-        <details><summary>Art, controls and planned assets</summary><p>{plan.artDirection}</p><ul>{plan.controls.map((item, i) => <li key={i}>{item}</li>)}</ul><ul>{plan.assets.map(asset => <li key={asset.id}>{asset.name} · {asset.placement}</li>)}</ul><p>{plan.gameplayPrompt}</p></details>
-        {plan.deferred.length > 0 && <details><summary>Outside this build’s scope</summary><ul>{plan.deferred.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
-        {production.status === 'review' && <details><summary>Edit the game design</summary><label className="creator-prompt">Game design JSON<textarea rows={12} value={planText} onChange={event => setPlanText(event.target.value)} spellCheck={false}/></label></details>}
-        {production.status === 'ready' && <details open><summary>Your playtest checklist</summary><ul>{plan.acceptance.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
-      </section>}
-      {production.tasks.length > 0 && <ol className="production-streams" aria-label="AI build streams">{production.tasks.map(entry => <li key={entry.id} data-status={entry.status}><div><strong>{entry.name}</strong><span>{entry.status}</span></div><small>{entry.model || 'Configured default'}{entry.appliedRevision ? ` · saved r${entry.appliedRevision}` : ''}{entry.testResults ? ` · ${entry.testResults.passed} tests passed` : ''}</small>{entry.error && <p>{entry.error}</p>}</li>)}</ol>}
       {production.status === 'review' && <button type="button" className="creator-generate" disabled={pending} onClick={() => perform(() => productionApi.control(production.id, 'start', { revision: production.revision, plan: JSON.parse(planText), models: selectedModels, taskModels: taskAssignments, concurrency }))}>Build this game</button>}
       {['failed', 'stopped', 'interrupted'].includes(production.status) && production.error?.code !== 'REVISION_CONFLICT' && <button type="button" className="creator-generate" disabled={pending} onClick={() => perform(() => productionApi.control(production.id, 'resume', { revision: production.revision, models: selectedModels, taskModels: taskAssignments, concurrency }))}>Retry unfinished work</button>}
       {running(production) && <button type="button" disabled={pending || production.status === 'stopping'} onClick={() => perform(() => productionApi.control(production.id, 'stop', {}))}>Stop build</button>}
       {production.error && <p className="creator-error" role="alert">{production.error.message}</p>}
       {production.projectId && !running(production) && <button className="creator-generate" type="button" onClick={() => { openProject(production.projectId!); }}>Open editable game</button>}
       {production.build && <a className="creator-download" href={production.build.previewUrl} target="_blank" rel="noreferrer">Play saved build ↗</a>}
+      {production.tasks.length > 0 && <ol className="production-streams" aria-label="AI build streams">{[...production.tasks].sort((a, b) => Number(b.status === 'running' || b.status === 'failed') - Number(a.status === 'running' || a.status === 'failed')).map(entry => <li key={entry.id} data-status={entry.status}><div><strong>{entry.name}</strong><span>{entry.status}</span></div><small>{entry.model || 'Configured default'}{entry.appliedRevision ? ` · saved r${entry.appliedRevision}` : ''}{entry.testResults ? ` · ${entry.testResults.passed} tests passed` : ''}</small>{entry.error && <p>{entry.error}</p>}</li>)}</ol>}
+      {plan && <details className="production-plan" key={`${production.id}-${production.status === 'review'}`} open={production.status === 'review'}><summary>Game design · {plan.name}</summary><section aria-label="Game design">
+        <h3>{plan.name}</h3><p>{plan.fantasy}</p><p className="creator-help">{plan.foundation === 'authored' ? 'Original world and game rules, built from an empty project.' : 'Expedition foundation with custom scenery and gameplay.'}</p>
+        <ol>{plan.coreLoop.map((item, i) => <li key={i}>{item}</li>)}</ol>
+        <p><strong>Win:</strong> {plan.winCondition}</p><p><strong>Restart:</strong> {plan.loseCondition}</p>
+        <details><summary>Art, controls and planned assets</summary><p>{plan.artDirection}</p><ul>{plan.controls.map((item, i) => <li key={i}>{item}</li>)}</ul><ul>{plan.assets.map(asset => <li key={asset.id}>{asset.name} · {asset.placement}</li>)}</ul><p>{plan.gameplayPrompt}</p></details>
+        {plan.deferred.length > 0 && <details><summary>Outside this build’s scope</summary><ul>{plan.deferred.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
+        {production.status === 'review' && <details><summary>Edit the game design</summary><label className="creator-prompt">Game design JSON<textarea rows={12} value={planText} onChange={event => setPlanText(event.target.value)} spellCheck={false}/></label></details>}
+      </section></details>}
+      {plan && production.status === 'ready' && <details><summary>Your playtest checklist</summary><ul>{plan.acceptance.map((item, i) => <li key={i}>{item}</li>)}</ul></details>}
       {production.events.length > 0 && <details><summary>Build activity · {production.events.length} updates</summary><ol className="production-events">{production.events.slice(-40).map(event => <li key={event.sequence}><time>{new Date(event.at).toLocaleTimeString()}</time> {event.message}</li>)}</ol></details>}
       {!running(production) && <button type="button" disabled={pending} onClick={() => { setProduction(null); setAssignments({}); setTaskAssignments({}); setError(''); }}>New game idea</button>}
     </>}
