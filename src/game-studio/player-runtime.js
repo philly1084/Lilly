@@ -776,11 +776,7 @@ async function setupScene() {
     camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 1000);
     scene.add(camera);
   }
-  const initialCameraOffset = runtimeProfile === 'expedition'
-    ? new THREE.Vector3(7, 7, 11)
-    : vector(cameraComponentData?.followOffset, { x: 7, y: 7, z: 11 });
-  camera.position.set(playerSpawn.x + initialCameraOffset.x, playerSpawn.y + initialCameraOffset.y, playerSpawn.z + initialCameraOffset.z);
-  camera.lookAt(player.position);
+  initializePlayerCamera();
   const quality = buildQuality();
   const wantsWebGPU = project.settings?.renderer === 'webgpu-experimental';
   const Renderer = wantsWebGPU && typeof THREE.WebGPURenderer === 'function' ? THREE.WebGPURenderer : THREE.WebGLRenderer;
@@ -1112,6 +1108,17 @@ function simulateExpedition(delta) {
     if (hazard.object.position.distanceTo(player.position) < hazard.radius + playerRadius) takeHazardDamage();
   });
   evaluateGoal();
+}
+
+function initializePlayerCamera() {
+  const authoredFollow = cameraComponentData?.followTargetTag === 'player' || cameraComponentData?.followTargetId === playerEntityData?.id;
+  // Fixed authored cameras already have their scene transform, including rotation.
+  if (runtimeProfile !== 'expedition' && cameraComponentData && !authoredFollow) return;
+  const offset = runtimeProfile === 'expedition'
+    ? new THREE.Vector3(7, 7, 11)
+    : vector(cameraComponentData?.followOffset, { x: 7, y: 7, z: 11 });
+  camera.position.set(playerSpawn.x + offset.x, playerSpawn.y + offset.y, playerSpawn.z + offset.z);
+  camera.lookAt(player.position.x, player.position.y + Number(cameraComponentData?.lookAtHeight ?? 0), player.position.z);
 }
 
 function simulateModuleDriven(delta) {
