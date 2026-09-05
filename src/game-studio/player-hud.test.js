@@ -4,6 +4,29 @@ const path = require('path');
 const vm = require('vm');
 const ts = require('typescript');
 
+test('round trigger entry occurs at actual contact instead of consuming entry at a bounding-box corner', () => {
+  const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const names = new Set(['collisionPairKey', 'collisionPayload', 'scanCollisionTransitions', 'colliderFootprintsOverlap']);
+  const code = source.statements.filter(node => ts.isFunctionDeclaration(node) && names.has(node.name?.text)).map(node => node.getText(source)).join('\n');
+  const bounds = (id, shape, x, z, radius, sensor) => ({ entry: { entity: { id, tags: [] }, collider: { data: { shape, sensor } } }, center: { x, y: 0.8, z }, minX: x - radius, maxX: x + radius, minY: 0, maxY: 1.6, minZ: z - radius, maxZ: z + radius });
+  const sensor = bounds('sensor-amber', 'cylinder', 0, 0, 1.05, true);
+  const colliders = new Map([['sensor', sensor], ['player', bounds('player', 'capsule', 1.2, 1.2, 0.3, false)]]);
+  const context = vm.createContext({ runtimeColliders: colliders, runtimeColliderBounds: value => value, isFixedCollider: () => false, activeCollisionPairs: new Map() });
+  vm.runInContext(code, context);
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toHaveLength(0);
+  colliders.set('player', bounds('player', 'capsule', 0.9, 0.9, 0.3, false));
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toEqual([expect.objectContaining({ phase: 'start', type: 'trigger', entityA: 'player', entityB: 'sensor-amber' })]);
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toHaveLength(0);
+  colliders.set('player', bounds('player', 'capsule', 1.2, 1.2, 0.3, false));
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toEqual([expect.objectContaining({ phase: 'end' })]);
+  sensor.entry.collider.data.shape = 'box';
+  // Rounded player contact at a square portal corner also needs a narrow check.
+  colliders.set('player', bounds('player', 'capsule', 1.3, 1.3, 0.3, false));
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toHaveLength(0);
+  colliders.set('player', bounds('player', 'capsule', 1.2, 1.2, 0.3, false));
+  expect(vm.runInContext('scanCollisionTransitions()', context)).toEqual([expect.objectContaining({ phase: 'start' })]);
+});
+
 test('fixed authored cameras retain scene transforms while follow cameras start on their target', () => {
   const THREE = require('three');
   const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);

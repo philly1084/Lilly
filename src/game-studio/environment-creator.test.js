@@ -116,7 +116,7 @@ test('AI scenery -> saved GLBs and native terrain -> replace -> undo/redo -> pla
   const build = await service.createBuild(id, { projectRevision: 5 }, 'owner');
   expect(build.status).toBe('success');
   expect(build.files.filter(file => /assets\/.*\.glb$/.test(file.path))).toHaveLength(4);
-});
+}, 30000); // Full GLB generation, undo/redo and immutable packaging can exceed 5s on CI.
 
 test('protects existing floors and rejects stale or unavailable AI without a preset', async () => {
   const created = await service.createProject({ name: 'Protection', template: 'third-person-explorer' }, 'owner');

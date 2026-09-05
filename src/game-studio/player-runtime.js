@@ -615,6 +615,10 @@ function runtimeColliderBounds(entry) {
     half.y = radius;
     half.z = radius;
   }
+  if (['cylinder', 'capsule'].includes(entry.collider.data.shape)) {
+    // Native character and sensor bodies are upright with circular XZ footprints.
+    half.x = half.z = Math.max(half.x, half.z);
+  }
   return {
     entry,
     center,
@@ -630,6 +634,21 @@ function runtimeColliderBounds(entry) {
 function collisionPairKey(entityA, entityB) {
   const [first, second] = entityA < entityB ? [entityA, entityB] : [entityB, entityA];
   return `${first.length}:${first}${second}`;
+}
+
+function colliderFootprintsOverlap(left, right) {
+  const round = bounds => ['cylinder', 'capsule'].includes(bounds.entry.collider.data.shape);
+  const leftRound = round(left), rightRound = round(right);
+  if (!leftRound && !rightRound) return true;
+  const radius = bounds => Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2;
+  if (leftRound && rightRound) {
+    const dx = left.center.x - right.center.x, dz = left.center.z - right.center.z;
+    return dx * dx + dz * dz <= (radius(left) + radius(right)) ** 2;
+  }
+  const circle = leftRound ? left : right, box = leftRound ? right : left;
+  const dx = circle.center.x - Math.max(box.minX, Math.min(box.maxX, circle.center.x));
+  const dz = circle.center.z - Math.max(box.minZ, Math.min(box.maxZ, circle.center.z));
+  return dx * dx + dz * dz <= radius(circle) ** 2;
 }
 
 function isFixedCollider(entry) {
@@ -665,6 +684,7 @@ function scanCollisionTransitions() {
       const right = bounds[rightIndex];
       if (right.minX > left.maxX) break;
       if (left.maxY < right.minY || left.minY > right.maxY || left.maxZ < right.minZ || left.minZ > right.maxZ) continue;
+      if (!colliderFootprintsOverlap(left, right)) continue;
       const leftSensor = left.entry.collider.data.sensor === true;
       const rightSensor = right.entry.collider.data.sensor === true;
       if (!leftSensor && !rightSensor && isFixedCollider(left.entry) && isFixedCollider(right.entry)) continue;
