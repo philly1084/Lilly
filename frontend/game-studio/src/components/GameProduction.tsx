@@ -80,7 +80,10 @@ export function GameProductionCreator({ model, models }: { model: string; models
     <details className="production-team">
       <summary>Model team · {concurrency} parallel workers</summary>
       <p className="creator-help">Use any connected model for each role. Independent scenery and model jobs run together. Scene saves are coordinated. More workers can increase provider usage.</p>
-      {ROLES.map(role => <label className="creator-model" key={role}>{LABELS[role]}<select disabled={busy} value={assignments[role] ?? model} onChange={event => setAssignments(previous => ({ ...previous, [role]: event.target.value }))}><option value="">Configured default</option>{models.map(entry => <option key={entry.id} value={entry.id}>{entry.name || entry.id}</option>)}</select></label>)}
+      {ROLES.map(role => <label className="creator-model" key={role}>{LABELS[role]}<select disabled={busy} value={taskAssignments[role] ?? assignments[role] ?? model} onChange={event => {
+        setAssignments(previous => ({ ...previous, [role]: event.target.value }));
+        setTaskAssignments(previous => { const next = { ...previous }; delete next[role]; return next; });
+      }}><option value="">Configured default</option>{models.map(entry => <option key={entry.id} value={entry.id}>{entry.name || entry.id}</option>)}</select></label>)}
       {!!plan?.assets.length && <details><summary>Choose a model for each asset</summary>{plan.assets.map(asset => {
         const id = `asset-${asset.id}`;
         return <label className="creator-model" key={id}>{asset.name}<select disabled={busy} value={taskAssignments[id] ?? '__inherit__'} onChange={event => setTaskAssignments(previous => {
