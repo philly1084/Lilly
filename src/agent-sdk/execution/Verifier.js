@@ -1,4 +1,5 @@
 let Ajv;
+const { verifiedAttestations } = require('../../orchestration/completion-evidence');
 
 try {
   Ajv = require('ajv');
@@ -6,7 +7,7 @@ try {
   console.warn('[AgentSDK] AJV not available, schema validation will degrade:', error.message);
   Ajv = class FallbackAjv {
     compile() {
-      const validate = () => true;
+      const validate = () => { throw new Error('Schema validator unavailable'); };
       validate.errors = [];
       return validate;
     }
@@ -109,7 +110,9 @@ class Verifier {
   /**
    * Creates a Verifier instance with default validators.
    */
-  constructor() {
+  constructor({ testRunner = null, embedder = null } = {}) {
+    this.testRunner = testRunner;
+    this.embedder = embedder;
     /** @type {Map<string, Function>} Registered validators */
     this.validators = new Map();
     
@@ -242,7 +245,7 @@ class Verifier {
     // Support anyOf logic (pass if any criterion passes)
     const allPassed = criteria.anyOf 
       ? passed > 0 
-      : passed === total || total === 0;
+      : passed === total && total > 0;
     
     return {
       valid: allPassed,
@@ -262,9 +265,10 @@ class Verifier {
   async validateOutputSchema(task, executionResult) {
     const schema = task.output?.schema;
     if (!schema) {
-      return ValidationResult.success(
+      return ValidationResult.failure(
         'output-validated',
-        'No schema specified, skipping validation'
+        'Unverified: no output schema specified',
+        { status: 'unverified', nextAction: 'configure_output_schema' }
       );
     }
     
@@ -310,14 +314,13 @@ class Verifier {
    * @returns {Promise<ValidationResult>} Validation result
    */
   async validateTests(task, executionResult) {
-    // Placeholder for test validation
-    // In real implementation, would run unit tests, linting, etc.
     const tests = task.completionCriteria?.tests || [];
     
     if (tests.length === 0) {
-      return ValidationResult.success(
+      return ValidationResult.failure(
         'tests-pass',
-        'Test validation passed (no tests configured)'
+        'Unverified: configure the tests that establish completion',
+        { status: 'unverified', nextAction: 'configure_tests' }
       );
     }
     
@@ -327,8 +330,30 @@ class Verifier {
     
     for (const test of tests) {
       try {
-        // Test execution would go here
-        passed.push(test);
+        const subject = typeof test === 'string' ? test : test.id || test.test;
+        const evidence = [executionResult, ...(executionResult.results || []).map((entry) => entry.output)]
+          .flatMap((result) => verifiedAttestations(result || {}));
+        if (evidence.some((entry) => entry.kind === 'test' && entry.subject === subject)) {
+          passed.push(test);
+          continue;
+        }
+        if (typeof this.testRunner !== 'function') {
+          return ValidationResult.failure('tests-pass', 'Unverified: test runner unavailable', {
+            status: 'unverified', nextAction: 'provide_test_runner',
+          });
+        }
+        const result = await this.testRunner(test, task, executionResult);
+        const data = result?.data || result;
+        if (data?.status === 'unverified') {
+          return ValidationResult.failure('tests-pass', 'Unverified: test runner unavailable', {
+            status: 'unverified', nextAction: 'provide_test_runner',
+          });
+        }
+        if (result?.success === false || data?.exitCode !== 0 || data?.timedOut === true) {
+          failed.push({ test, error: 'Test did not return a successful exit code' });
+        } else {
+          passed.push(test);
+        }
       } catch (error) {
         failed.push({ test, error: error.message });
       }
@@ -406,20 +431,28 @@ class Verifier {
    * @returns {Promise<ValidationResult>} Validation result
    */
   async validateSimilarity(task, executionResult, config = {}) {
-    // Placeholder for semantic similarity check
-    // In real implementation, would use embeddings comparison
-    const threshold = config.threshold || 0.8;
+    const threshold = config.threshold ?? 0.8;
     const reference = config.reference || task.expectedOutput;
     
-    if (!reference) {
-      return ValidationResult.success(
+    if (!reference || !this.embedder?.embed || !Number.isFinite(threshold) || threshold < -1 || threshold > 1) {
+      return ValidationResult.failure(
         'similarity-threshold',
-        'Similarity validation passed (no reference provided)'
+        'Unverified: a reference, embedder and valid threshold are required',
+        { status: 'unverified', nextAction: 'configure_similarity_check' }
       );
     }
     
-    // Mock similarity calculation
-    const similarity = 0.85; // Would be actual calculation
+    const [left, right] = await Promise.all([
+      this.embedder.embed(String(reference)),
+      this.embedder.embed(typeof executionResult.output === 'string' ? executionResult.output : JSON.stringify(executionResult.output)),
+    ]);
+    if (!Array.isArray(left) || !Array.isArray(right) || !left.length || left.length !== right.length
+      || !left.every(Number.isFinite) || !right.every(Number.isFinite)) {
+      return ValidationResult.failure('similarity-threshold', 'Invalid embedding vectors');
+    }
+    const magnitude = Math.hypot(...left) * Math.hypot(...right);
+    if (!magnitude) return ValidationResult.failure('similarity-threshold', 'Empty embedding magnitude');
+    const similarity = left.reduce((sum, value, index) => sum + value * right[index], 0) / magnitude;
     
     if (similarity >= threshold) {
       return ValidationResult.success(

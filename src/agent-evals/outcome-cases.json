@@ -1,0 +1,20 @@
+[
+  {
+    "id": "revise-report-preserve-source",
+    "prompt": "Edit report.md: replace the exact text Status: draft with Status: reviewed. Read back the edited file. Preserve source.txt and all other report content.",
+    "files": { "report.md": "# Report\nStatus: draft\nEvidence: source.txt\n", "source.txt": "Recorded source remains unchanged.\n" },
+    "checks": [ { "type": "file", "path": "report.md", "equals": "# Report\nStatus: reviewed\nEvidence: source.txt\n" }, { "type": "file", "path": "source.txt", "equals": "Recorded source remains unchanged.\n" } ]
+  },
+  {
+    "id": "recover-transient-edit",
+    "prompt": "Edit status.txt, replacing pending with ready, and read back the result. Retry a temporary tool failure before giving up.",
+    "files": { "status.txt": "pending\n" }, "injectTransientFailure": true,
+    "checks": [ { "type": "file", "path": "status.txt", "equals": "ready\n" } ]
+  },
+  {
+    "id": "resume-checkpoint",
+    "prompt": "Continue the remaining edit from checkpoint.txt. Preserve the completed step and read back the final file.",
+    "files": { "checkpoint.txt": "Completed: heading added. Remaining: replace Status: draft with Status: final in report.md.\n", "report.md": "# Finished heading\nStatus: draft\n" },
+    "checks": [ { "type": "file", "path": "report.md", "equals": "# Finished heading\nStatus: final\n" } ]
+  }
+]

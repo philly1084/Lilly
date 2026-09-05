@@ -3,6 +3,7 @@ const { vectorStore } = require('./vector-store');
 const { stripNullCharacters, chunkText } = require('../utils/text');
 const { mergeMemoryKeywords, normalizeMemoryKeywords } = require('./memory-keywords');
 const { runtimeDiagnostics } = require('../runtime-diagnostics');
+const { verifiedAttestations } = require('../orchestration/completion-evidence');
 const {
     buildScopedMemoryMetadata,
     isSessionIsolationEnabled,
@@ -524,6 +525,11 @@ class MemoryService {
             ...(scopedMetadata?.sourceCharLength != null ? { sourceCharLength: Number(scopedMetadata.sourceCharLength) } : {}),
             ...(scopedMetadata?.sourceChunkCount != null ? { sourceChunkCount: Number(scopedMetadata.sourceChunkCount) } : {}),
             ...(scopedMetadata?.memoryTruncated === true ? { memoryTruncated: true } : {}),
+            ...(scopedMetadata?.learningOutcome ? { learningOutcome: scopedMetadata.learningOutcome } : {}),
+            ...(scopedMetadata?.evidenceIds ? { evidenceIds: scopedMetadata.evidenceIds } : {}),
+            ...(scopedMetadata?.verifiedAt ? { verifiedAt: scopedMetadata.verifiedAt } : {}),
+            ...(scopedMetadata?.revalidateAt ? { revalidateAt: scopedMetadata.revalidateAt } : {}),
+            ...(scopedMetadata?.sourceRunId ? { sourceRunId: scopedMetadata.sourceRunId } : {}),
         };
     }
 
@@ -621,16 +627,37 @@ class MemoryService {
         toolEvents = [],
         artifact = null,
         metadata = {},
+        completion = null,
     } = {}) {
         const relevantToolEvents = (Array.isArray(toolEvents) ? toolEvents : [])
-            .filter((event) => event?.result?.success !== false);
+            .filter((event) => event?.result?.success === true);
+        const evidence = relevantToolEvents.flatMap((event) => verifiedAttestations(event.result));
+        const criteria = Array.isArray(completion?.criteria) ? completion.criteria : [];
+        const required = criteria.filter((entry) => entry.required !== false);
+        const evidenceIds = new Set(evidence.map((entry) => entry.id));
+        const proven = evidence.length > 0 && required.length > 0
+            && required.every((entry) => entry.status === 'satisfied'
+                && entry.evidenceIds?.some((id) => evidenceIds.has(id)));
+        if (!proven) {
+            const failures = toolEvents.filter((event) => event?.result?.success === false);
+            if (failures.length === 0) return null;
+            return this.remember(sessionId, [
+                `Failed attempt: ${summarizeLine(objective)}`,
+                ...failures.slice(-3).map((event) => summarizeLine(event.result?.error || 'Tool failed')),
+                'This is failure history, not a verified reusable procedure.',
+            ].join('\n'), 'tool', {
+                ...metadata, memoryType: FACT_MEMORY_TYPE, memoryClass: 'tool_result',
+                learningOutcome: 'failed', shareAcrossSurfaces: false, importance: 0.4,
+            });
+        }
         if (!objective || (relevantToolEvents.length === 0 && !artifact)) {
             return null;
         }
 
         const skillText = summarizeSkillText({
             objective,
-            assistantText,
+            assistantText: `${assistantText}\n${toolEvents.filter((event) => event.result?.success === false)
+                .map((event) => `Recovered failure: ${summarizeLine(event.result.error)}`).join('\n')}`,
             toolEvents: relevantToolEvents,
             artifact,
         });
@@ -656,6 +683,11 @@ class MemoryService {
         return this.remember(sessionId, skillText, 'skill', {
             ...metadata,
             memoryType: SKILL_MEMORY_TYPE,
+            learningOutcome: 'verified',
+            evidenceIds: evidence.map((entry) => entry.id),
+            verifiedAt: new Date().toISOString(),
+            revalidateAt: new Date(Date.now() + 30 * 86400000).toISOString(),
+            sourceRunId: metadata.runId || metadata.sourceRunId || sessionId,
             visibility: metadata?.visibility || 'frontend-shared',
             skillKind: WORKFLOW_SUMMARY_SKILL_KIND,
             memoryClass: genericReusableSkill ? 'reusable_skill' : 'task_specific_skill',
@@ -1031,6 +1063,9 @@ class MemoryService {
         };
 
         for (const entry of entries) {
+            const metadata = entry.metadata || entry.payload?.metadata || entry.payload || {};
+            if (metadata.revalidateAt && Date.parse(metadata.revalidateAt) <= Date.now()) continue;
+            if (metadata.skillKind === WORKFLOW_SUMMARY_SKILL_KIND && metadata.learningOutcome !== 'verified') continue;
             const typeGroup = entry?.typeGroup || 'fact';
             if ((counts[typeGroup] || 0) >= (caps[typeGroup] || DEFAULT_FACT_LIMIT)) {
                 continue;

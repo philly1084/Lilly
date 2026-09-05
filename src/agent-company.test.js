@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('./alignment/suggestion-trials', () => ({ evaluateSuggestion: jest.fn(async () => null) }));
 
 const fs = require('fs/promises');
 const os = require('os');
@@ -198,13 +199,11 @@ describe('AgentCompanyService', () => {
         const result = await service.tick({ force: true, reason: 'test-daily-alignment' });
 
         expect(result.state.heartbeat.status).toBe('disabled');
-        expect(result.state.dailyAlignment.status).toBe('applied');
+        expect(result.state.dailyAlignment.status).toBe('validated');
         expect(result.state.dailyAlignment.evidence.logs.count).toBe(1);
-        expect(result.state.dailyAlignment.applied).toEqual([expect.objectContaining({
-            id: 'daily-proof-note',
-            resultId: 'self-reflection-daily',
-        })]);
-        expect(applySelfReflectionUpdate).toHaveBeenCalledTimes(1);
+        expect(result.state.dailyAlignment.applied).toEqual([]);
+        expect(result.state.dailyAlignment.rejected).toContainEqual({ id: 'daily-proof-note', reason: 'missing_matching_trials' });
+        expect(applySelfReflectionUpdate).not.toHaveBeenCalled();
     });
 
     test('clears stale running work when company scheduling is disabled', async () => {

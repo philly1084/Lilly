@@ -108,7 +108,7 @@ class HarnessState {
       return total + (Number.isFinite(tokens) ? tokens : 0);
     }, 0);
 
-    let outcome = 'passed';
+    let outcome = verifiedEvidence.length > 0 && staleEvidence.length === 0 ? 'passed' : 'unverified';
     let failureCategory = null;
     if (this.blockers.length > 0) {
       outcome = 'blocked';

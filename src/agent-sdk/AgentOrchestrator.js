@@ -8,6 +8,7 @@ const { SkillRetriever } = require('./memory/SkillRetriever');
 const { Executor } = require('./execution/Executor');
 const { RetryEngine } = require('./execution/RetryEngine');
 const { Verifier } = require('./execution/Verifier');
+const { verifiedAttestations } = require('../orchestration/completion-evidence');
 const { Planner } = require('./execution/Planner');
 const { VALID_TASK_TYPES } = require('./core/TaskSchema');
 const { createResponse } = require('../openai-client');
@@ -261,7 +262,12 @@ class AgentOrchestrator {
      * @type {Verifier}
      * @private
      */
-    this.verifier = new Verifier();
+    this.verifier = new Verifier({
+      embedder: this.embedder,
+      testRunner: (test, task) => this.toolRegistry.has('test-run') ? this.toolRegistry.execute('test-run',
+        typeof test === 'string' ? { test } : test,
+        { sessionId: task.context?.sessionId, taskId: task.id }) : { status: 'unverified' },
+    });
 
     /**
      * Planner for creating execution strategies.
@@ -399,7 +405,8 @@ class AgentOrchestrator {
       });
 
       // Capture skill if execution was successful
-      if (result.success && this.config.enableSkills) {
+      const outcomeEvidence = (result.results || []).flatMap((entry) => verifiedAttestations(entry.output || {}));
+      if (result.success && this.config.enableSkills && outcomeEvidence.length > 0) {
         try {
           await this.captureSkill(task.id);
         } catch (error) {
@@ -972,6 +979,7 @@ class AgentOrchestrator {
       ? {
           type: 'chat',
           objective: taskInput,
+          completionCriteria: { conditions: ['output-not-empty', 'no-errors'] },
           input: {
             content: taskInput,
             format: 'text'
