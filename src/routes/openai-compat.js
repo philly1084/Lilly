@@ -327,7 +327,7 @@ function sanitizeCompatReasoningPolicy(policy = null) {
     const mode = ['auto', 'manual'].includes(String(policy.mode || '').trim().toLowerCase())
         ? String(policy.mode).trim().toLowerCase()
         : '';
-    const effectiveEffort = ['low', 'medium', 'high', 'xhigh'].includes(String(policy.effectiveEffort || '').trim().toLowerCase())
+    const effectiveEffort = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(String(policy.effectiveEffort || '').trim().toLowerCase())
         ? String(policy.effectiveEffort).trim().toLowerCase()
         : '';
     const complexityBand = ['instant', 'standard', 'complex', 'extended'].includes(String(policy.complexityBand || '').trim().toLowerCase())
@@ -2432,6 +2432,21 @@ router.post('/chat/completions', async (req, res, next) => {
                         model: model || 'gpt-4o',
                         choices: [{ index: 0, delta: { tool_calls: toolCalls }, finish_reason: null }],
                         tool_calls: toolCalls,
+                    })}\n\n`);
+                    chunkIndex += 1;
+                }
+
+                if (event.type === 'response.tool_result' && event.result) {
+                    activeSse.write(`data: ${JSON.stringify({
+                        id: `chatcmpl-${sessionId}-${chunkIndex}`,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: model || 'gpt-4o',
+                        type: 'tool_result',
+                        result: event.result,
+                        tool_result: event.result,
+                        raw: event,
+                        choices: [{ index: 0, delta: {}, finish_reason: null }],
                     })}\n\n`);
                     chunkIndex += 1;
                 }

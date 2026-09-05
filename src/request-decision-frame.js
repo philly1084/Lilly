@@ -8,7 +8,7 @@ const AUTO_REASONING_BY_COMPLEXITY = Object.freeze({
     complex: 'high',
     extended: 'xhigh',
 });
-const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 function compactText(value = '', limit = 220) {
     const normalized = String(value || '').replace(/\s+/g, ' ').trim();

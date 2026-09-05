@@ -16,7 +16,7 @@ const {
 } = require('./pii');
 
 const REMOTE_CONTINUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const SELECTED_ARTIFACT_REVISION_LIMIT = 60000;
 const SELECTED_ARTIFACT_REVISION_PER_FILE_LIMIT = 30000;
 const IMAGE_COUNT_WORDS = new Map([

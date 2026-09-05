@@ -7,6 +7,18 @@ const {
 } = require('./model-catalog');
 
 describe('model-catalog', () => {
+    test('infers GPT-6 Astra chat capabilities and preserves manual-only policy metadata', () => {
+        const model = toPublicModelList([{ id: 'gpt-6-astra', owned_by: 'codex-cli', autoEligible: false }])[0];
+        expect(model).toEqual(expect.objectContaining({ id: 'gpt-6-astra', autoEligible: false }));
+        expect(model.contract.supports).toEqual(expect.objectContaining({
+            chat: true,
+            responses: true,
+            tools: true,
+            reasoning: true,
+            structured_outputs: true,
+            vision: true,
+        }));
+    });
     test('keeps router-provided chat models even when the family is not hardcoded', () => {
         expect(isPublicChatModel('my-router/smart-chat-v2')).toBe(true);
         expect(isPublicChatModel('gpt-5.5-tools')).toBe(true);
