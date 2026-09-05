@@ -4,6 +4,17 @@ const path = require('path');
 const vm = require('vm');
 const ts = require('typescript');
 
+test('portrait cameras retain the landscape horizontal field of view and restore on resize', () => {
+  const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const code = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'responsiveCameraFov').getText(source);
+  const context = vm.createContext({});
+  vm.runInContext(code, context);
+  const portrait = vm.runInContext('responsiveCameraFov(60, 390 / 844)', context);
+  const horizontal = Math.tan(portrait * Math.PI / 360) * (390 / 844);
+  expect(horizontal).toBeCloseTo(Math.tan(Math.PI / 6) * 4 / 3);
+  expect(vm.runInContext('responsiveCameraFov(60, 1.5)', context)).toBeCloseTo(60);
+});
+
 test('authored HUD reflects visible labels and live patches without repeating unchanged DOM writes', () => {
   const source = ts.createSourceFile('player-runtime.js', fs.readFileSync(path.join(__dirname, 'player-runtime.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const names = new Set(['applyModuleActions', 'updateAuthoredHud']);
