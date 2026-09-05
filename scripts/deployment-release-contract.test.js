@@ -6,6 +6,7 @@ const read = (relativePath) => fs.readFileSync(path.join(__dirname, '..', relati
 describe('KimiBuilt coordinated deployment contract', () => {
   test('wraps CI mutation and verification in a non-cancelling coordinator run', () => {
     const workflow = read('.github/workflows/deploy-k3s.yml');
+    expect(() => require('js-yaml').load(workflow)).not.toThrow();
     const run = workflow.indexOf('node scripts/k3s-deployment-coordinator.js run');
     const firstMutation = workflow.indexOf('kubectl apply -f k8s/namespace.yaml');
     const heredocEnd = workflow.indexOf('          RELEASE_SCRIPT', firstMutation);

@@ -37,8 +37,6 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: v1.34.0
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Verify fresh master source
         run: |
@@ -64,6 +62,9 @@ jobs:
           chmod 600 "$RUNNER_TEMP/kube/config"
           echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
           kubectl config current-context
+
+      - name: Verify stable router targets without mutation
+        run: node scripts/remote-cli/verify-router-targets.cjs
 
       - name: Deploy and verify under one coordinated Lease
         run: |
