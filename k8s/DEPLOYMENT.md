@@ -230,6 +230,30 @@ wget -qO- http://localhost:11434/api/tags
 
 ## Updating the Deployment
 
+### Coordinated KimiBuilt backend release
+
+The backend is intentionally one replica because its shared persistent state and live mounts are not replica-safe. Never use raw `kubectl apply`, `kubectl set image`, `kubectl patch`, or `kubectl rollout restart` to change `kimibuilt/backend`. Use the coordinator so the Lease remains held through ConfigMap reconciliation, the single backend template patch, frontend configuration, rollout, and verification:
+
+```bash
+set -euo pipefail
+expected_image="$(kubectl get deployment/backend -n kimibuilt -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')"
+source_sha="$(git rev-parse HEAD)"
+node scripts/k3s-deployment-coordinator.js run \
+  --expected-image "$expected_image" \
+  --source-sha "$source_sha" \
+  --namespace kimibuilt --deployment backend --container backend -- bash -se <<'RELEASE'
+node scripts/k3s-deployment-coordinator.js deploy-release \
+  --image ghcr.io/philly1084/kimibuilt:sha-1234567 \
+  --expected-image "$KIMIBUILT_RELEASE_EXPECTED_IMAGE" \
+  --source-sha "$KIMIBUILT_RELEASE_SOURCE_SHA" \
+  --config-file k8s/configmap.yaml \
+  --config-map kimibuilt-config \
+  --frontend-config-file k8s/frontend-nginx-config.yaml
+RELEASE
+```
+
+The outer `run` owns and releases the Lease. Nested release commands inherit its owner and cannot release it independently. The helper performs a live image compare-and-swap and source freshness check before mutation. Supported helper paths cannot prevent an unrestricted cluster operator from bypassing the guard with raw kubectl; retain that as an explicit operational limitation.
+
 ### Update API Key
 
 ```bash
@@ -239,8 +263,8 @@ kubectl create secret generic kimibuilt-secrets \
   -n kimibuilt \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart deployment to pick up new secret
-kubectl rollout restart deployment/backend -n kimibuilt
+# Do not raw-restart the shared backend. Use the coordinated release path
+# above when an approved release must pick up a changed secret.
 ```
 
 ### Update Config
@@ -252,20 +276,15 @@ kubectl edit configmap kimibuilt-config -n kimibuilt
 # Or apply updated file
 kubectl apply -f k8s/configmap.yaml
 
-# Restart to apply changes
-kubectl rollout restart deployment/backend -n kimibuilt
+# A coordinated deploy-release reconciles this ConfigMap before the one
+# backend template patch; do not issue a second raw restart.
 ```
 
 ### Update Image
 
 ```bash
-# Set new image
-kubectl set image deployment/backend \
-  backend=your-registry/kimibuilt:v2.0 \
-  -n kimibuilt
-
-# Monitor rollout
-kubectl rollout status deployment/backend -n kimibuilt
+# Use the coordinated KimiBuilt backend release shown above. It requires
+# the current expected image and a full source SHA.
 ```
 
 ## Uninstall

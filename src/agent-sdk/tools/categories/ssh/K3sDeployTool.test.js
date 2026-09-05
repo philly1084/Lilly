@@ -40,7 +40,7 @@ describe('K3sDeployTool', () => {
     jest.clearAllMocks();
   });
 
-  test('builds sync-and-apply command with repo sync and kubectl apply without an implicit rollout target', async () => {
+  test('keeps generic sync-and-apply command behavior without an implicit rollout target', async () => {
     const tool = new K3sDeployTool();
     tool.sshTool.handler = jest.fn().mockResolvedValue({
       stdout: 'applied',
@@ -56,7 +56,7 @@ describe('K3sDeployTool', () => {
       ref: 'main',
       targetDirectory: '/opt/app',
       manifestsPath: 'k8s',
-      namespace: 'kimibuilt',
+      namespace: 'web',
     });
 
     expect(result.success).toBe(true);
@@ -68,6 +68,7 @@ describe('K3sDeployTool', () => {
     expect(command).toContain('if [ -f "$manifest_dir/namespace.yaml" ]; then kubectl apply -f "$manifest_dir/namespace.yaml"; fi');
     expect(command).toContain('if [ -f "$manifest_dir/cluster-issuer.yaml" ]; then kubectl apply -f "$manifest_dir/cluster-issuer.yaml"; fi');
     expect(command).toContain('namespace.yaml|cluster-issuer.yaml|secret.yaml|rancher-simple.yaml|rancher-stack-update.yaml');
+    expect(command).not.toContain('namespace.yaml|cluster-issuer.yaml|secret.yaml|rancher-simple.yaml|rancher-stack-update.yaml|backend-deployment.yaml|frontend-nginx-config.yaml');
     expect(command).toContain('ingress-https.yaml)');
     expect(command).toContain('if [ -f "$manifest_dir/ingress.yaml" ]; then continue; fi');
     expect(command).not.toContain('kubectl rollout status deployment/');
@@ -92,7 +93,7 @@ describe('K3sDeployTool', () => {
       ref: 'main',
       targetDirectory: '/opt/app',
       manifestsPath: 'k8s',
-      namespace: 'kimibuilt',
+      namespace: 'web',
     });
 
     expect(result.success).toBe(true);
@@ -117,12 +118,64 @@ describe('K3sDeployTool', () => {
       ref: 'main',
       targetDirectory: '/opt/app',
       manifestsPath: 'k8s',
-      namespace: 'kimibuilt',
-      deployment: 'backend',
+      namespace: 'web',
+      deployment: 'site',
     });
 
     expect(result.success).toBe(true);
-    expect(tool.sshTool.handler.mock.calls[0][0].command).toContain("kubectl rollout status deployment/backend -n 'kimibuilt' --timeout=180s");
+    expect(tool.sshTool.handler.mock.calls[0][0].command).toContain("kubectl rollout status deployment/site -n 'web' --timeout=180s");
+  });
+
+  test('coordinates kimibuilt/backend set-image with a CAS guard and one release command', () => {
+    const tool = new K3sDeployTool();
+    const command = tool.buildCommand('set-image', {
+      namespace: 'kimibuilt',
+      deployment: 'backend',
+      container: 'backend',
+      image: 'ghcr.io/philly1084/kimibuilt:sha-abcdef1',
+      expectedImage: 'ghcr.io/philly1084/kimibuilt:sha-1234567',
+      sourceSha: '178e4a178e4a178e4a178e4a178e4a178e4a178e4a',
+      targetDirectory: '/opt/kimibuilt',
+    });
+
+    expect(command).toContain("/opt/kimibuilt/scripts/k3s-deployment-coordinator.js' run");
+    expect(command).toContain("--expected-image 'ghcr.io/philly1084/kimibuilt:sha-1234567'");
+    expect(command).toContain("--source-sha '178e4a178e4a178e4a178e4a178e4a178e4a178e4a'");
+    expect(command).toContain('deploy-release');
+    expect(command).toContain('/opt/kimibuilt/k8s/frontend-nginx-config.yaml');
+    expect(command).not.toContain('kubectl rollout restart');
+  });
+
+  test('fails closed for uncoordinated kimibuilt/backend manifest application', () => {
+    const tool = new K3sDeployTool();
+
+    expect(() => tool.buildCommand('apply-manifests', {
+      namespace: 'kimibuilt',
+      manifestsPath: '/opt/kimibuilt/k8s/backend-deployment.yaml',
+    })).toThrow('Uncoordinated apply-manifests is disabled for kimibuilt/backend');
+  });
+
+  test('puts primary sync-and-apply mutation under coordinator run', () => {
+    const tool = new K3sDeployTool();
+    const command = tool.buildCommand('sync-and-apply', {
+      repositoryUrl: 'https://github.com/example/app.git',
+      ref: 'master',
+      targetDirectory: '/opt/kimibuilt',
+      manifestsPath: 'k8s',
+      namespace: 'kimibuilt',
+      deployment: 'backend',
+      container: 'backend',
+      image: 'ghcr.io/philly1084/kimibuilt:sha-abcdef1',
+      expectedImage: 'ghcr.io/philly1084/kimibuilt:sha-1234567',
+      sourceSha: '178e4a178e4a178e4a178e4a178e4a178e4a178e4a',
+    });
+    const runIndex = command.indexOf("/opt/kimibuilt/scripts/k3s-deployment-coordinator.js' run");
+    const firstApplyIndex = command.indexOf('kubectl apply');
+
+    expect(runIndex).toBeGreaterThanOrEqual(0);
+    expect(firstApplyIndex).toBeGreaterThan(runIndex);
+    expect(command).not.toContain('kubectl apply -f "$manifest_dir/backend-deployment.yaml"');
+    expect(command).not.toContain('kubectl rollout restart deployment/backend');
   });
 
   test('rejects repository urls outside GitHub and configured Git provider', async () => {

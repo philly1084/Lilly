@@ -3,720 +3,124 @@ name: Deploy to k3s
 on:
   workflow_run:
     workflows: ["Build, Package, and Publish"]
-    types:
-      - completed
-    branches:
-      - master
+    types: [completed]
+    branches: [master]
   workflow_dispatch:
+
+concurrency:
+  group: kimibuilt-production-deploy
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   KUBE_NAMESPACE: kimibuilt
-  ROUTER_NAMESPACE: n8n-openai-gateway
-  ROUTER_SERVICE: n8n-openai-cli-gateway
-  ROUTER_PORT: '80'
-  REMOTE_AGENT_HANDOFF_VERSION: RemoteAgentHandoff/v1
 
 jobs:
   deploy-to-k3s:
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
-    
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    env:
+      KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'latest'
+          version: v1.34.0
 
-      - name: Configure kubeconfig
+      - name: Verify fresh master source
         run: |
-          mkdir -p ~/.kube
-          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-            echo "KUBECONFIG secret is empty or not configured"
-            exit 1
+          set -euo pipefail
+          release_sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            release_sha="$(node -e 'const e=require(process.env.GITHUB_EVENT_PATH); process.stdout.write(e.workflow_run.head_sha)')"
           fi
+          git fetch --prune origin master
+          test "$(git rev-parse HEAD)" = "$release_sha"
+          test "$(git rev-parse origin/master)" = "$release_sha"
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
 
-          if echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config 2>/dev/null; then
-            echo "Decoded base64 kubeconfig secret"
+      - name: Setup kubectl and kubeconfig
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kube"
+          if printf '%s' "$KUBECONFIG_SECRET" | base64 -d > "$RUNNER_TEMP/kube/config" 2>/dev/null; then
+            :
           else
-            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
-            echo "Using raw kubeconfig secret"
+            printf '%s' "$KUBECONFIG_SECRET" > "$RUNNER_TEMP/kube/config"
           fi
-
-          chmod 600 ~/.kube/config
-          echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
-
-      - name: Verify kubeconfig
-        run: |
-          test -s "$HOME/.kube/config"
+          chmod 600 "$RUNNER_TEMP/kube/config"
+          export KUBECONFIG="$RUNNER_TEMP/kube/config"
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
           kubectl config current-context
 
-      - name: Verify stable remote CLI server targets without restarting agents
+      - name: Verify stable router targets without mutation
+        run: node scripts/remote-cli/verify-router-targets.cjs
+
+      - name: Deploy and verify under one coordinated Lease
         run: |
           set -euo pipefail
-          # The router owns in-memory jobs and sessions. Even an otherwise
-          # harmless restart interrupts their tracking and artifact handoffs.
-          # Configuration drift requires separately approved router maintenance.
-          node scripts/remote-cli/verify-router-targets.cjs
+          image_name="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          release_short="$(printf '%s' "$RELEASE_SHA" | cut -c1-12)"
+          release_image="$REGISTRY/$image_name:sha-$(printf '%s' "$RELEASE_SHA" | cut -c1-7)"
+          expected_image="$(kubectl get deployment/backend -n "$KUBE_NAMESPACE" -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')"
+          release_id="github-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$release_short"
+          export RELEASE_IMAGE="$release_image" RELEASE_ID="$release_id"
 
-      - name: Verify live router handoff contract
-        run: |
+          node scripts/k3s-deployment-coordinator.js run \
+            --expected-image "$expected_image" \
+            --source-sha "$RELEASE_SHA" \
+            --namespace "$KUBE_NAMESPACE" \
+            --deployment backend \
+            --container backend \
+            -- bash -se <<'RELEASE_SCRIPT'
           set -euo pipefail
-          health_path="/api/v1/namespaces/${ROUTER_NAMESPACE}/services/http:${ROUTER_SERVICE}:${ROUTER_PORT}/proxy/healthz"
-          router_health="$(kubectl get --raw "${health_path}")"
-          ROUTER_HEALTH="${router_health}" node -e '
-            const health = JSON.parse(process.env.ROUTER_HEALTH);
-            const expected = process.env.REMOTE_AGENT_HANDOFF_VERSION;
-            const actual = health?.contracts?.remoteAgentHandoff;
-            if (health?.ok !== true || actual !== expected) {
-              console.error(`Router handoff contract gate failed: expected ${expected}, received ${actual ?? "missing"}.`);
-              process.exit(1);
-            }
-            console.log(`Router handoff contract verified: ${actual}`);
-          '
-
-      - name: Normalize image name
-        run: |
-          image_name="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
-          echo "IMAGE_NAME=${image_name}" >> "$GITHUB_ENV"
-
-      - name: Update deployment image
-        env:
-          IMAGE_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
-        run: |
-          image_tag="sha-${IMAGE_SHA:0:7}"
-
-          # Update the image tag in deployment
-          sed -i "s|image: .*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${image_tag}|g" k8s/backend-deployment.yaml
-          sed -i "s|image: .*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${image_tag}|g" k8s/kokoro-tts-deployment.yaml
-          
-          # Verify the change
-          grep "image:" k8s/backend-deployment.yaml
-          grep "image:" k8s/kokoro-tts-deployment.yaml
-
-      - name: Deploy to k3s
-        env:
-          GH_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GH_N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
-          GH_REMOTE_CLI_MCP_BEARER_TOKEN: ${{ secrets.REMOTE_CLI_MCP_BEARER_TOKEN }}
-          GH_OPENAI_MEDIA_API_KEY: ${{ secrets.OPENAI_MEDIA_API_KEY }}
-          GH_PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
-          GH_LILLYBUILT_AUTH_USERNAME: ${{ secrets.LILLYBUILT_AUTH_USERNAME }}
-          GH_LILLYBUILT_AUTH_PASSWORD: ${{ secrets.LILLYBUILT_AUTH_PASSWORD }}
-          GH_LILLYBUILT_JWT_SECRET: ${{ secrets.LILLYBUILT_JWT_SECRET }}
-          GH_KIMIBUILT_REMOTE_RUNNER_TOKEN: ${{ secrets.KIMIBUILT_REMOTE_RUNNER_TOKEN }}
-          GH_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          is_placeholder() {
-            case "${1:-}" in
-              ""|change-me|replace-me|replace-after-gitlab-boot|replace-after-gitea-boot|SET_VIA_KUBECTL_CREATE_SECRET|OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET)
-                return 0
-                ;;
-              *)
-                return 1
-                ;;
-            esac
-          }
-
-          secret_value() {
-            local key="$1"
-            kubectl get secret kimibuilt-secrets -n "${KUBE_NAMESPACE}" -o "jsonpath={.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null || true
-          }
-
-          choose_secret_value() {
-            local github_value="$1"
-            local key="$2"
-            local fallback="${3:-}"
-            local current_value
-
-            if [ -n "${github_value}" ]; then
-              printf '%s' "${github_value}"
-              return
-            fi
-
-            current_value="$(secret_value "${key}")"
-            if ! is_placeholder "${current_value}"; then
-              printf '%s' "${current_value}"
-              return
-            fi
-
-            printf '%s' "${fallback}"
-          }
-
-          validate_secret_key() {
-            local key="$1"
-            local value
-            value="$(secret_value "${key}")"
-            if is_placeholder "${value}"; then
-              echo "::error::kimibuilt-secrets is missing required key ${key}. Add it as a GitHub Actions secret or patch the live Kubernetes secret."
-              return 1
-            fi
-            echo "${key}=set"
-          }
-
-          require_effective_secret() {
-            local key="$1"
-            local value="$2"
-            if is_placeholder "${value}"; then
-              echo "::error::kimibuilt-secrets is missing required key ${key}. Add it as a GitHub Actions secret or patch the live Kubernetes secret."
-              return 1
-            fi
-          }
-
-          patch_secret_key() {
-            local key="$1"
-            local value="$2"
-            local encoded
-
-            if is_placeholder "${value}"; then
-              return 0
-            fi
-
-            encoded="$(printf '%s' "${value}" | base64 | tr -d '\r\n')"
-            kubectl patch secret kimibuilt-secrets \
-              -n "${KUBE_NAMESPACE}" \
-              --type merge \
-              -p "{\"data\":{\"${key}\":\"${encoded}\"}}" >/dev/null
-            echo "${key}=patched"
-          }
-
-          cleanup_stale_backend_env() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Older Rancher edits wrote managed-app settings directly onto the
-            # backend container. Direct env values override kimibuilt-config, so
-            # remove those keys before applying the current GitLab config.
-            kubectl set env deployment/backend -n "${KUBE_NAMESPACE}" \
-              API_BASE_URL- \
-              KIMIBUILT_AUTH_REQUIRED- \
-              LILLYBUILT_AUTH_USERNAME- \
-              LILLYBUILT_AUTH_PASSWORD- \
-              LILLYBUILT_JWT_SECRET- \
-              KIMIBUILT_AUTH_USERNAME- \
-              KIMIBUILT_AUTH_PASSWORD- \
-              KIMIBUILT_JWT_SECRET- \
-              KIMIBUILT_ALLOWED_ORIGINS- \
-              KUBERNETES_IN_CLUSTER_ENABLED- \
-              AGENT_COMPANY_SOFTWARE_WORKSPACE_PATH- \
-              REMOTE_CLI_DEFAULT_CWD- \
-              REMOTE_CLI_CODEX_AGENT_MODEL- \
-              REMOTE_CLI_CODEX_AGENT_REASONING_EFFORT- \
-              GITEA_BASE_URL- \
-              GITEA_TOKEN- \
-              GITEA_WEBHOOK_SECRET- \
-              GITEA_ORG- \
-              GITEA_REGISTRY_HOST- \
-              GITEA_REGISTRY_USERNAME- \
-              GITEA_REGISTRY_PASSWORD- \
-              MANAGED_APPS_ENABLED- \
-              MANAGED_APPS_BASE_DOMAIN- \
-              MANAGED_APPS_NAMESPACE_PREFIX- \
-              MANAGED_APPS_PLATFORM_NAMESPACE- \
-              MANAGED_APPS_DEFAULT_BRANCH- \
-              MANAGED_APPS_DEFAULT_CONTAINER_PORT- \
-              MANAGED_APPS_REGISTRY_PULL_SECRET- \
-              MANAGED_APPS_BUILD_EVENTS_PATH- \
-              --overwrite
-          }
-
-          cleanup_configmap_keys_from_secret() {
-            if ! kubectl get secret kimibuilt-secrets -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # The backend imports kimibuilt-config before kimibuilt-secrets.
-            # Duplicate non-secret keys in the Secret therefore win and can
-            # silently preserve stale public URLs or integration paths. Keep
-            # these configuration-only values authoritative in the ConfigMap.
-            for key in \
-              API_BASE_URL \
-              KUBERNETES_IN_CLUSTER_ENABLED \
-              MANAGED_APPS_BASE_DOMAIN \
-              MANAGED_APPS_BUILD_EVENTS_PATH \
-              MANAGED_APPS_DEFAULT_BRANCH
-            do
-              if [ -z "$(kubectl get secret kimibuilt-secrets \
-                -n "${KUBE_NAMESPACE}" \
-                -o "jsonpath={.data.${key}}" 2>/dev/null || true)" ]; then
-                continue
-              fi
-
-              kubectl patch secret kimibuilt-secrets \
-                -n "${KUBE_NAMESPACE}" \
-                --type merge \
-                -p "{\"data\":{\"${key}\":null}}" >/dev/null
-              echo "${key}=removed-from-secret"
-            done
-          }
-
-          cleanup_stale_kokoro_hotfix_mounts() {
-            if ! kubectl get deployment kokoro-tts -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Earlier live repairs mounted ConfigMap copies over the Kokoro source files.
-            # Remove those overrides so the rollout always uses the verified image content.
-            kubectl patch deployment/kokoro-tts -n "${KUBE_NAMESPACE}" \
-              --type=json \
-              -p='[
-                {"op":"remove","path":"/spec/template/spec/containers/0/volumeMounts"},
-                {"op":"remove","path":"/spec/template/spec/volumes"}
-              ]' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              kokoro-service-process-isolation-hotfix \
-              kokoro-worker-process-isolation-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_webchat_tts_manager_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Earlier live repairs mounted a ConfigMap copy over the web chat TTS scheduler.
-            # Remove that override so deploys use the scheduler from the verified image.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "webchat-tts-manager-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/tts-manager.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "webchat-tts-manager-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              webchat-tts-manager-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_webcli_hotfix_mounts() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # June 2026 live repairs mounted repository snapshots over Web CLI.
-            # Their fixes are now in the verified image, so keeping the mounts
-            # hides later artifact-handoff and Push-to-Web UX changes.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "web-cli-index-hotfix",
-                              "mountPath": "/app/frontend/web-cli/index.html",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-cli-tts-highlight-hotfix",
-                              "mountPath": "/app/frontend/web-cli/js/app.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "web-cli-index-hotfix",
-                          "$patch": "delete"
-                        },
-                        {
-                          "name": "web-cli-tts-highlight-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              web-cli-index-hotfix-20260620 \
-              web-cli-menu-hotfix-20260620 \
-              web-cli-tts-highlight-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_webchat_state_refresh_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Earlier live repairs mounted a ConfigMap copy over the web chat UI.
-            # Remove that override so the read-aloud controls and highlighting
-            # ship from the verified image instead of a stale hotfix snapshot.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/frontend/web-chat/index.html",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/app.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/session.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/workspace-host.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/src/routes/preferences.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-state-refresh-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/ui.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "web-chat-state-refresh-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              web-chat-state-refresh-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_webchat_stream_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # A legacy streaming repair also mounted an old Web Chat API client.
-            # That masks newly deployed frontend methods even when app.html and
-            # the backend image are current, so return both files to image truth.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "web-chat-stream-hotfix",
-                              "mountPath": "/app/frontend/shared/openai-sse.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "web-chat-stream-hotfix",
-                              "mountPath": "/app/frontend/web-chat/js/api.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "web-chat-stream-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              web-chat-stream-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_backend_config_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Earlier live repairs mounted a ConfigMap copy over src/config.js.
-            # Remove that override so remote-cli transport config comes from the
-            # verified image and kimibuilt-config instead of stale source.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "backend-config-hotfix",
-                              "mountPath": "/app/src/config.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "backend-config-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              backend-config-hotfix \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_agent_company_runner_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # A 2026 live repair mounted old Agent Company and workload source
-            # files over every new image. Remove it so the verified release owns
-            # the software-workbench policy and retained remote-job behavior.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "backend-agent-company-runner-hotfix",
-                              "mountPath": "/app/src/agent-company.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "backend-agent-company-runner-hotfix",
-                              "mountPath": "/app/src/workloads/service.js",
-                              "$patch": "delete"
-                            },
-                            {
-                              "name": "backend-agent-company-runner-hotfix",
-                              "mountPath": "/app/src/workloads/store.js",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "backend-agent-company-runner-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              backend-agent-company-runner-hotfix-20260628 \
-              --ignore-not-found=true
-          }
-
-          cleanup_stale_notes_index_hotfix_mount() {
-            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-              return 0
-            fi
-
-            # Earlier Notes TTS live repairs mounted an old index.html over the
-            # deployed Notes frontend. Remove that override so the reference
-            # picker and other current HTML ship from the verified image.
-            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
-              --type=strategic \
-              -p='{
-                "spec": {
-                  "template": {
-                    "spec": {
-                      "containers": [
-                        {
-                          "name": "backend",
-                          "volumeMounts": [
-                            {
-                              "name": "notes-tts-index-hotfix",
-                              "mountPath": "/app/frontend/notes-notion/index.html",
-                              "$patch": "delete"
-                            }
-                          ]
-                        }
-                      ],
-                      "volumes": [
-                        {
-                          "name": "notes-tts-index-hotfix",
-                          "$patch": "delete"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }' >/dev/null 2>&1 || true
-            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
-              notes-tts-index-hotfix \
-              --ignore-not-found=true
-          }
-
-          # Apply namespace first
           kubectl apply -f k8s/namespace.yaml
-          
-          # Apply configmap
-          kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/primary-async-runtime.yaml
-          cleanup_configmap_keys_from_secret
-          cleanup_stale_backend_env
-          cleanup_stale_kokoro_hotfix_mounts
-          cleanup_stale_backend_config_hotfix_mount
-          cleanup_stale_agent_company_runner_hotfix_mount
-
-          # Create or patch runtime secrets from GitHub Actions secrets when they
-          # are configured. Existing non-placeholder live values are preserved.
-          effective_gateway_key="$(choose_secret_value "${GH_N8N_API_KEY:-}" N8N_API_KEY)"
-          effective_mcp_key="$(choose_secret_value "${GH_REMOTE_CLI_MCP_BEARER_TOKEN:-}" REMOTE_CLI_MCP_BEARER_TOKEN "${effective_gateway_key}")"
-          effective_openai_key="$(choose_secret_value "${GH_OPENAI_API_KEY:-${GH_N8N_API_KEY:-}}" OPENAI_API_KEY "${effective_gateway_key}")"
-          effective_media_key="$(choose_secret_value "${GH_OPENAI_MEDIA_API_KEY:-}" OPENAI_MEDIA_API_KEY)"
-          effective_perplexity_key="$(choose_secret_value "${GH_PERPLEXITY_API_KEY:-}" PERPLEXITY_API_KEY)"
-          effective_auth_username="$(choose_secret_value "${GH_LILLYBUILT_AUTH_USERNAME:-}" LILLYBUILT_AUTH_USERNAME admin)"
-          effective_auth_password="$(choose_secret_value "${GH_LILLYBUILT_AUTH_PASSWORD:-}" LILLYBUILT_AUTH_PASSWORD)"
-          effective_jwt_secret="$(choose_secret_value "${GH_LILLYBUILT_JWT_SECRET:-}" LILLYBUILT_JWT_SECRET)"
-          effective_runner_token="$(choose_secret_value "${GH_KIMIBUILT_REMOTE_RUNNER_TOKEN:-}" KIMIBUILT_REMOTE_RUNNER_TOKEN)"
-          effective_postgres_password="$(choose_secret_value "${GH_POSTGRES_PASSWORD:-}" POSTGRES_PASSWORD)"
-
-          require_effective_secret OPENAI_API_KEY "${effective_openai_key}"
-          require_effective_secret N8N_API_KEY "${effective_gateway_key}"
-          require_effective_secret LILLYBUILT_AUTH_USERNAME "${effective_auth_username}"
-          require_effective_secret LILLYBUILT_AUTH_PASSWORD "${effective_auth_password}"
-          require_effective_secret LILLYBUILT_JWT_SECRET "${effective_jwt_secret}"
-          require_effective_secret POSTGRES_PASSWORD "${effective_postgres_password}"
-
-          if ! kubectl get secret kimibuilt-secrets -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
-            kubectl create secret generic kimibuilt-secrets \
-              --namespace "${KUBE_NAMESPACE}" \
-              --from-literal=__bootstrap__=1
-          fi
-
-          patch_secret_key OPENAI_API_KEY "${effective_openai_key}"
-          patch_secret_key N8N_API_KEY "${effective_gateway_key}"
-          patch_secret_key REMOTE_CLI_MCP_BEARER_TOKEN "${effective_mcp_key}"
-          patch_secret_key OPENAI_MEDIA_API_KEY "${effective_media_key}"
-          patch_secret_key PERPLEXITY_API_KEY "${effective_perplexity_key}"
-          patch_secret_key LILLYBUILT_AUTH_USERNAME "${effective_auth_username}"
-          patch_secret_key LILLYBUILT_AUTH_PASSWORD "${effective_auth_password}"
-          patch_secret_key LILLYBUILT_JWT_SECRET "${effective_jwt_secret}"
-          patch_secret_key KIMIBUILT_REMOTE_RUNNER_TOKEN "${effective_runner_token}"
-          patch_secret_key POSTGRES_PASSWORD "${effective_postgres_password}"
-
-          validate_secret_key OPENAI_API_KEY
-          validate_secret_key N8N_API_KEY
-          validate_secret_key LILLYBUILT_AUTH_USERNAME
-          validate_secret_key LILLYBUILT_AUTH_PASSWORD
-          validate_secret_key LILLYBUILT_JWT_SECRET
-          validate_secret_key POSTGRES_PASSWORD
-          
-          # Apply dependencies
           kubectl apply -f k8s/qdrant-deployment.yaml
           kubectl apply -f k8s/ollama-deployment.yaml
+          sed -i "s|image: ghcr.io/.*|image: $RELEASE_IMAGE|" k8s/kokoro-tts-deployment.yaml
           kubectl apply -f k8s/kokoro-tts-deployment.yaml
-          
-          # Apply backend with updated image
-          kubectl apply -f k8s/backend-deployment.yaml
-          cleanup_stale_notes_index_hotfix_mount
-          cleanup_stale_webcli_hotfix_mounts
-          cleanup_stale_webchat_tts_manager_hotfix_mount
-          cleanup_stale_webchat_state_refresh_hotfix_mount
-          cleanup_stale_webchat_stream_hotfix_mount
 
-          # envFrom does not change the pod template when ConfigMap values change.
-          # Restart after reconciliation so the backend always consumes the
-          # configuration from this release rather than the previous pod's env.
-          kubectl rollout restart deployment/backend -n "${KUBE_NAMESPACE}"
-          
-          # Apply production ingress for the Rancher/k3s domain
+          node scripts/k3s-deployment-coordinator.js deploy-release \
+            --owner "$KIMIBUILT_RELEASE_OWNER" \
+            --namespace "$KIMIBUILT_RELEASE_NAMESPACE" \
+            --deployment "$KIMIBUILT_RELEASE_DEPLOYMENT" \
+            --container "$KIMIBUILT_RELEASE_CONTAINER" \
+            --expected-image "$KIMIBUILT_RELEASE_EXPECTED_IMAGE" \
+            --source-sha "$KIMIBUILT_RELEASE_SOURCE_SHA" \
+            --image "$RELEASE_IMAGE" \
+            --image-pull-policy Always \
+            --config-file k8s/configmap.yaml \
+            --config-map kimibuilt-config \
+            --frontend-config-file k8s/frontend-nginx-config.yaml \
+            --release-id "$RELEASE_ID" \
+            --rollout-timeout-seconds 600
+
           kubectl apply -f k8s/rancher-ingress.yaml
+          kubectl rollout status deployment/valkey-async-runtime -n "$KUBE_NAMESPACE" --timeout=180s
+          kubectl rollout status deployment/kokoro-tts -n "$KUBE_NAMESPACE" --timeout=600s
+          kubectl rollout status deployment/backend -n "$KUBE_NAMESPACE" --timeout=180s
+          kubectl rollout status deployment/frontend -n "$KUBE_NAMESPACE" --timeout=180s
+          kubectl exec deployment/backend -n "$KUBE_NAMESPACE" -- sh -lc 'test "$KIMIBUILT_IMAGE_PROFILE" = media && command -v ffmpeg >/dev/null'
+          kubectl exec deployment/kokoro-tts -n "$KUBE_NAMESPACE" -- node -e "require('sharp')"
+          kubectl exec deployment/frontend -n "$KUBE_NAMESPACE" -- nginx -t
+          kubectl exec deployment/frontend -n "$KUBE_NAMESPACE" -- wget -q -O - http://127.0.0.1/_local/health | grep -qx ok
+          curl --fail --silent --show-error --location --max-time 20 "https://lilly.secdevsolutions.help/ready" >/dev/null
+          RELEASE_SCRIPT
 
-      - name: Wait for rollout
+      - name: Record deployed provenance
         run: |
-          kubectl rollout status deployment/valkey-async-runtime -n ${{ env.KUBE_NAMESPACE }} --timeout=180s
-          kubectl rollout status deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} --timeout=600s
-          kubectl rollout status deployment/backend -n ${{ env.KUBE_NAMESPACE }} --timeout=180s
-
-      - name: Verify media runtime
-        run: |
-          kubectl exec deployment/backend -n ${{ env.KUBE_NAMESPACE }} -- sh -lc 'test "$KIMIBUILT_IMAGE_PROFILE" = "media"'
-          kubectl exec deployment/backend -n ${{ env.KUBE_NAMESPACE }} -- sh -lc 'command -v ffmpeg >/dev/null'
-          kubectl exec deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} -- sh -lc 'test "$KIMIBUILT_IMAGE_PROFILE" = "media"'
-          kubectl exec deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} -- node -e 'const sharp = require("sharp"); console.log("sharp=" + (sharp.versions.sharp || "unknown") + " vips=" + (sharp.versions.vips || "unknown"))'
-          kubectl exec deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} -- sh -lc 'curl --fail --silent --show-error http://localhost:3001/ready >/dev/null'
-          kubectl exec deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} -- node -e 'fetch("http://localhost:3001/synthesize",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:"KimiBuilt deploy TTS smoke.",voiceId:"af_heart",timeoutMs:120000})}).then(async (response)=>{const audio=Buffer.from(await response.arrayBuffer()); if(!response.ok || audio.length < 44 || audio.toString("ascii",0,4) !== "RIFF"){throw new Error(`TTS smoke failed status=${response.status} bytes=${audio.length}`);} console.log(`tts smoke ok bytes=${audio.length}`);}).catch((error)=>{console.error(error.message || error); process.exit(1);})'
-
-      - name: Verify deployment
-        run: |
-          echo "=== Pods ==="
-          kubectl get pods -n ${{ env.KUBE_NAMESPACE }}
-          echo ""
-          echo "=== Services ==="
-          kubectl get svc -n ${{ env.KUBE_NAMESPACE }}
-          echo ""
-          echo "=== Deployment Status ==="
-          kubectl get deployment backend -n ${{ env.KUBE_NAMESPACE }}
-          echo ""
-          echo "=== Ingress ==="
-          kubectl get ingress -n ${{ env.KUBE_NAMESPACE }}
+          set -euo pipefail
+          kubectl get deployment backend frontend -n "$KUBE_NAMESPACE" -o wide
+          kubectl get lease deployment-coordination -n "$KUBE_NAMESPACE" -o yaml 2>/dev/null || true

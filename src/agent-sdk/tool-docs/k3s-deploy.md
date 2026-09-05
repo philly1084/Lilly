@@ -52,6 +52,31 @@ Use `remote-command` instead when you need:
 - package installs
 - one-off server fixes
 
+### KimiBuilt production backend guard
+
+`kimibuilt/backend` is a single-replica, shared-state workload. Its image, ConfigMap, frontend nginx configuration, and rollout must be changed through the coordinator helper so a Lease covers the complete mutation and verification window. `set-image` and `sync-and-apply` therefore require both `image` and the currently observed `expectedImage`; a stale expected image is rejected. The source SHA must be a full commit SHA when supplied to the coordinator.
+
+For direct recovery, use `run` with a nested `deploy-backend` or `deploy-release` action. The nested action inherits `KIMIBUILT_RELEASE_OWNER`, `KIMIBUILT_RELEASE_SOURCE_SHA`, `KIMIBUILT_RELEASE_EXPECTED_IMAGE`, and `KIMIBUILT_RELEASE_NAMESPACE` and does not acquire or release a second Lease:
+
+```bash
+expected_image="$(kubectl get deployment/backend -n kimibuilt -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')"
+source_sha="$(git -C /opt/kimibuilt rev-parse HEAD)"
+node /opt/kimibuilt/scripts/k3s-deployment-coordinator.js run \
+  --expected-image "$expected_image" \
+  --source-sha "$source_sha" \
+  --namespace kimibuilt --deployment backend --container backend -- bash -se <<'RELEASE'
+node /opt/kimibuilt/scripts/k3s-deployment-coordinator.js deploy-backend \
+  --image ghcr.io/philly1084/kimibuilt:sha-1234567 \
+  --expected-image "$KIMIBUILT_RELEASE_EXPECTED_IMAGE" \
+  --source-sha "$KIMIBUILT_RELEASE_SOURCE_SHA" \
+  --config-file /opt/kimibuilt/k8s/configmap.yaml \
+  --config-map kimibuilt-config \
+  --frontend-config-file /opt/kimibuilt/k8s/frontend-nginx-config.yaml
+RELEASE
+```
+
+Do not use raw `kubectl apply`, `kubectl set image`, `kubectl patch`, or `kubectl rollout restart` for this backend. `apply-manifests` fails closed for `kimibuilt/backend`; generic non-KimiBuilt deployments retain their existing behavior. This guard is enforced in supported repository/tool paths, but an operator with unrestricted cluster credentials can still bypass it with arbitrary kubectl commands; audit access accordingly.
+
 ## Main flow
 
 Preferred GitOps-style sequence:
@@ -85,7 +110,11 @@ Sync repo and apply manifests:
   "targetDirectory": "/opt/kimibuilt",
   "manifestsPath": "k8s",
   "namespace": "kimibuilt",
-  "deployment": "backend"
+  "deployment": "backend",
+  "container": "backend",
+  "image": "ghcr.io/philly1084/kimibuilt:sha-1234567",
+  "expectedImage": "ghcr.io/philly1084/kimibuilt:sha-7654321",
+  "sourceSha": "0123456789abcdef0123456789abcdef01234567"
 }
 ```
 
@@ -97,7 +126,9 @@ Roll a new image tag:
   "namespace": "kimibuilt",
   "deployment": "backend",
   "container": "backend",
-  "image": "ghcr.io/philly1084/kimibuilt:sha-1234567"
+  "image": "ghcr.io/philly1084/kimibuilt:sha-1234567",
+  "expectedImage": "ghcr.io/philly1084/kimibuilt:sha-7654321",
+  "sourceSha": "0123456789abcdef0123456789abcdef01234567"
 }
 ```
 

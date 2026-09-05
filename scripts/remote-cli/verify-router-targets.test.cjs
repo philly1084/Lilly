@@ -142,5 +142,6 @@ test('ordinary Lilly deployment has no router target mutation or restart command
   assert.match(workflow, /node scripts\/remote-cli\/verify-router-targets\.cjs/);
   assert.doesNotMatch(workflow, /kubectl apply -f k8s\/remote-cli-targets-configmap\.yaml/);
   assert.doesNotMatch(workflow, /kubectl\s+(?:patch|set env|rollout restart)\s+deployment\/\$\{ROUTER_SERVICE\}/);
-  assert.match(workflow, /kubectl rollout restart deployment\/backend/);
+  assert.match(workflow, /node scripts\/k3s-deployment-coordinator\.js run/);
+  assert.doesNotMatch(workflow, /kubectl rollout restart deployment\/backend/);
 });

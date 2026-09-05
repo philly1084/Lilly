@@ -21,6 +21,29 @@ It complements:
 
 Do not process operational decisions from chat context alone when the action affects production data, secrets, or public availability. Confirm the target environment, owner, and requested scope first.
 
+## Coordinated Backend Recovery
+
+`kimibuilt/backend` is a single-replica shared-state workload. Direct recovery must use the repository coordinator, including image rollback, ConfigMap reconciliation, and frontend nginx changes. First capture the live image and the full SHA of the checked-out, fresh `origin/master` source, then run the supported nested action under one outer Lease:
+
+```bash
+set -euo pipefail
+expected_image="$(kubectl get deployment/backend -n kimibuilt -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')"
+source_sha="$(git -C /opt/kimibuilt rev-parse HEAD)"
+node /opt/kimibuilt/scripts/k3s-deployment-coordinator.js run \
+  --expected-image "$expected_image" --source-sha "$source_sha" \
+  --namespace kimibuilt --deployment backend --container backend -- bash -se <<'RECOVERY'
+node /opt/kimibuilt/scripts/k3s-deployment-coordinator.js deploy-backend \
+  --image ghcr.io/philly1084/kimibuilt:known-good \
+  --expected-image "$KIMIBUILT_RELEASE_EXPECTED_IMAGE" \
+  --source-sha "$KIMIBUILT_RELEASE_SOURCE_SHA" \
+  --config-file /opt/kimibuilt/k8s/configmap.yaml \
+  --config-map kimibuilt-config \
+  --frontend-config-file /opt/kimibuilt/k8s/frontend-nginx-config.yaml
+RECOVERY
+```
+
+Do not recover the backend with raw `kubectl apply`, `kubectl set image`, `kubectl patch`, or `kubectl rollout restart`; those paths can overlap a release and recreate the zero-endpoint interruption. The supported helper cannot technically prevent an unrestricted cluster administrator from issuing arbitrary kubectl commands, so preserve audit access and record any bypass.
+
 ## Daily Checks
 
 Run these checks at the start of a maintenance window or daily during active production use:
@@ -58,7 +81,7 @@ Before deploying:
 KIMIBUILT_LOAD_TEST_TOKEN="$FRONTEND_API_KEY" npm run test:load -- --url https://lilly.secdevsolutions.help --duration 60 --concurrency 4 --max-p95 2500 --max-error-rate 0.02
 ```
 
-5. Apply manifests or update the image through the normal release lane.
+5. Apply manifests or update the image through the coordinated backend release lane above (or the generic deploy lane for non-KimiBuilt workloads).
 6. Verify rollout and public endpoints:
 
 ```bash
@@ -129,19 +152,9 @@ kubectl rollout history deployment/backend -n kimibuilt
 kubectl describe deployment/backend -n kimibuilt
 ```
 
-Rollback to the previous ReplicaSet:
+For a backend rollback, use the coordinated recovery command above with the known-good image and the current live image as `--expected-image`. Do not use `kubectl rollout undo` or a raw restart for the shared backend.
 
-```bash
-kubectl rollout undo deployment/backend -n kimibuilt
-kubectl rollout status deployment/backend -n kimibuilt --timeout=180s
-```
-
-Or restore a known image explicitly:
-
-```bash
-kubectl set image deployment/backend backend=ghcr.io/philly1084/kimibuilt:<known-good-tag> -n kimibuilt
-kubectl rollout status deployment/backend -n kimibuilt --timeout=180s
-```
+For other workloads, a normal rollout rollback may be used only when it does not touch `kimibuilt/backend`.
 
 Rancher UI path:
 
@@ -222,8 +235,8 @@ kubectl create secret generic kimibuilt-secrets \
   -n kimibuilt \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl rollout restart deployment/backend -n kimibuilt
-kubectl rollout status deployment/backend -n kimibuilt --timeout=180s
+# Do not raw-restart the shared backend. Use the coordinated recovery command
+# above with the current image as --expected-image and verify its rollout.
 ```
 
 ## Remote Access

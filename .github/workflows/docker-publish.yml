@@ -53,6 +53,10 @@ jobs:
             src/sandbox-browser-libraries.test.js \
             src/routes/sandbox-libraries.test.js
 
+      - name: Verify coordinated deployment contract
+        run: |
+          npm test -- --runInBand --coverage=false --runTestsByPath scripts/k3s-deployment-coordinator.test.js src/deployment-coordination.test.js scripts/deployment-release-contract.test.js src/agent-sdk/tools/categories/ssh/K3sDeployTool.test.js
+
       - name: Verify remote agent artifact handoff
         run: |
           bash -n scripts/remote-cli/codex-remote-run.sh
