@@ -572,7 +572,13 @@ export function compileModuleBundle(sourceFiles: LillySourceFile[]): LillyModule
       if (!value) continue;
       validateMechanic(value, file.path, diagnostics);
       if (value.moduleId !== module.id) diagnostics.push(diagnostic('MECHANIC_MODULE_MISMATCH', `${file.path} belongs to ${value.moduleId}, expected ${module.id}`, file.path));
-      const resolvedSystems = (value.systems || []).map((entry) => resolveReference(file.path, entry));
+      const resolvedSystems = (Array.isArray(value.systems) ? value.systems : []).flatMap((entry) => {
+        try { return [resolveReference(file.path, entry)]; }
+        catch (error) {
+          diagnostics.push(diagnostic('INVALID_MECHANIC_SYSTEM_REFERENCE', `Mechanic systems reference ${JSON.stringify(entry)} must be a source path such as ./rules.system.ts, not a system id. ${(error as Error).message}`, file.path));
+          return [];
+        }
+      });
       resolvedSystems.forEach((entry) => { if (!module.systems.includes(entry)) diagnostics.push(diagnostic('MECHANIC_SYSTEM_NOT_EXPORTED', `Mechanic ${value.id} references ${entry}, which module ${module.id} does not export`, file.path)); });
       mechanics.push({ ...value, systems: resolvedSystems, sourcePath: file.path });
     }

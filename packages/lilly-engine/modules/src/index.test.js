@@ -100,6 +100,15 @@ export default defineSystem({
 }
 
 describe('Lilly agent-authored module architecture', () => {
+  test('reports malformed mechanic references with their source file instead of throwing', () => {
+    const files = dashModuleFiles();
+    const mechanic = files.find(file => file.path.endsWith('.mechanic.json'));
+    const value = JSON.parse(mechanic.content);
+    value.systems = ['player-dash'];
+    mechanic.content = JSON.stringify(value);
+    const bundle = compileModuleBundle(files);
+    expect(bundle.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'INVALID_MECHANIC_SYSTEM_REFERENCE', path: mechanic.path })]));
+  });
   test('accepts typed system definitions and rejects a fake definition in a comment', () => {
     const files = dashModuleFiles();
     const system = files.find(file => file.path.endsWith('.system.ts'));

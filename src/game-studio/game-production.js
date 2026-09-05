@@ -254,7 +254,7 @@ class GameProductionService {
     let feedback = '';
     if (entry.validationError || entry.attempts > 1) {
       const previous = await fs.readFile(path.join(this.directory(value.id), 'gameplay-response.json'), 'utf8').then(JSON.parse).catch(() => null);
-      if (previous) feedback = `\nContinue the saved draft and fix its validation error: ${entry.validationError || 'Review against the exact runtime API and executable tests before returning corrected commands.'}. Sandbox global names such as top, window, document and parent are reserved even for local variables; use descriptive names such as upperY. Previous response: ${String(previous.response || '').slice(0, 24000)}`;
+      if (previous) feedback = `\nContinue the saved draft and fix its validation error: ${entry.validationError || 'Review against the exact runtime API and executable tests before returning corrected commands.'}. No rejected draft commands have been applied. Return ALL module, system, mechanic and test files plus coverage, not only changed files. The systems arrays in both module and mechanic JSON contain source paths such as ./rules.system.ts, never system ids. Sandbox global names such as top, window, document and parent are reserved even for local variables; use descriptive names such as upperY. Previous response: ${String(previous.response || '').slice(0, 64000)}`;
     }
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await this.studio.complete(instruction + feedback, { model: entry.model, reasoningEffort: 'high' });
@@ -298,7 +298,7 @@ class GameProductionService {
       } catch (e) {
         entry.validationError = String(e.message).slice(0, 4000);
         if (attempt === 1) throw e;
-        feedback = `\nYour last output failed validation: ${String(e.message).slice(0, 4000)}. Correct it and return the complete commands. Previous response: ${String(response).slice(0, 24000)}`;
+        feedback = `\nYour last output failed validation: ${String(e.message).slice(0, 4000)}. No draft commands were applied. Correct it and return the complete commands, including the module manifest, system, mechanic, all test files and coverage. Previous response: ${String(response).slice(0, 64000)}`;
         await this.save(value, `Gameplay worker is repairing validation errors: ${String(e.message).slice(0, 700)}`, entry.id);
       }
     }

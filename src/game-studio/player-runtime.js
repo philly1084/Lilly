@@ -431,6 +431,7 @@ function spawnModulePrefab(prefabId, options = {}) {
 
 function applyModuleActions(actions) {
   const sceneData = project?.scenes?.find((entry) => entry.id === project.entryScene);
+  let hudChanged = false;
   for (const action of actions) {
     const object = action.entityId ? objectMap.get(action.entityId) : null;
     if (action.type === 'physics.impulse' || action.type === 'physics.force') {
@@ -456,6 +457,7 @@ function applyModuleActions(actions) {
       }
       if (!target) continue;
       target.data = { ...target.data, ...(action.values || {}) };
+      if (target.type === 'UIAnchor' && runtimeProfile !== 'expedition') hudChanged = true;
       if (target.type === 'Transform' && object) {
         if (target.data.position) object.position.copy(vector(target.data.position));
         if (target.data.rotation) object.rotation.set(Number(target.data.rotation.x || 0), Number(target.data.rotation.y || 0), Number(target.data.rotation.z || 0));
@@ -468,6 +470,7 @@ function applyModuleActions(actions) {
     } else if (action.type === 'hud.message') {
       const message = String(action.text || action.options?.status || 'Mechanic');
       objective.textContent = message;
+      hudChanged = false;
       setStatus(String(action.options?.status || message), action.options?.state || 'playing');
     } else if (action.type === 'audio.play') {
       playTone(Number(action.options?.frequency || 620), Number(action.options?.duration || 0.16));
@@ -476,6 +479,7 @@ function applyModuleActions(actions) {
       if (target) burst(target.position, action.options?.color || '#67e8f9', Number(action.options?.count || 18));
     }
   }
+  if (hudChanged) updateAuthoredHud();
 }
 
 async function loadAssetObject(entity, object) {
@@ -853,13 +857,21 @@ function objectiveRequirementsMet() {
   return true;
 }
 
+function updateAuthoredHud() {
+  const sceneData = project.scenes.find((entry) => entry.id === project.entryScene);
+  const labels = (sceneData?.entities || [])
+    .filter((entity) => entity.enabled !== false)
+    .flatMap((entity) => entity.components || [])
+    .filter((entry) => entry.type === 'UIAnchor' && entry.enabled !== false && entry.data?.visible !== false)
+    .map((entry) => String(entry.data?.text || '').trim())
+    .filter(Boolean);
+  const text = labels.join(' · ') || 'Explore the scene. Use the controls below to move or restart.';
+  if (objective.textContent !== text) objective.textContent = text;
+}
+
 function updateObjective() {
   if (runtimeProfile !== 'expedition') {
-    const sceneData = project.scenes.find((entry) => entry.id === project.entryScene);
-    const authoredObjective = sceneData?.entities
-      .flatMap((entity) => entity.components || [])
-      .find((entry) => entry.type === 'UIAnchor' && entry.enabled !== false && String(entry.data?.text || '').trim());
-    objective.textContent = String(authoredObjective?.data?.text || 'Explore the scene. Use the controls below to move or restart.');
+    updateAuthoredHud();
     setStatus('Playing');
     return;
   }
