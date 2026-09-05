@@ -120,6 +120,7 @@ test('AI scenery -> saved GLBs and native terrain -> replace -> undo/redo -> pla
 test('protects existing floors and rejects stale or unavailable AI without a preset', async () => {
   const created = await service.createProject({ name: 'Protection', template: 'third-person-explorer' }, 'owner');
   const context = sceneryContext(created.project);
+  expect(context.origin.y).toBeLessThan(0);
   expect(context.clearings.some(zone => zone.halfX > 5)).toBe(true);
   const run = await service.createAiRun(created.project.id, { mode: 'environment', recipe }, 'owner');
   await service.applyCommands(created.project.id, { baseRevision: 1, commands: [{ operation: 'scene.rename', target: { sceneId: created.project.entryScene }, payload: { name: 'Keep my edit' } }] }, 'owner');

@@ -26,7 +26,8 @@ function sceneryContext(project) {
   const scene = project.scenes.find(s => s.id === project.entryScene) || project.scenes[0];
   const player = scene.entities.find(e => e.tags.includes('player'));
   const playerPosition = component(player || { components: [] }, 'Transform')?.data.position || { x: 0, y: 0, z: 0 };
-  const origin = { x: Number(playerPosition.x), y: 0, z: Number(playerPosition.z) };
+  // Keep flattened terrain just below existing floors to avoid coplanar flicker.
+  const origin = { x: Number(playerPosition.x), y: scene.entities.some(e => e.enabled && e.tags.includes('ground')) ? -0.03 : 0, z: Number(playerPosition.z) };
   const clearings = [{ x: 0, z: 0, radius: 5 }];
   for (const entity of scene.entities) {
     if (!entity.enabled || entity.tags.includes(TAG) || component(entity, 'Terrain')) continue;
