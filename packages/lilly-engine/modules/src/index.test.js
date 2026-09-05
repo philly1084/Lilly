@@ -100,6 +100,17 @@ export default defineSystem({
 }
 
 describe('Lilly agent-authored module architecture', () => {
+  test('rejects collision specs that hide their event data in an unsupported field', () => {
+    const files = dashModuleFiles();
+    const spec = files.find(file => file.path.endsWith('.spec.json'));
+    const value = JSON.parse(spec.content);
+    value.steps = [{ event: 'collision', collision: { type: 'trigger' } }];
+    spec.content = JSON.stringify(value);
+    expect(compileModuleBundle(files).diagnostics.some(entry => entry.code === 'TEST_COLLISION_PAYLOAD_REQUIRED')).toBe(true);
+    value.steps = [{ event: 'collision', payload: { type: 'trigger', phase: 'start', entityA: 'player', entityB: 'sensor', tagsA: ['player'], tagsB: [] } }];
+    spec.content = JSON.stringify(value);
+    expect(compileModuleBundle(files).diagnostics.filter(entry => entry.severity === 'error')).toEqual([]);
+  });
   test('reports malformed mechanic references with their source file instead of throwing', () => {
     const files = dashModuleFiles();
     const mechanic = files.find(file => file.path.endsWith('.mechanic.json'));

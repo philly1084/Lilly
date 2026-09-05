@@ -105,11 +105,12 @@ class GameProductionService {
     if (this.jobs.has(value.id)) throw error('PRODUCTION_BUSY', 'This game build is already running.');
     const lease = await this.lease(value.id);
     this.leases.set(value.id, lease);
+    value.status = planning ? 'planning' : 'building';
+    delete value.error;
+    try { await this.save(value, planning ? 'Design stream started.' : 'Build streams started.'); }
+    catch (e) { await lease.close(); this.leases.delete(value.id); throw e; }
     const job = (async () => {
       try {
-        value.status = planning ? 'planning' : 'building';
-        delete value.error;
-        await this.save(value, planning ? 'Design stream started.' : 'Build streams started.');
         if (planning) {
           let correction = '';
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -288,7 +289,7 @@ class GameProductionService {
           }
         }
         const tests = runMechanicTests(bundle);
-        if (tests.status !== 'passed') throw invalid(`Mechanic tests failed: ${JSON.stringify(tests.tests.filter(test => test.status !== 'passed')).slice(0, 3500)}`);
+        if (tests.status !== 'passed') throw invalid(`Mechanic tests failed: ${JSON.stringify(tests.tests.filter(test => test.status !== 'passed').map(test => ({ id: test.id, error: test.error, assertions: test.assertions?.filter(assertion => !assertion.passed) }))).slice(0, 3500)}`);
         entry.output = await this.studio.createAiRun(value.projectId, { mode: 'edit', baseRevision: project.revision, commands }, value.ownerId);
         entry.proposalId = entry.output.id;
         entry.testResults = { passed: tests.passed, failed: tests.failed, sourceHash: tests.sourceHash };

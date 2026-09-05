@@ -444,6 +444,9 @@ function validateTest(value: LillyMechanicTestDefinition, path: string, diagnost
   if (!IDENTIFIER_PATTERN.test(String(value.id || ''))) diagnostics.push(diagnostic('INVALID_TEST_ID', 'Mechanic test id is invalid', path));
   if (!Array.isArray(value.steps) || value.steps.length === 0) diagnostics.push(diagnostic('TEST_STEPS_REQUIRED', 'Mechanic tests require at least one event step', path));
   if (!Array.isArray(value.assertions) || value.assertions.length === 0) diagnostics.push(diagnostic('TEST_ASSERTIONS_REQUIRED', 'Mechanic tests require at least one assertion', path));
+  for (const step of Array.isArray(value.steps) ? value.steps : []) {
+    if (step.event === 'collision' && !step.payload) diagnostics.push(diagnostic('TEST_COLLISION_PAYLOAD_REQUIRED', 'Collision test steps require payload:{type,phase,entityA,entityB,tagsA,tagsB}; the runner exposes payload as ctx.collision. Do not use a collision field on the test step.', path));
+  }
 }
 
 function topologicalOrder(modules: CompiledModule[], diagnostics: ModuleDiagnostic[]): string[] {

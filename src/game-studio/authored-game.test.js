@@ -22,6 +22,20 @@ async function build(input = {}) {
   return studio.productions.get(draft.id, 'owner');
 }
 
+test('start returns only after the running status is durable for immediate polling', async () => {
+  const originalSave = studio.writeJsonAtomic.bind(studio);
+  studio.writeJsonAtomic = async (file, value) => {
+    if (file.endsWith('production.json') && value.status === 'building') await new Promise(resolve => setTimeout(resolve, 20));
+    return originalSave(file, value);
+  };
+  const draft = await studio.productions.create({ brief: 'An original puzzle', plan }, 'owner');
+  const started = await studio.productions.control(draft.id, 'start', { revision: draft.revision }, 'owner');
+  const polled = await studio.productions.get(draft.id, 'owner');
+  expect(started.status).toBe('building');
+  expect(polled.status).toBe('building');
+  expect(polled.revision).toBeGreaterThan(draft.revision);
+});
+
 test('scene validation distinguishes missing commands, excessive counts and unsupported operations', () => {
   expect(() => validateSceneCommands(null, null, undefined, plan)).toThrow('commands array');
   expect(() => validateSceneCommands(null, null, Array(101).fill({ operation: 'entity.create' }), plan)).toThrow('101 commands');

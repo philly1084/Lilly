@@ -78,6 +78,21 @@ At runtime, compiled systems execute in a disposable Worker created inside an op
 
 `LillyMechanic/v1` describes the public shape of a game feature: its player verbs, input actions, emitted events, composing systems, and custom state field schemas. This makes a mechanic inspectable without reading its implementation.
 
+Every mechanic includes these fields. `systems` contains file paths, not system ids. `components` describes custom state schemas, not names of built-in components; use an empty array when no custom schemas are needed.
+
+```json
+{
+  "schema": "LillyMechanic/v1",
+  "id": "player-dash",
+  "moduleId": "player-traversal",
+  "name": "Player Dash",
+  "systems": ["./dash.system.ts"],
+  "inputs": ["Dash", "Move"],
+  "events": ["dash.performed"],
+  "components": []
+}
+```
+
 `LillyPrefab/v1` stores a reusable Lilly entity hierarchy. Agents instantiate it through `prefab.instantiate`; Lilly prefixes stable entity ids with the requested instance id and records one undoable command. The optional instance config is intentionally narrow: `position` translates the root `Transform`, and `entities[sourceEntityId]` may replace `name`, `enabled`, or `tags` and deeply merge data into an existing component. Lilly rejects unknown source ids, undeclared components, invalid component results, hierarchy defects, ambiguous prefab ids/paths, and prototype escape keys before modifying a scene.
 
 ```json
@@ -119,6 +134,26 @@ At runtime, compiled systems execute in a disposable Worker created inside an op
 ```
 
 Specifications run in a bounded Node VM before immutable builds and use the same lifecycle/capability semantics as browser players.
+
+Collision and named-event test steps put their event data in `payload`. The runner exposes that payload as `ctx.collision` or `ctx.event` respectively. Do not put test-step data under `collision` or `eventData`. For example, a player entering a relay sensor is:
+
+```json
+{
+  "event": "collision",
+  "payload": {
+    "type": "trigger",
+    "phase": "start",
+    "entityA": "player",
+    "entityB": "relay-sensor",
+    "tagsA": ["player"],
+    "tagsB": ["sensor"],
+    "positionA": { "x": 0, "y": 0.8, "z": 0 },
+    "positionB": { "x": 0, "y": 0.5, "z": 0 }
+  }
+}
+```
+
+Include a following `fixed-update` step when the system queues collision work for its next simulation tick. Tests that use `onStart` must supply the required `world.entities` in a `start` step. Timer tests must advance fixed updates that exercise the timer rules.
 
 ## Outside-agent workflow
 
