@@ -202,6 +202,48 @@ describe('openai-client response threading', () => {
         ]);
     });
 
+    test('preserves native Responses argument events until compat translation', async () => {
+        const { __testUtils } = require('./openai-client');
+
+        async function* streamChunks() {
+            yield { type: 'response.function_call_arguments.delta', item_id: 'fc_1', output_index: 0, delta: '{"a":' };
+            yield { type: 'response.function_call_arguments.done', item_id: 'fc_1', output_index: 0, arguments: '{"a":1}' };
+            yield {
+                type: 'response.output_item.done',
+                item: {
+                    type: 'function_call',
+                    id: 'fc_1',
+                    call_id: 'call_1',
+                    name: 'save_value',
+                    arguments: '{"a":1}',
+                },
+            };
+            yield {
+                type: 'response.completed',
+                response: {
+                    id: 'resp_native_events',
+                    model: 'gpt-6-astra',
+                    output: [],
+                },
+            };
+        }
+
+        const events = [];
+        for await (const event of __testUtils.normalizeStreamResponse(streamChunks())) {
+            events.push(event);
+        }
+
+        expect(events.slice(0, 3)).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'response.function_call_arguments.delta', item_id: 'fc_1' }),
+            expect.objectContaining({ type: 'response.function_call_arguments.done', item_id: 'fc_1' }),
+            expect.objectContaining({
+                type: 'response.output_item.done',
+                item: expect.objectContaining({ call_id: 'call_1' }),
+            }),
+        ]));
+        expect(events.some((event) => event.type === 'chat.completion.tool_calls.delta')).toBe(false);
+    });
+
     test('preserves exact provider usage in normalized response metadata', async () => {
         const OpenAI = require('openai');
         const responsesCreate = jest.fn(async (params) => ({

@@ -1,5 +1,6 @@
 const {
     buildModelContract,
+    inferModelReasoningEfforts,
     isPublicChatModel,
     selectAutoModel,
     toPublicChatModelList,
@@ -126,6 +127,13 @@ describe('model-catalog', () => {
             }),
         ]));
         expect(models.find((model) => model.id === 'unknown-reasoner')).not.toHaveProperty('reasoning_efforts');
+    });
+
+    test('retains router-provided max and ultra reasoning efforts', () => {
+        expect(inferModelReasoningEfforts({
+            id: 'gpt-6-astra',
+            metadata: { reasoning_efforts: ['medium', 'max', 'ultra'] },
+        })).toEqual(['medium', 'max', 'ultra']);
     });
 
     test('treats additive gateway capabilities as chat-capable for model contracts', () => {
