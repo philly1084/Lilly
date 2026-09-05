@@ -871,6 +871,7 @@ class OpenAICanvasAPI {
     getDefaultModels() {
         return [
             { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+            { id: 'gpt-6-astra', name: 'GPT-6 Astra', provider: 'codex-cli', description: 'GPT-6 Astra with native tool calls (manual selection)', autoEligible: false },
             { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
             { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
             { id: 'claude-3.7-sonnet', name: 'Claude 3.7 Sonnet', provider: 'anthropic' }

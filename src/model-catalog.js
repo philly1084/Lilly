@@ -84,7 +84,7 @@ function inferModelReasoningEfforts(model = {}) {
     return [...new Set(
         parseCapabilityEntries(raw)
             .map((entry) => String(entry || '').trim().toLowerCase())
-            .filter((entry) => ['low', 'medium', 'high', 'xhigh'].includes(entry)),
+            .filter((entry) => ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(entry)),
     )];
 }
 
@@ -217,16 +217,16 @@ function inferModelCapabilities(model = {}) {
         }
     } else {
         capabilities.push('chat', 'responses', 'streaming');
-        if (/(tool|function|4o|o\d|gpt-5|claude|gemini|grok|mistral|qwen|llama)/i.test(normalizedId)) {
+        if (/(tool|function|4o|o\d|gpt-[56]|claude|gemini|grok|mistral|qwen|llama)/i.test(normalizedId)) {
             capabilities.push('tools');
         }
-        if (/(^|[-_/])(o\d|reason|gpt-5|grok-4)/i.test(normalizedId)) {
+        if (/(^|[-_/])(o\d|reason|gpt-[56]|grok-4)/i.test(normalizedId)) {
             capabilities.push('reasoning');
         }
-        if (/(json|structured|4o|o\d|gpt-5|claude|gemini|grok)/i.test(normalizedId)) {
+        if (/(json|structured|4o|o\d|gpt-[56]|claude|gemini|grok)/i.test(normalizedId)) {
             capabilities.push('structured_outputs');
         }
-        if (/(vision|image[_-]?input|4o|omni|gpt-5|gemini|claude-3|claude-4|llava)/i.test(normalizedId)) {
+        if (/(vision|image[_-]?input|4o|omni|gpt-[56]|gemini|claude-3|claude-4|llava)/i.test(normalizedId)) {
             capabilities.push('vision', 'image_input');
         }
     }
@@ -257,7 +257,7 @@ function inferContextWindow(model = {}) {
     const id = normalizeModelId(typeof model === 'string' ? model : model.id).toLowerCase();
     if (/grok-4(?:\.3|\.20)?/.test(id)) return 1000000;
     if (/grok-build/.test(id)) return 256000;
-    if (/gpt-5|gpt-4\.1|claude|gemini-1\.5|gemini-2|qwen|deepseek|kimi/.test(id)) return 128000;
+    if (/gpt-[56]|gpt-4\.1|claude|gemini-1\.5|gemini-2|qwen|deepseek|kimi/.test(id)) return 128000;
     if (/grok/.test(id)) return 128000;
     if (/gpt-4o|o3|o4|llama-3\.1|llama-3\.3/.test(id)) return 128000;
     if (/gpt-4|mixtral|mistral-large/.test(id)) return 32000;
@@ -335,7 +335,7 @@ function buildModelContract(model = {}, options = {}) {
         },
         contextWindow: getExplicitContextWindow(model) || inferContextWindow(model),
         costTier: getExplicitRoutingTier(model, 'costTier', 'cost_tier')
-            || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-5|opus|large|pro/i.test(id) ? 'high' : 'medium')),
+            || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-[56]|opus|large|pro/i.test(id) ? 'high' : 'medium')),
         latencyTier: getExplicitRoutingTier(model, 'latencyTier', 'latency_tier')
             || (/mini|flash|groq|8b|7b/i.test(id) ? 'low' : 'medium'),
         reliabilityTier: getExplicitRoutingTier(model, 'reliabilityTier', 'reliability_tier')
@@ -402,6 +402,7 @@ function toPublicModelRecord(model = {}) {
         object: model.object || 'model',
         created: model.created || Math.floor(Date.now() / 1000),
         owned_by: model.owned_by || 'unknown',
+        ...(typeof model.autoEligible === 'boolean' ? { autoEligible: model.autoEligible } : {}),
         capabilities: contract.capabilities,
         ...(contract.reasoningEfforts.length > 0 ? { reasoning_efforts: contract.reasoningEfforts } : {}),
         contract,

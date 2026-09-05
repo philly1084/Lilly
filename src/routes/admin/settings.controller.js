@@ -78,7 +78,7 @@ const DEFAULT_AGENT_COMPANY_ROLES = [
     mission: 'Check running work, verify outputs, update schedules, and prevent duplicate loops.',
   },
 ];
-const AGENT_COMPANY_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const AGENT_COMPANY_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
 const NON_RESTORABLE_IDENTITY_TYPES = new Set([

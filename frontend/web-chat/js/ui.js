@@ -7481,6 +7481,7 @@ class UIHelpers {
             'gpt-5.3': 'GPT-5.3',
             'gpt-5-codex': 'GPT-5 Codex',
             'codex-mini-latest': 'Codex Mini Latest',
+            'gpt-6-astra': 'GPT-6 Astra',
             'gpt-4o': 'GPT-4o',
             'gpt-4o-mini': 'GPT-4o Mini',
             'gpt-4-turbo': 'GPT-4 Turbo',
@@ -7504,6 +7505,7 @@ class UIHelpers {
             'gpt-5.3': 'Balanced Codex-backed model',
             'gpt-5-codex': 'Codex-focused model',
             'codex-mini-latest': 'Compact Codex model',
+            'gpt-6-astra': 'GPT-6 Astra with native tool calls (manual selection)',
             'gpt-4o': 'Most capable multimodal model',
             'gpt-4o-mini': 'Fast and affordable',
             'gpt-4-turbo': 'Advanced reasoning',
@@ -7610,7 +7612,7 @@ class UIHelpers {
 
     normalizeReasoningEffort(value) {
         const normalized = String(value || '').trim().toLowerCase();
-        return ['low', 'medium', 'high', 'xhigh'].includes(normalized) ? normalized : '';
+        return ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(normalized) ? normalized : '';
     }
 
     getReasoningDisplayLabel(value = this.currentReasoningEffort) {
@@ -7621,6 +7623,8 @@ class UIHelpers {
             medium: 'Reasoning: Medium',
             high: 'Reasoning: High',
             xhigh: 'Reasoning: XHigh',
+            max: 'Reasoning: Max',
+            ultra: 'Reasoning: Ultra',
         };
         return labels[normalized] || labels[''];
     }

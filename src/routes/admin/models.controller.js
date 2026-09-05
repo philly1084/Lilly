@@ -221,16 +221,16 @@ class ModelsController {
   inferCapabilities(modelId = '') {
     const capabilities = ['chat', 'responses', 'streaming'];
 
-    if (/(4o|vision|omni|gemini|claude-3|claude-4)/.test(modelId)) {
+    if (/(4o|vision|omni|gemini|claude-3|claude-4|gpt-[56])/.test(modelId)) {
       capabilities.push('vision', 'image_input');
     }
-    if (/(tool|function|4o|o3|o4|claude|gemini)/.test(modelId)) {
+    if (/(tool|function|4o|o3|o4|gpt-[56]|claude|gemini)/.test(modelId)) {
       capabilities.push('tools');
     }
-    if (/^(o1|o3|o4)|reason/.test(modelId)) {
+    if (/^(o1|o3|o4)|reason|gpt-[56]/.test(modelId)) {
       capabilities.push('reasoning');
     }
-    if (/(json|4o|o3|o4|gpt-5)/.test(modelId)) {
+    if (/(json|4o|o3|o4|gpt-[56])/.test(modelId)) {
       capabilities.push('json', 'structured_outputs');
     }
 

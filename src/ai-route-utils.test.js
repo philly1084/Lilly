@@ -1264,6 +1264,8 @@ describe('ai-route-utils', () => {
         expect(resolveReasoningEffort({ reasoningEffort: 'high' })).toBe('high');
         expect(resolveReasoningEffort({ reasoning_effort: 'medium' })).toBe('medium');
         expect(resolveReasoningEffort({ reasoning: { effort: 'low' } })).toBe('low');
+        expect(resolveReasoningEffort({ reasoningEffort: 'max' })).toBe('max');
+        expect(resolveReasoningEffort({ reasoning_effort: 'ultra' })).toBe('ultra');
         expect(resolveReasoningEffort({ reasoningEffort: 'invalid' })).toBeNull();
     });
 

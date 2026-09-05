@@ -1249,6 +1249,8 @@ class OpenAIAPIClient extends EventTarget {
                 ? pendingDone.artifacts.map(normalizeArtifactMetadata).filter(Boolean)
                 : [],
             toolEvents: Array.isArray(pendingDone.toolEvents) ? pendingDone.toolEvents : [],
+            toolResults: Array.isArray(pendingDone.toolResults) ? pendingDone.toolResults : [],
+            usage: pendingDone.usage || null,
             assistantMetadata: pendingDone.assistantMetadata || null,
         };
     }
@@ -1668,6 +1670,8 @@ class OpenAIAPIClient extends EventTarget {
                     sessionId: requestSessionId || this.currentSessionId,
                     artifacts: [],
                     toolEvents: [],
+                    toolResults: [],
+                    usage: null,
                     assistantMetadata: null,
                 };
                 let doneEmitted = false;
@@ -1707,6 +1711,12 @@ class OpenAIAPIClient extends EventTarget {
 
                     if (Array.isArray(event.toolEvents) && event.toolEvents.length > 0) {
                         pendingDone.toolEvents = event.toolEvents;
+                    }
+                    if (Array.isArray(event.toolResults) && event.toolResults.length > 0) {
+                        pendingDone.toolResults = event.toolResults;
+                    }
+                    if (event.usage && typeof event.usage === 'object') {
+                        pendingDone.usage = event.usage;
                     }
 
                     if (event.assistantMetadata) {
@@ -1759,6 +1769,16 @@ class OpenAIAPIClient extends EventTarget {
                                     detail: toolEvent.detail,
                                     item: toolCall,
                                 };
+                            }
+                            break;
+                        case 'tool_result':
+                            if (event.result && typeof event.result === 'object') {
+                                pendingDone.toolResults = [...pendingDone.toolResults, event.result];
+                            }
+                            break;
+                        case 'usage':
+                            if (event.usage && typeof event.usage === 'object') {
+                                pendingDone.usage = event.usage;
                             }
                             break;
                         case 'progress': {

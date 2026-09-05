@@ -332,6 +332,23 @@ function extractToolEvents(payload = {}) {
     return [];
 }
 
+function extractStreamUsage(payload = {}) {
+    return payload?.usage
+        || payload?.tokenUsage
+        || payload?.token_usage
+        || payload?.response?.usage
+        || payload?.metadata?.usage
+        || null;
+}
+
+function extractStreamToolResult(payload = {}) {
+    const item = payload?.item;
+    if (item && ['function_call_output', 'custom_tool_call_output', 'tool_result'].includes(String(item.type || '').trim())) {
+        return item;
+    }
+    return payload?.toolResult || payload?.tool_result || (payload?.type === 'tool_result' ? payload.result : null);
+}
+
 function extractErrorDetailsMessage(details) {
     if (!details) {
         return '';
@@ -563,6 +580,8 @@ class NotesAPIClient {
                     sessionId: this.currentSessionId,
                     artifacts: [],
                     toolEvents: [],
+                    toolResults: [],
+                    usage: null,
                     assistantMetadata: null,
                 };
 
@@ -586,6 +605,8 @@ class NotesAPIClient {
                                         sessionId: pendingDone.sessionId || this.currentSessionId,
                                         artifacts: pendingDone.artifacts || [],
                                         toolEvents: pendingDone.toolEvents || [],
+                                        toolResults: pendingDone.toolResults || [],
+                                        usage: pendingDone.usage || null,
                                         assistantMetadata: pendingDone.assistantMetadata,
                                     };
                                     return;
@@ -649,12 +670,26 @@ class NotesAPIClient {
                                         pendingDone.toolEvents = toolEvents;
                                     }
 
+                                    const usage = extractStreamUsage(parsed);
+                                    if (usage && typeof usage === 'object') {
+                                        pendingDone.usage = usage;
+                                        yield { type: 'usage', usage, raw: parsed };
+                                    }
+
+                                    const toolResult = extractStreamToolResult(parsed);
+                                    if (toolResult && typeof toolResult === 'object') {
+                                        pendingDone.toolResults.push(toolResult);
+                                        yield { type: 'tool_result', result: toolResult, stage: 'done', raw: parsed };
+                                    }
+
                                     if (isTerminalStreamPayload(parsed)) {
                                         yield {
                                             type: 'done',
                                             sessionId: pendingDone.sessionId || this.currentSessionId,
                                             artifacts: pendingDone.artifacts || [],
                                             toolEvents: pendingDone.toolEvents || [],
+                                            toolResults: pendingDone.toolResults || [],
+                                            usage: pendingDone.usage || null,
                                             assistantMetadata: pendingDone.assistantMetadata,
                                         };
                                         return;
@@ -681,6 +716,8 @@ class NotesAPIClient {
                     sessionId: pendingDone.sessionId || this.currentSessionId,
                     artifacts: pendingDone.artifacts || [],
                     toolEvents: pendingDone.toolEvents || [],
+                    toolResults: pendingDone.toolResults || [],
+                    usage: pendingDone.usage || null,
                     assistantMetadata: pendingDone.assistantMetadata,
                 };
                 return;
@@ -927,6 +964,7 @@ class NotesAPIClient {
             object: 'list',
             data: [
                 { id: 'gpt-4o', object: 'model', created: Date.now(), owned_by: 'openai' },
+                { id: 'gpt-6-astra', object: 'model', created: Date.now(), owned_by: 'codex-cli', description: 'GPT-6 Astra with native tool calls (manual selection)', autoEligible: false },
                 { id: 'gpt-4o-mini', object: 'model', created: Date.now(), owned_by: 'openai' },
                 { id: 'claude-3-opus', object: 'model', created: Date.now(), owned_by: 'anthropic' },
                 { id: 'claude-3-sonnet', object: 'model', created: Date.now(), owned_by: 'anthropic' }

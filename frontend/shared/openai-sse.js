@@ -88,7 +88,12 @@
       return false;
     }
 
-    return normalizedId.includes('codex') || normalizedId.includes('gpt-5');
+    return normalizedId.includes('codex') || /gpt-[56]/.test(normalizedId);
+  }
+
+  function normalizeReasoningEffort(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(normalized) ? normalized : '';
   }
 
   function getModelCapabilities(model = {}) {
@@ -847,6 +852,7 @@
       || null;
     const responseId = payload.response?.id || payload.id || null;
 
+    const usage = extractUsageMetadata(payload);
     return {
       sessionId,
       responseId,
@@ -854,7 +860,44 @@
       toolEvents: extractToolEvents(payload),
       assistantMetadata: extractAssistantMetadata(payload),
       model: payload.response?.model || payload.model || null,
+      ...(usage ? { usage } : {}),
     };
+  }
+
+  function extractUsageMetadata(payload = {}) {
+    const candidates = [
+      payload?.usage,
+      payload?.tokenUsage,
+      payload?.token_usage,
+      payload?.response?.usage,
+      payload?.response?.tokenUsage,
+      payload?.response?.token_usage,
+      payload?.metadata?.usage,
+      payload?.metadata?.tokenUsage,
+      payload?.metadata?.token_usage,
+    ];
+    return candidates.find((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate)) || null;
+  }
+
+  function extractToolResult(payload = {}) {
+    const item = payload?.item;
+    if (item && ['function_call_output', 'custom_tool_call_output', 'tool_result'].includes(String(item.type || '').trim())) {
+      return item;
+    }
+    const explicit = payload?.toolResult || payload?.tool_result;
+    if (explicit && typeof explicit === 'object' && !Array.isArray(explicit)) {
+      return explicit;
+    }
+    if (String(payload?.type || '').toLowerCase().includes('tool_result')) {
+      return payload.result && typeof payload.result === 'object' ? payload.result : payload;
+    }
+    return null;
+  }
+
+  function extractToolResults(payload = {}) {
+    return extractToolEvents(payload)
+      .filter((event) => event && event.result && typeof event.result === 'object')
+      .map((event) => event.result);
   }
 
   function normalizeToolCallsWithIndexes(toolCalls = []) {
@@ -948,6 +991,20 @@
       return events;
     }
 
+    const usage = extractUsageMetadata(payload);
+    if (usage) {
+      events.push({ type: 'usage', usage, raw: payload, ...metadata });
+    }
+    const toolResult = extractToolResult(payload);
+    if (toolResult) {
+      events.push({ type: 'tool_result', result: toolResult, stage: 'done', raw: payload, ...metadata });
+    }
+    for (const result of extractToolResults(payload)) {
+      if (result !== toolResult) {
+        events.push({ type: 'tool_result', result, stage: 'done', raw: payload, ...metadata });
+      }
+    }
+
     if (payload.type === 'response.output_text.delta') {
       events.push({
         type: 'text_delta',
@@ -976,6 +1033,27 @@
         content: reasoning,
         summary,
         publicSummary: true,
+        raw: payload,
+        ...metadata,
+      });
+      return events;
+    }
+
+    if (payload.type === 'response.function_call_arguments.delta'
+      || payload.type === 'response.function_call_arguments.done') {
+      const isDone = payload.type.endsWith('.done');
+      events.push({
+        type: 'tool_calls',
+        toolCalls: normalizeToolCallsWithIndexes([{
+          index: Number.isInteger(Number(payload.output_index)) ? Number(payload.output_index) : 0,
+          id: payload.call_id || payload.item?.call_id || payload.item?.id,
+          type: 'function',
+          function: {
+            name: payload.name || payload.item?.name || payload.item?.function?.name || '',
+            arguments: isDone ? (payload.arguments || payload.delta || '') : (payload.delta || ''),
+          },
+        }]),
+        stage: isDone ? 'done' : 'delta',
         raw: payload,
         ...metadata,
       });
@@ -1379,7 +1457,9 @@
     extractSSEComment,
     extractSSEData,
     extractStreamMetadata,
+    extractUsageMetadata,
     extractToolEvents,
+    extractToolResults,
     filterChatModels,
     filterCodexBackedModels,
     isChatModel,
@@ -1388,6 +1468,7 @@
     isTerminalFinishReason,
     normalizeGatewayEventPayload,
     normalizeModelId,
+    normalizeReasoningEffort,
     resolvePreferredChatModel,
     selectPreferredCodexModel,
     splitSSEFrames,

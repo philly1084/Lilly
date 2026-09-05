@@ -6999,6 +6999,24 @@ async function* normalizeStreamResponse(stream, metadata = {}) {
             };
         }
 
+        if (chunk.type === 'response.function_call_arguments.delta'
+            || chunk.type === 'response.function_call_arguments.done') {
+            const isDone = chunk.type.endsWith('.done');
+            yield {
+                type: 'chat.completion.tool_calls.delta',
+                tool_calls: [{
+                    index: Number.isInteger(Number(chunk.output_index)) ? Number(chunk.output_index) : 0,
+                    id: chunk.call_id || chunk.item?.call_id || chunk.item?.id,
+                    type: 'function',
+                    function: {
+                        name: chunk.name || chunk.item?.name || chunk.item?.function?.name || '',
+                        arguments: isDone ? (chunk.arguments || chunk.delta || '') : (chunk.delta || ''),
+                    },
+                    stage: isDone ? 'done' : 'delta',
+                }],
+            };
+        }
+
         if (chunk.type === 'response.reasoning_summary_text.done'
             || chunk.type === 'response.reasoning_summary.done') {
             const completedReasoningSummary = [
@@ -7016,6 +7034,15 @@ async function* normalizeStreamResponse(stream, metadata = {}) {
             yield {
                 type: chunk.type,
                 item: chunk.item,
+            };
+        }
+
+        if (chunk.type === 'response.output_item.done'
+            && ['function_call_output', 'custom_tool_call_output', 'tool_result'].includes(String(chunk.item?.type || '').trim())) {
+            yield {
+                type: 'response.tool_result',
+                result: chunk.item,
+                raw: chunk,
             };
         }
 

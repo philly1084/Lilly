@@ -540,6 +540,14 @@ class WebCLIAPI {
             pendingDone.toolEvents = event.toolEvents;
         }
 
+        if (Array.isArray(event.toolResults) && event.toolResults.length > 0) {
+            pendingDone.toolResults = event.toolResults;
+        }
+
+        if (event.usage && typeof event.usage === 'object') {
+            pendingDone.usage = event.usage;
+        }
+
         if (event.assistantMetadata) {
             pendingDone.assistantMetadata = mergeAssistantMetadata(
                 pendingDone.assistantMetadata,
@@ -603,6 +611,19 @@ class WebCLIAPI {
                         sessionId: this.sessionId,
                     };
                 }
+                continue;
+            }
+
+            if (event.type === 'tool_result') {
+                if (event.result && typeof event.result === 'object') {
+                    pendingDone.toolResults = [...(pendingDone.toolResults || []), event.result];
+                    yield { type: 'tool_result', result: event.result, sessionId: this.sessionId };
+                }
+                continue;
+            }
+
+            if (event.type === 'usage') {
+                yield { type: 'usage', usage: event.usage, sessionId: this.sessionId };
                 continue;
             }
 
@@ -831,6 +852,7 @@ class WebCLIAPI {
         this.models = [
             { id: WEB_CLI_DEFAULT_MODEL, name: 'Auto', description: 'Let the internal model router choose' },
             { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable multimodal model' },
+            { id: 'gpt-6-astra', name: 'GPT-6 Astra', description: 'GPT-6 Astra with native tool calls (manual selection)', autoEligible: false },
             { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and cost-effective' },
             { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High capability model' },
             { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and efficient' },
@@ -920,8 +942,10 @@ class WebCLIAPI {
             let pendingDone = {
                 sessionId: this.sessionId,
                 artifacts: [],
-                toolEvents: [],
-                assistantMetadata: null,
+                    toolEvents: [],
+                    toolResults: [],
+                    usage: null,
+                    assistantMetadata: null,
                 responseId: null,
                 model: null,
             };

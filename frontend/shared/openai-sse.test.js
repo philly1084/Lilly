@@ -70,6 +70,28 @@ describe('openai-sse helpers', () => {
     ]);
   });
 
+  test('preserves Responses argument deltas, usage, and tool results as typed events', () => {
+    expect(normalizeGatewayEventPayload({
+      type: 'response.function_call_arguments.delta',
+      output_index: 2,
+      call_id: 'call_astra',
+      name: 'add_numbers',
+      delta: '{"a":',
+    })).toEqual([expect.objectContaining({
+      type: 'tool_calls',
+      stage: 'delta',
+      toolCalls: [expect.objectContaining({ index: 2, id: 'call_astra', function: { name: 'add_numbers', arguments: '{"a":' } })],
+    })]);
+
+    const events = normalizeGatewayEventPayload({
+      type: 'response.output_item.done',
+      item: { type: 'function_call_output', call_id: 'call_astra', output: '42' },
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    });
+    expect(events.map((event) => event.type)).toEqual(['usage', 'tool_result']);
+    expect(events[1].result).toEqual(expect.objectContaining({ call_id: 'call_astra', output: '42' }));
+  });
+
   test('preserves artifact arrays from nested response metadata', () => {
     const events = normalizeGatewayEventPayload({
       type: 'response.completed',
