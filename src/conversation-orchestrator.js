@@ -10001,7 +10001,10 @@ class ConversationOrchestrator extends EventEmitter {
         }, {
             recentMessages: resolvedRecentMessages,
             classify: isOrchestrationRewriteEnabled()
-                ? (prompt) => this.completeText(prompt, { temperature: 0, maxTokens: 350 })
+                ? (prompt) => this.completeText(prompt, {
+                    ...resolveRoleExecutionOptions({ role: 'planner', model }),
+                    temperature: 0, maxTokens: 350,
+                })
                 : null,
         });
         if (rewriteIntent.source === 'context-classification') {

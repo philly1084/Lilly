@@ -758,20 +758,25 @@ class Planner {
   }
 
   async createConversationStepsFromModel(task, availableTools = [], quota = null) {
-    try {
+    let correction = '';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
       const planText = await this.llmClient.complete(
-        this.buildConversationPlanningPrompt(task, availableTools, quota),
+        this.buildConversationPlanningPrompt(task, availableTools, quota) + correction,
         {
           temperature: 0,
           maxTokens: 1200,
+          role: 'planner',
         },
       );
       const planSpec = this.parseConversationPlan(planText);
       return this.normalizeConversationSteps(planSpec, availableTools, quota);
-    } catch (error) {
-      console.warn('[Planner] Failed to create model conversation plan:', error.message);
-      return [];
+      } catch (error) {
+        console.warn('[Planner] Failed to create model conversation plan:', error.message);
+        correction = `\nThe previous plan could not be parsed: ${error.message}. Return a JSON object with a steps array using only the listed tools. Do not answer the task in prose.`;
+      }
     }
+    return [];
   }
 
   parseConversationPlan(text = '') {

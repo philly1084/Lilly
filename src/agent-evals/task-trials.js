@@ -10,6 +10,7 @@ function candidateHash(actions = []) {
 
 async function gradeOutcome(check, result, workspace) {
   if (check.type === 'file') {
+    if (check.equals === undefined && check.contains === undefined && check.sha256 === undefined) throw new Error('File checks require an expected outcome');
     const root = await fs.realpath(workspace);
     const target = await fs.realpath(path.resolve(root, check.path));
     const relative = path.relative(root, target);
@@ -41,7 +42,7 @@ async function runTaskTrials({ cases, execute, workspace, trials = 3, actions = 
       try {
         for (const [name, content] of Object.entries(scenario.files || {})) {
           const target = path.resolve(trialWorkspace, name);
-          if (path.relative(trialWorkspace, target).startsWith('..')) throw new Error('Fixture outside workspace');
+          if (path.relative(trialWorkspace, target).startsWith('..') || path.isAbsolute(path.relative(trialWorkspace, target))) throw new Error('Fixture outside workspace');
           await fs.mkdir(path.dirname(target), { recursive: true });
           await fs.writeFile(target, content);
         }
@@ -59,6 +60,7 @@ async function runTaskTrials({ cases, execute, workspace, trials = 3, actions = 
         unnecessaryQuestions: Number(result.unnecessaryQuestions) || 0,
         repeatedFailures: Number(result.repeatedFailures) || 0,
         costUsd: Number.isFinite(result.costUsd) ? result.costUsd : null,
+        models: Array.isArray(result.models) ? result.models : [],
         durationMs: Date.now() - started });
     }
   }
@@ -75,8 +77,19 @@ async function runTaskTrials({ cases, execute, workspace, trials = 3, actions = 
 }
 
 function compareTaskTrials(baseline, candidate, actions = []) {
-  const valid = (report) => report?.version === 'TaskTrials/v1' && report.trials >= 3
-    && report.results?.length > 0 && report.metrics;
+  const valid = (report) => {
+    if (report?.version !== 'TaskTrials/v1' || !Number.isInteger(report.trials) || report.trials < 3
+      || !report.results?.length || !report.metrics) return false;
+    const cases = new Map();
+    for (const entry of report.results) {
+      if (!entry.caseId || !Number.isInteger(entry.trial) || entry.trial < 0 || entry.trial >= report.trials) return false;
+      const trials = cases.get(entry.caseId) || new Set();
+      if (trials.has(entry.trial)) return false;
+      trials.add(entry.trial);
+      cases.set(entry.caseId, trials);
+    }
+    return [...cases.values()].every((trials) => trials.size === report.trials);
+  };
   if (!valid(baseline) || !valid(candidate) || baseline.corpusHash !== candidate.corpusHash
     || candidate.candidateHash !== candidateHash(actions)
     || baseline.results.length !== candidate.results.length) return { passed: false, reason: 'missing_matching_trials' };

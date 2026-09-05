@@ -59,6 +59,15 @@ describe('Planner', () => {
     });
   });
 
+  test('repairs malformed planning output once with explicit schema feedback', async () => {
+    const client = { complete: jest.fn().mockResolvedValueOnce('I will do it.').mockResolvedValueOnce('{"steps":[{"type":"tool-call","tool":"file-read","params":{"path":"report.md"}}]}') };
+    const planner = new Planner(null, client);
+    const steps = await planner.createConversationStepsFromModel({ objective: 'Read report.md' }, ['file-read']);
+    expect(steps[0].tool).toBe('file-read');
+    expect(client.complete.mock.calls[1][0]).toContain('previous plan could not be parsed');
+    expect(client.complete.mock.calls[0][1].role).toBe('planner');
+  });
+
   test('normalizes and constrains conversation plans by quota and follow-through checkpoints', () => {
     const planner = new Planner(null, null, {
       planningLimits: {
