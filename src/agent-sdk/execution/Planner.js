@@ -98,7 +98,7 @@ class ExecutionPlan {
       const deps = this.dependencies.get(step.id) || [];
       return deps.every(depId => {
         const dep = this.steps.find(s => s.id === depId);
-        return dep && dep.status === 'completed';
+        return dep && (dep.status === 'completed' || dep.status === 'skipped');
       });
     });
   }

@@ -1,4 +1,14 @@
-const { Planner } = require('./Planner');
+const { Planner, ExecutionPlan } = require('./Planner');
+
+test('explicitly skipped optional steps release dependents but failed steps do not', () => {
+  const plan = new ExecutionPlan('recovery');
+  const first = plan.addStep({ type: 'tool-call', optional: true });
+  const retry = plan.addStep({ type: 'tool-call' }, [first]);
+  plan.markStepFailed(first, new Error('temporary failure'));
+  expect(plan.getReadySteps()).toEqual([]);
+  plan.skipStep(first, 'continue to planned recovery');
+  expect(plan.getReadySteps().map((step) => step.id)).toEqual([retry]);
+});
 
 describe('Planner', () => {
   test('conversation synthesis prompt includes the skill context placeholder', () => {
