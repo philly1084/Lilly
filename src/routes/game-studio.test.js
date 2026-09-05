@@ -46,6 +46,19 @@ describe('Game Studio API', () => {
     expect(updated.body.commandBatch.schema).toBe('LillyCommandBatch/v1');
   });
 
+  test('production design is durable, owner scoped and revision guarded', async () => {
+    const { plan } = require('../game-studio/test-fixtures/game-production');
+    const contract = await request(app).get('/api/game-studio/production-capabilities').expect(200);
+    expect(contract.body.maxConcurrency).toBe(4);
+    const created = await request(app).post('/api/game-studio/productions').send({ brief: 'A whole game', plan }).expect(202);
+    expect(created.body.status).toBe('review');
+    expect(created.body.ownerId).toBeUndefined();
+    await request(app).get(`/api/game-studio/productions/${created.body.id}`).expect(200);
+    await request(app).post(`/api/game-studio/productions/${created.body.id}/start`).send({ revision: 0 }).expect(409);
+    await request(app).get('/api/game-studio/productions/not-an-id').expect(404);
+    expect((await request(app).get('/api/game-studio/projects')).body.count).toBe(0);
+  });
+
   test('returns actionable creator errors before the production error handler masks them', async () => {
     const productionApp = express();
     productionApp.use(express.json());

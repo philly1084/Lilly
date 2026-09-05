@@ -281,3 +281,25 @@ kbd, code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, mono
 .creator-workflow button:focus-visible, .creator-workflow select:focus-visible, .creator-workflow a:focus-visible { outline: 2px solid #c8deff; outline-offset: 2px; }
 
 @media(max-width:900px){.mobile-play-bar{top:7px;bottom:auto;left:50px;right:auto;padding:0;background:none;border:0;box-shadow:none}.mobile-play-bar>div{display:none}}
+/* Whole-game planning and durable worker progress stay inside the compact creator. */
+.creator-mode>button:first-child{grid-column:1/-1}
+.game-production{font-size:12px;line-height:1.5;color:#cbd5e1}
+.game-production details{border:1px solid #334155;border-radius:6px;padding:8px;margin:8px 0;background:#101b25;color:#cbd5e1}
+.game-production summary{cursor:pointer;color:#e2e8f0;font-weight:600}
+.game-production h3{font-size:16px;margin:0 0 8px;color:#f1f5f9}
+.production-plan p{margin:8px 0;overflow-wrap:anywhere}
+.production-plan ul,.production-plan ol{padding-left:20px}
+.production-status{padding:8px 10px;background:#102d37;color:#a5f3fc;border-radius:5px}
+.production-streams{list-style:none;padding:0;display:grid;gap:6px}
+.production-streams li{border:1px solid #334155;background:#101b25;border-radius:5px;padding:8px;min-width:0}
+.production-streams li>div{display:flex;gap:6px;justify-content:space-between}
+.production-streams small{display:block;color:#b3c2d2;overflow-wrap:anywhere}
+.production-streams li[data-status=running]{border-color:#22d3ee}
+.production-streams li[data-status=done]>div>span{color:#86efac}
+.production-streams li[data-status=failed]>div>span{color:#fda4af}
+.production-events{padding-left:18px;font-size:11px;max-height:240px;overflow:auto}
+.production-events time{color:#a5b4c7}
+.game-production>button:not(.creator-generate){min-height:32px;padding:6px 10px;border:1px solid #475569;border-radius:5px;background:#172636;color:#e2e8f0;cursor:pointer}
+.game-production button:focus-visible,.game-production summary:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
+.game-production textarea{max-width:100%;box-sizing:border-box}
+.full-state.production-start{display:block;overflow:auto;padding:30px 16px;box-sizing:border-box}.production-start>main{max-width:640px;margin:0 auto}.production-start .game-production{padding:16px 0}.production-start .creator-download{background:transparent;color:#a5f3fc;border:0;cursor:pointer}

@@ -130,6 +130,7 @@ COPY scripts/canary-remote-agent-artifact-loop.js ./scripts/canary-remote-agent-
 COPY scripts/canary-sandbox-agent-attach.js ./scripts/canary-sandbox-agent-attach.js
 COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
+COPY docs/game-studio/agent-programming-architecture.md ./docs/game-studio/agent-programming-architecture.md
 COPY packages/ ./packages/
 COPY --from=game-studio-builder /app/packages/lilly-engine/dist ./packages/lilly-engine/dist
 COPY --from=game-studio-builder /app/packages/lilly-engine/browser-dist ./packages/lilly-engine/browser-dist

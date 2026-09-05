@@ -90,6 +90,13 @@ Usage:
   lilly-game validate-file --file PROJECT.json
   lilly-game compile --project ID --revision N
   lilly-game test --project ID
+  lilly-game production-capabilities
+  lilly-game design-game --brief TEXT [--plan game-plan.json] [--models models.json] [--workers 2]
+  lilly-game productions
+  lilly-game production --run ID
+  lilly-game production-start --run ID --revision N [--plan game-plan.json] [--models models.json]
+  lilly-game production-resume --run ID --revision N [--models models.json]
+  lilly-game production-stop --run ID
   lilly-game ai --project ID --base-revision N --prompt TEXT [--mode edit|level|asset|environment] [--model ID]
   lilly-game ai --project ID --base-revision N --mode asset --recipe model.json
   lilly-game ai --project ID --base-revision N --mode asset --asset ASSET_ID --prompt TEXT [--model ID]
@@ -146,6 +153,20 @@ async function validateLocalFile(filePath) {
 }
 
 async function executeCommand(client, command, options) {
+  if (command === 'production-capabilities') return client.request('/api/game-studio/production-capabilities');
+  if (command === 'productions') return client.request('/api/game-studio/productions');
+  if (command === 'production') return client.request(`/api/game-studio/productions/${encodeURIComponent(required(options, 'run', command))}`);
+  if (command === 'design-game' || /^production-(start|resume|stop)$/.test(command)) {
+    const action = command.replace('production-', '');
+    const route = command === 'design-game' ? '/api/game-studio/productions' : `/api/game-studio/productions/${encodeURIComponent(required(options, 'run', command))}/${action}`;
+    return client.request(route, { method: 'POST', body: {
+      ...(command === 'design-game' ? { brief: required(options, 'brief', command) } : action === 'stop' ? {} : { revision: integer(options, 'revision', command) }),
+      ...(options.plan ? { plan: JSON.parse(await fs.readFile(String(options.plan), 'utf8')) } : {}),
+      ...(options.models ? { models: JSON.parse(await fs.readFile(String(options.models), 'utf8')) } : {}),
+      ...(options.model ? { model: String(options.model) } : {}),
+      ...(options.workers ? { concurrency: integer(options, 'workers', command) } : {}),
+    } });
+  }
   if (command === 'templates') {
     const contracts = await client.request('/api/game-studio/contracts');
     return { schema: contracts.schema, engineVersion: contracts.engineVersion, templates: contracts.projectTemplates || [] };

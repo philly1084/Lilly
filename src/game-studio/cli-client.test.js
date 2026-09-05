@@ -11,6 +11,15 @@ function response(payload, status = 200) {
 }
 
 describe('Lilly Game CLI', () => {
+  test('whole game jobs return immediately and resume by persisted revision', async () => {
+    const calls = [];
+    const fetch = async (url, options) => { calls.push({ url, body: options.body && JSON.parse(options.body) }); return response({ id: 'production-1', status: 'planning' }); };
+    const io = { stdout: stream(), stderr: stream() };
+    expect(await runCli(['design-game', '--brief', 'A forest game', '--workers', '3', '--model', 'future-model'], {}, io, fetch)).toBe(0);
+    expect(calls[0].body).toEqual({ brief: 'A forest game', concurrency: 3, model: 'future-model' });
+    expect(await runCli(['production-resume', '--run', 'production-1', '--revision', '8'], {}, io, fetch)).toBe(0);
+    expect(calls[1]).toMatchObject({ url: expect.stringContaining('/productions/production-1/resume'), body: { revision: 8 } });
+  });
   test('forwards scenery creation to the selected AI model', async () => {
     let body;
     const exitCode = await runCli(['ai', '--project', 'world', '--base-revision', '2', '--mode', 'environment', '--model', 'gpt-6-astra', '--prompt', 'A snowy grove'], {}, { stdout: stream(), stderr: stream() }, async (_url, options) => { body = JSON.parse(options.body); return response({ id: 'environment-run' }); });

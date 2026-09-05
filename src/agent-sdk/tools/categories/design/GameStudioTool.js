@@ -3,6 +3,8 @@
 const { ToolBase } = require('../../ToolBase');
 
 const ACTIONS = [
+  'production-capabilities', 'design-game', 'list-game-productions', 'inspect-game-production',
+  'start-game-production', 'resume-game-production', 'stop-game-production',
   'list-templates',
   'create-project',
   'list-projects',
@@ -63,6 +65,11 @@ class GameStudioTool extends ToolBase {
         required: ['action'],
         properties: {
           action: { type: 'string', enum: ACTIONS },
+          brief: { type: 'string', maxLength: 6000, description: 'Whole-game brief for design-game. Returns a durable production immediately; inspect until ready for review, then start with its revision.' },
+          productionId: { type: 'string' },
+          plan: { type: 'object', description: 'Optional agent-authored LillyGamePlan/v1; obtain the supported capabilities before designing. Locked once building starts.' },
+          models: { type: 'object', properties: Object.fromEntries(['director', 'level', 'environment', 'asset', 'gameplay'].map(role => [role, { type: 'string', maxLength: 160 }])), additionalProperties: false },
+          concurrency: { type: 'integer', minimum: 1, maximum: 4 },
           name: { type: 'string', maxLength: 100 },
           slug: { type: 'string', maxLength: 60 },
           template: { type: 'string', enum: ['blank', 'third-person-explorer', 'top-down-action', 'expedition'] },

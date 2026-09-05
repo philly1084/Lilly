@@ -57,3 +57,5 @@ Recommended outside-agent loop:
 4. `run-mechanic-tests`; fix failed assertions.
 5. Compose scenes/entities/input maps through `apply-commands` and `instantiate-prefab`.
 6. `run-playtest`, `build`, then `publish` the tested immutable revision.
+
+Whole-game workflow: call production-capabilities, then design-game with brief, optional authored LillyGamePlan/v1 plan, models keyed director/level/environment/asset/gameplay, and concurrency 1-4. Inspect-game-production with productionId returns durable worker progress. Review the design, then start-game-production with productionId and its current revision. It creates a new editable project and runs validated builders. Resume-game-production reuses completed outputs; stop-game-production stops after in-flight authors settle. A ready status requires an immutable tested build. Human playtesting remains necessary. See docs/game-studio/whole-game-production.md.

@@ -37,6 +37,40 @@ function notFound(res, kind = 'Project') {
   return res.status(404).json({ error: { code: `${kind.toUpperCase()}_NOT_FOUND`, message: `${kind} not found` } });
 }
 
+router.get('/production-capabilities', (req, res) => {
+  if (ensureAvailable(req, res)) res.json(require('../game-studio/game-plan').CAPABILITIES);
+});
+router.get('/productions', async (req, res, next) => {
+  try {
+    const studio = ensureAvailable(req, res);
+    if (studio) res.json({ productions: await studio.productions.list(ownerId(req)) });
+  } catch (error) { next(error); }
+});
+router.post('/productions', async (req, res, next) => {
+  try {
+    const studio = ensureAvailable(req, res);
+    if (studio) res.status(202).json(await studio.productions.create(req.body || {}, ownerId(req)));
+  } catch (error) { next(error); }
+});
+router.get('/productions/:productionId', async (req, res, next) => {
+  try {
+    const studio = ensureAvailable(req, res);
+    if (!studio) return;
+    const result = await studio.productions.get(req.params.productionId, ownerId(req));
+    if (!result) return notFound(res, 'Production');
+    res.json(result);
+  } catch (error) { next(error); }
+});
+router.post('/productions/:productionId/:action', async (req, res, next) => {
+  try {
+    const studio = ensureAvailable(req, res);
+    if (!studio) return;
+    const result = await studio.productions.control(req.params.productionId, req.params.action, req.body || {}, ownerId(req));
+    if (!result) return notFound(res, 'Production');
+    res.status(202).json(result);
+  } catch (error) { next(error); }
+});
+
 router.get('/projects/:id/ai-runs/:runId/model.glb', async (req, res, next) => {
   try {
     const gameStudio = ensureAvailable(req, res);
@@ -456,7 +490,7 @@ router.post('/projects/:id/rollback', async (req, res, next) => {
 
 // These domain errors contain deliberate user guidance, not internal exception details.
 router.use((error, _req, res, next) => {
-  const publicCodes = new Set(['ENVIRONMENT_RECIPE_INVALID', 'MODEL_RECIPE_INVALID', 'AI_GENERATION_FAILED', 'AI_UNAVAILABLE', 'INVALID_MODEL_PROMPT', 'REVISION_CONFLICT']);
+  const publicCodes = new Set(['ENVIRONMENT_RECIPE_INVALID', 'MODEL_RECIPE_INVALID', 'AI_GENERATION_FAILED', 'AI_UNAVAILABLE', 'INVALID_MODEL_PROMPT', 'REVISION_CONFLICT', 'GAME_PLAN_INVALID', 'PRODUCTION_NOT_FOUND', 'PRODUCTION_BUSY']);
   if (!publicCodes.has(error.code)) return next(error);
   return res.status(error.statusCode || 422).json({ error: { type: 'game_studio_error', code: error.code, message: error.message, ...(error.currentRevision !== undefined ? { currentRevision: error.currentRevision } : {}) } });
 });

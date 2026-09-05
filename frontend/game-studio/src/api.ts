@@ -1,4 +1,5 @@
 import type { AiRun, EditorPreview, LillyCommand, LillyProject, LillyProjectAsset, LillyProjectTemplateId, LillySourceFile, MechanicTestRun, ModuleCompileReport, Playtest, StudioBuild, StudioMetadata, StudioProjectResponse } from './types';
+import type { GameProduction } from './components/GameProduction';
 
 type ApiErrorPayload = { error?: { code?: string; message?: string; currentRevision?: number; issues?: unknown[] } };
 
@@ -59,4 +60,11 @@ export const studioApi = {
   build: (projectId: string, projectRevision: number, buildProfileId?: string) => request<StudioBuild>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/builds`, { method: 'POST', body: JSON.stringify({ projectRevision, buildProfileId }) }),
   publish: (buildId: string, publicHost?: string) => request<{ build: StudioBuild; previewPreservedUntilHttpsVerified: boolean }>(`/api/game-studio/builds/${encodeURIComponent(buildId)}/publish`, { method: 'POST', body: JSON.stringify({ publicHost }) }),
   rollback: (projectId: string, revision: number) => request<StudioProjectResponse>(`/api/game-studio/projects/${encodeURIComponent(projectId)}/rollback`, { method: 'POST', body: JSON.stringify({ revision }) }),
+};
+
+export const productionApi = {
+  list: () => request<{ productions: GameProduction[] }>('/api/game-studio/productions'),
+  get: (id: string) => request<GameProduction>(`/api/game-studio/productions/${encodeURIComponent(id)}`),
+  create: (input: { brief: string; models: Record<string, string>; concurrency: number }) => request<GameProduction>('/api/game-studio/productions', { method: 'POST', body: JSON.stringify(input) }),
+  control: (id: string, action: 'start' | 'resume' | 'stop', input: Record<string, unknown>) => request<GameProduction>(`/api/game-studio/productions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(input) }),
 };

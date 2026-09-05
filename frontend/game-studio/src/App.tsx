@@ -8,6 +8,8 @@ import { Inspector } from './components/Inspector';
 import { MobileCreator } from './components/LevelCreator';
 import { Toolbar } from './components/Toolbar';
 import { Viewport } from './components/Viewport';
+import { GameProductionCreator } from './components/GameProduction';
+import { studioApi } from './api';
 import { useStudioStore } from './store';
 import type { LillyProjectTemplateId } from './types';
 
@@ -34,6 +36,9 @@ function LoadingState() {
 
 function EmptyState() {
   const createProject = useStudioStore((state) => state.createProject);
+  const [aiStart, setAiStart] = useState(true);
+  const [models, setModels] = useState<Array<{ id: string; name?: string }>>([]);
+  useEffect(() => { studioApi.listModels().then(result => setModels(result.data)).catch(() => {}); }, []);
   const [name, setName] = useState('My Lilly Game');
   const [brief, setBrief] = useState('A winding neon ruin with glowing energy cores, fair pulse traps, strong landmarks, and a final exit beacon.');
   const [template, setTemplate] = useState<LillyProjectTemplateId>('third-person-explorer');
@@ -46,6 +51,7 @@ function EmptyState() {
   const create = () => {
     if (name.trim() && (template !== 'expedition' || brief.trim())) createProject(name.trim(), template === 'expedition' ? brief.trim() : undefined, template);
   };
+  if (aiStart) return <div className="full-state production-start"><main><span className="panel-kicker">Lilly AI Game Studio</span><GameProductionCreator model="" models={models}/><button type="button" className="creator-download" onClick={() => setAiStart(false)}>Choose an engine starter instead</button></main></div>;
   return <div className="full-state onboarding-state">
     <div className="onboarding-art"><div className="art-grid"/><div className="art-player"/><div className="art-shard one"/><div className="art-shard two"/><div className="art-shard three"/></div>
     <div className="onboarding-copy">

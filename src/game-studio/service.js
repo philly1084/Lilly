@@ -42,6 +42,7 @@ const { PLAYER_RUNTIME_HASH, writeImmutableBuild } = require('./player-bundle');
 const { runMechanicTests } = require('./module-runner');
 const { compileModelRecipe, modelRecipePrompt } = require('./asset-creator');
 const { sceneryContext, compileEnvironmentRecipe, environmentCommands, environmentPrompt } = require('./environment-creator');
+const { GameProductionService } = require('./game-production');
 
 const INDEX_SCHEMA = 'LillyGameStudioIndex/v1';
 const AI_RUN_SCHEMA = 'LillyAiRun/v1';
@@ -115,6 +116,18 @@ async function pathExists(targetPath) {
   }
 }
 
+async function renameAtomicFile(source, target) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.rename(source, target); }
+    catch (error) {
+      // Windows briefly denies replacement while another reader or the indexer has the file open.
+      // Keep the old snapshot intact and retry the atomic rename, never delete the destination.
+      if (process.platform !== 'win32' || attempt >= 5 || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 20 * (attempt + 1)));
+    }
+  }
+}
+
 function decodeCanonicalBase64(value) {
   const source = String(value || '').trim();
   const canonicalPattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -168,6 +181,7 @@ class GameStudioService {
     this.events.setMaxListeners(200);
     this.locks = new Map();
     this.initialized = false;
+    this.productions = new GameProductionService(this);
   }
 
   isEnabled() {
@@ -229,7 +243,7 @@ class GameStudioService {
     const targetPath = this.indexPath();
     const tempPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
     await fs.writeFile(tempPath, `${JSON.stringify({ ...index, schema: INDEX_SCHEMA, updatedAt: now() }, null, 2)}\n`, 'utf8');
-    await fs.rename(tempPath, targetPath);
+    await renameAtomicFile(tempPath, targetPath);
   }
 
   async withProjectLock(projectId, operation) {
@@ -250,7 +264,7 @@ class GameStudioService {
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     const tempPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
     await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-    await fs.rename(tempPath, targetPath);
+    await renameAtomicFile(tempPath, targetPath);
   }
 
   async readProjectFile(targetPath) {
@@ -1385,6 +1399,13 @@ class GameStudioService {
   async executeToolAction(action, params = {}, context = {}) {
     const ownerId = String(context.userId || context.ownerId || '').trim();
     switch (action) {
+      case 'production-capabilities': return require('./game-plan').CAPABILITIES;
+      case 'design-game': return this.productions.create(params, ownerId);
+      case 'list-game-productions': return { productions: await this.productions.list(ownerId) };
+      case 'inspect-game-production': return this.productions.get(params.productionId, ownerId);
+      case 'start-game-production': return this.productions.control(params.productionId, 'start', params, ownerId);
+      case 'resume-game-production': return this.productions.control(params.productionId, 'resume', params, ownerId);
+      case 'stop-game-production': return this.productions.control(params.productionId, 'stop', params, ownerId);
       case 'list-templates': return { schema: 'LillyProjectTemplateRegistry/v1', engineVersion: ENGINE_VERSION, templates: PROJECT_TEMPLATES };
       case 'create-project': return this.createProject(params, ownerId);
       case 'list-projects': return { projects: await this.listProjects(ownerId) };
