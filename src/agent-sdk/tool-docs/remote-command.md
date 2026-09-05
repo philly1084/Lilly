@@ -221,11 +221,14 @@ Rule of thumb:
 
 ### 4. Rollout and restart
 
+These commands are diagnostics for workloads other than the shared `kimibuilt/backend`. Backend production mutation and recovery must use `k3s-deployment-coordinator.js run` with a nested `deploy-backend` or `deploy-release`; do not copy the raw restart command below for KimiBuilt.
+
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 kubectl rollout status deployment/backend -n kimibuilt --timeout=180s
 kubectl wait --for=condition=available deployment/backend -n kimibuilt --timeout=180s
-kubectl rollout restart deployment/backend -n kimibuilt
+# Do not raw-restart kimibuilt/backend. Use the coordinator recovery path
+# documented by k3s-deploy when a backend mutation is approved.
 ```
 
 ### 5. Service and ingress checks

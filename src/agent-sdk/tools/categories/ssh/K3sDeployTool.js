@@ -70,6 +70,14 @@ class K3sDeployTool extends ToolBase {
             type: 'string',
             description: 'Container image for set-image.',
           },
+          expectedImage: {
+            type: 'string',
+            description: 'Current live container image required for CAS-safe kimibuilt/backend coordination.',
+          },
+          sourceSha: {
+            type: 'string',
+            description: 'Full 40-character source commit SHA for coordinated kimibuilt/backend releases.',
+          },
           timeoutSeconds: {
             type: 'integer',
             default: 180,
@@ -127,7 +135,7 @@ class K3sDeployTool extends ToolBase {
       username: params.username,
       command,
       environment: this.buildRemoteEnvironment(params),
-      timeout: Math.max(1000, Number(params.timeoutSeconds || 180) * 1000),
+      timeout: Math.max(1000, (Number(params.timeoutSeconds || 180) + (this.isPrimaryBackendDeployment(params) ? 360 : 0)) * 1000),
       profile: 'deploy',
     };
     const result = await executeWithRunnerPreference({
@@ -190,6 +198,15 @@ class K3sDeployTool extends ToolBase {
       case 'rollout-status':
         return this.buildRolloutStatusCommand(params);
       case 'sync-and-apply':
+        if (this.isPrimaryBackendDeployment(params)) {
+          if (!String(params.image || '').trim() || !String(params.expectedImage || '').trim()) {
+            throw new Error('k3s-deploy sync-and-apply for kimibuilt/backend requires explicit image and expectedImage for CAS-safe release coordination.');
+          }
+          return [
+            this.buildSyncRepoCommand(params),
+            this.buildCoordinatedReleaseCommand(params, this.buildApplyNonBackendManifestsCommand(this.resolveManifestsPath(params), { skipPrimaryBackend: true })),
+          ].filter(Boolean).join('\n');
+        }
         return [
           this.buildSyncRepoCommand(params),
           this.buildApplyManifestsCommand(params),
@@ -303,6 +320,26 @@ class K3sDeployTool extends ToolBase {
   buildApplyManifestsCommand(params = {}) {
     const manifestsPath = this.resolveManifestsPath(params);
 
+    const manifestName = path.posix.basename(manifestsPath);
+    const isKimiBuiltBackendManifest = String(params.namespace || this.getDeployDefaults().namespace) === 'kimibuilt'
+      && manifestName === 'backend-deployment.yaml';
+    if (this.isPrimaryBackendDeployment(params) || isKimiBuiltBackendManifest) {
+      throw new Error('Uncoordinated apply-manifests is disabled for kimibuilt/backend; use sync-and-apply or set-image with expectedImage.');
+    }
+
+    return this.buildApplyNonBackendManifestsCommand(manifestsPath);
+  }
+
+  isPrimaryBackendDeployment(params = {}) {
+    const deployDefaults = this.getDeployDefaults();
+    return String(params.namespace || deployDefaults.namespace) === 'kimibuilt'
+      && String(params.deployment || deployDefaults.deployment) === 'backend';
+  }
+
+  buildApplyNonBackendManifestsCommand(manifestsPath, { skipPrimaryBackend = false } = {}) {
+    const skippedManifests = skipPrimaryBackend
+      ? 'namespace.yaml|cluster-issuer.yaml|secret.yaml|rancher-simple.yaml|rancher-stack-update.yaml|backend-deployment.yaml|frontend-nginx-config.yaml'
+      : 'namespace.yaml|cluster-issuer.yaml|secret.yaml|rancher-simple.yaml|rancher-stack-update.yaml';
     return [
       'set -e',
       'if ! command -v kubectl >/dev/null 2>&1; then echo "kubectl is required on the remote host" >&2; exit 1; fi',
@@ -314,7 +351,7 @@ class K3sDeployTool extends ToolBase {
       '  for manifest_file in $(find "$manifest_dir" -maxdepth 1 -type f \\( -name "*.yaml" -o -name "*.yml" \\) | sort); do',
       '    manifest_name=$(basename "$manifest_file")',
       '    case "$manifest_name" in',
-      '      namespace.yaml|cluster-issuer.yaml|secret.yaml|rancher-simple.yaml|rancher-stack-update.yaml)',
+      `      ${skippedManifests})`,
       '        continue',
       '        ;;',
       '      ingress-https.yaml)',
@@ -337,11 +374,73 @@ class K3sDeployTool extends ToolBase {
     const image = this.sanitizeImage(params.image);
     const timeoutSeconds = this.normalizeTimeoutSeconds(params.timeoutSeconds);
 
+    if (namespace === 'kimibuilt' && deployment === 'backend') {
+      if (!String(params.expectedImage || '').trim()) {
+        throw new Error('k3s-deploy set-image for kimibuilt/backend requires expectedImage for CAS-safe release coordination.');
+      }
+      return this.buildCoordinatedReleaseCommand({
+        ...params,
+        namespace,
+        deployment,
+        container,
+        image,
+        timeoutSeconds,
+      });
+    }
+
     return [
       'set -e',
       'if ! command -v kubectl >/dev/null 2>&1; then echo "kubectl is required on the remote host" >&2; exit 1; fi',
       `kubectl set image deployment/${deployment} ${container}=${this.quoteShellArg(image)} -n ${this.quoteShellArg(namespace)}`,
       `kubectl rollout status deployment/${deployment} -n ${this.quoteShellArg(namespace)} --timeout=${timeoutSeconds}s`,
+    ].join('\n');
+  }
+
+  buildCoordinatedReleaseCommand(params = {}, prelude = '') {
+    const deployDefaults = this.getDeployDefaults();
+    const namespace = this.sanitizeKubernetesName(params.namespace || deployDefaults.namespace, 'namespace');
+    const deployment = this.sanitizeKubernetesName(params.deployment || deployDefaults.deployment, 'deployment');
+    const container = this.sanitizeKubernetesName(params.container || deployDefaults.container, 'container');
+    const image = this.sanitizeImage(params.image);
+    const expectedImage = this.sanitizeImage(params.expectedImage);
+    const targetDirectory = this.sanitizeRemotePath(params.targetDirectory || deployDefaults.targetDirectory, 'targetDirectory');
+    const coordinator = targetDirectory + '/scripts/k3s-deployment-coordinator.js';
+    const configFile = targetDirectory + '/k8s/configmap.yaml';
+    const frontendConfigFile = targetDirectory + '/k8s/frontend-nginx-config.yaml';
+    const timeoutSeconds = this.normalizeTimeoutSeconds(params.timeoutSeconds);
+    const sourceShaArg = params.sourceSha
+      ? this.quoteShellArg(params.sourceSha)
+      : '"$(git -C ' + this.quoteShellArg(targetDirectory) + ' rev-parse HEAD)"';
+    const releaseIdArg = params.releaseId
+      ? this.quoteShellArg(params.releaseId)
+      : '"$' + '{KIMIBUILT_RELEASE_ID:-k3s-deploy}"';
+
+    const nestedRelease = 'node ' + this.quoteShellArg(coordinator)
+      + ' deploy-release --namespace ' + this.quoteShellArg(namespace)
+      + ' --deployment ' + this.quoteShellArg(deployment)
+      + ' --container ' + this.quoteShellArg(container)
+      + ' --image ' + this.quoteShellArg(image)
+      + ' --expected-image "$' + '{KIMIBUILT_RELEASE_EXPECTED_IMAGE}"'
+      + ' --source-sha "$' + '{KIMIBUILT_RELEASE_SOURCE_SHA}"'
+      + ' --owner "$' + '{KIMIBUILT_RELEASE_OWNER}"'
+      + ' --config-file ' + this.quoteShellArg(configFile)
+      + ' --config-map kimibuilt-config'
+      + ' --frontend-config-file ' + this.quoteShellArg(frontendConfigFile)
+      + ' --release-id ' + releaseIdArg
+      + ' --rollout-timeout-seconds ' + timeoutSeconds;
+    const childScript = [prelude, nestedRelease].filter(Boolean).join('\n');
+
+    return [
+      'set -euo pipefail',
+      'if ! command -v kubectl >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then echo "kubectl and node are required for coordinated kimibuilt/backend deployment" >&2; exit 1; fi',
+      'cd -- ' + this.quoteShellArg(targetDirectory),
+      'node ' + this.quoteShellArg(coordinator)
+        + ' run --expected-image ' + this.quoteShellArg(expectedImage)
+        + ' --source-sha ' + sourceShaArg
+        + ' --namespace ' + this.quoteShellArg(namespace)
+        + ' --deployment ' + this.quoteShellArg(deployment)
+        + ' --container ' + this.quoteShellArg(container)
+        + ' -- sh -lc ' + this.quoteShellArg(childScript),
     ].join('\n');
   }
 
