@@ -244,12 +244,23 @@ describe('openai-client response threading', () => {
         expect(events.some((event) => event.type === 'chat.completion.tool_calls.delta')).toBe(false);
     });
 
-    test('preserves exact provider usage in normalized response metadata', async () => {
+    test.each([
+        ['numeric counts', {}],
+        ['null alias placeholders', {
+            promptTokens: null,
+            completionTokens: null,
+            totalTokens: null,
+            cachedTokens: null,
+            reasoningTokens: null,
+            modelCalls: null,
+        }],
+    ])('preserves exact provider usage with %s in normalized response metadata', async (_label, placeholders) => {
         const OpenAI = require('openai');
         const responsesCreate = jest.fn(async (params) => ({
             id: 'resp-usage-1',
             model: params.model,
             usage: {
+                ...placeholders,
                 input_tokens: 18,
                 output_tokens: 9,
                 total_tokens: 27,

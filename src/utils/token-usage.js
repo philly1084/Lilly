@@ -1,4 +1,7 @@
 function toFiniteNumber(value) {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) {
+        return null;
+    }
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 }
@@ -23,10 +26,6 @@ function firstFiniteValue(source = {}, paths = []) {
     }
 
     return null;
-}
-
-function hasUsagePath(source = {}, paths = []) {
-    return paths.some((path) => getNestedValue(source, path) !== undefined);
 }
 
 function firstStringValue(source = {}, paths = []) {
@@ -414,15 +413,15 @@ function normalizeUsageMetadata(usage = {}) {
     const modelCalls = firstFiniteValue(usage, modelCallPaths);
 
     const hasExplicitUsage = [
-        hasUsagePath(usage, promptPaths),
-        hasUsagePath(usage, completionPaths),
-        hasUsagePath(usage, totalPaths),
-        hasUsagePath(usage, reasoningPaths),
-        hasUsagePath(usage, cachedPaths),
-        hasUsagePath(usage, cacheReadPaths),
-        hasUsagePath(usage, cacheCreationPaths),
-        hasUsagePath(usage, modelCallPaths),
-    ].some(Boolean);
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        reasoningTokens,
+        cachedTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        modelCalls,
+    ].some((value) => value !== null);
 
     if (!hasExplicitUsage) {
         return null;

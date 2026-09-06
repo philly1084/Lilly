@@ -8,6 +8,77 @@ const {
 } = require('./token-usage');
 
 describe('token usage utilities', () => {
+    test.each([null, '', '  ', false, true, [], [99], {}])(
+        'ignores nonnumeric usage placeholders (%j) in favor of provider counts',
+        (placeholder) => {
+            const usage = extractResponseUsageMetadata({
+                usage: {
+                    promptTokens: placeholder,
+                    completionTokens: placeholder,
+                    totalTokens: placeholder,
+                    prompt_tokens: 18,
+                    completion_tokens: 7,
+                    total_tokens: 25,
+                },
+            });
+
+            expect(usage).toEqual({
+                promptTokens: 18,
+                inputTokens: 18,
+                completionTokens: 7,
+                outputTokens: 7,
+                totalTokens: 25,
+                modelCalls: 1,
+            });
+            expect(hasMeasuredTokenCounts(usage)).toBe(true);
+        },
+    );
+
+    test('derives totals and aggregates calls when optional provider counts are null', () => {
+        expect(mergeUsageMetadata([
+            { input_tokens: 18, output_tokens: 7, total_tokens: null },
+            { input_tokens: 10, output_tokens: 2, total_tokens: '' },
+        ])).toEqual({
+            promptTokens: 28,
+            inputTokens: 28,
+            completionTokens: 9,
+            outputTokens: 9,
+            totalTokens: 37,
+        });
+    });
+
+    test('falls back to direct usage when metadata contains only invalid counts', () => {
+        expect(normalizeUsageMetadata({ input_tokens: null, output_tokens: '' })).toBeNull();
+        expect(extractResponseUsageMetadata({
+            metadata: { usage: { input_tokens: null, output_tokens: '' } },
+            usage: { input_tokens: 18, output_tokens: 7 },
+        })).toEqual({
+            promptTokens: 18,
+            inputTokens: 18,
+            completionTokens: 7,
+            outputTokens: 7,
+            totalTokens: 25,
+            modelCalls: 1,
+        });
+    });
+
+    test('preserves explicit zero counts and accepts numeric strings', () => {
+        expect(normalizeUsageMetadata({
+            promptTokens: 0,
+            prompt_tokens: 99,
+            completionTokens: '0',
+            completion_tokens: 99,
+        })).toEqual({
+            promptTokens: 0,
+            inputTokens: 0,
+            completionTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+        });
+        expect(normalizeUsageMetadata({ input_tokens: '18', output_tokens: ' 7 ' }))
+            .toEqual({ promptTokens: 18, inputTokens: 18, completionTokens: 7, outputTokens: 7, totalTokens: 25 });
+    });
+
     test('aggregates usage from both model_call and llm-call trace entries', () => {
         const usage = extractUsageMetadataFromTrace([
             {
