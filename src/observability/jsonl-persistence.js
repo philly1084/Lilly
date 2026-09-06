@@ -38,8 +38,22 @@ function appendJsonlRecordSync(filePath = '', record = null) {
         return;
     }
 
+    const serialized = `${JSON.stringify(record)}\n`;
     ensureParentDirectory(filePath);
-    fs.appendFileSync(filePath, `${JSON.stringify(record)}\n`, 'utf8');
+    const descriptor = fs.openSync(filePath, 'a+');
+    try {
+        const { size } = fs.fstatSync(descriptor);
+        let separator = '';
+        if (size > 0) {
+            const lastByte = Buffer.alloc(1);
+            fs.readSync(descriptor, lastByte, 0, 1, size - 1);
+            // Isolate an interrupted tail so it cannot swallow the next record.
+            separator = lastByte[0] === 0x0a ? '' : '\n';
+        }
+        fs.appendFileSync(descriptor, `${separator}${serialized}`, 'utf8');
+    } finally {
+        fs.closeSync(descriptor);
+    }
 }
 
 function writeJsonlRecordsSync(filePath = '', records = []) {
