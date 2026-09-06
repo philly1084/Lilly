@@ -19,6 +19,7 @@ class VectorStore {
         this.vectorSize = config.qdrant.vectorSize;
         this.initialized = false;
         this.knownCollections = new Set();
+        this.pendingCollections = new Map();
     }
 
     buildPayloadFilter({
@@ -66,6 +67,22 @@ class VectorStore {
             return;
         }
 
+        if (this.pendingCollections.has(collectionName)) {
+            return this.pendingCollections.get(collectionName);
+        }
+
+        // Concurrent memory writes must wait for the same collection creation.
+        const pending = this.initializeCollection(collectionName, vectorSize);
+        this.pendingCollections.set(collectionName, pending);
+        try {
+            await pending;
+        } finally {
+            // A failed initialization must remain retryable.
+            this.pendingCollections.delete(collectionName);
+        }
+    }
+
+    async initializeCollection(collectionName, vectorSize) {
         try {
             const collections = await this.client.getCollections();
             const exists = collections.collections.some((collection) => collection.name === collectionName);
