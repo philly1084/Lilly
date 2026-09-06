@@ -1332,8 +1332,8 @@
                                         </div>
                                         <div class="form-group">
                                             <label for="soulContent">soul.md</label>
-                                            <textarea class="form-control" id="soulContent" rows="18" spellcheck="false" placeholder="# Soul&#10;&#10;Describe the agent's personality, voice, and boundaries here."></textarea>
-                                            <p class="text-muted">Hard limit: <span id="soulCharacterLimit">3700</span> characters. Current: <span id="soulCharacterCount">0</span>.</p>
+                                            <textarea class="form-control" id="soulContent" aria-describedby="soulCharacterHelp" rows="18" spellcheck="false" placeholder="# Soul&#10;&#10;Describe the agent's personality, voice, and boundaries here."></textarea>
+                                            <p class="text-muted" id="soulCharacterHelp">Hard limit: <span id="soulCharacterLimit">3700</span> characters. Current: <span id="soulCharacterCount">0</span>.</p>
                                         </div>
                                         <div class="form-actions">
                                             <button type="submit" form="generalSettingsForm" class="btn btn-primary">Save Soul + General</button>
@@ -1368,8 +1368,8 @@
                                         </div>
                                         <div class="form-group">
                                             <label for="userProfileContent">user.md</label>
-                                            <textarea class="form-control" id="userProfileContent" rows="14" spellcheck="false" placeholder="# User&#10;&#10;## Phil&#10;- Stable user-wide facts and collaboration preferences"></textarea>
-                                            <p class="text-muted">Hard limit: <span id="userProfileCharacterLimit">3700</span> characters. Current: <span id="userProfileCharacterCount">0</span>.</p>
+                                            <textarea class="form-control" id="userProfileContent" aria-describedby="userProfileCharacterHelp" rows="14" spellcheck="false" placeholder="# User&#10;&#10;## Phil&#10;- Stable user-wide facts and collaboration preferences"></textarea>
+                                            <p class="text-muted" id="userProfileCharacterHelp">Hard limit: <span id="userProfileCharacterLimit">3700</span> characters. Current: <span id="userProfileCharacterCount">0</span>.</p>
                                         </div>
                                         <div class="form-actions">
                                             <button type="submit" form="generalSettingsForm" class="btn btn-primary">Save User + General</button>
@@ -1404,8 +1404,8 @@
                                         </div>
                                         <div class="form-group">
                                             <label for="agentNotesContent">agent-notes.md</label>
-                                            <textarea class="form-control" id="agentNotesContent" rows="14" spellcheck="false" placeholder="# Carryover Notes&#10;&#10;## Project&#10;- Durable project notes worth carrying into future sessions&#10;&#10;## Phil&#10;- Stable preferences or working notes that help future collaboration"></textarea>
-                                            <p class="text-muted">Hard limit: <span id="agentNotesCharacterLimit">4000</span> characters. Current: <span id="agentNotesCharacterCount">0</span>.</p>
+                                            <textarea class="form-control" id="agentNotesContent" aria-describedby="agentNotesCharacterHelp" rows="14" spellcheck="false" placeholder="# Carryover Notes&#10;&#10;## Project&#10;- Durable project notes worth carrying into future sessions&#10;&#10;## Phil&#10;- Stable preferences or working notes that help future collaboration"></textarea>
+                                            <p class="text-muted" id="agentNotesCharacterHelp">Hard limit: <span id="agentNotesCharacterLimit">4000</span> characters. Current: <span id="agentNotesCharacterCount">0</span>.</p>
                                         </div>
                                         <div class="form-actions">
                                             <button type="submit" form="generalSettingsForm" class="btn btn-primary">Save Notes + General</button>

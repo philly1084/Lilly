@@ -454,6 +454,31 @@ describe('agent dashboard navigation accessibility', () => {
         expect(html).toContain('css/dashboard.css?v=admin-token-table-focus-v3');
     });
 
+    test('associates each memory editor with its own character limit and current count', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const document = dom.window.document;
+
+        for (const [editorId, prefix] of [
+            ['soulContent', 'soul'],
+            ['userProfileContent', 'userProfile'],
+            ['agentNotesContent', 'agentNotes'],
+        ]) {
+            const editor = document.getElementById(editorId);
+            const helpId = editor.getAttribute('aria-describedby');
+            expect(helpId).toBe(`${prefix}CharacterHelp`);
+            expect(document.querySelectorAll(`#${helpId}`)).toHaveLength(1);
+            const help = document.getElementById(helpId);
+            expect(help.textContent).toMatch(/Hard limit: \d+ characters\. Current: 0\./);
+            expect(help.querySelector(`#${prefix}CharacterLimit`)).not.toBeNull();
+            const count = help.querySelector(`#${prefix}CharacterCount`);
+            count.textContent = '42';
+            expect(document.getElementById(editor.getAttribute('aria-describedby')).textContent)
+                .toContain('Current: 42.');
+        }
+        dom.window.close();
+    });
+
     test('separates recent activity titles from supporting context', () => {
         const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
 
