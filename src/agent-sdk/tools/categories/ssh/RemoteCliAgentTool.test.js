@@ -20,6 +20,32 @@ function buildTool() {
 }
 
 describe('RemoteCliAgentTool', () => {
+  test('selects project host before inheriting stale remote workspace and session', async () => {
+    const { config } = require('../../../../config');
+    const originalMap = config.remoteCliMcp.targetHostMap;
+    config.remoteCliMcp.targetHostMap = { 'demoserver2.buzz': 'k3s-secondary' };
+    try {
+      const { tool, runner } = buildTool();
+      await tool.execute({ task: 'Fix campusdrop.demoserver2.buzz' }, {
+        controlState: { remoteCliAgent: {
+          targetId: 'k3s-prod', cwd: '/opt/old-project', sessionId: 'old-session',
+          publicHost: 'campusdrop.demoserver2.buzz', completionStatus: 'failed',
+        } },
+      });
+      expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({ targetId: 'k3s-secondary' }));
+      expect(runner.run.mock.calls[0][0].cwd).toBeUndefined();
+      expect(runner.run.mock.calls[0][0].sessionId).toBeUndefined();
+      await tool.execute({ task: 'Check status of campusdrop.demoserver2.buzz' }, {
+        controlState: { remoteCliAgent: {
+          targetId: 'k3s-prod', remoteCodeJobId: 'running-job',
+          publicHost: 'campusdrop.demoserver2.buzz', completionStatus: 'running',
+        } },
+      });
+      expect(runner.run.mock.calls[1][0]).toEqual(expect.objectContaining({ targetId: 'k3s-prod', jobId: 'running-job' }));
+    } finally {
+      config.remoteCliMcp.targetHostMap = originalMap;
+    }
+  });
   test('polls an owned artifact job with the original operation and no repeated input export', async () => {
     const handoff = await createRemoteAgentHandoff({
       contextFiles: [{ filename: 'source.txt', content: 'original bytes' }],

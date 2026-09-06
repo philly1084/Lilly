@@ -68,10 +68,23 @@ function resolveConfiguredRemoteCliTargetFromText(text = '', targetHostMap = {})
   return '';
 }
 
+function resolveRemoteCliProjectTarget(input = {}, targetHostMap = {}) {
+  const explicit = normalizeRemoteCliTargetIdCandidate(input.targetId || input.target_id);
+  if (explicit) return explicit;
+  // Session and job identities belong to their original host; never reroute a poll.
+  if (input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id
+    || input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id
+    || input.threadId || input.thread_id) return '';
+  return resolveConfiguredRemoteCliTargetFromText([
+    input.publicHost, input.publicUrl, input.task || input.prompt || input.message,
+  ].filter(Boolean).join('\n'), targetHostMap);
+}
+
 module.exports = {
   extractRemoteCliHostCandidates,
   normalizeRemoteCliHostCandidate,
   normalizeRemoteCliTargetIdCandidate,
   resolveConfiguredRemoteCliTargetForHost,
   resolveConfiguredRemoteCliTargetFromText,
+  resolveRemoteCliProjectTarget,
 };

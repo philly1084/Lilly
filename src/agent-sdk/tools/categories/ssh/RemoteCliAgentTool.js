@@ -11,6 +11,7 @@ const { artifactService } = require('../../../../artifacts/artifact-service');
 const { clusterStateRegistry } = require('../../../../cluster-state-registry');
 const { getSessionControlState } = require('../../../../runtime-control-state');
 const { normalizeInheritedRemoteWorkspace } = require('../../../../remote-cli/workspace-contract');
+const { resolveRemoteCliProjectTarget } = require('../../../../remote-cli/target-selection');
 const { config } = require('../../../../config');
 
 function parseObjectLike(value) {
@@ -382,6 +383,12 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
     }
   }
 
+  const priorState = getRemoteCliAgentStateFromContext(context);
+  const implicitJobPoll = priorState.remoteCodeJobId
+    && ['running', 'starting', 'queued', 'pending', 'active', 'in_progress'].includes(normalizeLower(priorState.completionStatus || priorState.status))
+    && /\b(?:poll|status|running)\b/i.test(params.task || '');
+  const projectTargetId = implicitJobPoll ? '' : resolveRemoteCliProjectTarget(params, config.remoteCliMcp?.targetHostMap);
+  if (projectTargetId) params.targetId = projectTargetId;
   const priorRemoteCliAgent = applyPriorRemoteCliAgentDefaults(params, context);
   applyAlias(params, 'continuitySummary', params.remoteProjectContext, params.remote_project_context, buildRemoteCliContinuitySummary(
     params,

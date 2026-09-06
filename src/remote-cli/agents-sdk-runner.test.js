@@ -54,6 +54,23 @@ test('uses the secondary gateway default and forwards the selected model effort'
   }));
 });
 
+test.each([
+  [{ task: 'Fix campusdrop.demoserver2.buzz' }, 'k3s-secondary'],
+  [{ task: 'Fix campusdrop.demoserver2.buzz', targetId: 'k3s-primary' }, 'k3s-primary'],
+  [{ task: 'Inspect workspace', continuitySummary: 'campusdrop.demoserver2.buzz' }, 'k3s-prod'],
+  [{ task: 'Poll campusdrop.demoserver2.buzz', jobId: 'existing' }, 'k3s-prod'],
+  [{ task: 'Resume campusdrop.demoserver2.buzz', sessionId: 'existing' }, 'k3s-prod'],
+])('routes direct calls from current project without overriding ownership: %j', async (input, targetId) => {
+  const runner = new RemoteCliAgentsSdkRunner({ config: {
+    enabled: true, transport: 'provider-agent', defaultTargetId: 'k3s-prod',
+    targetHostMap: { 'demoserver2.buzz': 'k3s-secondary' },
+  } });
+  jest.spyOn(runner, 'assertConfigured').mockImplementation(() => {});
+  jest.spyOn(runner, 'executeProviderAgentRun').mockResolvedValue({ success: true });
+  await runner.run(input);
+  expect(runner.executeProviderAgentRun).toHaveBeenCalledWith(expect.objectContaining({ targetId }));
+});
+
 test('omits absent cwd on the provider wire so the gateway can apply its default', async () => {
   const fetchImpl = jest.fn(async (_url, options) => {
     const body = JSON.parse(options.body);

@@ -17,7 +17,7 @@ const {
   REMOTE_AGENT_RUNS_ROOT,
   REMOTE_AGENT_RESULT_FILES_VERSION,
 } = require('./agent-handoff');
-const { normalizeRemoteCliTargetIdCandidate } = require('./target-selection');
+const { normalizeRemoteCliTargetIdCandidate, resolveRemoteCliProjectTarget } = require('./target-selection');
 
 const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
@@ -3263,7 +3263,7 @@ class RemoteCliAgentsSdkRunner {
     }
 
     const targetId = resolveRemoteCliTargetId(
-      input.targetId || input.target_id,
+      resolveRemoteCliProjectTarget(input, this.config.targetHostMap),
       this.config.defaultTargetId || 'prod',
     );
     const requestedCwd = normalizeText(
