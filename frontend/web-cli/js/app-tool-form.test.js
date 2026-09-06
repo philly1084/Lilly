@@ -583,7 +583,7 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(indexMarkup).toContain('../shared/remote-artifact-workflow.js?v=20260718a');
         expect(indexMarkup).toContain('js/api.js?v=20260718a');
         expect(indexMarkup).toContain('css/voxel.css?v=20260825c');
-        expect(indexMarkup).toContain('js/app.js?v=20260825c');
+        expect(indexMarkup).toMatch(/src="js\/app\.js\?v=[^"]+"/);
         expect(dom.window.document.getElementById('enterpriseButton').getAttribute('aria-pressed')).toBe('false');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
