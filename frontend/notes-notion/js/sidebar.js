@@ -3084,6 +3084,7 @@ const Sidebar = (function() {
                     <button class="import-close" aria-label="Close markdown import">&times;</button>
                 </div>
                 <div class="import-modal-body import-markdown-body">
+                    <label for="import-text">Markdown source</label>
                     <textarea id="import-text" class="input import-markdown-textarea" placeholder="Paste Markdown here..."></textarea>
                 </div>
                 <div class="import-modal-footer modal-actions import-markdown-actions">
