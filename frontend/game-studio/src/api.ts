@@ -7,16 +7,27 @@ export class StudioApiError extends Error {
   code: string;
   status: number;
   currentRevision?: number;
-  constructor(status: number, payload: ApiErrorPayload) {
+  retryAfterMs: number;
+  requestId?: string;
+  constructor(status: number, payload: ApiErrorPayload, retryAfterMs = 0, requestId?: string) {
     super(payload.error?.message || `Game Studio request failed (${status})`);
+    if (status === 429) this.message = `Requests paused. Retry in ${Math.ceil(retryAfterMs / 1000)} seconds. Your loaded work is preserved.`;
     this.name = 'StudioApiError';
     this.status = status;
     this.code = payload.error?.code || 'GAME_STUDIO_REQUEST_FAILED';
     this.currentRevision = payload.error?.currentRevision;
+    this.retryAfterMs = retryAfterMs;
+    this.requestId = requestId;
   }
 }
 
+let cooldownUntil = 0;
+let cooldownRequestId: string | undefined;
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  if (Date.now() < cooldownUntil) {
+    throw new StudioApiError(429, { error: { code: 'rate_limited' } }, cooldownUntil - Date.now(), cooldownRequestId);
+  }
   const response = await fetch(url, {
     credentials: 'same-origin',
     ...options,
@@ -25,7 +36,16 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let payload: ApiErrorPayload = {};
     try { payload = await response.json(); } catch (_error) {}
-    throw new StudioApiError(response.status, payload);
+    const requestId = response.headers.get('X-Request-ID') || undefined;
+    let retryAfterMs = 0;
+    if (response.status === 429) {
+      const header = response.headers.get('Retry-After');
+      const delay = header && /^\d+(\.\d+)?$/.test(header.trim()) ? Number(header) * 1000 : Date.parse(header || '') - Date.now();
+      retryAfterMs = Number.isFinite(delay) ? Math.max(1000, delay) : 60000;
+      cooldownUntil = Math.max(cooldownUntil, Date.now() + retryAfterMs);
+      cooldownRequestId = requestId;
+    }
+    throw new StudioApiError(response.status, payload, retryAfterMs, requestId);
   }
   return response.json() as Promise<T>;
 }

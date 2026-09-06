@@ -42,6 +42,15 @@ function loadHelper() {
 }
 
 describe('Web Chat proof pack and artifact lineage', () => {
+  test('remote autonomy requires an explicit saved opt-in', () => {
+    const helper = loadHelper();
+    for (const value of [null, undefined, '', ' ', 'false', '0', 'off', 'invalid']) {
+      expect(helper.parseRemoteBuildAutonomyPreference(value)).toBe(false);
+    }
+    for (const value of ['true', '1', 'yes', 'on']) {
+      expect(helper.parseRemoteBuildAutonomyPreference(value)).toBe(true);
+    }
+  });
   test('renders typed run evidence, usage, approvals, links, and missing gates honestly', () => {
     const helper = loadHelper();
     const message = {

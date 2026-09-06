@@ -53,7 +53,7 @@ export function GameProductionCreator({ model, models }: { model: string; models
         setProduction(result); setError('');
         if (running(result)) timer = setTimeout(poll, 2500);
       } catch (e) {
-        if (alive) { setError(`${(e as Error).message}. Reconnecting to saved progress…`); timer = setTimeout(poll, 5000); }
+        if (alive) { setError(`${(e as Error).message}. Reconnecting to saved progress…`); timer = setTimeout(poll, Math.max(5000, Number((e as { retryAfterMs?: number }).retryAfterMs) || 0)); }
       }
     };
     timer = setTimeout(poll, 1000);

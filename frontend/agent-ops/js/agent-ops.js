@@ -194,7 +194,14 @@
   function capabilityEnabled(name) { const value = capability(name); return value === true || value?.enabled === true; }
   function endpointFromTemplate(template, key, value) { return String(template || '').replace(`{${key}}`, encodeURIComponent(value)); }
 
+  let cooldownUntil = 0;
+  function cooldownError() {
+    const error = new Error(`Requests paused. Retry in ${Math.ceil((cooldownUntil - Date.now()) / 1000)} seconds. The last recorded state is still shown.`);
+    error.status = 429;
+    return error;
+  }
   async function request(path, options = {}) {
+    if (Date.now() < cooldownUntil) throw cooldownError();
     const abortController = typeof globalScope.AbortController === 'function' ? new globalScope.AbortController() : null;
     const timeout = globalScope.setTimeout(() => abortController?.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -207,6 +214,12 @@
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
+        if (response.status === 429) {
+          const header = response.headers?.get('Retry-After');
+          const delay = header && /^\d+(\.\d+)?$/.test(header.trim()) ? Number(header) * 1000 : Date.parse(header || '') - Date.now();
+          cooldownUntil = Math.max(cooldownUntil, Date.now() + (Number.isFinite(delay) ? Math.max(1000, delay) : 60000));
+          throw cooldownError();
+        }
         const error = new Error(body?.error?.message || body?.message || `${response.status} ${response.statusText}`);
         error.status = response.status;
         error.code = body?.error?.code || null;
@@ -239,6 +252,11 @@
     const project = state.overview.project;
     globalScope.document.getElementById('missionTitle').textContent = text(project.goal || project.name, 'No active mission');
     const sync = globalScope.document.getElementById('syncState');
+    if (Date.now() < cooldownUntil) {
+      sync.className = 'sync-state error';
+      sync.textContent = `Sync paused · retry in ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s`;
+      return;
+    }
     sync.className = 'sync-state';
     sync.innerHTML = `<span class="pulse-dot"></span><span>${state.refreshing ? 'Syncing' : `Live · ${formatTime(state.lastSyncAt)}`}</span>`;
   }
@@ -507,7 +525,7 @@
   }
 
   function nextRefreshDelay() {
-    return allAgents().some((agent) => agent.statusClass !== 'idle') ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS;
+    return Math.max(cooldownUntil - Date.now(), allAgents().some((agent) => agent.statusClass !== 'idle') ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS);
   }
 
   function scheduleRefresh() {
