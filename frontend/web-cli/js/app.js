@@ -3168,8 +3168,11 @@ class CodeCLIApp {
                     this.navigateHistory(1);
                 }
             } else if (e.key === 'Tab') {
-                e.preventDefault();
-                this.handleTabCompletion();
+                if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && this.handleTabCompletion()) {
+                    e.preventDefault();
+                } else {
+                    this.hideAutocomplete();
+                }
             } else if (e.ctrlKey && e.key === 'l') {
                 e.preventDefault();
                 this.clearOutput();
@@ -11851,7 +11854,9 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             } else if (matches.length > 0) {
                 this.printSystem('Commands: ' + matches.map((match) => match.command).join(', '));
             }
+            return matches.length > 0;
         }
+        return false;
     }
     
     // ==================== History ====================

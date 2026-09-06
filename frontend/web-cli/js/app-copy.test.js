@@ -122,6 +122,54 @@ describe('web-cli stream progress display', () => {
     });
 });
 
+describe('web-cli command input Tab navigation', () => {
+    function createTabHarness(value, matches) {
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = '<input id="commandInput"><select id="modelSelect"></select><div id="autocomplete"></div>';
+        app.commandInput = document.getElementById('commandInput');
+        app.modelSelect = document.getElementById('modelSelect');
+        app.autocompleteEl = document.getElementById('autocomplete');
+        app.commandInput.value = value;
+        app.commandInput.setAttribute('aria-expanded', 'true');
+        app.commandInput.setAttribute('aria-activedescendant', 'suggestion');
+        app.getCommandMatches = jest.fn().mockReturnValue(matches);
+        app.activateCommandEntry = jest.fn();
+        app.setupEventListeners();
+        return { app, document };
+    }
+
+    test.each(['', 'Draft a report', '/unknown'])('lets Tab leave input with no completion: %s', (value) => {
+        const { app, document } = createTabHarness(value, []);
+        const event = new document.defaultView.KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+        app.commandInput.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(app.commandInput.getAttribute('aria-expanded')).toBe('false');
+        expect(app.commandInput.hasAttribute('aria-activedescendant')).toBe(false);
+        expect(app.activateCommandEntry).not.toHaveBeenCalled();
+    });
+
+    test.each(['shiftKey', 'ctrlKey', 'metaKey', 'altKey'])('preserves modified Tab navigation: %s', (modifier) => {
+        const { app, document } = createTabHarness('/he', [{ command: '/help' }]);
+        const event = new document.defaultView.KeyboardEvent('keydown', { key: 'Tab', [modifier]: true, cancelable: true });
+        app.commandInput.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(app.activateCommandEntry).not.toHaveBeenCalled();
+        expect(app.commandInput.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test.each([[{ command: '/help' }], [{ command: '/help' }, { command: '/history' }]])('preserves slash-command completion for %j', (...matches) => {
+        const { app, document } = createTabHarness('/h', matches);
+        const event = new document.defaultView.KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+        app.commandInput.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+        if (matches.length === 1) {
+            expect(app.activateCommandEntry).toHaveBeenCalledWith(matches[0], { source: 'tab' });
+        } else {
+            expect(app.printSystem).toHaveBeenCalledWith('Commands: /help, /history');
+        }
+    });
+});
+
 describe('web-cli response collapse controls', () => {
     test('names each toggle from its visible response title across state changes', () => {
         const { app, document } = createCopyHarness();
