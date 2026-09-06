@@ -1069,6 +1069,15 @@ describe('openai-client automatic tool orchestration helpers', () => {
             });
     });
 
+    test('preserves exact document text in provider tool arguments', () => {
+        const params = {
+            filename: 'Client’s brief.md',
+            content: 'Use “approved” wording and keep 10\u00a0kg together.',
+        };
+
+        expect(__testUtils.parseToolArguments(JSON.stringify(params))).toEqual(params);
+    });
+
     test('sanitizes union schema types into a single tool-compatible type', () => {
         expect(__testUtils.sanitizeToolSchema({
             type: 'object',

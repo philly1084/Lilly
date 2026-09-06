@@ -2,6 +2,29 @@ const { parseLenientJson } = require('./lenient-json');
 
 describe('parseLenientJson', () => {
     test.each([
+        ['JSON', (text) => text],
+        ['code fence', (text) => `\`\`\`json\n${text}\n\`\`\``],
+        ['surrounding prose', (text) => `Use this payload:\n${text}\nEnd of payload.`],
+        ['repaired syntax', (text) => text.replace(/}$/, ', enabled:True,}')],
+    ])('preserves typographic content in %s', (_name, wrap) => {
+        const content = 'Keep “quoted text”, O’Brien, and 10\u00a0kg; escaped "quotes" and \\ paths.';
+        const payload = { 'Client’s “title”': content };
+
+        expect(parseLenientJson(wrap(JSON.stringify(payload))))
+            .toEqual(_name === 'repaired syntax' ? { ...payload, enabled: true } : payload);
+    });
+
+    test('preserves typographic content inside single-quoted values during repair', () => {
+        expect(parseLenientJson("{content:'O’Brien says “hello” at 10\u00a0kg', enabled:True}"))
+            .toEqual({ content: 'O’Brien says “hello” at 10\u00a0kg', enabled: true });
+    });
+
+    test('still repairs smart quote delimiters and nonbreaking syntax whitespace', () => {
+        expect(parseLenientJson('{“content”: “Hello”,\u00a0“enabled”: True}'))
+            .toEqual({ content: 'Hello', enabled: true });
+    });
+
+    test.each([
         'True False None undefined',
         'https://example.test/True?value=None',
         'Keep this comma,} and this comma, ]',

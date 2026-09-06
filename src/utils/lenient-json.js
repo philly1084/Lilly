@@ -1,9 +1,10 @@
 function normalizeJsonLikeText(value = '') {
+    const replacements = { '\u201C': '"', '\u201D': '"', '\u2018': '\'', '\u2019': '\'', '\u00A0': ' ' };
     return String(value || '')
         .replace(/^\uFEFF/, '')
-        .replace(/[\u201C\u201D]/g, '"')
-        .replace(/[\u2018\u2019]/g, '\'')
-        .replace(/\u00A0/g, ' ')
+        // Preserve quoted keys and values; only normalize JSON-like syntax around them.
+        .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[\u201C\u201D\u2018\u2019\u00A0]/g,
+            (token) => replacements[token] || token)
         .trim();
 }
 
