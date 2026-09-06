@@ -19,23 +19,28 @@ class Embedder {
     async embed(text) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-        const response = await fetch(`${this.baseURL}/api/embeddings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-                model: this.model,
-                prompt: text,
-            }),
-        }).finally(() => clearTimeout(timeoutId));
+        try {
+            const response = await fetch(`${this.baseURL}/api/embeddings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    model: this.model,
+                    prompt: text,
+                }),
+            });
 
-        if (!response.ok) {
-            const body = await response.text();
-            throw new Error(`Ollama embedding failed (${response.status}): ${body}`);
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`Ollama embedding failed (${response.status}): ${body}`);
+            }
+
+            const data = await response.json();
+            return data.embedding;
+        } finally {
+            // Keep the deadline active through body reads, not just response headers.
+            clearTimeout(timeoutId);
         }
-
-        const data = await response.json();
-        return data.embedding;
     }
 
     /**
