@@ -44,6 +44,22 @@ function loadFileManager() {
 }
 
 describe('web-chat file manager selection controls', () => {
+    test('keeps filter pressed states exclusive and preserves the search query', () => {
+        const { dom, fileManager } = loadFileManager();
+        const buttons = [...dom.window.document.querySelectorAll('.filter-btn')];
+        const pressedFilters = () => buttons.filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.dataset.filter);
+        expect(pressedFilters()).toEqual(['all']);
+        dom.window.document.getElementById('file-search-input').value = 'report';
+        fileManager.renderFiles = jest.fn();
+
+        for (const filter of ['image', 'document', 'generated', 'all']) {
+            fileManager.setFilter(filter);
+            expect(pressedFilters()).toEqual([filter]);
+            expect(buttons.filter(button => button.classList.contains('active')).map(button => button.dataset.filter)).toEqual([filter]);
+            expect(fileManager.renderFiles).toHaveBeenLastCalledWith('report', filter);
+        }
+    });
+
     test('exposes dialog state and returns focus to the Files trigger', async () => {
         const { dom, fileManager } = loadFileManager();
         const trigger = dom.window.document.getElementById('files-btn');

@@ -131,10 +131,10 @@ class FileManager {
               <input type="text" id="file-search-input" placeholder="Search files..." oninput="fileManager.filterFiles(this.value)">
             </div>
             <div class="file-filter-buttons">
-              <button class="filter-btn active" data-filter="all" onclick="fileManager.setFilter('all')">All</button>
-              <button class="filter-btn" data-filter="document" onclick="fileManager.setFilter('document')">Docs</button>
-              <button class="filter-btn" data-filter="image" onclick="fileManager.setFilter('image')">Images</button>
-              <button class="filter-btn" data-filter="generated" onclick="fileManager.setFilter('generated')">Generated</button>
+              <button class="filter-btn active" data-filter="all" aria-pressed="true" onclick="fileManager.setFilter('all')">All</button>
+              <button class="filter-btn" data-filter="document" aria-pressed="false" onclick="fileManager.setFilter('document')">Docs</button>
+              <button class="filter-btn" data-filter="image" aria-pressed="false" onclick="fileManager.setFilter('image')">Images</button>
+              <button class="filter-btn" data-filter="generated" aria-pressed="false" onclick="fileManager.setFilter('generated')">Generated</button>
             </div>
           </div>
           
@@ -1066,7 +1066,9 @@ class FileManager {
    */
   setFilter(type) {
     document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.filter === type);
+      const selected = btn.dataset.filter === type;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
     this.renderFiles(
       document.getElementById('file-search-input')?.value || '',
