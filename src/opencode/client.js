@@ -1,6 +1,7 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const { StringDecoder } = require('string_decoder');
 const { SSHExecuteTool } = require('../agent-sdk/tools/categories/ssh/SSHExecuteTool');
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -437,6 +438,7 @@ async function spawnRemoteSseProcess({
 
 async function consumeSseStream(stream, onEvent, { signal } = {}) {
     const reader = stream.getReader();
+    const decoder = new StringDecoder('utf8');
     let buffer = '';
 
     while (true) {
@@ -449,10 +451,11 @@ async function consumeSseStream(stream, onEvent, { signal } = {}) {
             break;
         }
 
-        buffer += Buffer.from(value).toString('utf8');
+        buffer += decoder.write(Buffer.from(value));
         buffer = flushSseBuffer(buffer, onEvent);
     }
 
+    buffer += decoder.end();
     if (buffer.trim()) {
         flushSseBuffer(`${buffer}\n\n`, onEvent);
     }
@@ -460,6 +463,7 @@ async function consumeSseStream(stream, onEvent, { signal } = {}) {
 
 function consumeChildProcessSse(child, onEvent, { signal } = {}) {
     return new Promise((resolve, reject) => {
+        const decoder = new StringDecoder('utf8');
         let buffer = '';
         let stderr = '';
         let settled = false;
@@ -474,7 +478,7 @@ function consumeChildProcessSse(child, onEvent, { signal } = {}) {
         };
 
         child.stdout?.on('data', (chunk) => {
-            buffer += chunk.toString('utf8');
+            buffer += decoder.write(chunk);
             buffer = flushSseBuffer(buffer, onEvent);
         });
 
@@ -487,6 +491,7 @@ function consumeChildProcessSse(child, onEvent, { signal } = {}) {
         });
 
         child.on('close', (code) => {
+            buffer += decoder.end();
             if (buffer.trim()) {
                 flushSseBuffer(`${buffer}\n\n`, onEvent);
             }
