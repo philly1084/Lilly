@@ -1,6 +1,22 @@
 const { parseLenientJson } = require('./lenient-json');
 
 describe('parseLenientJson', () => {
+    test.each([
+        'True False None undefined',
+        'https://example.test/True?value=None',
+        'Keep this comma,} and this comma, ]',
+        'Escaped "True" and a backslash \\ before None',
+    ])('preserves quoted content while repairing syntax: %s', (content) => {
+        const input = `{\"content\":${JSON.stringify(content)},\"enabled\":True,\"missing\":None,}`;
+
+        expect(parseLenientJson(input)).toEqual({ content, enabled: true, missing: null });
+    });
+
+    test('preserves single-quoted content and keys while repairing nested literals', () => {
+        expect(parseLenientJson("{'True':'False None undefined,}', values:[True,False,None,undefined,],}"))
+            .toEqual({ True: 'False None undefined,}', values: [true, false, null, null] });
+    });
+
     test('parses code-fenced JSON with trailing commas', () => {
         expect(parseLenientJson('```json\n{"question":"Pick one","options":[{"label":"A"},{"label":"B"},],}\n```'))
             .toEqual({

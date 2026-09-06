@@ -112,15 +112,15 @@ function convertSingleQuotedValues(text = '') {
 }
 
 function normalizePythonLiterals(text = '') {
-    return String(text || '')
-        .replace(/\bNone\b/g, 'null')
-        .replace(/\bTrue\b/g, 'true')
-        .replace(/\bFalse\b/g, 'false')
-        .replace(/\bundefined\b/g, 'null');
+    const literals = { None: 'null', True: 'true', False: 'false', undefined: 'null' };
+    // Quoted keys/values (including converted single quotes) are content, not syntax.
+    return String(text || '').replace(/"(?:\\.|[^"\\])*"|\b(?:None|True|False|undefined)\b/g,
+        (token) => token.startsWith('"') ? token : literals[token]);
 }
 
 function removeTrailingCommas(text = '') {
-    return String(text || '').replace(/,\s*([}\]])/g, '$1');
+    return String(text || '').replace(/"(?:\\.|[^"\\])*"|,\s*([}\]])/g,
+        (token, closing) => closing || token);
 }
 
 function trimTrailingSemicolons(text = '') {

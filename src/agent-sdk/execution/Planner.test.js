@@ -78,6 +78,19 @@ describe('Planner', () => {
     expect(client.complete.mock.calls[0][1].role).toBe('planner');
   });
 
+  test('preserves tool parameters when repairing a model plan without another model call', async () => {
+    const client = {
+      complete: jest.fn().mockResolvedValue('{steps:[{type:"tool-call",tool:"file-write",params:{path:"True.md",content:"None of these are undefined,}"},optional:False,},]}'),
+    };
+    const planner = new Planner(null, client);
+
+    const steps = await planner.createConversationStepsFromModel({ objective: 'Write the supplied text.' }, ['file-write']);
+
+    expect(steps[0].params).toEqual({ path: 'True.md', content: 'None of these are undefined,}' });
+    expect(steps[0].optional).toBe(false);
+    expect(client.complete).toHaveBeenCalledTimes(1);
+  });
+
   test('normalizes and constrains conversation plans by quota and follow-through checkpoints', () => {
     const planner = new Planner(null, null, {
       planningLimits: {
