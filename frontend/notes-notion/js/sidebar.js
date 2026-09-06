@@ -2392,21 +2392,21 @@ const Sidebar = (function() {
                     
                     <div class="pdf-import-settings">
                         <div class="pdf-setting-row">
-                            <label class="pdf-setting-label">
+                            <label class="pdf-setting-label" for="pdf-page-range">
                                 <span>Pages to import</span>
-                                <span class="pdf-setting-hint">Leave empty for all pages</span>
+                                <span id="pdf-page-range-hint" class="pdf-setting-hint" aria-hidden="true">Leave empty for all pages</span>
                             </label>
-                            <input type="text" id="pdf-page-range" class="pdf-setting-input" 
+                            <input type="text" id="pdf-page-range" class="pdf-setting-input" aria-describedby="pdf-page-range-hint"
                                 placeholder="e.g., 1-5, 8, 10-12" 
                                 title="Enter page numbers or ranges separated by commas">
                         </div>
                         
                         <div class="pdf-setting-row">
-                            <label class="pdf-setting-label">
+                            <label class="pdf-setting-label" for="pdf-image-quality">
                                 <span>Image quality</span>
-                                <span class="pdf-setting-hint">For scanned pages</span>
+                                <span id="pdf-image-quality-hint" class="pdf-setting-hint" aria-hidden="true">For scanned pages</span>
                             </label>
-                            <select id="pdf-image-quality" class="pdf-setting-select">
+                            <select id="pdf-image-quality" class="pdf-setting-select" aria-describedby="pdf-image-quality-hint">
                                 <option value="0.7">Standard (faster)</option>
                                 <option value="0.92" selected>High (recommended)</option>
                                 <option value="1.0">Maximum (slower)</option>
@@ -2687,7 +2687,7 @@ const Sidebar = (function() {
             
             .pdf-setting-hint {
                 font-size: 11px;
-                color: var(--text-muted);
+                color: var(--text-primary);
             }
             
             .pdf-setting-input,

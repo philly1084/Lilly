@@ -4646,7 +4646,7 @@ body {
 
 .pdf-setting-hint {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 .pdf-setting-input,

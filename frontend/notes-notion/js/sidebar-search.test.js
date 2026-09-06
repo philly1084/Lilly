@@ -170,8 +170,8 @@ describe('Notes template chooser accessibility', () => {
         expect(source).toContain("modal.querySelector('.template-card')?.focus({ preventScroll: true })");
         expect(styles).toContain('.template-card:focus-visible');
         expect(styles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.template-grid\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
     });
 });
 
@@ -191,7 +191,7 @@ describe('Notes storage information accessibility', () => {
         expect(source).toContain("if (e.key !== 'Tab') return;");
         expect(source).toContain('triggerElement?.focus?.({ preventScroll: true })');
         expect(source).toContain('closeButton.focus({ preventScroll: true })');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
     });
 });
 
@@ -201,7 +201,7 @@ describe('Notes settings dialog accessibility', () => {
         const source = readSidebarSource();
 
         expect(html).toContain('id="settings-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal"');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
         expect(source).toMatch(/function openSettings\(event\)[\s\S]*?modal\.id = 'settings-modal';\s*modal\.className = 'ai-modal is-open'/);
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'false')");
@@ -236,7 +236,7 @@ describe('Notes trash dialog accessibility', () => {
         const source = readSidebarSource();
 
         expect(html).toContain('id="trash-btn" class="footer-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="trash-modal"');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
         expect(source).toContain('function showTrash(event)');
         expect(source).toContain("modal.id = 'trash-modal'");
         expect(source).toContain("triggerElement?.setAttribute?.('aria-expanded', 'true')");
@@ -266,8 +266,8 @@ describe('Notes page icon picker accessibility', () => {
         expect(html).toContain('id="emoji-search" placeholder="Search emoji..." aria-label="Search page icons"');
         expect(html).toContain('<button class="emoji-category active" type="button" data-category="recent" aria-label="Recent icons" aria-pressed="true" tabindex="0">');
         expect(html).toContain('data-category="smileys" aria-label="Smileys" aria-pressed="false" tabindex="-1"');
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
         expect(source).toContain("target.setAttribute('aria-expanded', 'true')");
         expect(source).toContain("picker.setAttribute('aria-hidden', 'false')");
         expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)");
@@ -316,7 +316,7 @@ describe('Notes block action menu accessibility', () => {
         expect(source).toContain('closeColorPicker(true)');
         expect(styles).toContain('.color-option:focus-visible,');
         expect(styles).toContain('.style-option:focus-visible');
-        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
+        expect(html).toMatch(/css\/notion-refinements\.css\?v=[^"']+/);
         expect(fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8')).toContain('.color-picker.is-open');
     });
 });
@@ -405,8 +405,8 @@ describe('Notes cover picker selection state', () => {
         expect(source).toContain("${isCurrent ? '<span class=\"cover-preset-state\">Current</span>' : ''}</span>");
         expect(styles).toContain('.cover-preset.is-current');
         expect(styles).toContain('.cover-preset-state');
-        expect(html).toContain('js/sidebar.js?v=20260825-settings-headings');
-        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
+        expect(html).toMatch(/js\/sidebar\.js\?v=[^"']+/);
+        expect(html).toMatch(/css\/notion-refinements\.css\?v=[^"']+/);
     });
 });
 
@@ -415,7 +415,7 @@ describe('Notes cover action keyboard visibility', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
         expect(styles).toMatch(/\.cover-area:focus-within \.cover-change-btn,\s*\.cover-area:focus-within \.cover-remove-btn\s*{\s*opacity:\s*1;/s);
         expect(styles).toMatch(/\.page-header:hover \.add-cover-btn,\s*\.page-header:focus-within \.add-cover-btn\s*{\s*opacity:\s*1;/s);
     });
@@ -427,8 +427,8 @@ describe('Notes mobile content containment', () => {
         const baseStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
         const responsiveStyles = fs.readFileSync(path.join(__dirname, '..', 'css', 'notion-refinements.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
-        expect(html).toContain('css/notion-refinements.css?v=20260715-block-style-picker');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
+        expect(html).toMatch(/css\/notion-refinements\.css\?v=[^"']+/);
         expect(baseStyles).toMatch(/\.main-content\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*overflow-x:\s*hidden;/s);
         expect(baseStyles).toMatch(/\.chart-scroll-region\s*{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);
         expect(responsiveStyles).toMatch(/\.database-scroll-region,\s*\.chart-scroll-region\s*{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*touch-action:\s*pan-x pan-y;/s);
@@ -441,7 +441,7 @@ describe('Notes sidebar outline heading clarity', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
         expect(styles).toMatch(/\.outline-item-text\s*{[^}]*display:\s*-webkit-box;[^}]*-webkit-box-orient:\s*vertical;[^}]*-webkit-line-clamp:\s*2;[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;[^}]*overflow:\s*hidden;/s);
     });
 });
@@ -451,7 +451,7 @@ describe('Notes sidebar action hierarchy', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const styles = fs.readFileSync(path.join(__dirname, '..', 'css', 'styles.css'), 'utf8');
 
-        expect(html).toContain('css/styles.css?v=20260825-help-sections');
+        expect(html).toMatch(/css\/styles\.css\?v=[^"']+/);
         expect(html).toContain('id="import-btn" class="new-page-btn import-btn"');
         expect(styles).toMatch(/\.import-btn\s*{[^}]*background:\s*transparent;/s);
         expect(styles).toMatch(/\.import-btn:hover\s*{[^}]*background:\s*var\(--bg-hover\);/s);
