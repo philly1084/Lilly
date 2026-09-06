@@ -32,6 +32,29 @@ function createCopyHarness(overrides = {}) {
     return { app, document: loaded.document, navigator: loaded.navigator, setTimeout: loaded.setTimeout };
 }
 
+describe('web-cli local search result labels', () => {
+    test('names each Jump destination and safely includes filenames with markup characters', () => {
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = app.renderFindResultsCard({
+            query: 'report',
+            transcriptCount: 1,
+            fileCount: 1,
+            results: [
+                { source: 'Transcript', label: 'assistant #2', detail: 'report', target: 'transcript', targetIndex: 1, command: '/export md', submit: true },
+                { source: 'File', label: 'report "draft" <final>.md', detail: 'report', target: 'file', targetIndex: 7, command: '/files', submit: true },
+            ],
+        });
+        const buttons = Array.from(document.querySelectorAll('.cli-find-card__actions button:first-child'));
+        expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+            'Jump to Transcript: assistant #2',
+            'Jump to File: report "draft" <final>.md',
+        ]);
+        expect(buttons.map((button) => button.textContent)).toEqual(['Jump', 'Jump']);
+        expect(buttons[1].getAttribute('onclick')).toBe("app.jumpToFindResult('file', '7')");
+        expect(document.querySelector('final')).toBeNull();
+    });
+});
+
 describe('web-cli copy helpers', () => {
     test('uses the Clipboard API when available', async () => {
         const writeText = jest.fn().mockResolvedValue(undefined);

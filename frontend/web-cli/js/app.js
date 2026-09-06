@@ -1818,7 +1818,7 @@ class CodeCLIApp {
                     <strong>${this.escapeHtml(item.label)}</strong>
                     <small>${this.escapeHtml(item.detail)}</small>
                     <div class="cli-find-card__actions">
-                        <button type="button" onclick="app.jumpToFindResult('${this.escapeHtmlAttr(item.target)}', '${this.escapeHtmlAttr(String(item.targetIndex))}')">Jump</button>
+                        <button type="button" aria-label="Jump to ${this.escapeHtmlAttr(item.source)}: ${this.escapeHtmlAttr(item.label)}" onclick="app.jumpToFindResult('${this.escapeHtmlAttr(item.target)}', '${this.escapeHtmlAttr(String(item.targetIndex))}')">Jump</button>
                         <button type="button" onclick="app.useCommandSuggestion('${this.escapeHtmlAttr(item.command)}', { submit: ${item.submit ? 'true' : 'false'} })">${this.escapeHtml(item.command)}</button>
                     </div>
                 </div>
