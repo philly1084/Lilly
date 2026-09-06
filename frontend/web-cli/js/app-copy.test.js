@@ -148,6 +148,35 @@ describe('web-cli command input Tab navigation', () => {
         expect(app.activateCommandEntry).not.toHaveBeenCalled();
     });
 
+    test.each(['toolbar', 'outside-window'])('dismisses suggestions when focus leaves for %s', (destination) => {
+        const { app, document } = createTabHarness('/he', [{ command: '/help' }]);
+        app.autocompleteMatches = [{ command: '/help' }];
+        app.autocompleteIndex = 0;
+        app.commandInput.dispatchEvent(new document.defaultView.FocusEvent('blur', {
+            relatedTarget: destination === 'toolbar' ? app.modelSelect : null,
+        }));
+
+        expect(app.autocompleteEl.classList.contains('hidden')).toBe(true);
+        expect(app.commandInput.getAttribute('aria-expanded')).toBe('false');
+        expect(app.commandInput.hasAttribute('aria-activedescendant')).toBe(false);
+        expect(app.autocompleteMatches).toEqual([]);
+        expect(app.autocompleteIndex).toBe(-1);
+    });
+
+    test('keeps suggestions available during pointer focus so a click can select one', () => {
+        const match = { command: '/help', label: 'Help' };
+        const { app, document } = createTabHarness('/he', [match]);
+        app.getExactCommandEntry = jest.fn().mockReturnValue(null);
+        app.updateAutocomplete();
+        const suggestion = app.autocompleteEl.querySelector('[role="option"]');
+        app.commandInput.dispatchEvent(new document.defaultView.FocusEvent('blur', {
+            relatedTarget: suggestion,
+        }));
+        expect(app.autocompleteEl.classList.contains('hidden')).toBe(false);
+        suggestion.click();
+        expect(app.activateCommandEntry).toHaveBeenCalledWith(match, { source: 'autocomplete' });
+    });
+
     test.each(['shiftKey', 'ctrlKey', 'metaKey', 'altKey'])('preserves modified Tab navigation: %s', (modifier) => {
         const { app, document } = createTabHarness('/he', [{ command: '/help' }]);
         const event = new document.defaultView.KeyboardEvent('keydown', { key: 'Tab', [modifier]: true, cancelable: true });

@@ -3213,6 +3213,13 @@ class CodeCLIApp {
             this.updateCommandAssist();
         });
 
+        this.commandInput.addEventListener('blur', (e) => {
+            // Keep a clicked suggestion available until its click handler runs.
+            if (!this.autocompleteEl.contains(e.relatedTarget)) {
+                this.hideAutocomplete();
+            }
+        });
+
         this.shortcutsModal?.addEventListener('keydown', (e) => {
             this.handleShortcutsKeydown(e);
         });
