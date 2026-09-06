@@ -8,6 +8,25 @@ const {
 } = require('./model-catalog');
 
 describe('model-catalog', () => {
+    test.each([
+        ['provider records', (models) => models],
+        ['public records', toPublicModelList],
+    ])('excludes manual-only models from auto selection in %s', (_label, prepare) => {
+        const models = prepare([
+            { id: 'gpt-6-astra', autoEligible: false },
+            { id: 'custom-tools-router', capabilities: ['chat', 'tools'], autoEligible: true },
+        ]);
+
+        expect(selectAutoModel(models, { needsTools: true })?.id).toBe('custom-tools-router');
+        expect(selectAutoModel(models.slice(0, 1), { needsTools: true })).toBeNull();
+        expect(buildModelContract(models[0]).supports.tools).toBe(true);
+    });
+
+    test('keeps legacy records without eligibility metadata available to auto selection', () => {
+        expect(selectAutoModel(['gpt-5.4'], { needsTools: true })?.id).toBe('gpt-5.4');
+        expect(selectAutoModel([{ id: 'gpt-5.4' }], { needsTools: true })?.id).toBe('gpt-5.4');
+    });
+
     test('infers GPT-6 Astra chat capabilities and preserves manual-only policy metadata', () => {
         const model = toPublicModelList([{ id: 'gpt-6-astra', owned_by: 'codex-cli', autoEligible: false }])[0];
         expect(model).toEqual(expect.objectContaining({ id: 'gpt-6-astra', autoEligible: false }));

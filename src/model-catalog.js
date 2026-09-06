@@ -373,6 +373,7 @@ function modelSatisfiesCapabilities(contract = {}, required = []) {
 function selectAutoModel(models = [], request = {}, options = {}) {
     const required = requiredCapabilitiesForRequest(request);
     const candidates = (Array.isArray(models) ? models : [])
+        .filter((model) => model?.autoEligible !== false)
         .map((model) => buildModelContract(model, options))
         .filter((contract) => contract.id && modelSatisfiesCapabilities(contract, required));
 
