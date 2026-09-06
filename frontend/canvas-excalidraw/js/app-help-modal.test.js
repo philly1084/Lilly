@@ -1331,3 +1331,32 @@ describe('canvas context menu accessibility', () => {
         expect(menu.hidden).toBe(true);
     });
 });
+
+describe('Canvas timeline playback affordances', () => {
+    test('keeps header and transport playback controls in sync as cues and playback change', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html, { url: 'http://localhost:3100/canvas/' });
+        const App = loadAppClass(dom);
+        const app = Object.create(App.prototype);
+        app.getProductionDuration = () => 5;
+        app.formatDuration = () => '0:00';
+        const buttons = [...dom.window.document.querySelectorAll('#productionTimeline [data-timeline-action="play"]')];
+        expect(buttons).toHaveLength(2);
+        for (const [items, playing, disabled, label] of [
+            [[], false, true, 'Play'],
+            [[{}], false, false, 'Play'],
+            [[{}], true, false, 'Playing'],
+            [[{}], false, false, 'Play'],
+            [[], false, true, 'Play'],
+        ]) {
+            app.timelineIsPlaying = playing;
+            app.renderTimelineTransport(items);
+            buttons.forEach((button) => {
+                expect(button.disabled).toBe(disabled);
+                expect(button.textContent).toBe(label);
+                expect(button.getAttribute('aria-pressed')).toBe(String(playing));
+            });
+        }
+        dom.window.close();
+    });
+});

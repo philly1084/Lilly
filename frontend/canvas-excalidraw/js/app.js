@@ -2286,18 +2286,18 @@ class App {
         const currentEl = document.getElementById('timelineCurrentTime');
         const durationEl = document.getElementById('timelineDuration');
         const fill = document.getElementById('timelineProgressFill');
-        const playBtn = document.getElementById('timelinePlayBtn');
+        const playButtons = document.querySelectorAll('#productionTimeline [data-timeline-action="play"]');
         const stopBtn = document.getElementById('timelineStopBtn');
         const prevBtn = document.getElementById('timelinePrevBtn');
         const nextBtn = document.getElementById('timelineNextBtn');
         if (currentEl) currentEl.textContent = this.formatDuration(current);
         if (durationEl) durationEl.textContent = this.formatDuration(duration);
         if (fill) fill.style.width = duration > 0 ? `${Math.min(100, (current / duration) * 100)}%` : '0%';
-        if (playBtn) {
+        playButtons.forEach((playBtn) => {
             playBtn.textContent = this.timelineIsPlaying ? 'Playing' : 'Play';
             playBtn.disabled = items.length === 0;
             playBtn.setAttribute('aria-pressed', this.timelineIsPlaying ? 'true' : 'false');
-        }
+        });
         if (stopBtn) {
             stopBtn.disabled = items.length === 0 && current <= 0;
         }
