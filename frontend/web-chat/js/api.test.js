@@ -42,6 +42,14 @@ function loadApiClient(fetchMock = jest.fn(), locationOverrides = {}) {
 }
 
 describe('web-chat stream cancellation', () => {
+    test('ordinary chat does not silently grant remote build autonomy', async () => {
+        const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) }));
+        const { apiClient } = loadApiClient(fetchMock);
+        await apiClient.chat([{ role: 'user', content: 'Help design a game character.' }]);
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.metadata?.remoteBuildAutonomyApproved).not.toBe(true);
+        expect(body.metadata?.frontendRemoteBuildAutonomyApproved).not.toBe(true);
+    });
     test('does not start a request when the caller signal is already aborted', async () => {
         const fetchMock = jest.fn();
         const { apiClient } = loadApiClient(fetchMock);

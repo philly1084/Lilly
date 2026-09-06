@@ -7,6 +7,16 @@ const request = require('supertest');
 const { buildCorsOptions, createRateLimit } = require('./security');
 
 describe('security middleware', () => {
+    test('identifies the throttling layer and provides a retry window and correlation ID', async () => {
+        const app = express();
+        app.use(createRateLimit({ max: 1, windowMs: 60000, name: 'api' }));
+        app.get('/ok', (_req, res) => res.json({ ok: true }));
+        await request(app).get('/ok').expect(200);
+        const response = await request(app).get('/ok').expect(429);
+        expect(response.body.error).toMatchObject({ code: 'rate_limited', scope: 'api', requestId: response.headers['x-request-id'], retryAfterSeconds: Number(response.headers['retry-after']) });
+        expect(response.headers['x-request-id']).toMatch(/^[a-f0-9-]{36}$/);
+        expect(response.body.error.retryAfterSeconds).toBeGreaterThan(0);
+    });
     test('allows configured CORS origins and same-origin requests', async () => {
         const app = express();
         app.use(cors(buildCorsOptions({

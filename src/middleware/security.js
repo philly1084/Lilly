@@ -1,6 +1,7 @@
 'use strict';
 
 const { config } = require('../config');
+const { randomUUID } = require('crypto');
 
 function normalizeOrigin(value = '') {
     const rawValue = String(value || '').trim().replace(/\/+$/, '');
@@ -119,11 +120,16 @@ function createRateLimit(options = {}) {
         res.setHeader('RateLimit-Reset', String(retryAfterSeconds));
 
         if (bucket.count > max) {
+            const requestId = randomUUID();
+            res.setHeader('X-Request-ID', requestId);
             res.setHeader('Retry-After', String(retryAfterSeconds));
             return res.status(429).json({
                 error: {
                     message: 'Too many requests',
                     code: 'rate_limited',
+                    requestId,
+                    retryAfterSeconds,
+                    scope: name,
                 },
             });
         }

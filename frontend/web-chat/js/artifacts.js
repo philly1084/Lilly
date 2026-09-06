@@ -19,14 +19,14 @@
                 ?? '';
             const normalized = String(stored || '').trim().toLowerCase();
             if (!normalized) {
-                return true;
+                return false;
             }
             if (['0', 'false', 'no', 'off'].includes(normalized)) {
                 return false;
             }
             return ['1', 'true', 'yes', 'on'].includes(normalized);
         } catch (_error) {
-            return true;
+            return false;
         }
     }
 

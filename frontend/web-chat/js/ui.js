@@ -7675,7 +7675,7 @@ class UIHelpers {
     parseRemoteBuildAutonomyPreference(value) {
         const normalized = String(value ?? '').trim().toLowerCase();
         if (!normalized) {
-            return true;
+            return false;
         }
 
         if (['0', 'false', 'no', 'off'].includes(normalized)) {

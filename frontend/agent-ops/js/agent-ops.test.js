@@ -171,6 +171,23 @@ describe('Agent Workroom interactions', () => {
     return { dom, overview, workspaces };
   }
 
+  test('throttled sync retains work and suppresses repeated requests during Retry-After', async () => {
+    const { dom } = createWorkroom();
+    try {
+      await new Promise(resolve => setTimeout(resolve, 25));
+      const mission = dom.window.document.getElementById('missionTitle').textContent;
+      dom.window.fetch.mockResolvedValue({ ok: false, status: 429, headers: { get: () => '60' }, json: async () => ({ error: { message: 'Too many requests' } }) });
+      dom.window.document.getElementById('refreshButton').click();
+      await new Promise(resolve => setTimeout(resolve, 25));
+      const calls = dom.window.fetch.mock.calls.length;
+      dom.window.document.getElementById('refreshButton').click();
+      await new Promise(resolve => setTimeout(resolve, 25));
+      expect(dom.window.fetch).toHaveBeenCalledTimes(calls);
+      expect(dom.window.document.getElementById('missionTitle').textContent).toBe(mission);
+      expect(dom.window.document.getElementById('toastRegion').textContent).toContain('Requests paused');
+    } finally { dom.window.close(); }
+  });
+
   test('shows real replies and safe result links in the conversation while preserving a draft through sync', async () => {
     const { dom, workspaces } = createWorkroom();
     await new Promise((resolve) => setTimeout(resolve, 25));
