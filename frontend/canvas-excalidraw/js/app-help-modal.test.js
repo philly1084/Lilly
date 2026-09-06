@@ -372,6 +372,19 @@ function createBoardShelfHarness() {
 }
 
 describe('canvas help modal accessibility', () => {
+    test('toast feedback announces new messages without replaying or announcing removed messages', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const notifications = dom.window.document.getElementById('toastContainer');
+
+        expect(notifications.getAttribute('role')).toBe('log');
+        expect(notifications.getAttribute('aria-label')).toBe('Canvas notifications');
+        expect(notifications.getAttribute('aria-live')).toBe('polite');
+        expect(notifications.getAttribute('aria-relevant')).toBe('additions text');
+        expect(notifications.getAttribute('aria-atomic')).toBe('false');
+        expect(notifications.hasAttribute('tabindex')).toBe(false);
+    });
+
     afterEach(() => {
         delete global.document;
         delete global.window;
