@@ -28,3 +28,24 @@ For production updates, baseline each host separately, verify the current wrappe
 hash, retain a timestamped backup, validate the new script and use an atomic
 replacement. Verify a real gateway new/resumed session afterwards. Changing the
 gateway image alone does not update this host-owned executable.
+
+## Host CLI release check
+
+The current verified Astra baseline is Codex **0.153.4** on Linux ARM64.
+Check **both** SSH hosts with `codex-remote-run --version` after every CLI
+upgrade. The wrapper rejects Astra requests on older or unrecognized versions
+before launching the agent. `CODEX_EXECUTABLE` can select an explicit versioned
+installation; otherwise the host's `codex` on PATH is used.
+
+Install approved CLI packages into a versioned directory such as
+`/opt/codex-releases/0.153.4/`, verify the package archive checksum and run
+`node_modules/.bin/codex --version` there before changing the host symlink.
+Retain the previous `/usr/local/bin/codex` symlink and wrapper, then replace each
+atomically. Do not copy the gateway HOME or authentication files as part of a CLI
+release. Existing processes can finish using their already-started executable.
+
+Verify a bounded Astra command/result round trip through each nuts target
+(`k3s-primary` and `k3s-secondary`), including a resumed session. A successful
+gateway-container version check alone is insufficient. Cloudflare MCP OAuth
+errors are a separate credential issue and must not trigger credential resets
+as part of a Codex binary upgrade.

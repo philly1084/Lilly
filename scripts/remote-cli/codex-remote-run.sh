@@ -2,6 +2,11 @@
 # Stateful Codex adapter used by the nuts remote-agent session bridge.
 set -euo pipefail
 
+codex_executable=${CODEX_EXECUTABLE:-codex}
+if [[ ${1:-} == --version ]]; then
+  exec "$codex_executable" --version
+fi
+
 if [[ ${1:-} == run ]]; then shift; fi
 model=''
 json=0
@@ -39,12 +44,29 @@ case "$effort" in
   *) printf 'codex-remote-run: invalid reasoning effort\n' >&2; exit 2 ;;
 esac
 
+if [[ $model == gpt-6-astra ]]; then
+  cli_version=$(timeout 10 "$codex_executable" --version) || {
+    printf 'codex-remote-run: cannot verify Codex version on this SSH host\n' >&2
+    exit 2
+  }
+  if [[ $cli_version =~ ^codex-cli\ ([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}; patch=${BASH_REMATCH[3]}
+    if (( major == 0 && (minor < 153 || (minor == 153 && patch < 4)) )); then
+      printf 'codex-remote-run: Astra requires host Codex >=0.153.4; found %s. Upgrade this SSH host, not only the gateway image.\n' "$cli_version" >&2
+      exit 2
+    fi
+  else
+    printf 'codex-remote-run: unrecognized Codex version: %s\n' "$cli_version" >&2
+    exit 2
+  fi
+fi
+
 task_tmp=$(mktemp -d -t codex-remote-run.XXXXXXXX)
 cleanup() { rm -f -- "$task_tmp/stdout" "$task_tmp/stderr"; rmdir -- "$task_tmp"; }
 trap cleanup EXIT
 
 run_codex() {
-  local -a command=(codex exec --skip-git-repo-check --sandbox "$sandbox")
+  local -a command=("$codex_executable" exec --skip-git-repo-check --sandbox "$sandbox")
   (( json )) && command+=(--json)
   [[ -n $model ]] && command+=(-m "$model")
   if [[ -n $effort ]]; then

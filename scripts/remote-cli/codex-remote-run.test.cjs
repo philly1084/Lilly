@@ -12,6 +12,7 @@ const wrapper = path.join(__dirname, 'codex-remote-run.sh');
 const mock = path.join(root, 'codex');
 fs.writeFileSync(mock, `#!/usr/bin/env node
 const fs=require('fs');
+if(process.argv[2]==='--version') { console.log('codex-cli '+(process.env.MOCK_VERSION||'0.153.4')); process.exit(0); }
 fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify(process.argv.slice(2)));
 console.log(JSON.stringify({type:'thread.started',thread_id:'fixture'}));
 if(process.env.MOCK_ERROR) console.error(process.env.MOCK_ERROR);
@@ -38,6 +39,33 @@ test('resume preserves the specified session and effort', () => {
   const result = run(['run', '--session', 'thread-123', '--reasoning-effort', 'high', 'continue']);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(fs.readFileSync(argvFile)).slice(-4), ['resume', 'thread-123', '--', 'continue']);
+});
+
+test('Astra rejects an old host CLI before launching a task', () => {
+  fs.rmSync(argvFile, { force: true });
+  const result = run(['run', '--model', 'gpt-6-astra', 'hello'], { MOCK_VERSION: '0.144.6' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Upgrade this SSH host/);
+  assert.equal(fs.existsSync(argvFile), false);
+});
+
+test('Astra accepts the pinned host CLI and an explicit executable', () => {
+  const result = run(['run', '--model', 'gpt-6-astra', 'hello'], { CODEX_EXECUTABLE: mock });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(JSON.parse(fs.readFileSync(argvFile)).includes('gpt-6-astra'));
+});
+
+test('version inspection does not start a task', () => {
+  fs.rmSync(argvFile, { force: true });
+  const result = run(['--version'], { CODEX_EXECUTABLE: mock });
+  assert.equal(result.stdout.trim(), 'codex-cli 0.153.4');
+  assert.equal(fs.existsSync(argvFile), false);
+});
+
+test('Astra fails closed for unknown version output', () => {
+  const result = run(['run', '--model', 'gpt-6-astra', 'hello'], { MOCK_VERSION: 'unknown' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /unrecognized Codex version/);
 });
 test('omission preserves Codex defaults and emits no false receipt', () => {
   const result = run(['run', 'hello']);
