@@ -3,6 +3,7 @@ const { ExecutionPlan } = require('./Planner');
 const { ToolDefinition } = require('../tools/ToolDefinition');
 const { ToolRegistry } = require('../tools/ToolRegistry');
 const { WorkingMemory } = require('../memory/WorkingMemory');
+const { Verifier } = require('./Verifier');
 
 function createTask(overrides = {}) {
   return {
@@ -42,6 +43,32 @@ function createExecutorWithPlan(plan, toolRegistry) {
 }
 
 describe('Executor tool failure handling', () => {
+  test('reports an unconfigured completion check without rerunning successful work', async () => {
+    const plan = new ExecutionPlan('task-1');
+    plan.addStep({ type: 'llm-call', description: 'Draft the final answer', prompt: 'Summarize the result.' });
+    const executor = createExecutorWithPlan(plan, new ToolRegistry());
+    executor.verifier = new Verifier();
+    executor.llmClient.complete.mockResolvedValue('I completed the task.');
+    const task = createTask({
+      completionCriteria: {
+        conditions: [{ type: 'custom-check', check: 'artifact-readable', expected: true }],
+      },
+      canRetry: jest.fn(() => true),
+      incrementAttempt: jest.fn(),
+    });
+
+    const result = await executor.execute(task);
+
+    expect(result.success).toBe(false);
+    expect(result.completionStatus).toBe('unverified');
+    expect(result.nextActions).toEqual(['configure_custom_check']);
+    expect(result.output).toBe('I completed the task.');
+    expect(task.status).toBe('failed');
+    expect(task.canRetry).not.toHaveBeenCalled();
+    expect(task.incrementAttempt).not.toHaveBeenCalled();
+    expect(executor.llmClient.complete).toHaveBeenCalledTimes(1);
+  });
+
   test('treats a failed tool execution result as a failed step', async () => {
     const plan = new ExecutionPlan('task-1');
     plan.addStep({

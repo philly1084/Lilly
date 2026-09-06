@@ -540,16 +540,10 @@ class Verifier {
       return this.validators.get(check)(task, executionResult, config);
     }
 
-    if (config.expected === true) {
-      return ValidationResult.success(
-        'custom-check',
-        check ? `Custom check "${check}" accepted` : 'Custom check accepted'
-      );
-    }
-
     return ValidationResult.failure(
       'custom-check',
-      check ? `Unknown custom check: ${check}` : 'Custom check name is required'
+      check ? `Unknown custom check: ${check}` : 'Custom check name is required',
+      { status: 'unverified', nextAction: 'configure_custom_check' },
     );
   }
   
