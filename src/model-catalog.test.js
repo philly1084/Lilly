@@ -8,6 +8,33 @@ const {
 } = require('./model-catalog');
 
 describe('model-catalog', () => {
+    test.each(['text-embedding', 'text_embedding', 'textEmbedding', 'TEXT-EMBEDDING'])(
+        'keeps %s endpoints out of chat routing even with opaque model ids', (capability) => {
+            const model = { id: 'custom-fast-router', capabilities: [capability] };
+            const publicModels = toPublicModelList([model]);
+
+            expect(publicModels).toHaveLength(1);
+            for (const record of [model, publicModels[0]]) {
+                expect(isPublicChatModel(record)).toBe(false);
+                expect(buildModelContract(record).supports.chat).toBe(false);
+                expect(toPublicChatModelList([record])).toEqual([]);
+                expect(selectAutoModel([record])).toBeNull();
+                expect(selectAutoModel([
+                    record,
+                    { id: 'custom-chat-router', capabilities: ['chat'] },
+                ])?.id).toBe('custom-chat-router');
+            }
+        },
+    );
+
+    test('keeps explicitly advertised chat support on multipurpose embedding endpoints', () => {
+        const model = { id: 'custom-multipurpose-router', capabilities: ['chat', 'text-embedding'] };
+
+        expect(isPublicChatModel(model)).toBe(true);
+        expect(buildModelContract(model).supports.chat).toBe(true);
+        expect(selectAutoModel([model])?.id).toBe(model.id);
+    });
+
     test.each([
         ['provider records', (models) => models],
         ['public records', toPublicModelList],

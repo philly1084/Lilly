@@ -45,7 +45,7 @@ const NON_CHAT_CAPABILITIES = new Set([
     'images',
     'embedding',
     'embeddings',
-    'text-embedding',
+    'text_embedding',
     'tts',
     'speech',
     'audio',
