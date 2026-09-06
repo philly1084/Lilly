@@ -278,6 +278,11 @@
             background: var(--text-muted);
         }
 
+        #voxelDock button:focus-visible {
+            outline: 2px solid var(--text-primary);
+            outline-offset: 2px;
+        }
+
         .status-dot.online { background: var(--success-bright); box-shadow: 0 0 8px var(--success-bright); }
         .status-dot.offline { background: var(--error); }
         .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
@@ -2203,7 +2208,7 @@
                         <div class="voxel-prompt-row">
                             <input id="voxelPetPrompt" type="text" placeholder="Agent companion prompt..." autocomplete="off" spellcheck="false">
                             <button class="btn btn-sm" onclick="app.generateVoxelPetFromInput()">Spawn</button>
-                            <button class="btn btn-sm btn-primary" onclick="app.generateAIVoxelPetFromInput()">AI</button>
+                            <button class="btn btn-sm btn-primary" onclick="app.generateAIVoxelPetFromInput()" aria-label="Generate companion with AI" title="Generate companion with AI">AI</button>
                         </div>
                         <div class="voxel-action-grid">
                             <button class="btn btn-sm" onclick="app.handlePetAction('dance')">Dance</button>
@@ -2211,7 +2216,7 @@
                             <button class="btn btn-sm" onclick="app.handlePetAction('scout')">Scout</button>
                             <button class="btn btn-sm" onclick="app.handlePetAction('sleep')">Sleep</button>
                             <button class="btn btn-sm" onclick="app.generateRandomVoxelPet()">Random</button>
-                            <button class="btn btn-sm" onclick="app.generateAIVoxelPetFromInput()">AI Fill</button>
+                            <button class="btn btn-sm" onclick="app.generateAIVoxelPetFromInput()" aria-label="AI Fill: generate companion from request" title="AI Fill: generate companion from request">AI Fill</button>
                         </div>
                     </div>
                 </section>
