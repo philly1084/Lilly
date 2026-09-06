@@ -193,9 +193,13 @@ class XlsxGenerator {
     const hasExplicitHeader = Number.isInteger(sheet.headerRowIndex)
       && sheet.headerRowIndex >= 0
       && sheet.headerRowIndex < rows.length;
-    const headerIndex = hasExplicitHeader
-      ? sheet.headerRowIndex
-      : rows.findIndex((row) => Array.isArray(row) && row.length === maxColumns && row.every((cell) => normalizeText(cell)));
+    let headerIndex = -1;
+    if (hasExplicitHeader) {
+      headerIndex = sheet.headerRowIndex;
+    } else if (sheet.headerRowIndex !== null) {
+      // Legacy sheets may omit metadata; null explicitly means all rows are data.
+      headerIndex = rows.findIndex((row) => Array.isArray(row) && row.length === maxColumns && row.every((cell) => normalizeText(cell)));
+    }
     const headerRow = headerIndex >= 0 ? rows[headerIndex] : null;
     const contextRows = hasExplicitHeader
       ? rows.slice(0, headerIndex).filter((row) => Array.isArray(row) && row.some((cell) => normalizeText(cell)))
