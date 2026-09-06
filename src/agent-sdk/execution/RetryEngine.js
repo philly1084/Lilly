@@ -121,6 +121,11 @@ class RetryPolicy {
     const status = Number(error?.status || error?.statusCode || 0);
     const message = String(error?.message || '').toLowerCase();
 
+    // Explicit client failures take precedence over words in error messages.
+    if (status >= 400 && status < 500 && status !== 429) {
+      return 'permanent';
+    }
+
     // Check for timeout errors
     if (code === 'timeout' ||
         message.includes('timeout') ||
@@ -157,11 +162,6 @@ class RetryPolicy {
       return 'transient';
     }
     
-    // Client errors (4xx except 429) are typically permanent
-    if (status >= 400 && status < 500) {
-      return 'permanent';
-    }
-    
     // Default to transient for unknown errors
     return 'transient';
   }
@@ -174,8 +174,10 @@ class RetryPolicy {
    */
   async execute(operation, context = {}) {
     let lastError;
+    let attempts = 0;
     
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      attempts = attempt;
       try {
         const result = await operation(context);
         return {
@@ -219,7 +221,7 @@ class RetryPolicy {
     return {
       success: false,
       error: lastError,
-      attempts: this.maxAttempts,
+      attempts,
       policy: this.id
     };
   }
