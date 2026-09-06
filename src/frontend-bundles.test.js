@@ -154,8 +154,40 @@ describe('frontend bundle styling safety net', () => {
         const indexHtml = entries.get('index.html').toString('utf8');
         const css = entries.get('assets/site.css').toString('utf8');
 
-        expect(indexHtml).toContain('href="assets/site.css"');
+        expect(indexHtml).toContain('href="./assets/site.css"');
         expect(css).toContain('kimibuilt bundle style safety net');
+    });
+
+    test('rewrites root-relative local stylesheet links for artifact previews', () => {
+        const artifact = buildFrontendBundleArtifact({
+            entry: 'index.html',
+            files: [
+                {
+                    path: 'index.html',
+                    language: 'html',
+                    content: '<!DOCTYPE html><html><head><link rel="stylesheet" href="/styles.css"></head><body><main><h1>Ops</h1></main></body></html>',
+                },
+                {
+                    path: 'reports/index.html',
+                    language: 'html',
+                    content: '<!DOCTYPE html><html><head><link rel="stylesheet" href="/styles.css"></head><body><main><h1>Reports</h1></main></body></html>',
+                },
+                {
+                    path: 'styles.css',
+                    language: 'css',
+                    content: 'body { color: #172033; background: #ffffff; }',
+                },
+            ],
+        }, 'Linked Stylesheet');
+
+        const entries = readFrontendBundleArchive(artifact.buffer);
+        const indexHtml = entries.get('index.html').toString('utf8');
+        const reportsHtml = entries.get('reports/index.html').toString('utf8');
+
+        expect(indexHtml).toContain('href="./styles.css"');
+        expect(indexHtml).not.toContain('href="/styles.css"');
+        expect(reportsHtml).toContain('href="../styles.css"');
+        expect(reportsHtml).not.toContain('href="/styles.css"');
     });
 
     test('treats 3D scene requests as bundle-worthy frontend work', () => {

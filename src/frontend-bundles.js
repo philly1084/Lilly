@@ -410,6 +410,37 @@ function injectStylesheetLink(content = '', href = '') {
     return `${linkTag}\n${source}`;
 }
 
+function rewriteLocalStylesheetLinks(content = '', fromPath = '', availablePaths = new Set()) {
+    const source = String(content || '');
+    if (!source || !htmlHasStylesheetLink(source)) {
+        return source;
+    }
+
+    return source.replace(/<link\b[^>]*rel=["'][^"']*stylesheet[^"']*["'][^>]*>/ig, (linkTag) => {
+        const hrefMatch = String(linkTag || '').match(/\bhref=(["'])([^"']+)\1/i);
+        if (!hrefMatch) {
+            return linkTag;
+        }
+
+        const originalHref = hrefMatch[2];
+        if (isExternalStylesheetHref(originalHref)) {
+            return linkTag;
+        }
+
+        const stylesheetPath = resolveStylesheetHrefPath(fromPath, originalHref);
+        if (!stylesheetPath || !availablePaths.has(stylesheetPath)) {
+            return linkTag;
+        }
+
+        const relativeHref = getRelativeBundleHref(fromPath, stylesheetPath);
+        if (!relativeHref || relativeHref === originalHref) {
+            return linkTag;
+        }
+
+        return linkTag.replace(hrefMatch[0], `href=${hrefMatch[1]}${relativeHref}${hrefMatch[1]}`);
+    });
+}
+
 function ensureFrontendBundleStyling(bundle = null) {
     const normalized = normalizeFrontendBundle(bundle);
     if (!hasFrontendBundleFiles(normalized)) {
@@ -451,14 +482,23 @@ function ensureFrontendBundleStyling(bundle = null) {
         };
     }
 
+    const availablePaths = new Set(files.map((file) => normalizeBundlePath(file.path)).filter(Boolean));
     const styledFiles = files.map((file) => {
-        if (!/\.html?$/i.test(file.path) || htmlHasSubstantiveStyle(file.content) || htmlHasStylesheetLink(file.content)) {
+        if (!/\.html?$/i.test(file.path)) {
             return file;
+        }
+
+        const contentWithRelativeLinks = rewriteLocalStylesheetLinks(file.content, file.path, availablePaths);
+        if (htmlHasSubstantiveStyle(contentWithRelativeLinks) || htmlHasStylesheetLink(contentWithRelativeLinks)) {
+            return {
+                ...file,
+                content: contentWithRelativeLinks,
+            };
         }
 
         return {
             ...file,
-            content: injectStylesheetLink(file.content, getRelativeBundleHref(file.path, cssFile.path)),
+            content: injectStylesheetLink(contentWithRelativeLinks, getRelativeBundleHref(file.path, cssFile.path)),
         };
     });
 
