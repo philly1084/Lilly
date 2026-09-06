@@ -114,7 +114,8 @@ async function persistGeneratedArtifactLocally({
     const id = buildLocalArtifactId();
     const createdAt = new Date().toISOString();
     const baseDir = getLocalArtifactDirectory();
-    const contentPath = path.join(baseDir, `${id}.${normalizedExtension || 'bin'}`);
+    // Keep generated JSON content separate from the artifact's JSON metadata.
+    const contentPath = path.join(baseDir, `${id}.content.${normalizedExtension || 'bin'}`);
     const metadataPath = path.join(baseDir, `${id}.json`);
     const record = {
         id,
