@@ -813,8 +813,8 @@
                         placeholder="Ask or edit this page..."
                         rows="1"
                     ></textarea>
-                    <button id="agent-chat-send" class="agent-chat-send" onclick="AgentUI.sendMessage()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <button id="agent-chat-send" class="agent-chat-send" type="button" aria-label="Send message" title="Send message" onclick="AgentUI.sendMessage()">
+                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
