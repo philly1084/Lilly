@@ -474,10 +474,10 @@
 
             .artifact-generated-card .artifact-html-preview {
                 margin-bottom: 12px;
-                border: 1px solid rgba(245, 158, 11, 0.22);
+                border: 1px solid var(--border);
                 border-radius: 12px;
                 overflow: hidden;
-                background: rgba(15, 23, 42, 0.06);
+                background: var(--bg-secondary);
             }
 
             .artifact-generated-card .artifact-html-preview-toolbar {
@@ -486,7 +486,8 @@
                 justify-content: space-between;
                 gap: 8px;
                 padding: 8px 10px;
-                border-bottom: 1px solid rgba(245, 158, 11, 0.18);
+                border-bottom: 1px solid var(--border);
+                background: rgba(15, 23, 42, 0.12);
                 color: var(--text-secondary);
                 font-size: 12px;
                 font-weight: 650;

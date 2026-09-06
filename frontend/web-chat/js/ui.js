@@ -4927,6 +4927,7 @@ class UIHelpers {
                     ${openItemsMarkup}
                     ${checkpointMarkup}
                     <div class="assistant-progress-card__note">${this.escapeHtml(noteText)}</div>
+                    ${isProjectSummary ? '<div class="assistant-progress-card__project-preview-slot" data-project-preview-slot aria-label="Project preview"></div>' : ''}
                 </div>
             </div>
         `;
@@ -5240,6 +5241,10 @@ class UIHelpers {
 
         if (assistantRenderPlan?.variant === 'agent-brief') {
             messageEl.classList.add('message--agent-brief');
+        }
+
+        if (message?.metadata?.managedAppProjectSummary === true || message?.managedAppProjectSummary === true) {
+            messageEl.classList.add('message--managed-project');
         }
 
         messageEl.classList.toggle('message--streaming', effectiveStreaming);

@@ -7,6 +7,11 @@ function loadChatAppContext() {
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(/\/\/ Initialize app when DOM is ready[\s\S]*$/, 'globalThis.ChatApp = ChatApp;');
 
+    const projectPreviewSlot = {
+        appendChild: (element) => {
+            element.parentElement = projectPreviewSlot;
+        },
+    };
     const context = {
         window: {
             location: { origin: 'https://chat.example.test' },
@@ -17,6 +22,7 @@ function loadChatAppContext() {
         },
         document: {
             getElementById: () => null,
+            querySelector: (selector) => selector === '[data-project-preview-slot]' ? projectPreviewSlot : null,
             addEventListener: () => {},
         },
         setTimeout,
@@ -402,6 +408,26 @@ describe('web-chat project viewport helpers', () => {
         expect(frame.src).toBe('https://demo-site.demoserver2.buzz');
     });
 
+    test('mounts the live project preview inside the managed project chat card', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const projectViewport = createFakeElement('project-viewport');
+        const previewSlot = createFakeElement('project-preview-slot');
+        previewSlot.appendChild = jest.fn((element) => {
+            element.parentElement = previewSlot;
+        });
+        context.document.querySelector = (selector) => (
+            selector === '[data-project-preview-slot]' ? previewSlot : null
+        );
+        app.projectViewport = projectViewport;
+
+        expect(app.mountProjectViewportInChatCard()).toBe(true);
+        expect(previewSlot.appendChild).toHaveBeenCalledWith(projectViewport);
+        expect(projectViewport.parentElement).toBe(previewSlot);
+        expect(app.mountProjectViewportInChatCard()).toBe(true);
+        expect(previewSlot.appendChild).toHaveBeenCalledTimes(1);
+    });
+
     test('uses preview URLs before sandbox wrappers as viewport project targets', () => {
         const app = Object.create(loadChatAppPrototype());
 
@@ -533,7 +559,7 @@ describe('web-chat project viewport helpers', () => {
         expect(projectViewport.classList.contains('hidden')).toBe(false);
         expect(projectViewport.classList.contains('is-collapsed')).toBe(true);
         expect(projectViewport.classList.contains('is-suspended')).toBe(true);
-        expect(appShell.classList.contains('has-project-viewport')).toBe(true);
+        expect(appShell.classList.contains('has-project-viewport')).toBe(false);
         expect(frame.dataset.projectUrl).toBe('');
         expect(frame.dataset.suspendedProjectUrl).toBe('https://demo-app.demoserver2.buzz');
         expect(frame.src).toBeUndefined();

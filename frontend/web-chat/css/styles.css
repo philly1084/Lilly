@@ -2835,6 +2835,143 @@ body {
     line-height: 1.45;
 }
 
+/* Keep live project previews in the same card-based conversation flow as artifacts. */
+.app-shell > .project-viewport {
+    display: none !important;
+}
+
+.message.assistant.message--managed-project .message-text {
+    width: 100%;
+    max-width: 100%;
+}
+
+.assistant-progress-card__project-preview-slot {
+    min-width: 0;
+    margin-top: 0.15rem;
+}
+
+.assistant-progress-card__project-preview-slot:empty {
+    display: none;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 24rem;
+    min-height: 16rem;
+    max-height: min(60vh, 38rem);
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 0.72rem;
+    background: var(--bg-secondary);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-compact {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 16rem;
+    min-height: 16rem;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-wide {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 24rem;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-full {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: min(34rem, 60vh);
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-collapsed {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport__chrome {
+    flex-wrap: wrap;
+    padding: 0.65rem 0.72rem;
+    background: rgba(15, 23, 42, 0.12);
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-collapsed .project-viewport__chrome {
+    min-height: 2.75rem;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 0.72rem;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-collapsed .project-viewport__copy {
+    display: flex;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport.is-collapsed .project-viewport__controls {
+    flex-direction: row;
+}
+
+.assistant-progress-card__project-preview-slot .project-viewport__stage {
+    min-height: 0;
+}
+
+@media (max-width: 640px) {
+    .assistant-progress-card__project-preview-slot .project-viewport,
+    .assistant-progress-card__project-preview-slot .project-viewport.is-wide {
+        height: 20rem;
+        min-height: 14rem;
+        max-height: 50vh;
+        border-radius: 0.65rem;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport.is-compact {
+        height: 14rem;
+        min-height: 14rem;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport.is-full {
+        height: min(30rem, 58vh);
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport.is-collapsed {
+        height: auto;
+        min-height: 0;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport__chrome {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.5rem;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport__actions {
+        grid-column: 2;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport__controls {
+        grid-column: 1 / -1;
+        justify-self: end;
+    }
+
+    .assistant-progress-card__project-preview-slot .project-viewport.is-collapsed .project-viewport__chrome {
+        display: flex;
+    }
+}
+
 .sidebar-panel {
     border: 1px solid var(--border);
     border-radius: 1.75rem;
@@ -5546,6 +5683,7 @@ body.layout-minimal #input-meta-row {
     display: inline-flex;
     align-items: center;
     gap: 0.38rem;
+    flex-shrink: 0;
     padding: 0.28rem 0.52rem;
     border-radius: 999px;
     border: 1px solid rgba(88, 166, 255, 0.2);
@@ -5554,6 +5692,7 @@ body.layout-minimal #input-meta-row {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+    white-space: nowrap;
     color: var(--text-secondary);
 }
 

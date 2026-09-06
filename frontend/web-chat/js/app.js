@@ -3954,6 +3954,7 @@ class ChatApp {
             if (this.messagesContainer) {
                 this.messagesContainer.scrollTop = 0;
             }
+            this.renderProjectViewport();
             this.updateAudioControls();
             return;
         }
@@ -3971,6 +3972,7 @@ class ChatApp {
         uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
         uiHelpers.highlightCodeBlocks(this.messagesContainer);
         uiHelpers.scrollToBottom(false);
+        this.renderProjectViewport();
         this.updateAudioControls();
     }
 
@@ -4031,6 +4033,7 @@ class ChatApp {
         });
 
         uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
+        this.renderProjectViewport();
         this.updateAudioControls();
     }
 
@@ -5671,21 +5674,36 @@ class ChatApp {
         };
     }
 
+    mountProjectViewportInChatCard() {
+        if (typeof document.querySelector !== 'function') {
+            return true;
+        }
+        const slot = document.querySelector?.('[data-project-preview-slot]') || null;
+        if (!slot || !this.projectViewport) {
+            return false;
+        }
+
+        if (this.projectViewport.parentElement !== slot) {
+            slot.appendChild(this.projectViewport);
+        }
+        return this.projectViewport.parentElement === slot;
+    }
+
     renderProjectViewport() {
         if (!this.projectViewport) {
             return;
         }
 
-        const appShell = document.getElementById('app');
         const { project, url: rawUrl, size } = this.getCurrentProjectViewportState();
         const hasProject = Boolean(project);
         const hasUrl = Boolean(rawUrl);
+        const isMountedInChatCard = hasProject && this.mountProjectViewportInChatCard();
         const isMinimalLayout = typeof uiHelpers !== 'undefined' && typeof uiHelpers?.isMinimalistMode === 'function'
             ? uiHelpers.isMinimalistMode()
             : false;
         const isCollapsed = hasProject && size === 'collapsed';
-        const isSuspended = !hasProject || isMinimalLayout || isCollapsed || !hasUrl;
-        const hasVisibleViewport = hasProject && !isMinimalLayout;
+        const isSuspended = !hasProject || !isMountedInChatCard || isMinimalLayout || isCollapsed || !hasUrl;
+        const hasVisibleViewport = hasProject && isMountedInChatCard && !isMinimalLayout;
         this.projectViewport.classList.toggle('hidden', !hasVisibleViewport);
         this.projectViewport.classList.toggle('is-empty', hasProject && !hasUrl);
         this.projectViewport.classList.toggle('is-collapsed', isCollapsed);
@@ -5694,10 +5712,8 @@ class ChatApp {
         this.projectViewport.classList.toggle('is-wide', hasProject && size === 'wide');
         this.projectViewport.classList.toggle('is-full', hasProject && size === 'full');
         this.projectViewport.setAttribute('aria-hidden', hasVisibleViewport ? 'false' : 'true');
-        appShell?.classList.toggle('has-project-viewport', hasVisibleViewport);
-        appShell?.classList.toggle('has-project-viewport-collapsed', hasVisibleViewport && isCollapsed);
 
-        if (!hasProject) {
+        if (!hasProject || !isMountedInChatCard) {
             if (this.projectViewportFrame) {
                 this.projectViewportFrame.dataset.rawProjectUrl = '';
                 this.projectViewportFrame.dataset.rawProjectUrlKey = '';

@@ -47,3 +47,11 @@ Desktop.ini
 
 # Gemini / Antigravity
 .gemini/
+
+# Local browser evidence, release scratch space, and generated artifacts
+/.playwright-cli/
+/output/
+/tmp/
+/local/tmp/
+/local/harness-*
+/data/cluster-state-registry.json
