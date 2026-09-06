@@ -167,6 +167,10 @@ function shouldUseProjectContinuityRecall(options = {}, routing = {}, query = ''
 }
 
 function normalizeImportance(value = null, fallback = DEFAULT_FACT_IMPORTANCE) {
+    if ((typeof value !== 'number' && typeof value !== 'string')
+        || (typeof value === 'string' && value.trim() === '')) {
+        return fallback;
+    }
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
         return fallback;

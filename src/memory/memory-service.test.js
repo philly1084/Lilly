@@ -16,6 +16,51 @@ describe('MemoryService recall profiles', () => {
         config.config.runtime.judgmentV2Enabled = false;
     });
 
+    test.each([
+        ['fact', 0.6],
+        ['artifact', 0.8],
+        ['skill', 0.9],
+    ])('uses the %s importance default when no numeric priority is supplied', (memoryType, expected) => {
+        const service = new MemoryService();
+        for (const importance of [undefined, null, '', '   ', false, true, [], [0], {}]) {
+            expect(service.normalizeMetadata('user', 'Project context', {
+                memoryType,
+                importance,
+            }).importance).toBe(expected);
+        }
+    });
+
+    test.each([
+        [0, 0], ['0', 0], [0.4, 0.4], [' 0.7 ', 0.7], [-1, 0], [2, 1],
+        [NaN, 0.6], [Infinity, 0.6], ['unknown', 0.6],
+    ])('preserves numeric importance and bounds for %p', (importance, expected) => {
+        const service = new MemoryService();
+        expect(service.normalizeMetadata('user', 'Project context', { importance }).importance).toBe(expected);
+    });
+
+    test('persists default priorities for new facts and generated artifact memories', async () => {
+        const service = new MemoryService();
+        service.store = { store: jest.fn().mockResolvedValue('point-1') };
+
+        await service.remember('session-1', 'I prefer concise answers.');
+        await service.rememberArtifactResult('session-1', {
+            artifact: { id: 'artifact-1', filename: 'brief.md', format: 'markdown' },
+            summary: 'A completed project brief.',
+            sourceText: '# Project brief\nKeep the experience easy to use.',
+        });
+
+        expect(service.store.store.mock.calls.map((call) => call[2].importance)).toEqual([0.6, 0.8, 0.8]);
+    });
+
+    test('ranks memories without importance like default facts while respecting explicit zero', () => {
+        const service = new MemoryService();
+        const entry = { text: 'Project context', semanticScore: 0.75 };
+        const defaultScore = service.scoreRecallEntry({ ...entry, metadata: { importance: 0.6 } });
+        expect(service.scoreRecallEntry(entry)).toBe(defaultScore);
+        expect(service.scoreRecallEntry({ ...entry, metadata: { importance: null } })).toBe(defaultScore);
+        expect(service.scoreRecallEntry({ ...entry, metadata: { importance: 0 } })).toBeLessThan(defaultScore);
+    });
+
     test('uses wider recall for normal conversations by default', () => {
         const service = new MemoryService();
 
