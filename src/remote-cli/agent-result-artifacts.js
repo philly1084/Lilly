@@ -109,9 +109,16 @@ function buildArtifactPreview(file = {}, buffer = Buffer.alloc(0)) {
     return { extractedText: '', previewHtml: '' };
   }
   const content = buffer.toString('utf8');
-  const extractedText = Buffer.byteLength(content) <= MAX_EXTRACTED_TEXT_BYTES
-    ? content
-    : `${content.slice(0, MAX_EXTRACTED_TEXT_BYTES)}\n[preview truncated]`;
+  let extractedText = content;
+  if (Buffer.byteLength(content) > MAX_EXTRACTED_TEXT_BYTES) {
+    const encoded = Buffer.from(content, 'utf8');
+    let end = MAX_EXTRACTED_TEXT_BYTES;
+    // Back up to the leading byte when the limit falls inside a UTF-8 character.
+    while ((encoded[end] & 0xc0) === 0x80) {
+      end -= 1;
+    }
+    extractedText = `${encoded.subarray(0, end).toString('utf8')}\n[preview truncated]`;
+  }
   const isHtml = /(?:^|\/)html$/i.test(String(file.mimeType || ''))
     || /\.html?$/i.test(String(file.filename || ''));
   return {

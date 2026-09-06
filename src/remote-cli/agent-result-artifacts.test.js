@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const {
+  buildArtifactPreview,
   buildRemoteAgentSiteBundlePlan,
   persistRemoteAgentResultArtifacts,
 } = require('./agent-result-artifacts');
@@ -51,6 +52,41 @@ function buildFixture() {
 }
 
 describe('remote agent result artifacts', () => {
+  describe('text preview byte limits', () => {
+    const limit = 256 * 1024;
+    const marker = '\n[preview truncated]';
+    const file = { filename: 'result.txt', mimeType: 'text/plain' };
+
+    test.each(['a', 'é', '界', '😀'])('bounds long %s text without splitting characters', (character) => {
+      const content = character.repeat(limit + 1);
+      const buffer = Buffer.from(content);
+      const preview = buildArtifactPreview(file, buffer);
+      const body = preview.extractedText.slice(0, -marker.length);
+
+      expect(preview.extractedText.endsWith(marker)).toBe(true);
+      expect(Buffer.byteLength(body)).toBeLessThanOrEqual(limit);
+      expect(body).toBe(character.repeat(Math.floor(limit / Buffer.byteLength(character))));
+      expect(Buffer.from(body).toString('utf8')).toBe(body);
+      expect(buffer.toString('utf8')).toBe(content);
+    });
+
+    test('omits an emoji that straddles the byte boundary', () => {
+      const prefix = 'a'.repeat(limit - 1);
+      expect(buildArtifactPreview(file, Buffer.from(`${prefix}😀tail`)).extractedText)
+        .toBe(`${prefix}${marker}`);
+    });
+
+    test('keeps exact-limit Unicode text and the full HTML preview intact', () => {
+      const content = '😀'.repeat(limit / 4);
+      expect(buildArtifactPreview(file, Buffer.from(content)).extractedText).toBe(content);
+
+      const html = `<html><body>${'界'.repeat(limit)}</body></html>`;
+      const preview = buildArtifactPreview({ filename: 'index.html', mimeType: 'text/html' }, Buffer.from(html));
+      expect(preview.previewHtml).toBe(html);
+      expect(Buffer.byteLength(preview.extractedText)).toBeLessThanOrEqual(limit + Buffer.byteLength(marker));
+    });
+  });
+
   test('persists gateway-verified files with source lineage and removes base64 from results', async () => {
     const fixture = buildFixture();
     const records = new Map();
