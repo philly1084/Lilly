@@ -2,6 +2,7 @@ const { Executor } = require('./Executor');
 const { ExecutionPlan } = require('./Planner');
 const { ToolDefinition } = require('../tools/ToolDefinition');
 const { ToolRegistry } = require('../tools/ToolRegistry');
+const { WorkingMemory } = require('../memory/WorkingMemory');
 
 function createTask(overrides = {}) {
   return {
@@ -116,5 +117,84 @@ describe('Executor tool failure handling', () => {
         output: 'Final answer without optional source.',
       }),
     ]));
+  });
+});
+
+describe('Executor working-memory handoffs', () => {
+  test('passes earlier tool output to dependent tool parameters and the synthesis prompt', async () => {
+    const plan = new ExecutionPlan('task-1');
+    const lookupStep = plan.addStep({
+      type: 'tool-call',
+      tool: 'lookup-status',
+      resultKey: 'status',
+    });
+    const summarizeStep = plan.addStep({
+      type: 'tool-call',
+      tool: 'summarize-status',
+      params: {
+        status: '{{results.status}}',
+        values: ['{{results.status.count}}', '{{results.status.ready}}'],
+        nested: { target: `{{steps.${lookupStep}.output.target}}` },
+      },
+      resultKey: 'summary',
+    }, [lookupStep]);
+    plan.addStep({
+      type: 'llm-call',
+      prompt: 'Request: {{currentTask.objective}}\nStatus: {{results.summary}}',
+    }, [summarizeStep]);
+
+    const status = { target: 'cluster-a', count: 0, ready: false };
+    const toolRegistry = {
+      execute: jest.fn(async (toolId) => ({
+        success: true,
+        result: toolId === 'lookup-status' ? status : 'No workers are ready.',
+      })),
+    };
+    const executor = createExecutorWithPlan(plan, toolRegistry);
+    executor.workingMemory = new WorkingMemory('handoff-session');
+    const task = createTask({ objective: 'Check cluster-a readiness.' });
+    executor.workingMemory.setCurrentTask(task);
+    executor.llmClient.complete.mockResolvedValue('Cluster A has no ready workers.');
+
+    const result = await executor.execute(task);
+
+    expect(result.success).toBe(true);
+    expect(toolRegistry.execute.mock.calls[1][0]).toBe('summarize-status');
+    expect(toolRegistry.execute.mock.calls[1][1]).toEqual({
+      status,
+      values: [0, false],
+      nested: { target: 'cluster-a' },
+    });
+    expect(executor.llmClient.complete).toHaveBeenCalledWith(
+      'Request: Check cluster-a readiness.\nStatus: No workers are ready.',
+      expect.any(Object),
+    );
+  });
+
+  test.each([undefined, null, {}])('falls back when a task intermediate is %p', (results) => {
+    const executor = createExecutorWithPlan(null, null);
+    executor.workingMemory = new WorkingMemory('fallback-session');
+    executor.workingMemory.setIntermediateResult('results', { status: { count: 0 } });
+
+    expect(executor.resolveParams({ count: '{{results.status.count}}' }, { results }))
+      .toEqual({ count: 0 });
+  });
+
+  test.each([0, false, '', null, { count: 2 }])('preserves an explicit task value of %p', (status) => {
+    const executor = createExecutorWithPlan(null, null);
+    executor.workingMemory = new WorkingMemory('precedence-session');
+    executor.workingMemory.setIntermediateResult('results', { status: 'memory fallback' });
+
+    expect(executor.resolveTemplateString('{{results.status}}', { results: { status } }))
+      .toEqual(status);
+  });
+
+  test('keeps unresolved references empty in prose and undefined in structured parameters', () => {
+    const executor = createExecutorWithPlan(null, null);
+    const params = { exact: '{{missing.nested.value}}', prose: 'Value: {{missing.nested.value}}' };
+
+    expect(executor.resolveParams(params, createTask())).toEqual({ exact: undefined, prose: 'Value: ' });
+    executor.workingMemory = new WorkingMemory('missing-session');
+    expect(executor.resolveParams(params, createTask())).toEqual({ exact: undefined, prose: 'Value: ' });
   });
 });

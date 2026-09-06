@@ -608,7 +608,9 @@ class Executor {
     
     for (const part of parts) {
       if (value === undefined || value === null) {
-        return undefined;
+        // A missing task path may still exist in working memory.
+        value = undefined;
+        break;
       }
       value = value[part];
     }

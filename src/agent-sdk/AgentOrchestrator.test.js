@@ -146,6 +146,9 @@ describe('AgentOrchestrator', () => {
         expect(result.output).toBe('Cluster A is healthy.');
         expect(llmClient.createResponse).not.toHaveBeenCalled();
         expect(llmClient.complete).toHaveBeenCalledTimes(2);
+        expect(llmClient.complete.mock.calls[1][0]).toContain('User request: Is cluster-a healthy?');
+        expect(llmClient.complete.mock.calls[1][0]).toContain('"target": "cluster-a"');
+        expect(llmClient.complete.mock.calls[1][0]).toContain('"state": "healthy"');
         expect(result.response.metadata.agentExecutor).toBe(true);
         expect(result.response.metadata.toolEvents).toEqual(expect.arrayContaining([
             expect.objectContaining({
