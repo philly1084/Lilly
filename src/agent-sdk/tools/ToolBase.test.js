@@ -3,6 +3,65 @@
 const { ToolBase } = require('./ToolBase');
 const { createToolInvocation, issueApprovalReceipt } = require('../../tool-invocation');
 
+describe('ToolBase timeout cleanup', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  test.each(['synchronous', 'asynchronous'])('clears the timeout after a %s handler failure', async (mode) => {
+    const error = Object.assign(new Error('Tool input could not be processed'), {
+      code: 'INVALID_TOOL_INPUT',
+      statusCode: 400,
+    });
+    const handler = (_params, _context, tracker) => {
+      tracker.recordRead('input.txt');
+      if (mode === 'asynchronous') return Promise.reject(error);
+      throw error;
+    };
+    const tool = new ToolBase({ id: 'failing-handler', backend: { handler } });
+
+    const result = await tool.execute({}, { runId: 'timeout-cleanup-run' });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: error.message,
+      errorCode: error.code,
+      statusCode: 400,
+      invocation: expect.objectContaining({ status: 'failed' }),
+    }));
+    expect(result.sideEffects.reads.map((entry) => entry.resource)).toEqual(['input.txt']);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test.each(['synchronous', 'asynchronous'])('clears the timeout after %s success', async (mode) => {
+    const tool = new ToolBase({
+      id: 'successful-handler',
+      backend: { handler: () => mode === 'asynchronous' ? Promise.resolve('ready') : 'ready' },
+    });
+
+    await expect(tool.execute({})).resolves.toEqual(expect.objectContaining({
+      success: true,
+      data: 'ready',
+    }));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('still times out a pending handler using the requested deadline', async () => {
+    const tool = new ToolBase({
+      id: 'pending-handler',
+      backend: { handler: () => new Promise(() => {}) },
+    });
+    const pending = tool.execute({ timeout: 75 });
+
+    await jest.advanceTimersByTimeAsync(75);
+
+    await expect(pending).resolves.toEqual(expect.objectContaining({
+      success: false,
+      error: 'Tool pending-handler timed out after 75ms',
+    }));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
 describe('ToolBase output contracts', () => {
   test('rejects missing required output properties', async () => {
     const tool = new ToolBase({

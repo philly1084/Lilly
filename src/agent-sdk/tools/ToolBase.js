@@ -233,7 +233,9 @@ class ToolBase {
         reject(new Error(`Tool ${this.id} timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       
-      Promise.resolve(this.handler(params, context, sideEffectTracker))
+      // Route synchronous throws through the same cleanup as rejected promises.
+      Promise.resolve()
+        .then(() => this.handler(params, context, sideEffectTracker))
         .then(result => {
           clearTimeout(timeoutId);
           resolve(result);
