@@ -4748,6 +4748,10 @@ code {
 }
 
 @media (max-width: 480px) {
+    .test-config {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .self-reflection-header {
         align-items: stretch;
         flex-direction: column;
