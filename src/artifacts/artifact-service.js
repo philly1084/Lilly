@@ -2181,7 +2181,22 @@ class ArtifactService {
         vectorizeText = null,
         vectorize = true,
         deferVectorization = false,
+        reservedArtifactId = undefined,
     }) {
+        const reserved = reservedArtifactId !== undefined;
+        if (reserved) {
+            // Trusted team adapter only. Reserve the durable identity before
+            // dispatch; never turn an uncertain database write into a second
+            // local artifact or overwrite an existing reservation.
+            const invalid = typeof reservedArtifactId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(reservedArtifactId)
+                || direction !== 'generated' || sourceMode !== 'agent-teams' || vectorize !== false
+                || !ownerId || session?.id !== sessionId || session?.metadata?.ownerId !== ownerId
+                || metadata?.ownerId !== ownerId || !metadata?.teamId || !metadata?.agentId || !metadata?.taskId
+                || session?.metadata?.teamId !== metadata.teamId || session?.metadata?.teamAgentId !== metadata.agentId
+                || metadata?.operationId !== reservedArtifactId || !/^[a-f0-9]{64}$/.test(metadata?.operationFingerprint || '');
+            if (invalid) throw Object.assign(new Error('Invalid team artifact reservation.'), { code: 'team_artifact_reservation_invalid', statusCode: 400 });
+            if (!this.isEnabled()) throw Object.assign(new Error('Reserved artifacts require durable storage.'), { code: 'team_artifact_storage_unavailable', statusCode: 503 });
+        }
         let storedBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || '');
         let storedExtractedText = String(extractedText || '');
         let storedPreviewHtml = String(previewHtml || '');
@@ -2230,6 +2245,7 @@ class ArtifactService {
         }
 
         if (!this.isEnabled()) {
+            if (reserved) throw Object.assign(new Error('Reserved artifacts require durable storage.'), { code: 'team_artifact_storage_unavailable', statusCode: 503 });
             return persistGeneratedArtifactLocally({
                 sessionId,
                 parentArtifactId,
@@ -2249,7 +2265,7 @@ class ArtifactService {
             await this.ensureSessionRecord(sessionId, session);
 
             const artifact = await artifactStore.create({
-                id: randomUUID(),
+                id: reserved ? reservedArtifactId : randomUUID(),
                 sessionId,
                 parentArtifactId,
                 direction,
@@ -2265,6 +2281,11 @@ class ArtifactService {
                 metadata: storedMetadata,
                 vectorizedAt: null,
             });
+
+            // Every durable artifact field is already in the single INSERT.
+            // Reserved team writes have no later processing mutation whose
+            // lost response could overwrite recovered bytes or metadata.
+            if (reserved) return artifact;
 
             let vectorizedAt = null;
             if (vectorize && safeVectorText && !deferVectorization) {
@@ -2310,6 +2331,7 @@ class ArtifactService {
 
             return storedArtifact;
         } catch (error) {
+            if (reserved) throw error;
             if (error?.statusCode !== 503 && postgres.enabled) {
                 throw error;
             }

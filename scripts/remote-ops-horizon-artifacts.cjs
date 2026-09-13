@@ -1,0 +1,1 @@
+const r=require('/tmp/lilly-horizon-proof.json'); const d=r.results[r.stage]; const lines=String(d?.progressOutput||'').split('\n'); console.log(lines.map(l=>{try{const x=JSON.parse(l);return x.item?.text||x.item?.aggregated_output||''}catch{return l}}).filter(Boolean).join('\n').slice(-2500));

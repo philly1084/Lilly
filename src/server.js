@@ -50,6 +50,7 @@ const asyncLabRouter = require('./routes/async-lab');
 const asyncLabWebhooksRouter = require('./routes/async-lab-webhooks');
 const agentRunsRouter = require('./routes/agent-runs');
 const agentOpsRouter = require('./routes/agent-ops');
+const { createTeamRouter } = require('./routes/agent-teams');
 const giteaIntegrationsRouter = require('./routes/integrations-gitea');
 const gitlabIntegrationsRouter = require('./routes/integrations-gitlab');
 const providerSessionsRouter = require('./routes/provider-sessions');
@@ -485,6 +486,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/async-lab', asyncLabRouter);
 app.use('/api/agent-runs', agentRunsRouter);
 app.use('/api/admin/agent-ops', agentOpsRouter);
+app.use('/api/agent-teams', createTeamRouter());
 app.use('/api/canvas', async (req, res, next) => {
     if (req.method !== 'POST') return next();
     try {
@@ -706,6 +708,14 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             conversationRunService: app.locals.conversationRunService,
             agentRunService,
         });
+        const { createTeamRuntime } = require('./agent-teams/runtime');
+        await app.locals.agentTeamRuntime?.stop();
+        app.locals.agentTeamRuntime = createTeamRuntime({
+            sessionStore, artifactService, toolManager,
+            getModelClient: require('./openai-client').getClient,
+            defaultModel: config.openai.model,
+            chromium: require('playwright-core').chromium,
+        });
         app.locals.managedAppService = new ManagedAppService();
         if (config.gameStudio.enabled) {
             const { GameStudioService } = require('./game-studio/service');
@@ -762,9 +772,11 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
         console.log(`[Boot] TTS ${ttsConfig.provider || 'unknown'} ${ttsConfig.diagnostics?.status || 'unknown'}: ${ttsConfig.diagnostics?.message || 'No details available.'}`);
         const audioProcessingConfig = audioProcessingService.getPublicConfig();
         console.log(`[Boot] Audio processing ${audioProcessingConfig.provider || 'unknown'} ${audioProcessingConfig.diagnostics?.status || 'unknown'}: ${audioProcessingConfig.diagnostics?.message || 'No details available.'}`);
+        await app.locals.agentTeamRuntime?.start();
         markStartupReady(state);
         targetApp.locals.startupState = state;
     } catch (err) {
+        await app.locals.agentTeamRuntime?.stop().catch(() => {});
         console.warn('[Boot] Service init failed (will retry on first use):', err.message);
         markStartupFailed(state, err);
         targetApp.locals.startupState = state;

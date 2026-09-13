@@ -1,0 +1,4 @@
+# Agent launches must additionally pass --no-auto-update (the ACP adapter does).
+# No model endpoint or credentials are baked into this source-build image.
+[cli]
+auto_update = false

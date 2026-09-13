@@ -1,0 +1,2 @@
+const {config}=require('/app/src/config');
+(async()=>{const c=config.remoteCliMcp;const base=(c.codexAgentBaseUrl||c.url.replace(/\/mcp\/?$/,'')).replace(/\/+$/,'');const r=await fetch(base+'/admin/remote-agent-tasks/ragent_75679f9a2e0c468393d845787b6dd0ad/transcript',{headers:{Authorization:`Bearer ${c.codexAgentApiKey||c.apiKey}`}});const d=await r.json();console.log(JSON.stringify(d).slice(-6500));})().then(()=>process.exit(0)).catch(e=>{console.error(e.message);process.exit(1)});

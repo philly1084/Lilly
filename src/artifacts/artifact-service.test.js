@@ -209,6 +209,73 @@ describe('ArtifactService', () => {
         );
     });
 
+    const reservedInput = () => {
+        const id = '01234567-89ab-4cde-8fab-0123456789ab';
+        return {
+            reservedArtifactId: id, sessionId: 'team-session', ownerId: 'owner',
+            session: { id: 'team-session', metadata: { ownerId: 'owner', teamId: 'team', teamAgentId: 'agent' } },
+            direction: 'generated', sourceMode: 'agent-teams', filename: 'reserved.md', extension: 'md',
+            mimeType: 'text/plain', buffer: Buffer.from('Saved once.'), vectorize: false,
+            metadata: { ownerId: 'owner', teamId: 'team', agentId: 'agent', taskId: 'task', operationId: id, operationFingerprint: 'a'.repeat(64) },
+        };
+    };
+
+    test('reserved team artifact uses one immutable INSERT without later processing writes or local fallback', async () => {
+        const input = reservedInput();
+        artifactStore.create.mockImplementationOnce(async value => value);
+        const stored = await artifactService.createStoredArtifact(input);
+        expect(stored.id).toBe(input.reservedArtifactId);
+        expect(stored.contentBuffer).toEqual(input.buffer);
+        expect(stored.metadata.operationFingerprint).toBe(input.metadata.operationFingerprint);
+        expect(artifactStore.create).toHaveBeenCalledTimes(1);
+        expect(artifactStore.updateProcessing).not.toHaveBeenCalled();
+        expect(vectorStore.store).not.toHaveBeenCalled();
+        expect(assetManager.upsertArtifact).not.toHaveBeenCalled();
+        expect(persistGeneratedArtifactLocally).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        { reservedArtifactId: null }, { reservedArtifactId: '../file' }, { sourceMode: 'chat' },
+        { direction: 'uploaded' }, { vectorize: true }, { ownerId: 'foreign' }, { sessionId: 'foreign' },
+        { session: null }, { metadata: {} },
+    ])('invalid reserved artifact fails before persistence: %p', async override => {
+        await expect(artifactService.createStoredArtifact({ ...reservedInput(), ...override }))
+            .rejects.toMatchObject({ code: 'team_artifact_reservation_invalid' });
+        expect(artifactStore.create).not.toHaveBeenCalled();
+        expect(persistGeneratedArtifactLocally).not.toHaveBeenCalled();
+    });
+
+    test.each(['teamId', 'agentId', 'operationId', 'operationFingerprint'])('mismatched reserved metadata %s is rejected', async key => {
+        const input = reservedInput(); input.metadata[key] = 'foreign';
+        await expect(artifactService.createStoredArtifact(input)).rejects.toMatchObject({ code: 'team_artifact_reservation_invalid' });
+        expect(artifactStore.create).not.toHaveBeenCalled();
+    });
+
+    test('disabled durable storage cannot silently create a local reserved artifact', async () => {
+        postgres.enabled = false;
+        await expect(artifactService.createStoredArtifact(reservedInput())).rejects.toMatchObject({ code: 'team_artifact_storage_unavailable' });
+        expect(artifactStore.create).not.toHaveBeenCalled();
+        expect(persistGeneratedArtifactLocally).not.toHaveBeenCalled();
+    });
+
+    test('storage disabled during artifact preparation still cannot fall back locally', async () => {
+        const availability = jest.spyOn(artifactService, 'isEnabled').mockReturnValueOnce(true).mockReturnValueOnce(false);
+        try {
+            await expect(artifactService.createStoredArtifact(reservedInput())).rejects.toMatchObject({ code: 'team_artifact_storage_unavailable' });
+            expect(artifactStore.create).not.toHaveBeenCalled();
+            expect(persistGeneratedArtifactLocally).not.toHaveBeenCalled();
+        } finally { availability.mockRestore(); }
+    });
+
+    test.each([{ statusCode: 503 }, { code: '23505' }, { code: 'ECONNRESET' }])('uncertain or duplicate reserved INSERT never overwrites or falls back: %p', async properties => {
+        const error = Object.assign(new Error('Fixture storage failure'), properties);
+        artifactStore.create.mockRejectedValueOnce(error);
+        await expect(artifactService.createStoredArtifact(reservedInput())).rejects.toBe(error);
+        expect(artifactStore.create).toHaveBeenCalledTimes(1);
+        expect(artifactStore.updateProcessing).not.toHaveBeenCalled();
+        expect(persistGeneratedArtifactLocally).not.toHaveBeenCalled();
+    });
+
     test('marks earlier sandbox artifacts as superseded after storing a newer sandbox bundle', async () => {
         await artifactService.createStoredArtifact({
             sessionId: 'session-1',

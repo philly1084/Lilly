@@ -1,5 +1,3 @@
-const { postgres } = require('../postgres');
-
 function toArtifact(row) {
     if (!row) return null;
 
@@ -25,6 +23,12 @@ function toArtifact(row) {
 }
 
 class ArtifactStore {
+    constructor({ database } = {}) {
+        // Isolated verification may inject a database without loading live
+        // application configuration. Existing callers retain the default DB.
+        this.query = (...args) => (database === undefined ? require('../postgres').postgres : database).query(...args);
+    }
+
     async create({
         id,
         sessionId,
@@ -42,7 +46,7 @@ class ArtifactStore {
         metadata = {},
         vectorizedAt = null,
     }) {
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 INSERT INTO artifacts (
                     id,
@@ -91,7 +95,7 @@ class ArtifactStore {
     }
 
     async updateProcessing(id, { extractedText, previewHtml, metadata, vectorizedAt }) {
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 UPDATE artifacts
                 SET extracted_text = COALESCE($2, extracted_text),
@@ -116,7 +120,7 @@ class ArtifactStore {
             created_at, updated_at
         `;
 
-        const result = await postgres.query(`SELECT ${columns} FROM artifacts WHERE id = $1`, [id]);
+        const result = await this.query(`SELECT ${columns} FROM artifacts WHERE id = $1`, [id]);
         if (!result.rows[0]) return null;
 
         const artifact = toArtifact(result.rows[0]);
@@ -127,7 +131,7 @@ class ArtifactStore {
     }
 
     async listBySession(sessionId) {
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 SELECT
                     id, session_id, parent_artifact_id, direction, source_mode,
@@ -158,7 +162,7 @@ class ArtifactStore {
             return [];
         }
 
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 UPDATE artifacts
                 SET metadata = jsonb_set(
@@ -200,7 +204,7 @@ class ArtifactStore {
             return null;
         }
 
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 SELECT
                     id, session_id, parent_artifact_id, direction, source_mode,
@@ -221,7 +225,7 @@ class ArtifactStore {
     }
 
     async listAllWithSessions() {
-        const result = await postgres.query(
+        const result = await this.query(
             `
                 SELECT
                     artifacts.id,
@@ -255,12 +259,12 @@ class ArtifactStore {
     }
 
     async delete(id) {
-        const result = await postgres.query('DELETE FROM artifacts WHERE id = $1', [id]);
+        const result = await this.query('DELETE FROM artifacts WHERE id = $1', [id]);
         return result.rowCount > 0;
     }
 
     async deleteBySession(sessionId) {
-        const result = await postgres.query('DELETE FROM artifacts WHERE session_id = $1', [sessionId]);
+        const result = await this.query('DELETE FROM artifacts WHERE session_id = $1', [sessionId]);
         return result.rowCount;
     }
 }

@@ -55,3 +55,7 @@ Desktop.ini
 /local/tmp/
 /local/harness-*
 /data/cluster-state-registry.json
+
+# Machine-local proofs, release archives, sessions, and nested worktrees
+/local/
+/.worktrees/

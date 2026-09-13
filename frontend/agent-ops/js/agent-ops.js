@@ -78,11 +78,21 @@
     workspaces: new Map(),
     workspaceErrors: new Map(),
     messageDrafts: new Map(),
+    pendingMessages: new Set(),
     refreshTimer: null,
     refreshing: false,
     hasLoaded: false,
     lastSyncAt: null,
     deskFocused: false,
+    teamId: null,
+    teamClient: null,
+    teamSnapshot: null,
+    teamRuntime: null,
+    teamList: [],
+    legacyProjects: [],
+    generation: 0,
+    refreshToken: 0,
+    refreshAbort: null,
   };
 
   function asArray(value) { return Array.isArray(value) ? value : []; }
@@ -117,8 +127,8 @@
 
   function agentStatusClass(status = '') {
     const normalized = String(status).toLowerCase();
-    if (['needs_input', 'waiting', 'waiting_for_input', 'waiting_for_approval', 'blocked', 'paused'].some((part) => normalized.includes(part))) return 'waiting';
-    if (['working', 'running', 'planning', 'executing', 'verifying', 'queued'].some((part) => normalized.includes(part))) return 'working';
+    if (['needs_input', 'waiting', 'connection_unconfirmed', 'waiting_for_input', 'waiting_for_approval', 'blocked', 'paused', 'queued', 'needs_review', 'changes_requested', 'reconciling', 'stopping', 'failed', 'cancelled'].some((part) => normalized.includes(part))) return 'waiting';
+    if (['working', 'running', 'planning', 'executing', 'verifying'].some((part) => normalized.includes(part))) return 'working';
     return 'idle';
   }
 
@@ -179,6 +189,9 @@
       messages: asArray(source.messages),
       whiteboard: source.whiteboard && typeof source.whiteboard === 'object' ? source.whiteboard : {},
       controls: source.controls && typeof source.controls === 'object' ? source.controls : {},
+      tasks: asArray(source.tasks),
+      persona: source.persona || '',
+      job: source.job || '',
       privateBrowser: source.privateBrowser && typeof source.privateBrowser === 'object'
         ? source.privateBrowser
         : { private: true, persistent: true, exposedToOperator: false, status: 'ready', captureCount: 0, signals: [] },
@@ -242,6 +255,7 @@
   }
 
   function latestSignal(agent) {
+    if (state.teamId) return agent.currentAction;
     const workspace = state.workspaces.get(agent.id);
     const terminal = workspace?.terminal?.at(-1);
     const message = workspace?.messages?.at(-1);
@@ -263,19 +277,32 @@
 
   function renderProjectPicker() {
     const select = globalScope.document.getElementById('projectSelect');
-    const projects = state.overview.projects;
-    if (!projects.length) {
+    const projects = state.teamId ? state.legacyProjects : state.overview.projects;
+    if (!projects.length && !state.teamList.length && !state.teamId) {
       select.innerHTML = '<option value="">No project rooms</option>';
       select.disabled = true;
       return;
     }
-    select.innerHTML = projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.active || project.id === state.overview.project.id ? ' selected' : ''}>${escapeHtml(project.name || 'Untitled project')}</option>`).join('');
-    select.disabled = !capabilityEnabled('projects');
+    const legacy = state.teamId ? '<option value="legacy">Return to company projects</option>' : projects.length ? projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.active || project.id === state.overview.project.id ? ' selected' : ''}>${escapeHtml(project.name || 'Untitled project')}</option>`).join('') : '<option value="legacy">Existing company projects</option>';
+    const teams = state.teamList.some((team) => team.id === state.teamId) || !state.teamId ? state.teamList : [...state.teamList, { id: state.teamId, name: state.teamSnapshot?.team.name || 'Selected team' }];
+    select.innerHTML = `<optgroup label="Company projects">${legacy}</optgroup>${teams.length ? `<optgroup label="Persistent teams">${teams.map((team) => `<option value="team:${escapeHtml(team.id)}"${team.id === state.teamId ? ' selected' : ''}>${escapeHtml(team.name)}</option>`).join('')}</optgroup>` : ''}`;
+    select.disabled = !state.teamId && !capabilityEnabled('projects') && !teams.length;
   }
 
   function renderHeartbeat() {
     const heartbeat = state.overview.heartbeat;
     const card = globalScope.document.getElementById('heartbeatCard');
+    if (state.teamId) {
+      const running = asArray(state.teamSnapshot?.tasks).filter((task) => task.status === 'running');
+      const heartbeatAt = running.map((task) => task.heartbeatAt).filter(Boolean).sort().at(-1);
+      const seconds = heartbeatAt ? (Date.now() - Date.parse(heartbeatAt)) / 1000 : null;
+      const unconfirmed = asArray(state.teamSnapshot.agents).filter(agent => agent.activity?.kind === 'unconfirmed').length;
+      const label = !state.teamRuntime?.enabled ? 'Runtime unavailable' : !state.teamSnapshot.execution.enabled ? 'Execution paused'
+        : unconfirmed ? `${unconfirmed} heartbeat${unconfirmed === 1 ? '' : 's'} unconfirmed` : running.length ? 'Worker heartbeat' : 'Ready for queued work';
+      card.className = `heartbeat-card${!state.teamRuntime?.enabled || !state.teamSnapshot.execution.enabled || unconfirmed ? ' unhealthy' : ''}`;
+      card.innerHTML = `<span class="heartbeat-orbit"><span></span></span><div><strong>${escapeHtml(label)}</strong><small>${seconds === null ? 'No active worker heartbeat' : escapeHtml(formatAge(seconds))}</small></div>`;
+      return;
+    }
     const status = String(heartbeat.status || 'unavailable').toLowerCase();
     const age = Number(heartbeat.ageSeconds);
     const interval = Number(heartbeat.intervalSeconds);
@@ -306,7 +333,7 @@
     const agents = allAgents();
     const floor = globalScope.document.getElementById('opsFloor');
     if (!agents.length) {
-      floor.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><h3>The floor is quiet</h3><p>Create a mission to dispatch agents into visible workstations.</p></div>';
+      floor.innerHTML = `<div class="empty-panel"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><h3>The floor is quiet</h3><p>${state.teamId ? 'Add persistent teammates, then queue their first task. Execution stays paused until you enable it.' : 'Create a mission to dispatch agents into visible workstations.'}</p></div>`;
       return;
     }
     floor.innerHTML = agents.map((agent) => `<button class="agent-station ${agent.statusClass}${agent.id === state.selectedAgentId ? ' selected' : ''}" type="button" data-agent-id="${escapeHtml(agent.id)}" aria-pressed="${agent.id === state.selectedAgentId}"><span class="station-badge" aria-hidden="true"></span><span class="floor-avatar">${escapeHtml(initials(agent.name))}</span><span class="station-copy"><strong>${escapeHtml(agent.name)}</strong><span>${escapeHtml(agent.task)}</span><code>&gt; ${escapeHtml(latestSignal(agent))}</code></span></button>`).join('');
@@ -335,14 +362,17 @@
     const canReceiveInput = (state.demo || capabilityEnabled('operatorInput'))
       && agent.canReceiveInput !== false
       && workspace.controls?.canReceiveInput !== false
+      && !state.pendingMessages.has(draftKey)
       && !approval;
     const inputEndpoint = state.demo || inputCapability?.endpointTemplate;
-    const inputNote = approval
+    const inputNote = state.teamId
+      ? 'A request queues a new task for this teammate. It does not interrupt or rewrite the current run.'
+      : approval
       ? 'Resolve the approval above before steering this run.'
       : canReceiveInput && inputEndpoint
         ? 'Your instruction is recorded in this agent’s session and wakes the same workload.'
         : 'This runtime has not advertised operator input for this agent.';
-    const composer = `<form class="operator-console" data-agent-input-form data-agent-id="${escapeHtml(agent.id)}"><label for="operator-input-${escapeHtml(slug(agent.id))}">Message ${escapeHtml(agent.name)}<textarea id="operator-input-${escapeHtml(slug(agent.id))}" name="message" rows="2" maxlength="4000" required placeholder="Continue this run with…"${canReceiveInput && inputEndpoint ? '' : ' disabled'}></textarea></label><button class="primary-button" type="submit"${canReceiveInput && inputEndpoint ? '' : ' disabled'}><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Send to run</button><p class="operator-console-note">${escapeHtml(inputNote)}</p></form>`;
+    const composer = `<form class="operator-console" data-agent-input-form data-agent-id="${escapeHtml(agent.id)}"><label for="operator-input-${escapeHtml(slug(agent.id))}">Message ${escapeHtml(agent.name)}<textarea id="operator-input-${escapeHtml(slug(agent.id))}" name="message" rows="2" maxlength="4000" required placeholder="${state.teamId ? 'Queue a request for this teammate…' : 'Continue this run with…'}"${canReceiveInput && inputEndpoint ? '' : ' disabled'}></textarea></label><button class="primary-button" type="submit"${canReceiveInput && inputEndpoint ? '' : ' disabled'}><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> ${state.teamId ? 'Queue request' : 'Send to run'}</button><p class="operator-console-note">${escapeHtml(inputNote)}</p></form>`;
     const conversation = workspace.messages.length ? workspace.messages.map((item) => {
       const links = [...asArray(item.links), ...asArray(item.attachments)]
         .filter((link) => safeUrl(link.url))
@@ -351,7 +381,8 @@
     }).join('') : '<div class="empty-compact">Message this teammate to continue the mission. Replies and linked results will appear here.</div>';
     const lines = items.map((item) => `<span class="timestamp">[${escapeHtml(formatTime(item.timestamp))}]</span> <span class="command">${escapeHtml(item.command || item.status || 'event')}</span>\n${escapeHtml(item.output || '')}`).join('\n\n');
     const logsOpen = panel.querySelector('.crew-run-details')?.open === true;
-    panel.innerHTML = `${approvalHtml}<section class="crew-conversation" aria-label="Conversation with ${escapeHtml(agent.name)}">${conversation}</section>${composer}<details class="crew-run-details"${logsOpen ? ' open' : ''}><summary>Run details · ${items.length} recorded events</summary><pre class="terminal-buffer">${lines || 'No run events recorded yet.'}</pre></details>`;
+    const taskResults = state.teamId ? asArray(workspace.tasks).slice(-8).reverse().map((task) => `<article class="team-task-result"><header><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.status.replace(/_/g, ' '))}</span></header>${task.result?.summary ? `<p>${escapeHtml(task.result.summary)}</p>` : '<p>Waiting for a recorded result.</p>'}${task.review?.note ? `<p>Review: ${escapeHtml(task.review.note)}</p>` : ''}${task.status === 'needs_review' ? `<button class="hud-button" type="button" data-team-review="${escapeHtml(task.id)}">Review saved result</button>` : ''}</article>`).join('') : '';
+    panel.innerHTML = `${approvalHtml}<section class="crew-conversation" aria-label="Conversation with ${escapeHtml(agent.name)}">${conversation}</section>${composer}${taskResults}<details class="crew-run-details"${logsOpen ? ' open' : ''}><summary>${state.teamId ? 'Activity log' : 'Run details'} · ${items.length} recorded events</summary>${state.teamId ? '<p class="capability-note">Model and tool checkpoints, not a PTY or raw terminal transcript.</p>' : ''}<pre class="terminal-buffer">${lines || 'No run events recorded yet.'}</pre></details>`;
     const newInput = panel.querySelector('[name="message"]');
     newInput.value = state.messageDrafts.get(draftKey) || '';
     newInput.addEventListener('input', () => state.messageDrafts.set(draftKey, newInput.value));
@@ -365,6 +396,10 @@
     const panel = globalScope.document.getElementById('panel-desk');
     const workspace = state.workspaces.get(agent.id);
     const browser = workspace?.privateBrowser || {};
+    if (state.teamId) {
+      panel.innerHTML = `<div class="desk-empty"><i class="fa-solid fa-user-secret" aria-hidden="true"></i><h3>${escapeHtml(agent.name)}’s private workspace</h3><p>Browser pixels stay inside the agent runtime. This workroom displays only recorded activity and shared deliverables.</p><div class="private-browser-facts"><span>${escapeHtml(browser.status || 'Unavailable')}</span></div></div><section class="teammate-persona"><h3>Responsibility</h3><p>${escapeHtml(workspace?.job || agent.job)}</p><h3>Persona</h3><p>${escapeHtml(workspace?.persona || 'No custom persona recorded.')}</p></section>`;
+      return;
+    }
     const last = browser.lastActivityAt ? formatAge((Date.now() - new Date(browser.lastActivityAt).getTime()) / 1000) : 'not used yet';
     panel.innerHTML = `<div class="desk-empty"><i class="fa-solid fa-user-secret" aria-hidden="true"></i><h3>Private browser belongs to ${escapeHtml(agent.name)}</h3><p>The rendered Web Chat and page viewport are sent to the agent’s browser model, not embedded in your command center.</p><div class="private-browser-facts"><span>${escapeHtml(text(browser.status, 'ready'))}</span><span>${escapeHtml(String(browser.captureCount || 0))} private captures</span><span>last activity ${escapeHtml(last)}</span></div></div>`;
   }
@@ -373,10 +408,11 @@
     const panel = globalScope.document.getElementById('panel-screen');
     const signals = asArray(workspace?.privateBrowser?.signals);
     if (!signals.length) {
-      panel.innerHTML = '<div class="empty-panel"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i><h3>No private browser signals yet</h3><p>When the agent operates its browser, this panel reports bounded page titles and hosts without revealing the rendered viewport.</p></div>';
+      panel.innerHTML = `<div class="empty-panel"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i><h3>${state.teamId ? 'Browser screens stay private' : 'No private browser signals yet'}</h3><p>${state.teamId ? 'Computer tool checkpoints appear in the activity log. Browser titles, URLs, and pixels are not part of this projection.' : 'When the agent operates its browser, this panel reports bounded page titles and hosts without revealing the rendered viewport.'}</p></div>`;
       return;
     }
-    panel.innerHTML = `<div class="private-signal-list">${signals.map((signal) => `<article><i class="fa-solid fa-eye" aria-hidden="true"></i><span><strong>${escapeHtml(signal.title || 'Rendered page')}</strong><small>${escapeHtml(signal.host || 'private page')} · ${escapeHtml(formatTime(signal.timestamp))}</small></span></article>`).join('')}</div>`;
+    const note = state.teamId ? '<p class="browser-checkpoint-note">Recorded computer-tool checkpoints, newest first. These do not confirm the browser is still running. Page titles, URLs, and pixels stay private.</p>' : '';
+    panel.innerHTML = `${note}<div class="private-signal-list">${signals.map((signal) => `<article><i class="fa-solid ${state.teamId ? 'fa-clock-rotate-left' : 'fa-eye'}" aria-hidden="true"></i><span><strong>${escapeHtml(signal.title || 'Rendered page')}</strong><small>${escapeHtml(state.teamId ? 'Recorded checkpoint' : signal.host || 'private page')} · ${escapeHtml(formatTime(signal.timestamp))}</small></span></article>`).join('')}</div>`;
   }
 
   function renderFiles(workspace) {
@@ -417,7 +453,7 @@
     }
     const status = globalScope.document.getElementById('selectedAgentState');
     status.className = `agent-state-pill ${agent.statusClass}`;
-    status.textContent = agent.statusClass === 'waiting' ? 'Waiting on you' : agent.statusClass;
+    status.textContent = state.teamId ? globalScope.LillyTeamClient.statusLabel(agent.status) : agent.statusClass === 'waiting' ? 'Waiting on you' : agent.statusClass;
     globalScope.document.getElementById('selectedAvatar').textContent = initials(agent.name);
     globalScope.document.getElementById('selectedAgentRole').textContent = `${agent.role} · ${agent.model}`;
     globalScope.document.getElementById('selectedAgentName').textContent = agent.name;
@@ -428,6 +464,8 @@
     restart.disabled = !controlEnabled || agent.controls?.canRestart === false || agent.enabled !== false;
     stop.hidden = agent.enabled === false;
     restart.hidden = agent.enabled !== false;
+    restart.querySelector('span').textContent = state.teamId ? 'Resume' : 'Restart';
+    restart.setAttribute('aria-label', state.teamId ? 'Resume selected teammate' : 'Restart selected agent');
     const workspace = state.workspaces.get(agent.id);
     renderTerminal(agent, workspace);
     renderDesk(agent);
@@ -450,13 +488,13 @@
     globalScope.document.getElementById('missionProgress').textContent = `${safeProgress}%`;
     globalScope.document.getElementById('missionProgressBar').style.width = `${safeProgress}%`;
     globalScope.document.getElementById('missionGoal').textContent = text(project.goal || project.name, 'No active mission');
-    globalScope.document.getElementById('missionStatus').textContent = project.id ? `Room status: ${text(project.status, 'idle')}. The board refreshes with the agent heartbeat.` : 'Create a project and mission to start the crew.';
+    globalScope.document.getElementById('missionStatus').textContent = state.teamId ? project.taskSummary : project.id ? `Room status: ${text(project.status, 'idle')}. The board refreshes with the agent heartbeat.` : 'Create a project and mission to start the crew.';
 
     const definitions = [{ key: 'now', label: 'Now' }, { key: 'waiting', label: 'Waiting' }, { key: 'done', label: 'Done' }];
     const board = state.overview.whiteboard;
     const items = [
       ...state.overview.goalItems,
-      ...board.notes.map((note) => ({
+      ...(state.teamId ? [] : board.notes).map((note) => ({
         ...note,
         title: note.content || note.title || 'Shared note',
         agentName: note.author || note.agentName || 'Operator',
@@ -466,7 +504,7 @@
     ];
     globalScope.document.getElementById('boardColumns').innerHTML = definitions.map(({ key, label }) => {
       const notes = items.filter((item) => boardBucket(item) === key);
-      return `<section class="board-column ${key}"><header><span>${label}</span><span>${notes.length}</span></header>${notes.length ? notes.map((item) => `<div class="board-note${item.manual ? ' manual' : ''}">${escapeHtml(item.title || item.name || 'Untitled step')}<small>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}${item.blockedBy ? ` · ${escapeHtml(item.blockedBy)}` : ''}</small></div>`).join('') : '<div class="empty-compact">No notes here.</div>'}</section>`;
+      return `<section class="board-column ${key}"><header><span>${label}</span><span>${notes.length}</span></header>${notes.length ? notes.map((item) => `<div class="board-note${item.manual ? ' manual' : ''}">${escapeHtml(item.title || item.name || 'Untitled step')}<small>${escapeHtml(item.agentName || item.assignee || 'Unassigned')}${item.blockedBy ? ` · ${escapeHtml(item.blockedBy)}` : ''}</small></div>`).join('') : `<div class="empty-compact">${state.teamId ? 'No tasks here.' : 'No notes here.'}</div>`}</section>`;
     }).join('');
     let path = globalScope.document.querySelector('.whiteboard-path');
     if (!path) {
@@ -476,13 +514,22 @@
     }
     path.hidden = !board.path;
     path.textContent = board.path ? `Shared file: ${board.path}` : '';
+    let sharedNotes = globalScope.document.getElementById('sharedTeamNotes');
+    if (!sharedNotes) { sharedNotes = globalScope.document.createElement('section'); sharedNotes.id = 'sharedTeamNotes'; sharedNotes.className = 'shared-team-notes'; path.after(sharedNotes); }
+    sharedNotes.hidden = !state.teamId;
+    sharedNotes.innerHTML = state.teamId ? `<h3>Pinned shared notes</h3>${board.notes.length ? board.notes.slice(-12).reverse().map((note) => `<article><p>${escapeHtml(note.content)}</p><small>${escapeHtml(note.author)} · ${escapeHtml(note.source)}</small></article>`).join('') : '<p class="empty-compact">Shared facts and decisions will appear here. Private memories are not shown.</p>'}` : '';
 
+    renderArtifactShelf();
+
+    const messages = state.overview.messages;
+    globalScope.document.getElementById('handoffList').innerHTML = messages.length ? messages.slice(0, 6).map((item) => `<article class="handoff-item"><div class="handoff-meta"><span>${escapeHtml(item.from || 'Agent')}</span><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatTime(item.timestamp))}</time></div><p>${escapeHtml(item.message || item.detail || 'Recorded update')}</p></article>`).join('') : '<div class="empty-compact">No crew handoffs recorded yet.</div>';
+  }
+
+  function renderArtifactShelf() {
     const artifacts = state.overview.artifacts;
     globalScope.document.getElementById('artifactCount').textContent = artifacts.length;
     globalScope.document.getElementById('artifactList').innerHTML = artifacts.length ? artifacts.slice(0, 8).map((item) => { const url = safeUrl(item.previewUrl || item.downloadUrl || item.url); const tag = url ? 'a' : 'div'; const href = url ? ` href="${escapeHtml(url)}" target="_blank" rel="noopener"` : ''; return `<${tag} class="artifact-item"${href}><span class="artifact-icon"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></span><span><strong>${escapeHtml(item.name || item.filename || 'Artifact')}</strong><small>${escapeHtml(item.detail || item.mimeType || 'Recorded output')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></${tag}>`; }).join('') : '<div class="empty-compact">Finished work will appear below the board.</div>';
 
-    const messages = state.overview.messages;
-    globalScope.document.getElementById('handoffList').innerHTML = messages.length ? messages.slice(0, 6).map((item) => `<article class="handoff-item"><div class="handoff-meta"><span>${escapeHtml(item.from || 'Agent')}</span><time datetime="${escapeHtml(item.timestamp || '')}">${escapeHtml(formatTime(item.timestamp))}</time></div><p>${escapeHtml(item.message || item.detail || 'Recorded update')}</p></article>`).join('') : '<div class="empty-compact">No crew handoffs recorded yet.</div>';
   }
 
   function renderAll() {
@@ -490,6 +537,7 @@
     globalScope.document.getElementById('loadingState').hidden = true;
     globalScope.document.getElementById('stageContent').hidden = false;
     setupDialogs();
+    renderTeamControls();
   }
 
   function renderLoadError(error) {
@@ -500,6 +548,8 @@
   }
 
   async function loadWorkspace(agent) {
+    if (state.teamId) return state.workspaces.get(agent.id) || null;
+    const generation = state.generation;
     if (state.demo) {
       const workspace = normalizeWorkspace(demoWorkspaces[agent.id] || { agentId: agent.id, terminal: [], messages: [], browser: [], files: [], artifacts: [] });
       state.workspaces.set(agent.id, workspace);
@@ -508,10 +558,12 @@
     }
     try {
       const workspace = normalizeWorkspace(await request(`/agents/${encodeURIComponent(agent.id)}/workspace`));
+      if (generation !== state.generation) return null;
       state.workspaces.set(agent.id, workspace);
       state.workspaceErrors.delete(agent.id);
       return workspace;
     } catch (error) {
+      if (generation !== state.generation) return null;
       state.workspaceErrors.set(agent.id, error.message);
       return null;
     }
@@ -537,26 +589,87 @@
     if (state.refreshing) return;
     if (!manual && globalScope.document?.hidden) { scheduleRefresh(); return; }
     state.refreshing = true;
+    const token = ++state.refreshToken;
+    const generation = state.generation;
+    const teamId = state.teamId;
+    let synchronized = false;
+    let enrichArtifacts;
+    state.refreshAbort?.abort();
+    state.refreshAbort = new globalScope.AbortController();
     if (state.hasLoaded) renderCommandBar();
     try {
-      const overview = normalizeOverview(state.demo ? demoOverview : await request('/overview'));
+      let overview;
+      if (teamId) {
+        if (!state.teamClient) throw new Error('Persistent team client unavailable. Reload this page.');
+        const loaded = await state.teamClient.load(teamId, state.refreshAbort.signal);
+        if (generation !== state.generation || token !== state.refreshToken) return;
+        state.teamSnapshot = loaded.snapshot;
+        state.teamRuntime = loaded.runtime;
+        const projected = globalScope.LillyTeamClient.projectSnapshot(loaded.snapshot, loaded.runtime, loaded.metadata);
+        overview = normalizeOverview(projected.overview);
+        state.workspaces = new Map([...projected.workspaces].map(([id, workspace]) => [id, normalizeWorkspace(workspace)]));
+        enrichArtifacts = () => loaded.loadMetadata(() => {
+          if (generation !== state.generation || token !== state.refreshToken || teamId !== state.teamId) return;
+          const enriched = globalScope.LillyTeamClient.projectSnapshot(loaded.snapshot, loaded.runtime, loaded.metadata);
+          state.overview.artifacts = normalizeOverview(enriched.overview).artifacts;
+          for (const [id, workspace] of enriched.workspaces) {
+            const current = state.workspaces.get(id);
+            if (current) current.artifacts = normalizeWorkspace(workspace).artifacts;
+          }
+          // Do not rebuild stations, messages or the user's input for file data.
+          renderArtifactShelf(); renderFiles(state.workspaces.get(state.selectedAgentId));
+        });
+      } else {
+        overview = normalizeOverview(state.demo ? demoOverview : await request('/overview'));
+        if (generation !== state.generation || token !== state.refreshToken) return;
+        state.legacyProjects = overview.projects;
+      }
       state.overview = overview;
       const agents = allAgents(overview);
       if (!agents.some((agent) => agent.id === state.selectedAgentId)) state.selectedAgentId = overview.selectedAgentId || agents[0]?.id || null;
       await refreshWorkstations();
+      if (generation !== state.generation || token !== state.refreshToken) return;
       state.lastSyncAt = new Date();
       state.hasLoaded = true;
       renderAll();
+      synchronized = true;
+      enrichArtifacts?.();
       if (manual) showToast('Workroom synchronized.');
     } catch (error) {
+      if (generation !== state.generation || token !== state.refreshToken) return;
       if (!state.hasLoaded) renderLoadError(error);
       else {
+        if (state.teamId) {
+          // Cached activity is useful, but a failed refresh cannot keep claiming
+          // a live working/waiting observation. Leave durable task state alone.
+          const cachedAgents = allAgents();
+          for (const agent of cachedAgents) if (['running', 'waiting_for_team'].includes(agent.status)) {
+            agent.status = 'connection_unconfirmed'; agent.statusClass = 'waiting';
+            agent.currentAction = 'Heartbeat unconfirmed'; agent.groupKey = 'needsInput';
+          }
+          state.overview.groups = {
+            working: cachedAgents.filter(agent => agent.statusClass === 'working'),
+            needsInput: cachedAgents.filter(agent => agent.statusClass === 'waiting'),
+            idle: cachedAgents.filter(agent => agent.statusClass === 'idle'),
+          };
+          renderCrew(); renderFloor(); renderSelectedAgent();
+          const heartbeat = globalScope.document.getElementById('heartbeatCard');
+          heartbeat.className = 'heartbeat-card unhealthy';
+          heartbeat.querySelector('strong').textContent = 'Live connection unconfirmed';
+          heartbeat.querySelector('small').textContent = 'Showing last saved activity';
+        }
         const sync = globalScope.document.getElementById('syncState');
         sync.className = 'sync-state error';
         sync.innerHTML = `<span class="pulse-dot"></span><span>Sync failed</span>`;
         showToast(`Live sync paused: ${error.message}`, true);
       }
-    } finally { state.refreshing = false; scheduleRefresh(); }
+    } finally {
+      if (token === state.refreshToken) {
+        state.refreshing = false;
+        if (synchronized) renderCommandBar();
+        scheduleRefresh();
+      }
+    }
   }
 
   function selectAgent(agentId) {
@@ -588,11 +701,18 @@
     const input = form.querySelector('[name="message"]');
     const button = form.querySelector('button[type="submit"]');
     const message = input?.value.trim();
+    const teamId = state.teamId;
+    const generation = state.generation;
     if (!message) { input?.reportValidity(); return; }
+    const draftKey = `${teamId || state.overview.project.id}:${agentId}`;
+    if (state.pendingMessages.has(draftKey)) return;
+    state.pendingMessages.add(draftKey);
     button.disabled = true;
     input.disabled = true;
     try {
-      if (state.demo) {
+      if (teamId) {
+        await state.teamClient.command(teamId, 'send_message', { to: [agentId], kind: 'request', body: message });
+      } else if (state.demo) {
         const workspace = state.workspaces.get(agentId) || normalizeWorkspace({ agentId });
         workspace.terminal.push({ timestamp: new Date().toISOString(), status: 'queued', command: 'operator.continue', output: message });
         workspace.messages.push({ from: 'Operator', message, timestamp: new Date().toISOString() });
@@ -602,24 +722,30 @@
         if (!template) throw new Error('Operator input is unavailable in this runtime.');
         await request(endpointFromTemplate(template, 'agentId', agentId), { method: 'POST', body: JSON.stringify({ message }) });
       }
+      state.messageDrafts.delete(draftKey);
+      if (generation !== state.generation) return;
       input.value = '';
-      state.messageDrafts.delete(`${state.overview.project.id}:${agentId}`);
-      showToast('Instruction recorded and queued on the existing agent run.');
+      showToast(teamId ? 'Request recorded as a new queued task. It runs only when execution is enabled.' : 'Instruction recorded and queued on the existing agent run.');
       if (state.demo) renderSelectedAgent();
       else await refresh(false);
     } catch (error) {
       button.disabled = false;
       input.disabled = false;
       showToast(`Could not steer agent: ${error.message}`, true);
-    }
+    } finally { state.pendingMessages.delete(draftKey); if (generation === state.generation) renderSelectedAgent(); }
   }
 
   async function controlAgent(action, button) {
     const agent = selectedAgent();
     if (!agent || !['stop', 'restart'].includes(action)) return;
     button.disabled = true;
+    const teamId = state.teamId;
+    const generation = state.generation;
     try {
-      if (state.demo) {
+      if (teamId) {
+        await state.teamClient.command(teamId, 'control_agent', { agentId: agent.id, action: action === 'restart' ? 'resume' : 'stop' });
+        if (generation !== state.generation) return;
+      } else if (state.demo) {
         agent.enabled = action === 'restart';
         agent.controls = { canStop: agent.enabled, canRestart: !agent.enabled };
         agent.status = agent.enabled ? 'queued' : 'stopped';
@@ -633,7 +759,7 @@
           body: JSON.stringify({ action }),
         });
       }
-      showToast(action === 'stop'
+      showToast(teamId ? action === 'stop' ? 'Stop requested. Active work remains visible until cancellation is confirmed.' : 'Teammate resumed. Existing queued tasks can run; cancelled tasks were not duplicated.' : action === 'stop'
         ? 'Agent will stop after its current command and keep its workspace.'
         : 'Existing agent workspace restarted; no duplicate was created.');
       if (state.demo) renderAll();
@@ -652,9 +778,16 @@
     const content = input.value.trim();
     if (!content) { input.reportValidity(); return; }
     const button = globalScope.document.getElementById('createBoardNoteSubmit');
+    const teamId = state.teamId;
+    const generation = state.generation;
     button.disabled = true;
     try {
-      if (state.demo) {
+      if (teamId) {
+        const agentId = state.selectedAgentId || state.teamSnapshot.agents[0]?.id;
+        if (!agentId) throw new Error('Add a teammate before recording shared notes.');
+        await state.teamClient.command(teamId, 'remember', { agentId, scope: 'team', content, source: 'Operator workroom note' });
+        if (generation !== state.generation) return;
+      } else if (state.demo) {
         state.overview.whiteboard.notes.push({ id: `demo-note-${Date.now()}`, column, content, author: 'Operator', createdAt: new Date().toISOString() });
       } else {
         const endpoint = capability('whiteboard')?.endpoint;
@@ -664,7 +797,7 @@
       dialog.close();
       dialog.querySelector('form').reset();
       globalScope.document.getElementById('wakeCrewInput').checked = true;
-      showToast(wakeCrew ? 'Shared note saved and the crew was nudged.' : 'Shared note saved.');
+      showToast(teamId ? 'Shared note saved. No new task was created.' : wakeCrew ? 'Shared note saved and the crew was nudged.' : 'Shared note saved.');
       if (state.demo) { renderBoard(); setupDialogs(); }
       else await refresh(false);
     } catch (error) {
@@ -674,6 +807,23 @@
   }
 
   function setupDialogs() {
+    if (state.teamId) {
+      globalScope.document.getElementById('newGoalButton').disabled = !state.teamSnapshot?.agents.length;
+      globalScope.document.getElementById('newGoalButton').querySelector('span').textContent = 'Queue task';
+      globalScope.document.getElementById('newProjectButton').hidden = true;
+      globalScope.document.getElementById('newBoardNoteButton').disabled = !state.teamSnapshot?.agents.length;
+      globalScope.document.getElementById('createBoardNoteSubmit').disabled = !state.teamSnapshot?.agents.length;
+      globalScope.document.getElementById('createBoardNoteSubmit').textContent = 'Save shared note';
+      globalScope.document.getElementById('boardNoteColumn').closest('label').hidden = true;
+      globalScope.document.getElementById('wakeCrewInput').closest('label').hidden = true;
+      globalScope.document.getElementById('boardCapabilityNote').textContent = 'Stored as shared team memory. Teammates read it through their context; saving does not wake agents.';
+      return;
+    }
+    globalScope.document.getElementById('newGoalButton').querySelector('span').textContent = 'New mission';
+    globalScope.document.getElementById('newProjectButton').hidden = false;
+    globalScope.document.getElementById('createBoardNoteSubmit').textContent = 'Pin and wake crew';
+    globalScope.document.getElementById('boardNoteColumn').closest('label').hidden = false;
+    globalScope.document.getElementById('wakeCrewInput').closest('label').hidden = false;
     const project = state.overview.project;
     const goalCapability = capability('goalCreation');
     const goalSubmit = globalScope.document.getElementById('createGoalSubmit');
@@ -693,9 +843,161 @@
         : 'This runtime has not advertised durable shared-board notes.';
   }
 
+  async function loadTeamList() {
+    if (!state.teamClient) return;
+    try { state.teamList = await state.teamClient.list(); if (state.overview) renderProjectPicker(); }
+    catch (_error) { /* Existing company projects stay usable when team auth/runtime is unavailable. */ }
+  }
+
+  function selectTeam(teamId) {
+    state.teamManager?.close();
+    state.teamClient?.cancelMetadata();
+    state.generation += 1;
+    state.refreshToken += 1;
+    state.refreshAbort?.abort();
+    state.teamId = teamId;
+    state.teamSnapshot = null;
+    state.teamRuntime = null;
+    state.workspaces.clear(); state.workspaceErrors.clear();
+    state.selectedAgentId = null;
+    state.hasLoaded = false;
+    state.overview = null;
+    state.refreshing = false;
+    globalScope.document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
+    globalScope.document.getElementById('loadingState').hidden = false;
+    globalScope.document.getElementById('stageContent').hidden = true;
+    globalScope.document.getElementById('missionTitle').textContent = 'Opening selected room…';
+    globalScope.document.getElementById('crewList').innerHTML = '';
+    globalScope.document.getElementById('boardColumns').innerHTML = '';
+    globalScope.document.getElementById('artifactList').innerHTML = '';
+    globalScope.document.getElementById('handoffList').innerHTML = '';
+    globalScope.document.getElementById('sharedTeamNotes')?.replaceChildren();
+    globalScope.document.getElementById('teamToolbar').hidden = true;
+    globalScope.document.getElementById('newGoalButton').disabled = true;
+    globalScope.document.getElementById('newBoardNoteButton').disabled = true;
+    const url = new URL(globalScope.location.href);
+    if (teamId) url.searchParams.set('team', teamId); else url.searchParams.delete('team');
+    globalScope.history.replaceState(null, '', url);
+    refresh(false);
+  }
+
+  function renderTeamControls() {
+    const toolbar = globalScope.document.getElementById('teamToolbar');
+    toolbar.hidden = !state.teamId;
+    globalScope.document.getElementById('stageContent').classList.toggle('team-mode', Boolean(state.teamId));
+    globalScope.document.querySelector('.rail-heading h1').textContent = state.teamId ? 'Teammates' : 'Live agents';
+    globalScope.document.getElementById('newGoalButton').setAttribute('aria-label', state.teamId ? 'Queue task' : 'New mission');
+    globalScope.document.getElementById('newTeamButton').hidden = state.demo;
+    globalScope.document.getElementById('manageTeamButton').hidden = !state.teamId;
+    globalScope.document.getElementById('floorTitle').textContent = state.teamId ? 'Persistent crew' : 'Operations floor';
+    if (!state.teamId || !state.teamSnapshot) return;
+    const snapshot = state.teamSnapshot;
+    const enabled = snapshot.execution.enabled;
+    globalScope.document.getElementById('teamExecutionState').textContent = enabled ? 'Execution enabled' : 'Execution paused';
+    globalScope.document.getElementById('teamRuntimeNote').textContent = `${state.teamRuntime?.enabled ? `Runtime configured · ${state.teamRuntime.runtime || 'Lilly'}` : 'Runtime unavailable; queued tasks will wait'} · ${snapshot.agents.length}/${snapshot.team.limits.maxAgents} teammates · ${snapshot.team.limits.concurrency} parallel slots`;
+    globalScope.document.getElementById('addTeammateButton').disabled = snapshot.agents.length >= snapshot.team.limits.maxAgents;
+  }
+
+  function openTeamDialog(id) {
+    if (!state.teamClient) { showToast('Persistent teams require the connected team API. Reload or sign in.', true); return; }
+    const dialog = globalScope.document.getElementById(id);
+    const form = dialog.querySelector('form');
+    if (form.dataset.teamId && form.dataset.teamId !== state.teamId) form.reset();
+    form.dataset.teamId = state.teamId || '';
+    form.querySelector('.form-error').textContent = '';
+    dialog.showModal();
+    form.querySelector('input, textarea, select')?.focus();
+  }
+
+  function openTeamTask() {
+    if (!state.teamSnapshot) return;
+    const form = globalScope.document.getElementById('teamTaskForm');
+    form.elements.agentId.innerHTML = state.teamSnapshot.agents.map((agent) => `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)} · ${escapeHtml(agent.role)}</option>`).join('');
+    form.elements.agentId.value = state.selectedAgentId || state.teamSnapshot.agents[0]?.id || '';
+    form.elements.reviewerId.innerHTML = '<option value="">Owner review</option>' + state.teamSnapshot.agents.filter((agent) => agent.role === 'reviewer').map((agent) => `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}</option>`).join('');
+    form.elements.skillId.innerHTML = '<option value="">No skill template</option>' + state.teamSnapshot.skills.filter((skill) => skill.status === 'approved').map((skill) => `<option value="${escapeHtml(skill.id)}">${escapeHtml(skill.name)} · v${skill.revision}</option>`).join('');
+    openTeamDialog('teamTaskDialog');
+  }
+
+  function openExecutionSettings() {
+    if (!state.teamSnapshot) return;
+    openTeamDialog('teamExecutionDialog');
+    const form = globalScope.document.getElementById('teamExecutionForm');
+    const execution = state.teamSnapshot.execution;
+    form.elements.model.value = execution.model || '';
+    form.elements.toolIds.value = execution.toolIds.join('\n');
+    form.elements.origins.value = execution.origins.join('\n');
+    form.elements.maxCalls.value = execution.maxCalls;
+    form.elements.seconds.value = execution.maxTimeMs / 1000;
+    for (const key of ['enabled', 'allowSideEffects', 'allowWebSockets']) form.elements[key].checked = execution[key] === true;
+    globalScope.document.getElementById('executionRuntimeAvailability').textContent = state.teamRuntime?.enabled ? `Server runtime: ${state.teamRuntime.runtime || 'Lilly'}. Changes apply to this team only.` : 'The server worker runtime is unavailable. Saving permissions does not start workers until it becomes available.';
+  }
+
+  function openTaskReview(taskId) {
+    const task = state.teamSnapshot?.tasks.find((entry) => entry.id === taskId);
+    if (!task || task.status !== 'needs_review') return;
+    openTeamDialog('teamReviewDialog');
+    const form = globalScope.document.getElementById('teamReviewForm');
+    form.reset();
+    form.elements.taskId.value = task.id;
+    form.elements.inspected.checked = false;
+    globalScope.document.getElementById('reviewTaskTitle').textContent = task.title;
+    globalScope.document.getElementById('reviewTaskSummary').textContent = task.result?.summary || 'No result summary recorded.';
+    const artifacts = asArray(task.result?.artifacts).map((artifact) => ({ ...artifact, detail: state.overview.artifacts.find((entry) => entry.id === artifact.id && entry.sha256 === artifact.sha256) }));
+    const inspectable = artifacts.length > 0 && artifacts.every((artifact) => /^[a-f0-9]{64}$/i.test(artifact.sha256) && safeUrl(artifact.detail?.downloadUrl));
+    globalScope.document.getElementById('reviewArtifactEvidence').innerHTML = artifacts.length ? artifacts.map((artifact) => {
+      const url = safeUrl(artifact.detail?.downloadUrl);
+      return `<article>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">Inspect ${escapeHtml(artifact.detail.name)}</a>` : '<strong>Artifact unavailable for inspection</strong>'}<small>Recorded SHA-256</small><code>${escapeHtml(artifact.sha256 || 'No hash recorded')}</code></article>`;
+    }).join('') : '<p>No recorded artifact evidence. Approval is unavailable; request changes.</p>';
+    form.querySelector('[value="approve"]').disabled = !inspectable;
+  }
+
+  function bindTeamForms() {
+    globalScope.document.getElementById('newTeamButton').addEventListener('click', () => openTeamDialog('teamDialog'));
+    globalScope.document.getElementById('addTeammateButton').addEventListener('click', () => openTeamDialog('teammateDialog'));
+    globalScope.document.getElementById('configureTeamButton').addEventListener('click', openExecutionSettings);
+    globalScope.document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
+    const values = (form) => Object.fromEntries(new globalScope.FormData(form));
+    const lines = (value) => String(value || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const bind = (id, mutate, success) => {
+      const form = globalScope.document.getElementById(id);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (form.dataset.pending === 'true' || !form.reportValidity()) return;
+        const generation = state.generation;
+        const teamId = form.dataset.teamId;
+        const button = form.querySelector('[type="submit"]');
+        form.dataset.pending = 'true'; button.disabled = true;
+        form.querySelector('.form-error').textContent = '';
+        try {
+          const result = await mutate(teamId, values(form), form, event);
+          if (generation !== state.generation) { showToast('Change saved in its original team.'); return; }
+          form.closest('dialog').close(); form.reset();
+          await success(result);
+        } catch (error) {
+          form.querySelector('.form-error').textContent = error.message;
+          showToast(error.message, true);
+        } finally { form.dataset.pending = 'false'; button.disabled = false; }
+      });
+    };
+    bind('teamCreateForm', (_teamId, input) => state.teamClient.create({ name: input.name.trim(), objective: input.objective.trim(), maxAgents: Number(input.maxAgents), concurrency: Number(input.concurrency) }), async (team) => {
+      await loadTeamList(); showToast('Persistent team created paused. No agents were started.'); selectTeam(team.id);
+    });
+    bind('teammateForm', (teamId, input) => state.teamClient.command(teamId, 'create_agent', { name: input.name.trim(), role: input.role, job: input.job.trim(), persona: input.persona.trim() }), async () => { showToast('Persistent teammate saved.'); await refresh(true); });
+    bind('teamTaskForm', (teamId, input) => state.teamClient.command(teamId, 'assign_task', { agentId: input.agentId, title: input.title.trim(), instruction: input.instruction.trim(), writeTargets: lines(input.writeTargets), ...(input.reviewerId ? { reviewerId: input.reviewerId } : {}), ...(input.skillId ? { skillId: input.skillId } : {}) }), async () => { showToast('Task queued. Execution settings and capacity determine when it runs.'); await refresh(true); });
+    bind('teamExecutionForm', (teamId, input, form) => state.teamClient.command(teamId, 'configure_execution', { model: input.model.trim() || null,
+      toolIds: lines(input.toolIds), origins: lines(input.origins), maxCalls: Number(input.maxCalls), maxTimeMs: Number(input.seconds) * 1000,
+      enabled: form.elements.enabled.checked, allowSideEffects: form.elements.allowSideEffects.checked, allowWebSockets: form.elements.allowWebSockets.checked }), async () => { showToast('Execution settings recorded. Check worker activity for actual progress.'); await refresh(true); });
+    bind('teamReviewForm', (teamId, input, form, event) => {
+      const approved = event.submitter?.value === 'approve';
+      if (approved && !form.elements.inspected.checked) throw new Error('Inspect the linked artifacts and confirm that you checked the requested outcome before approving.');
+      return state.teamClient.command(teamId, 'review_task', { taskId: input.taskId, approved, note: input.note.trim() });
+    }, async () => { showToast('Owner review recorded.'); await refresh(true); });
+  }
+
   function bindEvents() {
     globalScope.document.getElementById('refreshButton').addEventListener('click', () => refresh(true));
-    globalScope.document.getElementById('newGoalButton').addEventListener('click', () => globalScope.document.getElementById('goalDialog').showModal());
+    globalScope.document.getElementById('newGoalButton').addEventListener('click', () => { if (state.teamId) openTeamTask(); else globalScope.document.getElementById('goalDialog').showModal(); });
     globalScope.document.getElementById('newProjectButton').addEventListener('click', () => globalScope.document.getElementById('projectDialog').showModal());
     globalScope.document.getElementById('newBoardNoteButton').addEventListener('click', () => {
       const dialog = globalScope.document.getElementById('boardNoteDialog');
@@ -712,7 +1014,7 @@
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? PANELS.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + PANELS.length) % PANELS.length;
       setPanel(PANELS[next], true);
     });
-    globalScope.document.getElementById('workstationPanels').addEventListener('click', (event) => { const button = event.target.closest('[data-approval-id]'); if (button) resolveApproval(button.dataset.approvalId, button); });
+    globalScope.document.getElementById('workstationPanels').addEventListener('click', (event) => { const review = event.target.closest('[data-team-review]'); if (review) openTaskReview(review.dataset.teamReview); const button = event.target.closest('[data-approval-id]'); if (button) resolveApproval(button.dataset.approvalId, button); });
     globalScope.document.getElementById('workstationPanels').addEventListener('submit', (event) => {
       const form = event.target.closest('[data-agent-input-form]');
       if (!form) return;
@@ -723,6 +1025,9 @@
     globalScope.document.getElementById('stopAgentButton').addEventListener('click', (event) => controlAgent('stop', event.currentTarget));
     globalScope.document.getElementById('restartAgentButton').addEventListener('click', (event) => controlAgent('restart', event.currentTarget));
     globalScope.document.getElementById('projectSelect').addEventListener('change', async (event) => {
+      if (event.target.value.startsWith('team:')) { selectTeam(event.target.value.slice(5)); return; }
+      if (state.teamId) { selectTeam(null); return; }
+      if (event.target.value === 'legacy') return;
       const template = capability('projects')?.activateEndpointTemplate;
       if (!event.target.value || !template || state.demo) return;
       event.target.disabled = true;
@@ -765,8 +1070,21 @@
   }
 
   function init() {
+    if (state.initialized) return;
+    state.initialized = true;
     state.demo = new URLSearchParams(globalScope.location.search).get('demo') === '1';
+    if (globalScope.LillyTeamClient && !state.demo) {
+      state.teamClient = globalScope.LillyTeamClient.createClient({ fetch: (...args) => globalScope.fetch(...args), storage: globalScope.sessionStorage });
+      state.teamId = new URLSearchParams(globalScope.location.search).get('team') || null;
+    }
     bindEvents();
+    bindTeamForms();
+    if (state.teamClient && globalScope.LillyTeamManager) {
+      state.teamManager = globalScope.LillyTeamManager.create({ document: globalScope.document, client: state.teamClient,
+        context: () => ({ teamId: state.teamId, snapshot: state.teamSnapshot }), refresh: () => refresh(true) });
+      globalScope.document.getElementById('manageTeamButton').addEventListener('click', () => state.teamManager.open());
+    }
+    loadTeamList();
     refresh(false);
   }
 

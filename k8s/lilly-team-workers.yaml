@@ -1,0 +1,126 @@
+# Opt-in foundation only: no worker Pod, Secret or model task is created here.
+# Based on app-scaffold labels/resources, adapted to task Pods without a Service.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lilly-team-workers
+  labels:
+    app.kubernetes.io/name: lilly-team-workers
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.34
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lilly-grok-worker
+  namespace: lilly-team-workers
+automountServiceAccountToken: false
+---
+# Assign this dedicated caller SA to Lilly only after separately approving the
+# backend rollout and runtime configuration. It grants no cluster-wide role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lilly-team-supervisor
+  namespace: kimibuilt
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lilly-team-supervisor
+  namespace: lilly-team-workers
+rules:
+  - apiGroups: ['']
+    resources: ['pods', 'secrets']
+    verbs: ['get', 'create', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/exec']
+    verbs: ['get', 'create']
+  - apiGroups: ['']
+    resources: ['persistentvolumeclaims']
+    verbs: ['get', 'create']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lilly-team-supervisor
+  namespace: lilly-team-workers
+subjects:
+  - kind: ServiceAccount
+    name: lilly-team-supervisor
+    namespace: kimibuilt
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lilly-team-supervisor
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-default-deny
+  namespace: lilly-team-workers
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-lilly-broker-only
+  namespace: lilly-team-workers
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lilly-grok-worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kimibuilt
+          podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - {protocol: TCP, port: 3001}
+---
+# No broker Service: each task's private hostAlias points at its owning backend
+# Pod IP. A Service or client affinity cannot route process-local token state.
+# Backend release must inject these Downward API env fields (not literal IPs):
+# LILLY_TEAMS_BROKER_POD_IP=status.podIP
+# LILLY_TEAMS_BROKER_POD_UID=metadata.uid
+# LILLY_TEAMS_BROKER_POD_NAME=metadata.name
+# LILLY_TEAMS_BROKER_POD_NAMESPACE=metadata.namespace
+# Keep backend hostNetwork=false and one broker listener per Pod. No DNS egress.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: worker-budget
+  namespace: lilly-team-workers
+spec:
+  hard:
+    pods: '8'
+    count/secrets: '16'
+    persistentvolumeclaims: '32'
+    requests.storage: 64Gi
+    requests.cpu: '2'
+    requests.memory: 4Gi
+    limits.cpu: '8'
+    limits.memory: 16Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: worker-container-limits
+  namespace: lilly-team-workers
+spec:
+  limits:
+    - type: Container
+      default: {cpu: '1', memory: 2Gi}
+      defaultRequest: {cpu: 100m, memory: 256Mi}
+      max: {cpu: '1', memory: 2Gi}

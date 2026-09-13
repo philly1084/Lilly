@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <title>KimiBuilt Agent Workroom</title>
   <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css?v=6.4.0">
-  <link rel="stylesheet" href="css/agent-ops.css?v=agent-workroom-v4">
+  <link rel="stylesheet" href="css/agent-ops.css?v=team-computer-checkpoints-v1">
 </head>
 <body>
   <a class="skip-link" href="#workroomStage">Skip to live workroom</a>
@@ -24,8 +24,8 @@
         <div class="sync-state" id="syncState" role="status" aria-live="polite">
           <span class="pulse-dot"></span><span>Connecting</span>
         </div>
-        <button class="hud-button" id="refreshButton" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Sync</span></button>
-        <button class="primary-button" id="newGoalButton" type="button"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i><span>New mission</span></button>
+        <button class="hud-button" id="refreshButton" aria-label="Sync workroom" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Sync</span></button>
+        <button class="primary-button" id="newGoalButton" aria-label="New mission" type="button"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i><span>New mission</span></button>
       </div>
     </header>
 
@@ -43,10 +43,12 @@
         <div><strong>Heartbeat</strong><small>Waiting for runtime</small></div>
       </div>
       <div class="crew-list" id="crewList" aria-live="polite"></div>
-      <div class="rail-footer">
+      <div class="rail-footer"><details class="room-tools"><summary>Room tools</summary><div>
+        <button class="text-button" id="manageTeamButton" type="button" hidden>Manage teammates &amp; knowledge</button>
+        <button class="text-button" id="newTeamButton" type="button"><i class="fa-solid fa-people-group" aria-hidden="true"></i> New persistent team</button>
         <button class="text-button" id="newProjectButton" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</button>
         <a class="text-button" href="/web-chat/" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open Web Chat</a>
-      </div>
+      </div></details></div>
     </aside>
 
     <main class="workroom-stage" id="workroomStage" tabindex="-1">
@@ -57,6 +59,10 @@
       </section>
 
       <div class="stage-content" id="stageContent" hidden>
+        <section class="team-toolbar" id="teamToolbar" aria-label="Persistent team controls" hidden>
+          <div><span class="eyebrow">Persistent teammates</span><strong id="teamExecutionState">Execution paused</strong><small id="teamRuntimeNote">Loading runtime availability</small></div>
+          <div class="team-toolbar-actions"><button class="hud-button" id="addTeammateButton" type="button">Add teammate</button><button class="hud-button" id="configureTeamButton" type="button">Execution settings</button></div>
+        </section>
         <section class="ops-floor-panel" aria-labelledby="floorTitle">
           <header class="panel-heading">
             <div><span class="eyebrow">Visual collaboration map</span><h2 id="floorTitle">Operations floor</h2></div>
@@ -73,8 +79,8 @@
             </div>
             <div class="agent-header-actions">
               <span class="agent-state-pill" id="selectedAgentState">Offline</span>
-              <button class="hud-button agent-control-button stop" id="stopAgentButton" type="button" disabled><i class="fa-solid fa-stop" aria-hidden="true"></i><span>Stop</span></button>
-              <button class="hud-button agent-control-button restart" id="restartAgentButton" type="button" disabled><i class="fa-solid fa-play" aria-hidden="true"></i><span>Restart</span></button>
+              <button class="hud-button agent-control-button stop" id="stopAgentButton" aria-label="Stop selected agent" type="button" disabled><i class="fa-solid fa-stop" aria-hidden="true"></i><span>Stop</span></button>
+              <button class="hud-button agent-control-button restart" id="restartAgentButton" aria-label="Restart selected agent" type="button" disabled><i class="fa-solid fa-play" aria-hidden="true"></i><span>Restart</span></button>
               <button class="hud-button" id="focusDeskButton" type="button" disabled><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Focus desk</span></button>
             </div>
           </header>
@@ -144,6 +150,50 @@
   </dialog>
 
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="js/agent-ops.js?v=agent-workroom-v4"></script>
+  <dialog class="workroom-dialog" id="teamDialog" aria-labelledby="teamDialogTitle">
+    <form id="teamCreateForm"><header><h2 id="teamDialogTitle">Create a persistent team</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></header><div class="dialog-body">
+      <label>Team name<input name="name" required maxlength="120" autocomplete="off"></label><label>Shared objective<textarea name="objective" required maxlength="12000" rows="4"></textarea></label>
+      <div class="form-pair"><label>Maximum teammates<input name="maxAgents" type="number" min="1" max="24" value="6" required></label><label>Parallel tasks<input name="concurrency" type="number" min="1" max="8" value="3" required></label></div>
+      <p class="capability-note">Created paused. Adding teammates or tasks does not enable execution. Existing projects and schedules are unchanged.</p><p class="form-error" role="alert"></p>
+    </div><footer><button class="hud-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Create paused team</button></footer></form>
+  </dialog>
+  <dialog class="workroom-dialog" id="teammateDialog" aria-labelledby="teammateDialogTitle">
+    <form id="teammateForm"><header><h2 id="teammateDialogTitle">Add a teammate</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></header><div class="dialog-body">
+      <div class="form-pair"><label>Name<input name="name" required maxlength="100"></label><label>Role<select name="role"><option value="specialist">Specialist</option><option value="coordinator">Coordinator</option><option value="reviewer">Reviewer</option></select></label></div>
+      <label>Responsibility<textarea name="job" required maxlength="4000" rows="3"></textarea></label><label>Persona <span class="optional">Optional</span><textarea name="persona" maxlength="4000" rows="3" placeholder="How should this teammate communicate and approach work?"></textarea></label>
+      <p class="capability-note">Saved identity and persona persist across tasks. A persona cannot grant access to tools or websites.</p><p class="form-error" role="alert"></p>
+    </div><footer><button class="hud-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Save teammate</button></footer></form>
+  </dialog>
+  <dialog class="workroom-dialog" id="teamTaskDialog" aria-labelledby="teamTaskDialogTitle">
+    <form id="teamTaskForm"><header><h2 id="teamTaskDialogTitle">Queue a team task</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></header><div class="dialog-body">
+      <label>Assignee<select name="agentId" required></select></label><label>Task title<input name="title" required maxlength="200"></label><label>Outcome and acceptance checks<textarea name="instruction" required rows="5" maxlength="12000"></textarea></label>
+      <label>Independent reviewer <span class="optional">Optional</span><select name="reviewerId"><option value="">Owner review</option></select></label>
+      <label>Reusable skill <span class="optional">Approved revisions only</span><select name="skillId"><option value="">No skill template</option></select></label>
+      <label>Write targets <span class="optional">One path or resource per line</span><textarea name="writeTargets" rows="2" maxlength="4000" placeholder="site/header"></textarea></label>
+      <p class="capability-note">Queued is not running. Execution must be enabled and capacity available; reviewed artifacts establish completion.</p><p class="form-error" role="alert"></p>
+    </div><footer><button class="hud-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Queue task</button></footer></form>
+  </dialog>
+  <dialog class="workroom-dialog" id="teamExecutionDialog" aria-labelledby="teamExecutionDialogTitle">
+    <form id="teamExecutionForm"><header><h2 id="teamExecutionDialogTitle">Team execution settings</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></header><div class="dialog-body">
+      <p class="capability-note" id="executionRuntimeAvailability"></p>
+      <label>Model <span class="optional">Blank uses configured default</span><input name="model" maxlength="160" autocomplete="off"></label>
+      <label>Allowed tool IDs <span class="optional">One per line</span><textarea name="toolIds" rows="2" placeholder="web-search"></textarea></label><label>Allowed browser origins <span class="optional">Exact HTTP(S) origins, one per line</span><textarea name="origins" rows="2" placeholder="https://example.com"></textarea></label>
+      <div class="form-pair"><label>Tool calls per task<input name="maxCalls" type="number" min="1" max="100" required value="24"></label><label>Seconds per task<input name="seconds" type="number" min="1" max="600" required value="120"></label></div>
+      <label class="team-check"><input name="allowSideEffects" type="checkbox"> Permit browser actions within these origins</label><label class="team-check"><input name="allowWebSockets" type="checkbox"> Permit WebSockets within these origins</label>
+      <label class="team-check execution-consent"><input name="enabled" type="checkbox"> Enable execution of queued tasks and enabled routines</label>
+      <p class="capability-note">Enabling may start agents immediately and use the configured model. Runtime limits and server tool policy still apply. Pausing requests cancellation; uncertain work remains reconciling.</p><p class="form-error" role="alert"></p>
+    </div><footer><button class="hud-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Save execution settings</button></footer></form>
+  </dialog>
+  <dialog class="workroom-dialog" id="teamReviewDialog" aria-labelledby="teamReviewDialogTitle">
+    <form id="teamReviewForm"><header><h2 id="teamReviewDialogTitle">Review saved result</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></header><div class="dialog-body">
+      <input type="hidden" name="taskId"><h3 id="reviewTaskTitle"></h3><p class="capability-note" id="reviewTaskSummary"></p><div class="review-artifacts" id="reviewArtifactEvidence"></div>
+      <label>Review note<textarea name="note" required maxlength="4000" rows="4" placeholder="What did you inspect, and does it meet the requested outcome?"></textarea></label>
+      <label class="team-check"><input type="checkbox" name="inspected"> I inspected the linked artifacts and checked the requested outcome.</label>
+      <p class="capability-note">A worker’s summary is not proof. These are recorded artifact hashes, not a new browser or deployment verification.</p><p class="form-error" role="alert"></p>
+    </div><footer><button class="hud-button" type="submit" value="changes">Request changes</button><button class="primary-button" type="submit" value="approve">Approve inspected result</button></footer></form>
+  </dialog>
+  <script src="js/team-client.js?v=team-computer-checkpoints-v1"></script>
+  <script src="js/team-manager.js?v=team-management-v1"></script>
+  <script src="js/agent-ops.js?v=team-computer-checkpoints-v1"></script>
 </body>
 </html>

@@ -1,0 +1,15 @@
+**
+!src/
+!src/agent-computer/
+!src/agent-teams/
+!src/agent-computer/recovery-engine.Dockerfile
+!src/agent-computer/recovery-engine.Dockerfile.dockerignore
+!src/agent-computer/recovery-worker.js
+!src/agent-computer/profile-recovery.js
+!src/agent-computer/directory-lock.js
+!src/agent-computer/runtime.js
+!src/agent-computer/profile-lease.js
+!src/agent-computer/stop-evidence.js
+!src/agent-computer/node-binding.js
+!src/agent-computer/recovery-helper.js
+!src/agent-teams/cgroup-reader.js

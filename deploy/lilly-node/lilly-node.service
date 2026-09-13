@@ -1,0 +1,32 @@
+# Template only. Do not install/enable until the scoped release is approved.
+[Unit]
+Description=Lilly private node computer service
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/lilly-node
+ExecStartPre=/opt/lilly-node/runtime/bin/node /opt/lilly-node/bin/lilly-node-service.js --config /etc/lilly-node/service.json --check
+ExecStart=/opt/lilly-node/runtime/bin/node /opt/lilly-node/bin/lilly-node-service.js --config /etc/lilly-node/service.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+# AF_NETLINK is needed by the read-only network-interface startup check.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LimitNOFILE=256
+TasksMax=64
+MemoryMax=512M
+CPUQuota=100%
+TimeoutStopSec=70
+KillMode=control-group
+# Do not add PrivateTmp/ProtectSystem/ProtectHome here without redesigning the
+# host observer: they create a mount namespace that its identity checks reject.
+# Models, provider keys, KUBECONFIG and browser credentials do not belong here.
+
+[Install]
+WantedBy=multi-user.target
